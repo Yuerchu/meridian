@@ -8,6 +8,8 @@ import { useState } from 'react'
 
 import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
+import { ModeChip } from '@/components/chat/mode-chip'
+import { ModelPanel } from '@/components/chat/model-panel'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
@@ -63,7 +65,13 @@ function ComposerCase() {
         ariaLabel="Message"
         placeholder="Send a message..."
         toolbarStart={
-          <ComposerMenu
+          <>
+            <ComposerMenu onPickFile={noop} onOpenStickers={noop} />
+            <ModeChip mode="work" acceptEdits={false} onSelectMode={noop} onToggleAcceptEdits={noop} />
+          </>
+        }
+        toolbarEnd={
+          <ModelPanel
             assistants={[]}
             providers={[]}
             currentAssistantId={null}
@@ -75,16 +83,13 @@ function ComposerCase() {
             onSelectThinkingLevel={noop}
             fastMode={false}
             onToggleFast={noop}
-            mode="work"
-            onSelectMode={noop}
-            acceptEdits={false}
-            onToggleAcceptEdits={noop}
           />
         }
       />
       <p data-slot="responsive-case-note" className="mt-2 text-caption-1-regular text-text-secondary">
-        Open the <code data-slot="responsive-case-note-code">+</code> menu (and a submenu) before sweeping: both are
-        portalled, and a submenu opening past the edge is what the escape detector is here to catch.
+        Open the <code data-slot="responsive-case-note-code">+</code> menu, the mode menu and the model panel before
+        sweeping: all three are portalled, and a panel opening past the edge is what the escape detector is here to
+        catch.
       </p>
     </div>
   )

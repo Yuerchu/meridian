@@ -2,14 +2,12 @@ import { useState, useRef, useCallback, useEffect, useId, useLayoutEffect, useMe
 import { mergeRefs } from '@react-aria/utils'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowInDownDashedPanel, ChevronDown, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
+import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, ListBox, Popover, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button, Kbd, Label, Tooltip, TooltipTrigger } from '@/components/base'
 import { ContextMenu } from '@/components/base'
-import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 
-import { localPreviewSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'
 import { isRemote } from '@/lib/transport'
 import type { Attachment } from '@/lib/upload'
@@ -24,32 +22,32 @@ import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
-import { objectKey } from '@/lib/object-key'
 import { readClipboardContent, writeClipboard, type ClipboardContent } from '@/lib/clipboard'
 import { pickPasted } from '@/lib/paste-files'
 import { Composer } from './composer'
+import { AttachmentTiles } from './attachment-tiles'
 import { ComposerSuggestions, type ComposerSuggestion } from './composer-suggestions'
 import { VoiceOverlay } from './voice-overlay'
-import { MobileOptionsMenu } from './toolbar'
+import { AttachSheet } from './attach-sheet'
 import { ComposerMenu } from './composer-menu'
+import { HostedModelPanel, ModelPanel } from './model-panel'
 import { EmojiPicker } from './emoji-picker'
-import { ToolbarSelect } from './toolbar-select'
-import { ContextGauge } from './context-gauge'
+import { ContextGauge, hasContextReading } from './context-gauge'
+import { ComposerStatusTab } from './composer-status-tab'
+import { TodoProgressChip } from './todo-progress-chip'
+import type { TodoArgs } from './todo-list'
 import type { ContextInfo } from '@/hooks/use-context-info'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
-import type { TFunction } from 'i18next'
+import { currentValueName, isEffortKnob, isModeKnob, isModelKnob } from '@/lib/acp-knob-names'
+import { HostedModeChip, ModeChip } from './mode-chip'
 import type {
-  AcpConfigOptionInfoResponse,
-  AcpConfigOptionValueInfoResponse,
   AssistantInfoResponse,
   ChatMode,
   EmojiInfoResponse,
   ProviderInfoResponse,
   ProviderCapabilitiesInfoResponse,
-  QueueDelivery,
   ThinkingLevel,
 } from '@/types'
-import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * One file the composer is holding, named either by a path on the machine that
@@ -97,21 +95,23 @@ interface InputBarProps {
   /**
    * Enter stacks the message up instead of sending it.
    *
-   * A hosted session with a turn running. Like `steerable` in that the field
-   * stays live and a Stop of its own appears, and unlike it in what happens
-   * next: steering goes straight into the run, while this is written down and
-   * delivered when the queue says so. The toolbar stays, because which of the
-   * two modes the next message goes in is a decision made *here*.
+   * A turn is running in a conversation that is not a delegated run. Like
+   * `steerable` in that the field stays live and a Stop of its own appears,
+   * and unlike it in what happens next: steering goes straight into the run,
+   * while this is written down and delivered once the turn ends. A queued
+   * message always waits; turning one into an interjection is done on its row
+   * in the queue, after it exists, rather than decided here beforehand.
    */
   queueing?: boolean
-  /** What the next queued message will be. */
-  queueDelivery?: QueueDelivery
-  onSelectQueueDelivery?: (delivery: QueueDelivery) => void
   /** The rows themselves, above the shell. */
   queue?: React.ReactNode
+  /** The running checklist, for the status tab's progress chip. */
+  todos?: TodoArgs | null
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
+  /** The files in their new order, after a tile was moved. Absent, they stay put. */
+  onReorderFiles?: (next: AttachedFile[]) => void
   pendingSticker?: PendingSticker | null
   onSelectSticker?: (sticker: PendingSticker) => void
   onRemoveSticker?: () => void
@@ -127,9 +127,9 @@ interface InputBarProps {
   fastMode: boolean
   onToggleFast: (next: boolean) => void
   mode: ChatMode
-  onSelectMode: (mode: ChatMode) => void
+  onSelectMode: (mode: ChatMode) => void | Promise<boolean>
   acceptEdits: boolean
-  onToggleAcceptEdits: (next: boolean) => void
+  onToggleAcceptEdits: (next: boolean) => void | Promise<boolean>
   capabilities?: ProviderCapabilitiesInfoResponse | null
   contextInfo?: ContextInfo
   compacting?: boolean
@@ -147,157 +147,6 @@ interface InputBarProps {
  * platform's own long-press menu has none of those problems and custom ROMs
  * add clipboard history and translation to it, so let the WebView have it.
  */
-/**
- * What to call a knob, and what to call the value it is set to.
- *
- * The agent's own strings are English and always will be: `name` is composed in
- * the adapter, so in a Chinese window a row of them reads `Mode / Effort / Fast
- * mode` with nothing translated. The ids it uses for the knobs it defines are a
- * short documented set (`mode`, `model`, `effort`, `fast`, `agent`), so those
- * get translations here and everything else falls back to what the agent said —
- * which is the only right answer for a knob some other agent invented.
- *
- * Keyed on `id` rather than `category`, and that is not interchangeable: the
- * reasoning knob is `id: "effort"` under `category: "thought_level"`, and Fast
- * mode is `id: "fast"` under `category: "model_config"` — a category naming a
- * *class* of setting rather than the setting. Only the id names the thing.
- */
-function knobName(t: TFunction, option: AcpConfigOptionInfoResponse): string {
-  const fallback = option.name || option.id
-  return t(`chat.acp.knob.${option.id.toLowerCase()}`, { defaultValue: fallback })
-}
-
-function knobValueName(
-  t: TFunction,
-  option: AcpConfigOptionInfoResponse,
-  value: AcpConfigOptionValueInfoResponse,
-): string {
-  const fallback = value.name || value.value
-  // Scoped per knob, because `default` means a different thing on each of them
-  // and a model id must never find a translation at all.
-  return t(`chat.acp.value.${option.id.toLowerCase()}.${value.value.toLowerCase()}`, { defaultValue: fallback })
-}
-
-function currentValueName(t: TFunction, option: AcpConfigOptionInfoResponse): string | null {
-  if (typeof option.currentValue !== 'string') return null
-  const value = option.options.find((v) => v.value === option.currentValue)
-  return value ? knobValueName(t, option, value) : option.currentValue
-}
-
-/**
- * Everything a hosted Claude Code session lets you set, in one control.
- *
- * Renders nothing at all for an ordinary conversation, and nothing for a hosted
- * one whose adapter is not running — there is no session to change anything on,
- * and a picker that cannot pick is worse than no picker.
- *
- * **One control, because a picker in this toolbar can only show its value.**
- * That is fine for the model — "Opus" says what it is — and says nothing for
- * anything else: the row used to read `Auto · Default (recommend… · Xhigh · On
- * · Default`, five controls naming none of the five things they set, two of them
- * truncated for the privilege, and the send button pushed out of the shell
- * behind them. So the trigger carries the two values worth reading at a glance
- * — the model and, when it is not on its default, the effort — and opening it
- * gives every knob a name, the agent's own description, and its values laid out
- * with the current one ticked.
- *
- * Which knobs exist stays the agent's answer. The two it singles out are read by
- * id, the same way `SessionConfigOption::as_model` already reads the model,
- * because the model is what a transcript row records as having answered.
- */
-function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAcpConfig>, 'options' | 'set' | 'busy'>) {
-  const { t } = useTranslation()
-  // A select with nothing in it is not offered: the agent has told us a knob
-  // exists without saying what it accepts, and an empty menu reads as a bug.
-  const pickers = options.filter((o) => isSelect(o) && o.options.length > 0)
-  if (pickers.length === 0) return null
-
-  // Category as well as id, so an agent that names one and omits the other is
-  // still understood. `thought_level` is the category the adapter files effort
-  // under; `effort` is its id.
-  const model = pickers.find((o) => o.id === 'model' || o.category === 'model')
-  const effort = pickers.find((o) => o.id === 'effort' || o.category === 'thought_level')
-  const summary = [
-    model && currentValueName(t, model),
-    // Left off when it is on its default: a permanent "· 默认" is noise, and the
-    // width it takes is the width the send button needs.
-    effort && effort.currentValue !== 'default' ? currentValueName(t, effort) : null,
-  ].filter(Boolean)
-
-  // A refusal leaves the set as it was, which is already what is on screen —
-  // the agent did not change, so neither should the picker. The reason is kept
-  // by `useAcpConfig` and drawn above the composer; this only stops the
-  // rejection from going unhandled.
-  const choose = (id: string, value: string) => void set(id, value).catch(() => undefined)
-
-  return (
-    <Popover>
-      <TooltipTrigger delay={0}>
-        <Button
-          trailingIcon={ChevronDown}
-          variant="secondary"
-          aria-label={t('chat.agentOptions')}
-          data-slot="agent-options-trigger"
-          isDisabled={busy}
-          className="h-8 max-w-56 gap-1 rounded-lg px-2 text-body-regular"
-        >
-          <span data-slot="agent-options-summary" onPointerEnter={titleIfTruncated} className="truncate">
-            {summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}
-          </span>
-        </Button>
-        <Tooltip placement="top">{t('chat.agentOptions')}</Tooltip>
-      </TooltipTrigger>
-      <Popover.Content placement="top start" className="w-72">
-        <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
-          {pickers.map((option) => (
-            <div key={option.id} data-slot="agent-knob">
-              <p data-slot="agent-knob-name" className="px-2 text-caption-1-medium">
-                {knobName(t, option)}
-              </p>
-              {option.description && (
-                <p
-                  data-slot="agent-knob-description"
-                  className="px-2 pt-0.5 text-caption-1-regular text-text-secondary"
-                >
-                  {option.description}
-                </p>
-              )}
-              {/* A flat list rather than a second dropdown. Every value is
-                  visible at once and the current one is ticked, which is the
-                  thing the toolbar could not say — and it keeps this from being
-                  an overlay inside an overlay. */}
-              <ListBox
-                aria-label={knobName(t, option)}
-                className="mt-1 p-1"
-                selectionMode="single"
-                disallowEmptySelection
-                selectedKeys={typeof option.currentValue === 'string' ? [option.currentValue] : []}
-                onSelectionChange={(keys) => {
-                  const next = [...(keys as Set<string>)][0]
-                  if (next) choose(option.id, next)
-                }}
-              >
-                {option.options.map((v) => (
-                  <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
-                    <span
-                      data-slot="agent-knob-value"
-                      onPointerEnter={titleIfTruncated}
-                      className="min-w-0 flex-1 truncate text-body-regular"
-                    >
-                      {knobValueName(t, option, v)}
-                    </span>
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </div>
-          ))}
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
-  )
-}
-
 function ComposerContextMenu({
   enabled,
   label,
@@ -344,9 +193,8 @@ export function InputBar({
   streaming,
   steerable,
   queueing,
-  queueDelivery = 'follow_up',
-  onSelectQueueDelivery,
   queue,
+  todos,
   assistants,
   providers,
   currentAssistantId,
@@ -369,6 +217,7 @@ export function InputBar({
   attachedFiles = [],
   onAttachFiles,
   onRemoveFile,
+  onReorderFiles,
   pendingSticker,
   onSelectSticker,
   onRemoveSticker,
@@ -408,6 +257,52 @@ export function InputBar({
   // typing. This is the one connection state the composer has to care about.
   const offline = useIsOffline()
   const fileInputRef = useRef<FileInputHandle>(null)
+  // The sticker picker opens from the `+` menu (or the phone's sheet) and
+  // hangs from that button once the menu has gone.
+  const plusRef = useRef<HTMLButtonElement>(null)
+  const [stickersOpen, setStickersOpen] = useState(false)
+  // Not on a hosted session: core has no content block to turn a sticker into
+  // for an ACP agent and refuses one (`acp::attachments`), so the picker is not
+  // offered rather than offered and refused. Files are; see `canAttachFiles`.
+  const offersStickers = !isHosted && !!currentAssistantId && !!onSelectSticker
+  // A hosted session's knobs, by where each is drawn: the model and the
+  // effort in the model panel, the permission mode as the mode chip, anything
+  // else in the `+` menu. A select with nothing in it is not offered: the
+  // agent has said a knob exists without saying what it accepts.
+  const knobs = acp.options.filter((o) => isSelect(o) && o.options.length > 0)
+  const modelKnob = knobs.find(isModelKnob)
+  const effortKnob = knobs.find(isEffortKnob)
+  const modeKnob = knobs.find(isModeKnob)
+  const otherKnobs = knobs.filter((o) => o !== modelKnob && o !== effortKnob && o !== modeKnob)
+  // A refusal leaves the set as it was, which is already what is on screen;
+  // the reason is kept by `useAcpConfig` and drawn above the composer.
+  const setKnob = (id: string, value: string) => void acp.set(id, value).catch(() => undefined)
+  const modeChip = isHosted ? (
+    modeKnob ? (
+      <HostedModeChip
+        option={modeKnob}
+        busy={acp.busy}
+        // A refusal is drawn above the composer by `useAcpConfig`.
+        onSelect={(value) => setKnob(modeKnob.id, value)}
+      />
+    ) : null
+  ) : (
+    <ModeChip
+      mode={mode}
+      acceptEdits={acceptEdits}
+      onSelectMode={onSelectMode}
+      onToggleAcceptEdits={onToggleAcceptEdits}
+    />
+  )
+  const stickerPicker = offersStickers ? (
+    <EmojiPicker
+      assistantId={currentAssistantId}
+      anchorRef={plusRef}
+      isOpen={stickersOpen}
+      onOpenChange={setStickersOpen}
+      onSelect={(sticker) => onSelectSticker?.(sticker)}
+    />
+  ) : null
   /**
    * Voice is not offered at all when it cannot work, rather than offered and
    * refused.
@@ -513,9 +408,9 @@ export function InputBar({
   // submit made during a run, which is precisely when a steer or a queued
   // message is submitted.
   const handleSubmit = useCallback(() => {
-    if ((disabled && !streaming) || (!value.trim() && !pendingSticker)) return
+    if ((disabled && !streaming) || (!value.trim() && !pendingSticker && attachedFiles.length === 0)) return
     onSubmit()
-  }, [disabled, streaming, value, pendingSticker, onSubmit])
+  }, [disabled, streaming, value, pendingSticker, attachedFiles.length, onSubmit])
 
   // `expected` is the value the caret position was computed against. The move
   // lands a frame later, and a key typed in that frame — a fast typist, key
@@ -660,9 +555,14 @@ export function InputBar({
     [onAttachFiles],
   )
 
-  // Withheld from a hosted session, as the attach menu is: an attachment
-  // reaches a hosted agent as the JSON that carries it.
-  const canAttachFiles = !isHosted && !!onAttachFiles && can.dropFiles
+  // A hosted session takes attachments too: core sends each as an ACP content
+  // block (an image, embedded text, or a link the agent reads), and refuses at
+  // send time what the agent did not say it accepts. So the native model's
+  // `supports_images` says nothing about a hosted turn and is not asked —
+  // before the first send after a restart the session has not shaken hands
+  // yet, and guessing its answer would be inventing one.
+  const acceptsImages = isHosted || capabilities?.supports_images !== false
+  const canAttachFiles = !!onAttachFiles && can.dropFiles
 
   // A pasted file is a clipboard operation that worked, like a pasted line of
   // text: it clears a failure the menu reported earlier, and takes a turn so
@@ -901,14 +801,8 @@ export function InputBar({
                 />
               ) : null
             }
-            // `!isHosted` for the same reason the attach menu and the sticker
-            // picker are withheld: an attachment reaches a hosted agent as the
-            // JSON that carries it, because an ACP prompt is a single text
-            // block. Closing the menus and leaving the whole window droppable
-            // would be the same failure with a better hiding place.
-            onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
-            // A pasted screenshot is a dropped file by another route, held
-            // back from a hosted session for the same reason.
+            onDropFiles={canAttachFiles ? handleDropFiles : undefined}
+            // A pasted screenshot is a dropped file by another route.
             onPasteFiles={canAttachFiles ? handlePastedFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
@@ -965,68 +859,25 @@ export function InputBar({
               (attachedFiles.length > 0 || pendingSticker) && (
                 <div data-slot="composer-attachments" className="flex w-full min-w-0 items-end gap-2 px-1 pb-1">
                   {attachedFiles.length > 0 && (
-                    // One row that scrolls sideways rather than wrapping: wrapped,
-                    // ten files on a phone stacked two to a row and pushed the
-                    // composer several hundred pixels up into the transcript.
-                    <ChatAttachmentGroup
+                    <AttachmentTiles
                       ref={attachmentRow}
-                      className="min-w-0 flex-nowrap overflow-x-auto [&>*]:shrink-0"
-                    >
-                      {attachedFiles.map((f, i) => (
-                        // An image gets a thumbnail rather than the paperclip everything
-                        // used to get: the path is already on disk, so this costs one
-                        // asset-protocol URL. Anything else falls back to the icon the
-                        // extension implies.
-                        // No path means the bytes are being carried instead, and
-                        // there is nothing addressable to point an `<img>` at —
-                        // the icon the extension implies is the honest answer.
-                        <ChatAttachment
-                          key={objectKey(f)}
-                          name={f.name}
-                          src={f.path && !f.missing ? localPreviewSrc(f.path, f.name) : undefined}
-                        >
-                          <ChatAttachment.Preview />
-                          {f.missing ? (
-                            // Restored from a saved draft; the file has gone
-                            // since. Kept visible so it can be removed.
-                            <ChatAttachment.Info>
-                              <span
-                                data-slot="chat-attachment-name"
-                                onPointerEnter={titleIfTruncated}
-                                className="block truncate text-body-2-medium text-text-primary"
-                              >
-                                {f.name}
-                              </span>
-                              <span
-                                data-slot="chat-attachment-missing"
-                                className="block truncate text-caption-1-regular text-status-danger"
-                              >
-                                {t('chat.draft.fileMissing')}
-                              </span>
-                            </ChatAttachment.Info>
-                          ) : (
-                            <ChatAttachment.Info />
-                          )}
-                          {onRemoveFile && (
-                            <ChatAttachment.Remove
-                              aria-label={t('chat.removeAttachment', { name: f.name })}
-                              onPress={() => onRemoveFile(i)}
-                            />
-                          )}
-                        </ChatAttachment>
-                      ))}
-                    </ChatAttachmentGroup>
+                      files={attachedFiles}
+                      onRemove={onRemoveFile}
+                      onReorder={onReorderFiles}
+                    />
                   )}
                   {pendingSticker && (
                     <div
-                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-2"
+                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-1"
                       data-slot="pending-sticker"
                     >
                       <img
                         data-slot="pending-sticker-image"
                         src={pendingSticker.url}
                         alt={pendingSticker.emoji.name}
-                        className="size-20 object-contain"
+                        // The tiles' 56px with this box's padding, so the row
+                        // is one height whatever it holds.
+                        className="size-12 object-contain"
                       />
                       {onRemoveSticker && (
                         // The corner placement is on a wrapper, not the button.
@@ -1059,125 +910,85 @@ export function InputBar({
                 </div>
               )
             }
-            hasPayload={!!pendingSticker}
+            status={
+              <ComposerStatusTab
+                // The first reading of a conversation's own window is a fetch
+                // away when it opens; a hosted session's arrives whenever the
+                // agent says so, and holding the tab for it could be for ever.
+                pending={!isHosted && contextInfo?.status === 'loading'}
+                progress={todos && todos.todos.length > 0 ? <TodoProgressChip todos={todos} /> : null}
+                usage={
+                  hasContextReading({ context: contextInfo, hosted: !!isHosted, agentUsage: acp.usage }) ? (
+                    <ContextGauge
+                      showPercent
+                      context={contextInfo}
+                      hosted={!!isHosted}
+                      agentUsage={acp.usage}
+                      agentModel={hostedModel}
+                      compacting={compacting}
+                      streaming={streaming}
+                      onCompact={onCompact}
+                    />
+                  ) : null
+                }
+              />
+            }
+            hasPayload={!!pendingSticker || attachedFiles.length > 0}
             toolbarStart={
-              steerable && streaming ? null : isAndroid ? (
-                // The phone keeps the pickers in the one sheet: there is no room
-                // beside the field for them, and a truncated model name is worse
-                // than one tap.
+              // Steering a delegated run starts no turn, so nothing that
+              // describes one — what to attach, which mode — applies.
+              steerable && streaming ? null : (
                 <>
-                  <MobileOptionsMenu
-                    assistants={assistants}
-                    providers={providers}
-                    currentAssistantId={currentAssistantId}
-                    currentModelId={currentModelId}
-                    currentProviderId={currentProviderId}
-                    onSelectAssistant={onSelectAssistant}
-                    onSelectModel={onSelectModel}
-                    thinkingLevel={thinkingLevel}
-                    onSelectThinkingLevel={onSelectThinkingLevel}
-                    fastMode={fastMode}
-                    onToggleFast={onToggleFast}
-                    mode={mode}
-                    onSelectMode={onSelectMode}
-                    acceptEdits={acceptEdits}
-                    onToggleAcceptEdits={onToggleAcceptEdits}
-                    capabilities={capabilities}
-                    // Same reason as the desktop branch below: a hosted prompt is
-                    // one text block, so a picture picked here would reach the
-                    // agent as JSON. Reachable from a phone in remote mode, where
-                    // the conversation is hosted on the machine at the other end.
-                    onTakePhoto={handleTakePhoto}
-                    onPickGallery={handlePickGallery}
-                    onPickFile={isHosted ? undefined : handlePickFile}
-                    supportsImages={!isHosted && capabilities?.supports_images !== false}
-                  />
-                  {/* These two are the agent's knobs and the queue's, not the
-                      sheet's, so they sit beside it here exactly as they do on a
-                      desktop. Left out of this branch, a phone attached to a
-                      hosted session — which is how remote mode reaches one — had
-                      no way to change its model, permission mode or effort at
-                      all, and no way to choose a delivery before sending. Both
-                      are already compact triggers rather than rows, so there is
-                      nothing to fold into the sheet. */}
-                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
-                  {queueing && onSelectQueueDelivery && (
-                    <ToolbarSelect
-                      aria-label={t('chat.queue.mode')}
-                      placeholder={t('chat.queue.followUp')}
-                      value={queueDelivery}
-                      choices={[
-                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
-                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
-                      ]}
-                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
+                  {isAndroid && !(isHosted && otherKnobs.length > 0) ? (
+                    // The phone's `+` is a sheet a thumb reaches. A hosted
+                    // session whose agent offers settings beyond the toolbar's
+                    // gets the menu below instead, which carries those and the
+                    // file picker; the sheet has no place for them.
+                    <AttachSheet
+                      triggerRef={plusRef}
+                      onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
+                      onTakePhoto={handleTakePhoto}
+                      onPickGallery={handlePickGallery}
+                      onPickFile={handlePickFile}
+                      supportsImages={acceptsImages}
+                    />
+                  ) : (
+                    <ComposerMenu
+                      triggerRef={plusRef}
+                      onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
+                      onPickFile={onAttachFiles && acceptsImages ? handlePickFile : undefined}
+                      knobs={otherKnobs}
+                      onSetKnob={setKnob}
+                      knobsBusy={acp.busy}
                     />
                   )}
-                </>
-              ) : (
-                <>
-                  <ComposerMenu
-                    assistants={assistants}
-                    providers={providers}
-                    currentAssistantId={currentAssistantId}
-                    currentModelId={currentModelId}
-                    currentProviderId={currentProviderId}
-                    onSelectAssistant={onSelectAssistant}
-                    onSelectModel={onSelectModel}
-                    thinkingLevel={thinkingLevel}
-                    onSelectThinkingLevel={onSelectThinkingLevel}
-                    fastMode={fastMode}
-                    onToggleFast={onToggleFast}
-                    mode={mode}
-                    onSelectMode={onSelectMode}
-                    acceptEdits={acceptEdits}
-                    onToggleAcceptEdits={onToggleAcceptEdits}
-                    capabilities={capabilities}
-                    // **Not on a hosted session.** An attachment is carried by
-                    // packing the message into a JSON array of parts, and the
-                    // ACP path sends whatever it is handed as a *single text
-                    // block* — so the agent receives the JSON itself while the
-                    // composer shows an attachment going out. Real support
-                    // means mapping parts onto ACP content blocks and asking
-                    // `promptCapabilities` first; until then the honest thing
-                    // is not to offer it.
-                    onPickFile={
-                      !isHosted && onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined
-                    }
-                  />
-                  {/* Beside the menu rather than inside it. Which model is
-                      answering is the one setting a person changes while
-                      working, and it is worth seeing without opening
-                      anything. A hosted session's knobs are the agent's and
-                      arrive over ACP; everything else stays in the menu. */}
-                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
-                  {/* Only while the next Enter would queue. The two are not
-                      urgency levels, so the control names what will happen
-                      rather than how urgent it is — and it is here rather than
-                      on the row because it is a decision about the message
-                      being typed, made before it exists. */}
-                  {queueing && onSelectQueueDelivery && (
-                    <ToolbarSelect
-                      aria-label={t('chat.queue.mode')}
-                      placeholder={t('chat.queue.followUp')}
-                      value={queueDelivery}
-                      choices={[
-                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
-                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
-                      ]}
-                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
-                    />
-                  )}
+                  {modeChip}
+                  {stickerPicker}
                 </>
               )
             }
             toolbarEnd={
               <>
-                {/* A sticker travels the same way an attachment does — as a
-                    part in a JSON array — and reaches a hosted agent as that
-                    JSON rather than as anything it can see. See `onPickFile`. */}
-                {!isHosted && (
-                  <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
+                {/* Which model is answering is the one setting a person
+                    changes while working, so it is on the toolbar, beside the
+                    microphone and Send, rather than in a menu. */}
+                {steerable && streaming ? null : isHosted ? (
+                  <HostedModelPanel model={modelKnob} effort={effortKnob} busy={acp.busy} onSet={setKnob} />
+                ) : (
+                  <ModelPanel
+                    assistants={assistants}
+                    providers={providers}
+                    currentAssistantId={currentAssistantId}
+                    currentModelId={currentModelId}
+                    currentProviderId={currentProviderId}
+                    onSelectAssistant={onSelectAssistant}
+                    onSelectModel={onSelectModel}
+                    thinkingLevel={thinkingLevel}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                    fastMode={fastMode}
+                    onToggleFast={onToggleFast}
+                    capabilities={capabilities}
+                  />
                 )}
                 {!isAndroid && onVoiceSend && (
                   <TooltipTrigger delay={0}>
@@ -1200,15 +1011,6 @@ export function InputBar({
                     </Tooltip>
                   </TooltipTrigger>
                 )}
-                <ContextGauge
-                  context={contextInfo}
-                  hosted={!!isHosted}
-                  agentUsage={acp.usage}
-                  agentModel={hostedModel}
-                  compacting={compacting}
-                  streaming={streaming}
-                  onCompact={onCompact}
-                />
               </>
             }
           />

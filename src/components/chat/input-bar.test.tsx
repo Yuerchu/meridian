@@ -32,7 +32,13 @@ vi.mock('@/hooks/use-android-voice-recorder', () => ({
   useAndroidVoiceRecorder: () => ({ attachField: vi.fn(), isActive: false, cancel: vi.fn() }),
 }))
 vi.mock('./emoji-picker', () => ({ EmojiPicker: () => null }))
-vi.mock('./composer-menu', () => ({ ComposerMenu: () => null }))
+const composerMenu = vi.hoisted(() => ({ props: vi.fn() }))
+vi.mock('./composer-menu', () => ({
+  ComposerMenu: (props: unknown) => {
+    composerMenu.props(props)
+    return null
+  },
+}))
 
 function renderBar(props: Partial<ComponentProps<typeof InputBar>> = {}) {
   return render(
@@ -206,7 +212,7 @@ describe('composer attachments', () => {
     const first = { name: 'first.txt' }
     const second = { name: 'second.txt' }
     const { rerender } = renderBar({ attachedFiles: [first, second], onRemoveFile: vi.fn() })
-    const chip = (name: string) => screen.getByText(name).closest('[data-slot="chat-attachment"]')
+    const chip = (name: string) => screen.getByText(name).closest('[data-slot="attachment-tile"]')
     const before = chip('second.txt')
 
     rerender(
@@ -253,7 +259,7 @@ describe('composer attachment row', () => {
     const { container } = renderBar({ attachedFiles: files, onRemoveFile: vi.fn() })
 
     const wrapper = container.querySelector('[data-slot="composer-attachments"]')
-    const group = container.querySelector('[data-slot="chat-attachment-group"]')
+    const group = container.querySelector('[data-slot="attachment-tiles"]')
     expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
     expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
     expect(group?.className.split(' ')).not.toContain('flex-wrap')
@@ -290,7 +296,7 @@ describe('composer attachment row, adding and removing', () => {
   const files = Array.from({ length: 4 }, (_, i) => ({ name: `file-${i}.png` }))
 
   function laidOutRow(container: HTMLElement) {
-    const row = container.querySelector('[data-slot="chat-attachment-group"]') as HTMLElement
+    const row = container.querySelector('[data-slot="attachment-tiles"]') as HTMLElement
     Object.defineProperty(row, 'scrollWidth', { value: 1000, configurable: true })
     return row
   }
@@ -347,13 +353,29 @@ describe('InputBar paste', () => {
     expect(kept).toBe(true)
   })
 
-  it('attaches nothing to a hosted session', () => {
+  // Core sends a hosted session's attachments as ACP content blocks and refuses
+  // at send time what the agent does not accept, so the composer takes them.
+  it('attaches to a hosted session too', () => {
     const onAttachFiles = vi.fn()
+    const file = shot()
     renderBar({ onAttachFiles, isHosted: true })
 
-    fireEvent.paste(field(), { clipboardData: clipboard('', [shot()]) })
+    fireEvent.paste(field(), { clipboardData: clipboard('', [file]) })
 
-    expect(onAttachFiles).not.toHaveBeenCalled()
+    expect(onAttachFiles).toHaveBeenCalledWith([{ name: 'image.png', file }])
+  })
+
+  // The `+` offers the file picker on a hosted session whatever the native
+  // model's capabilities say: those describe a different model.
+  it("offers the file picker on a hosted session regardless of the native model's capabilities", () => {
+    renderBar({
+      onAttachFiles: vi.fn(),
+      isHosted: true,
+      capabilities: { supports_images: false } as ComponentProps<typeof InputBar>['capabilities'],
+    })
+
+    const props = composerMenu.props.mock.calls.at(-1)?.[0] as { onPickFile?: () => void }
+    expect(props.onPickFile).toBeTypeOf('function')
   })
 })
 
@@ -420,5 +442,94 @@ describe('InputBar paste from its own menu', () => {
       } as unknown as DataTransfer,
     })
     await vi.waitFor(() => expect(screen.queryByRole('alert')).toBeNull())
+  })
+})
+
+describe('composer status tab', () => {
+  const todos = {
+    title: 'Ship it',
+    todos: [
+      { content: 'Build', active_form: 'Building', status: 'completed' as const },
+      { content: 'Test', active_form: 'Testing', status: 'in_progress' as const },
+    ],
+  }
+  const ready = {
+    status: 'ready' as const,
+    retry: () => {},
+    reading: {
+      messageCount: 3,
+      estimatedTokens: 41_000,
+      contextLimit: 100_000,
+      autoCompactEnabled: false,
+      autoCompactThreshold: 0,
+      compactBreaker: 'closed' as const,
+      model: 'm1',
+      agentKind: null,
+    },
+  }
+  const tab = () => screen.queryByRole('group', { name: i18n.t('composer.status') })
+
+  beforeEach(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  it('is absent with no checklist and no reading', () => {
+    renderBar()
+    expect(tab()).toBeNull()
+  })
+
+  it('carries the checklist chip and the context reading', () => {
+    renderBar({ todos, contextInfo: ready })
+    const group = tab()!
+    expect(within(group).getByRole('button', { name: /Ship it, 1\/2, Testing/ })).toBeInTheDocument()
+    expect(within(group).getByText('41%')).toBeInTheDocument()
+  })
+
+  it('keeps the tab while the first reading is on its way, so it does not push the transcript up later', () => {
+    renderBar({ contextInfo: { status: 'loading', retry: () => {} } })
+    expect(tab()).not.toBeNull()
+  })
+
+  it('does not wait on a hosted agent, which reports whenever it likes', () => {
+    renderBar({ isHosted: true, contextInfo: { status: 'loading', retry: () => {} } })
+    expect(tab()).toBeNull()
+  })
+
+  it('takes the reading out of the toolbar', () => {
+    const { container } = renderBar({ contextInfo: ready })
+    const toolbar = container.querySelector('[data-slot="prompt-input-toolbar"]')!
+    expect(within(toolbar as HTMLElement).queryByText('41%')).toBeNull()
+    expect(toolbar.querySelector('[role="progressbar"]')).toBeNull()
+  })
+
+  it('offers no choice of delivery while a turn runs: a queued message waits', () => {
+    const { container } = renderBar({ streaming: true, queueing: true })
+    expect(container.querySelector('[data-slot="toolbar-select"]')).toBeNull()
+  })
+})
+
+// A file on its own is a message: dropping a screenshot and pressing Enter
+// used to do nothing, and mid-turn Send was a Stop because it read only text.
+describe('InputBar with only attachments', () => {
+  const files = [{ name: 'report.pdf', path: 'C:/docs/report.pdf' }]
+
+  it('submits a message that is only an attachment', async () => {
+    const user = userEvent.setup()
+    const onSubmit = vi.fn()
+    renderBar({ attachedFiles: files, onSubmit })
+    // Reached the way the other cases in this file reach it.
+    await user.click(document.querySelector('textarea')!)
+    await user.keyboard('{Enter}')
+    expect(onSubmit).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers Send, not Stop, for an attachment queued while a turn runs', () => {
+    renderBar({ attachedFiles: files, streaming: true, queueing: true, onStop: vi.fn() })
+    expect(screen.getByRole('button', { name: i18n.t('chat.send') })).toBeInTheDocument()
+  })
+
+  it('still offers Stop mid-turn with nothing to send', () => {
+    renderBar({ streaming: true, queueing: true, onStop: vi.fn() })
+    expect(screen.queryByRole('button', { name: i18n.t('chat.send') })).toBeNull()
   })
 })

@@ -46,6 +46,7 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { assetSrc } from '@/lib/asset-src'
 import { writeClipboard } from '@/lib/clipboard'
 import { errorMessage } from '@/lib/error-message'
+import { parseUserContent } from '@/lib/message-content'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { SelectTextModal } from './select-text-modal'
@@ -176,15 +177,6 @@ function SentAt({ at }: { at: number }) {
   return <BubbleTime dateTime={new Date(at).toISOString()}>{clock.format(at)}</BubbleTime>
 }
 
-interface UserContentPart {
-  type: string
-  text?: string
-  image_url?: { url: string }
-  file?: { url: string; name: string; mime_type: string }
-  sticker_id?: string
-  name?: string
-}
-
 export interface UserMessageProps {
   message: MessageData
   onDelete?: (id: string) => void
@@ -250,44 +242,10 @@ export const UserMessage = React.memo(function UserMessage({
   const { t } = useTranslation()
   const menuCopy = useMenuCopy()
 
-  // User messages with attachments are stored as a JSON array of parts. Only
-  // treat the content as multimodal when every element actually looks like a
-  // part; arbitrary text such as "[null]" or "[1,2,3]" must stay plain text.
+  // User messages with attachments are stored as a JSON array of parts.
   const parsedUser = useMemo(() => {
-    let contentParts: UserContentPart[] | null = null
-    let textContent = message.content
-    let copyText = message.content
-    if (message.content.startsWith('[')) {
-      try {
-        const parsed: unknown = JSON.parse(message.content)
-        if (
-          Array.isArray(parsed) &&
-          parsed.length > 0 &&
-          parsed.every((p) => typeof p === 'object' && p !== null && typeof (p as { type?: unknown }).type === 'string')
-        ) {
-          contentParts = parsed as UserContentPart[]
-          textContent = contentParts
-            .filter((p) => p.type === 'text')
-            .map((p) => p.text ?? '')
-            .join('\n')
-          // Copy what the row communicates, not the storage envelope. Raw
-          // multimodal JSON exposes local asset URLs and makes a sticker-only
-          // message copy as an implementation detail instead of its name.
-          copyText = contentParts
-            .flatMap((part) => {
-              if (part.type === 'text') return part.text ?? ''
-              if (part.type === 'file') return part.file?.name ?? ''
-              if (part.type === 'sticker') return part.name ?? ''
-              return ''
-            })
-            .filter(Boolean)
-            .join('\n')
-        }
-      } catch {
-        /* not JSON, treat as plain text */
-      }
-    }
-    return { contentParts, copyText, textContent }
+    const { parts, text, copyText } = parseUserContent(message.content)
+    return { contentParts: parts, copyText, textContent: text }
   }, [message.content])
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')

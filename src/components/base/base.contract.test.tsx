@@ -234,6 +234,33 @@ describe('Text controls are React Aria inputs', () => {
     expect(onChange).toHaveBeenLastCalledWith('')
   })
 
+  it('SearchField draws its own magnifier and clear glyph, which a child still replaces', () => {
+    const { container } = render(
+      <SearchField aria-label="Search" defaultValue="ab">
+        <SearchField.Group>
+          <SearchField.SearchIcon />
+          <SearchField.Input />
+          <SearchField.ClearButton />
+        </SearchField.Group>
+      </SearchField>,
+    )
+    expect(container.querySelector('[data-slot="search-field-search-icon"] svg')).not.toBeNull()
+    expect(container.querySelector('[data-slot="search-field-clear"] svg')).not.toBeNull()
+
+    const { container: custom } = render(
+      <SearchField aria-label="Find">
+        <SearchField.Group>
+          <SearchField.SearchIcon>
+            <span data-testid="own-glyph" />
+          </SearchField.SearchIcon>
+          <SearchField.Input />
+        </SearchField.Group>
+      </SearchField>,
+    )
+    expect(custom.querySelector('[data-slot="search-field-search-icon"] svg')).toBeNull()
+    expect(screen.getByTestId('own-glyph')).toBeInTheDocument()
+  })
+
   it('Select is named by its label slot', () => {
     render(
       <Select label="Model" selectedKey="a">

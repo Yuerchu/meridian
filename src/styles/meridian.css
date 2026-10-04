@@ -182,6 +182,16 @@
     animation: none;
     background-color: var(--arrival-wash);
   }
+  /* BoardUI's label swap (globals.css) ships without a guard of its own, and
+     that file is vendored. The outgoing label goes at once, the new one is
+     simply there. */
+  .animate-label-out {
+    animation: none;
+    opacity: 0;
+  }
+  .animate-label-in {
+    animation: none;
+  }
 }
 
 /* ---------------------------------------------------------------- app-level */

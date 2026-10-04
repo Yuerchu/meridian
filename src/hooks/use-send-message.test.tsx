@@ -79,4 +79,33 @@ describe('useSendMessage', () => {
     ])
     expect(request).toEqual(expect.objectContaining({ contextRefs }))
   })
+
+  // A file on its own is a message; empty text with nothing attached is not.
+  it('sends an attachment with no text, and nothing at all for nothing', async () => {
+    const { result } = renderHook(() =>
+      useSendMessage('conversation-1', {
+        streaming: false,
+        selectedAssistantId: 'assistant-1',
+        selectedModelId: 'model-1',
+        selectedProviderId: 'provider-1',
+        thinkingLevel: 'default',
+        fastMode: false,
+        mode: 'work',
+      }),
+    )
+
+    await act(async () => {
+      await result.current.sendMessage('  ', false)
+    })
+    expect(mocks.chat).not.toHaveBeenCalled()
+
+    await act(async () => {
+      await result.current.sendMessage('', false, [{ name: 'design.png', path: 'C:\\tmp\\design.png' }])
+    })
+    expect(mocks.chat).toHaveBeenCalledTimes(1)
+    const [request] = mocks.chat.mock.calls[0]
+    expect(JSON.parse(request.message as string)).toEqual([
+      { type: 'image_url', image_url: { url: 'file:///attachments/design.png' } },
+    ])
+  })
 })

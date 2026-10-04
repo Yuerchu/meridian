@@ -28,8 +28,10 @@ export interface TurnSettings {
   onSelectModel: (modelId: string, providerId: string) => void
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   onToggleFast: (next: boolean) => void
-  onSelectMode: (next: ChatMode) => void
-  onToggleAcceptEdits: (next: boolean) => void
+  /** Resolves whether the change was stored; a refusal has already been rolled back. */
+  onSelectMode: (next: ChatMode) => Promise<boolean>
+  /** Resolves whether the change was stored; a refusal has already been rolled back. */
+  onToggleAcceptEdits: (next: boolean) => Promise<boolean>
 }
 
 /**
@@ -242,13 +244,16 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
   )
 
   const onSelectMode = useCallback(
-    (next: ChatMode) => {
+    (next: ChatMode): Promise<boolean> => {
       const previous = mode
       setMode(next)
-      if (conversationId === null) return
-      api
+      if (conversationId === null) return Promise.resolve(true)
+      return api
         .setConversationMode({ id: conversationId, mode: next === 'work' ? null : next })
-        .then(() => refreshConversations())
+        .then(async () => {
+          await refreshConversations()
+          return true
+        })
         .catch((err) => {
           // Rolled back rather than kept locally, unlike the other two toggles.
           // The mode decides whether the model can edit files at all, so a
@@ -256,19 +261,23 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
           // error: the user would think they were in a read-only conversation.
           setMode(previous)
           storeSetError(conversationId, String(err))
+          return false
         })
     },
     [conversationId, mode, refreshConversations, storeSetError],
   )
 
   const onToggleAcceptEdits = useCallback(
-    (next: boolean) => {
+    (next: boolean): Promise<boolean> => {
       const previous = acceptEdits
       setAcceptEdits(next)
-      if (conversationId === null) return
-      api
+      if (conversationId === null) return Promise.resolve(true)
+      return api
         .setConversationAcceptEdits({ id: conversationId, acceptEdits: next })
-        .then(() => refreshConversations())
+        .then(async () => {
+          await refreshConversations()
+          return true
+        })
         .catch((err) => {
           // Rolled back rather than kept locally, for the same reason as the mode:
           // a toolbar claiming edits are pre-approved when the backend never
@@ -276,6 +285,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
           // — or worse, the reverse.
           setAcceptEdits(previous)
           storeSetError(conversationId, String(err))
+          return false
         })
     },
     [conversationId, acceptEdits, refreshConversations, storeSetError],

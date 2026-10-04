@@ -121,5 +121,19 @@ work they did.
   ordinary turn is `commands::chat`, and the queue lives below the line. A `OnceLock` the
   shell fills at startup is a far smaller answer than moving `commands/` down for one call;
   unset, a follow-up is simply never delivered and the item stays visible.
+- **Attachments are frozen at enqueue, and an interjection is text.** A queued
+  message carries the same parts envelope a sent one does (`content` has said so
+  since migration 34), built and uploaded when it is queued — the copy the
+  person saw, as an `@` snapshot is. Neither runner has anywhere mid-turn for an
+  image or a file, so an interjection may carry neither attachments nor frozen
+  `@` context, and the refusal lives in `db::ops::queue::set_delivery` as well
+  as at enqueue: the queue's steer button switches a row's delivery and never
+  passes enqueue, so a check made only there is one it steps round (a frozen
+  snapshot steered in arrived without it). A hosted session is asked at enqueue
+  whether its agent can take the attachments (`AcpSession::check_attachments`);
+  at delivery a refusal **holds** the queue rather than returning an error,
+  because an unclaimed item refused on every pump sits at the front blocking
+  everything with nothing on screen. The in-doubt report names attachments
+  rather than quoting the envelope's local paths.
 - Known gap: a QQ turn started from the chat side drains its own inbox and not this table,
   so an interjection queued during one waits for something else to pump.

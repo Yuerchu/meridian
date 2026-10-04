@@ -21,7 +21,11 @@ import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
 import { TurnItem } from '@/components/chat/turn-item'
-import { TodoBarView } from '@/components/chat/todo-bar'
+import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
+import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
+import { AttachmentTiles } from '@/components/chat/attachment-tiles'
+import { ModeChip } from '@/components/chat/mode-chip'
+import { ModelPanel } from '@/components/chat/model-panel'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -281,9 +285,10 @@ const PG_STICKERS = Array.from({ length: 30 }, (_, i) => pgSticker(i))
 function noop() {}
 
 /**
- * The composer menu with nothing behind it: `providers` is empty, so the model
- * row opens an empty column instead of fetching. That is the state worth
- * previewing anyway — the two-column layout has to hold before anything loads.
+ * The `+` menu and the mode chip beside it, with nothing behind them:
+ * `providers` is empty, so the model row opens an empty column instead of
+ * fetching. The line underneath is what the two settings the chip writes are
+ * now, so a choice can be checked against what got stored.
  */
 function ComposerMenuCase({
   label,
@@ -307,7 +312,10 @@ function ComposerMenuCase({
         data-slot="composer-menu-case-frame"
         className="flex items-center rounded-lg border border-border-button-default px-2 py-1"
       >
-        <ComposerMenu
+        <ComposerMenu onPickFile={() => {}} onOpenStickers={() => {}} />
+        <ModeChip mode={mode} acceptEdits={acceptEdits} onSelectMode={setMode} onToggleAcceptEdits={setAcceptEdits} />
+        <span className="ms-auto" />
+        <ModelPanel
           assistants={[]}
           providers={[]}
           currentAssistantId={null}
@@ -319,16 +327,11 @@ function ComposerMenuCase({
           onSelectThinkingLevel={setThinking}
           fastMode={fast}
           onToggleFast={setFast}
-          mode={mode}
-          onSelectMode={setMode}
-          acceptEdits={acceptEdits}
-          onToggleAcceptEdits={setAcceptEdits}
-          capabilities={caps()}
-          onPickFile={() => {}}
+          capabilities={caps({ supports_fast: true })}
         />
       </div>
       <span data-slot="composer-menu-case-state" className="text-caption-1-regular text-text-secondary">
-        {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
+        {mode} · {acceptEdits ? 'accept-edits' : 'ask'} · {thinking} · {fast ? 'fast' : 'normal'}
       </span>
     </div>
   )
@@ -422,6 +425,34 @@ const todoStep = (content: string, activeForm: string, status: string) => ({
   active_form: activeForm,
   status,
 })
+
+/**
+ * Attachment tiles that can be reordered and removed, so a drag — by pointer,
+ * or from a number with the keyboard — can be tried and its order read off
+ * the list underneath.
+ */
+function AttachmentTilesCase() {
+  const [files, setFiles] = useState(() => [
+    { name: 'design-notes.md' },
+    { name: 'report-final-final.pdf' },
+    { name: 'schema.sql' },
+    { name: 'missing-since-draft.txt', missing: true },
+  ])
+  return (
+    <div className="flex max-w-md flex-col gap-2">
+      <div className="rounded-3xl border border-border-button-default bg-background-primary-default px-2 pt-2">
+        <AttachmentTiles
+          files={files}
+          onReorder={setFiles}
+          onRemove={(index) => setFiles((current) => current.filter((_, i) => i !== index))}
+        />
+      </div>
+      <p data-slot="gallery-attachment-order" className="text-caption-1-regular text-text-secondary">
+        {files.map((file) => file.name).join(' → ')}
+      </p>
+    </div>
+  )
+}
 
 function queued(id: string, delivery: QueuedPromptInfoResponse['delivery'], content: string): QueuedPromptInfoResponse {
   return {
@@ -1053,8 +1084,8 @@ function Gallery() {
         <Section title="ComposerMenu / 输入框选项菜单">
           <div data-slot="gallery-composer-menus" className="flex flex-wrap items-center gap-4">
             <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
-            <ComposerMenuCase label="改动免批（触发器带警示点）" mode="work" acceptEdits />
-            <ComposerMenuCase label="谋定模式（不提供免批项）" mode="plan" acceptEdits={false} />
+            <ComposerMenuCase label="自动接受编辑" mode="work" acceptEdits />
+            <ComposerMenuCase label="谋定" mode="plan" acceptEdits={false} />
           </div>
         </Section>
 
@@ -1392,11 +1423,29 @@ function Gallery() {
           </div>
         </Section>
 
-        <Section title="TodoBar / 常驻进度条">
-          <div data-slot="gallery-todo-bars" className="space-y-2 -mx-4">
-            <TodoBarView todos={JSON.parse(TODO_RUNNING)} />
-            <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
-            <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
+        <Section title="AttachmentTiles / 附件方块">
+          <div data-slot="gallery-attachment-tiles">
+            <AttachmentTilesCase />
+          </div>
+        </Section>
+
+        <Section title="ComposerStatusTab / 输入框状态页签">
+          {/* The tab over a composer card: a checklist under way, one with a
+              single step, one with nothing in progress. The chip opens the
+              whole list. The usage reading needs a live conversation and is
+              photographed in the demo transcript instead. */}
+          <div data-slot="gallery-status-tabs" className="flex max-w-2xl flex-col gap-4">
+            {[TODO_RUNNING, TODO_SINGLE, TODO_NO_CURRENT].map((todos) => (
+              <Composer
+                key={todos}
+                value=""
+                onChange={() => {}}
+                onSubmit={() => {}}
+                ariaLabel="status tab probe"
+                placeholder="发送消息…"
+                status={<ComposerStatusTab progress={<TodoProgressChip todos={JSON.parse(todos)} />} />}
+              />
+            ))}
           </div>
         </Section>
 

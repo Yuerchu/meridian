@@ -57,6 +57,39 @@ function rowFor(text: string) {
 }
 
 describe('PromptQueue', () => {
+  // The envelope is read back, never shown: it carries local file paths. An
+  // interjection is text, so a row with attachments offers no Steer.
+  it('shows a queued message with attachments as its words, with the count and no Steer', () => {
+    const parts = JSON.stringify([
+      { type: 'text', text: 'compare these' },
+      { type: 'image_url', image_url: { url: 'file:///data/files/c1/a.png' } },
+      { type: 'file', file: { url: 'file:///data/files/c1/b.pdf', mime_type: 'application/pdf', name: 'report.pdf' } },
+    ])
+    const onlyFiles = JSON.stringify([
+      { type: 'file', file: { url: 'file:///data/files/c1/c.pdf', mime_type: 'application/pdf', name: 'spec.pdf' } },
+    ])
+    mount(
+      <PromptQueue
+        {...NOOP}
+        items={[
+          item({ id: 'a', content: parts, delivery: 'follow_up' }),
+          item({ id: 'b', content: onlyFiles, delivery: 'follow_up' }),
+          item({ id: 'c', content: 'plain words', delivery: 'follow_up' }),
+        ]}
+      />,
+    )
+
+    expect(screen.queryByText(/file:\/\//)).toBeNull()
+    const attached = rowFor('compare these')
+    expect(within(attached).getByText(/Attachments: 2/)).toBeInTheDocument()
+    expect(attached.querySelector('[data-slot="prompt-input-queue-item-steer"]')).toBeNull()
+    // Nothing written: the names stand in for the text.
+    expect(rowFor('spec.pdf').querySelector('[data-slot="prompt-input-queue-item-steer"]')).toBeNull()
+    const plain = rowFor('plain words')
+    expect(plain.querySelector('[data-slot="queue-attachments"]')).toBeNull()
+    expect(plain.querySelector('[data-slot="prompt-input-queue-item-steer"]')).not.toBeNull()
+  })
+
   it('nests an interjection under the current run with the ↳ mark, and leaves a follow-up as a sibling', () => {
     mount(
       <PromptQueue

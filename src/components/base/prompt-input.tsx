@@ -2,8 +2,10 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useRef,
+  useState,
   type ComponentProps,
   type KeyboardEvent,
   type ReactNode,
@@ -34,7 +36,8 @@ import { titleIfTruncated } from '@/lib/truncation'
  * The root holds the value and the turn's status and hands both down. Enter
  * submits unless the turn is running and `allowSubmitWhileRunning` is off;
  * `lockInputOnRun` makes the field read-only for the length of a turn;
- * `maxHeight` is the pixel ceiling the field grows to before it scrolls.
+ * `maxLines`, `maxHeight` (pixels) and a CSS `max-height` on the field are
+ * ceilings it grows to before it scrolls; the lowest applies.
  *
  * `PromptInput.Queue.List` is a React Aria `GridList` with drag-and-drop
  * reordering over `values` / `onReorder`; `Queue.Item.Handle` is the tree's
@@ -52,7 +55,9 @@ interface PromptInputContextValue {
   disabled?: boolean
   lockInputOnRun: boolean
   allowSubmitWhileRunning: boolean
+  hasPayload: boolean
   maxHeight?: number
+  maxLines?: number
 }
 
 const PromptInputCtx = createContext<PromptInputContextValue>({
@@ -62,6 +67,7 @@ const PromptInputCtx = createContext<PromptInputContextValue>({
   status: 'ready',
   lockInputOnRun: true,
   allowSubmitWhileRunning: false,
+  hasPayload: false,
 })
 
 const isRunning = (status: PromptInputStatus) => status === 'submitted' || status === 'streaming'
@@ -70,8 +76,10 @@ const isRunning = (status: PromptInputStatus) => status === 'submitted' || statu
  * What the send button does right now, and the one place that decides it.
  *
  * Idle it sends. While a turn runs it stops the turn — unless submitting while
- * running is allowed *and* there is text, which is a steer or a queued message,
- * and then it sends. The button used to read only the status, so a steer typed
+ * running is allowed *and* there is something to send, which is a steer or a
+ * queued message, and then it sends. Something includes a payload with no text
+ * (an attachment, a sticker): reading the text alone made Send a Stop under a
+ * message that was only a file. The button used to read only the status, so a steer typed
  * mid-run was answered by stopping the run it was meant to steer, while the
  * composer, reading the full rule, drew a second Stop beside it. `wait` is a
  * run nobody can stop from here.
@@ -89,7 +97,7 @@ const STOP_AFTER_SEND_MS = 500
 
 function sendModeOf(ctx: PromptInputContextValue): SendMode {
   if (!isRunning(ctx.status)) return 'send'
-  if (ctx.allowSubmitWhileRunning && ctx.value.trim() !== '') return 'send'
+  if (ctx.allowSubmitWhileRunning && (ctx.value.trim() !== '' || ctx.hasPayload)) return 'send'
   return ctx.onStop ? 'stop' : 'wait'
 }
 
@@ -102,7 +110,16 @@ interface PromptInputProps extends Omit<ComponentProps<'div'>, 'onSubmit'> {
   disabled?: boolean
   lockInputOnRun?: boolean
   allowSubmitWhileRunning?: boolean
+  /** Something to send besides the text — an attachment, a sticker. */
+  hasPayload?: boolean
+  /** Pixel ceiling for the field. With `maxLines` too, the lower of the two applies. */
   maxHeight?: number
+  /**
+   * Ceiling in lines of the field's own line height, so it holds the same
+   * amount of text whatever the type scale — a pixel ceiling cut a line in half
+   * the moment the font changed.
+   */
+  maxLines?: number
 }
 
 function PromptInputRoot({
@@ -115,7 +132,9 @@ function PromptInputRoot({
   disabled,
   lockInputOnRun = true,
   allowSubmitWhileRunning = false,
+  hasPayload = false,
   maxHeight,
+  maxLines,
   ...props
 }: PromptInputProps) {
   return (
@@ -129,7 +148,9 @@ function PromptInputRoot({
         disabled,
         lockInputOnRun,
         allowSubmitWhileRunning,
+        hasPayload,
         maxHeight,
+        maxLines,
       }}
     >
       <div data-slot="prompt-input" data-status={status} {...props} className={cx('flex flex-col', className)} />
@@ -177,21 +198,91 @@ function PromptInputAttachments({ className, ...props }: ComponentProps<'div'>) 
 
 type PromptInputTextAreaProps = Omit<ComponentProps<'textarea'>, 'value' | 'onChange'>
 
-function PromptInputTextArea({ className, onKeyDown, ...props }: PromptInputTextAreaProps) {
-  const { value, onValueChange, onSubmit, status, disabled, lockInputOnRun, allowSubmitWhileRunning, maxHeight } =
-    useContext(PromptInputCtx)
+/**
+ * `lines` lines of the field's own type, plus its vertical padding.
+ *
+ * A computed `line-height` of `normal` (or none at all, which is jsdom) has
+ * no pixel value to read; 20px is the body scale's line height, standing in
+ * for a measurement the environment cannot make — not a guess about the text.
+ */
+function linesToPixels(style: CSSStyleDeclaration, lines: number): number {
+  const lineHeight = Number.parseFloat(style.lineHeight)
+  // Only the padding that could be measured: a side with no pixel value adds nothing.
+  const padding = [style.paddingTop, style.paddingBottom]
+    .map((side) => Number.parseFloat(side))
+    .filter(Number.isFinite)
+    .reduce((sum, side) => sum + side, 0)
+  return lines * (Number.isNaN(lineHeight) ? 20 : lineHeight) + padding
+}
+
+/** The lowest of the ceilings that apply: lines, pixels, and the field's own CSS `max-height`. */
+function ceilingOf(el: HTMLElement, maxLines: number | undefined, maxHeight: number | undefined): number | undefined {
+  const style = getComputedStyle(el)
+  const css = Number.parseFloat(style.maxHeight)
+  const ceilings = [
+    maxLines ? linesToPixels(style, maxLines) : undefined,
+    maxHeight,
+    Number.isNaN(css) ? undefined : css,
+  ].filter((value): value is number => value !== undefined)
+  return ceilings.length > 0 ? Math.min(...ceilings) : undefined
+}
+
+function PromptInputTextArea({ className, onKeyDown, placeholder, ...props }: PromptInputTextAreaProps) {
+  const {
+    value,
+    onValueChange,
+    onSubmit,
+    status,
+    disabled,
+    lockInputOnRun,
+    allowSubmitWhileRunning,
+    maxHeight,
+    maxLines,
+  } = useContext(PromptInputCtx)
   const ref = useRef<HTMLTextAreaElement>(null)
   const running = isRunning(status)
 
-  // Grow to the content, up to `maxHeight`, then scroll.
+  // Grow to the content, up to the ceiling, then scroll. Deliberately not
+  // animated: the measurement is "height auto, read scrollHeight, write px" in
+  // one go, and a transition would hand the read a height still in flight —
+  // while the transcript above re-solves its follow spacer every frame the
+  // composer changes height, so an animated growth is a viewport that shudders.
+  //
+  // A CSS `max-height` on the field counts as a ceiling too, so a caller can
+  // tie it to the viewport (Android, where the keyboard takes half of it);
+  // measured again on resize, because that is when a viewport ceiling moves.
+  //
+  // **And again when the box itself changes size**, because the Android
+  // keyboard is not a resize: the WebView keeps its height and only the
+  // native inset (`--ime-bottom`) moves, so the CSS ceiling drops under a
+  // height written for the old one — and with `overflow-y: hidden` still set,
+  // the lines past the new ceiling could not be scrolled to. The observer sees
+  // the box clamped and refits; the refit is a frame later, because writing the
+  // height inside the callback is a resize of the box being observed.
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    el.style.height = 'auto'
-    const next = maxHeight ? Math.min(el.scrollHeight, maxHeight) : el.scrollHeight
-    el.style.height = `${next}px`
-    el.style.overflowY = maxHeight && el.scrollHeight > maxHeight ? 'auto' : 'hidden'
-  }, [value, maxHeight])
+    const fit = () => {
+      el.style.height = 'auto'
+      const ceiling = ceilingOf(el, maxLines, maxHeight)
+      const next = ceiling ? Math.min(el.scrollHeight, ceiling) : el.scrollHeight
+      el.style.height = `${next}px`
+      el.style.overflowY = ceiling && el.scrollHeight > ceiling ? 'auto' : 'hidden'
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fit)
+    })
+    observer.observe(el)
+    return () => {
+      window.removeEventListener('resize', fit)
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [value, maxHeight, maxLines])
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -206,24 +297,83 @@ function PromptInputTextArea({ className, onKeyDown, ...props }: PromptInputText
     [onKeyDown, onSubmit, running, allowSubmitWhileRunning],
   )
 
+  const swap = usePlaceholderSwap(placeholder)
+
   return (
-    <textarea
-      ref={ref}
-      data-slot="prompt-input-textarea"
-      value={value}
-      onChange={(e) => onValueChange(e.target.value)}
-      onKeyDown={handleKeyDown}
-      disabled={disabled}
-      readOnly={running && lockInputOnRun}
-      rows={1}
-      {...props}
-      className={cx(
-        'w-full resize-none bg-transparent px-4 py-3 text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
-        'disabled:cursor-not-allowed disabled:text-text-tertiary',
-        className,
+    <div data-slot="prompt-input-field" className="relative">
+      <textarea
+        ref={ref}
+        data-slot="prompt-input-textarea"
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        readOnly={running && lockInputOnRun}
+        rows={1}
+        // Drawn below rather than by the browser, which can only swap it
+        // outright; the hint still reaches assistive technology from here.
+        aria-placeholder={placeholder}
+        {...props}
+        className={cx(
+          // `block`: a textarea is inline, and inside this wrapper (no longer a
+          // flex item) it would sit on a line box with a descender gap under it.
+          'block w-full resize-none bg-transparent px-4 py-3 text-body-regular text-text-primary outline-none',
+          'disabled:cursor-not-allowed disabled:text-text-tertiary',
+          className,
+        )}
+      />
+      {value === '' && swap.leaving !== null && (
+        <span key={`out:${swap.leaving}`} aria-hidden className={cx(PLACEHOLDER, 'animate-label-out')}>
+          {swap.leaving}
+        </span>
       )}
-    />
+      {value === '' && swap.shown && (
+        <span
+          key={swap.shown}
+          aria-hidden
+          data-slot="prompt-input-placeholder"
+          className={cx(PLACEHOLDER, swap.changed && 'animate-label-in')}
+        >
+          {swap.shown}
+        </span>
+      )}
+    </div>
   )
+}
+
+/** Over the field's first line: the textarea's own padding and type. */
+// `text-start` because the field's own alignment does not reach a sibling: the
+// welcome screen centres its text, and the browser's placeholder never followed.
+const PLACEHOLDER =
+  'pointer-events-none absolute inset-x-4 top-3 truncate text-start text-body-regular text-text-secondary'
+
+/** How long the outgoing placeholder stays for BoardUI's `label-out`. */
+const LABEL_SWAP_MS = 220
+
+/**
+ * The placeholder being shown, and the one leaving.
+ *
+ * A changed placeholder says the next Enter means something else — queued
+ * rather than sent, a shell command rather than a prompt — and a word that
+ * changes between two frames is easy to miss. So the old one lifts out while
+ * the new one rises in (BoardUI's label swap). The first placeholder a field
+ * mounts with is simply there: nothing changed.
+ */
+function usePlaceholderSwap(placeholder: string | undefined) {
+  const [shown, setShown] = useState(placeholder)
+  const [leaving, setLeaving] = useState<string | null>(null)
+  const [changed, setChanged] = useState(false)
+  if (placeholder !== shown) {
+    setLeaving(shown ?? null)
+    setShown(placeholder)
+    setChanged(true)
+  }
+  useEffect(() => {
+    if (leaving === null) return
+    const timer = window.setTimeout(() => setLeaving(null), LABEL_SWAP_MS)
+    return () => window.clearTimeout(timer)
+  }, [leaving])
+  return { shown, leaving, changed }
 }
 
 function PromptInputToolbar({ className, ...props }: ComponentProps<'div'>) {
@@ -337,6 +487,32 @@ interface PromptInputSendProps {
   className?: string
 }
 
+/** Which glyph the send button shows; read by `SendStopGlyph` through context. */
+const SendGlyphCtx = createContext<SendMode>('send')
+
+const GLYPH =
+  'absolute inset-0 size-full transition-[opacity,transform,filter] duration-150 ease-out motion-reduce:transition-none'
+const GLYPH_HIDDEN = 'scale-95 opacity-0 blur-[2px]'
+
+/**
+ * Both of the send button's glyphs, one over the other, with the current one
+ * shown — the button never moves and only its icon changes, which is what
+ * Telegram's input panel does with send, voice and stop sharing one slot.
+ * Swapping the `leadingIcon` outright replaced one with the other between two
+ * frames. A component of its own, at module scope, so that a render does not
+ * remount it and cut the transition off; the mode arrives through context.
+ */
+function SendStopGlyph({ className }: { className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }) {
+  const mode = useContext(SendGlyphCtx)
+  const sending = mode === 'send'
+  return (
+    <span aria-hidden data-slot="prompt-input-send-glyph" className={cx('relative inline-block', className)}>
+      <ArrowUp data-active={sending || undefined} className={cx(GLYPH, !sending && GLYPH_HIDDEN)} />
+      <Stop data-active={!sending || undefined} className={cx(GLYPH, sending && GLYPH_HIDDEN)} />
+    </span>
+  )
+}
+
 function PromptInputSend({
   className,
   disabled,
@@ -363,22 +539,24 @@ function PromptInputSend({
   // (`bg-background-secondary-default text-foreground-icon-secondary`, which is
   // the `neutral` variant). Both 36px round, as upstream.
   return (
-    <Button
-      data-slot="prompt-input-send"
-      data-running={running || undefined}
-      variant={mode === 'stop' ? 'neutral' : 'primary'}
-      iconOnly
-      size="medium"
-      // `submitted` is the wait for the first token: a spinner, no press —
-      // unless there is a steer to send, which does not wait for it.
-      isPending={mode !== 'send' && status === 'submitted'}
-      isDisabled={disabled || mode === 'wait'}
-      onPress={mode === 'send' ? send : stop}
-      className={cx('rounded-full', className)}
-      // A wait is still the send button, only not yet pressable.
-      aria-label={mode === 'stop' ? stopLabel : sendLabel}
-      leadingIcon={mode === 'send' ? ArrowUp : Stop}
-    />
+    <SendGlyphCtx.Provider value={mode}>
+      <Button
+        data-slot="prompt-input-send"
+        data-running={running || undefined}
+        variant={mode === 'stop' ? 'neutral' : 'primary'}
+        iconOnly
+        size="medium"
+        // `submitted` is the wait for the first token: a spinner, no press —
+        // unless there is a steer to send, which does not wait for it.
+        isPending={mode !== 'send' && status === 'submitted'}
+        isDisabled={disabled || mode === 'wait'}
+        onPress={mode === 'send' ? send : stop}
+        className={cx('rounded-full', className)}
+        // A wait is still the send button, only not yet pressable.
+        aria-label={mode === 'stop' ? stopLabel : sendLabel}
+        leadingIcon={SendStopGlyph}
+      />
+    </SendGlyphCtx.Provider>
   )
 }
 

@@ -250,6 +250,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             attachedFiles={attachedFiles}
             onAttachFiles={(files) => setAttachedFiles((current) => [...current, ...files])}
             onRemoveFile={(index) => setAttachedFiles((current) => current.filter((_, i) => i !== index))}
+            onReorderFiles={setAttachedFiles}
             pendingSticker={pendingSticker}
             onSelectSticker={setPendingSticker}
             onRemoveSticker={() => setPendingSticker(null)}

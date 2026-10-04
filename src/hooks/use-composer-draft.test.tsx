@@ -350,3 +350,30 @@ test('a write that loses the race twice is reported, not dropped', async () => {
   await settle()
   expect(result.current.error).toBeNull()
 })
+
+/**
+ * Attachments are sent in the order they are held, and the composer lets them
+ * be reordered, so a saved draft has to keep that order — reopened, "the second
+ * file" must still be the same file.
+ */
+test('attachments are written in the order they are held', async () => {
+  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  const { rerender } = mount(EMPTY)
+  await settle()
+  rerender({
+    s: state('files', {
+      attachedFiles: [
+        { path: 'C:\\work\\b.txt', name: 'b.txt' },
+        { path: 'C:\\work\\a.txt', name: 'a.txt' },
+      ],
+    }),
+  })
+  await act(async () => {
+    vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
+  })
+  await settle()
+  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0].attachments).toEqual([
+    { path: 'C:\\work\\b.txt', name: 'b.txt' },
+    { path: 'C:\\work\\a.txt', name: 'a.txt' },
+  ])
+})

@@ -340,13 +340,8 @@ function PromptInputProbe() {
                     aria-hidden
                     value={40}
                     maxValue={100}
-                    className="[--progress-circle-stroke:var(--color-text-secondary)]"
-                  >
-                    <ProgressCircle.Track className="size-4.5">
-                      <ProgressCircle.TrackCircle />
-                      <ProgressCircle.FillCircle />
-                    </ProgressCircle.Track>
-                  </ProgressCircle>
+                    className="size-4.5 [--progress-circle-stroke:var(--color-text-secondary)]"
+                  />
                 </Popover.Trigger>
                 <Tooltip>上下文用量</Tooltip>
               </TooltipTrigger>

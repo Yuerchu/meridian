@@ -213,12 +213,7 @@ export function VoiceSettings() {
                 maxValue={progress.total ?? undefined}
                 isIndeterminate={!progress.total}
                 size="sm"
-              >
-                <ProgressCircle.Track>
-                  <ProgressCircle.TrackCircle />
-                  <ProgressCircle.FillCircle />
-                </ProgressCircle.Track>
-              </ProgressCircle>
+              />
               <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}

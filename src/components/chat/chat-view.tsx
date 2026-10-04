@@ -18,7 +18,6 @@ import { useTurns } from '@/hooks/use-turns'
 import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 import { PromptQueue } from './prompt-queue'
-import { TodoBar } from './todo-bar'
 import { usePromptQueue } from '@/hooks/use-prompt-queue'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
@@ -33,6 +32,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
+import { buildMessageContent } from '@/lib/message-content'
 import { allowedEfforts } from '@/lib/thinking'
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
 import { isRemote } from '@/lib/transport'
@@ -41,7 +41,6 @@ import type {
   ChatMode,
   MessageRating,
   MessageViewModel,
-  QueueDelivery,
   ThinkingLevel,
   WorkspaceReferenceRequest,
 } from '@/types'
@@ -150,10 +149,6 @@ function ChatViewInner({
     { text: input, attachedFiles, pendingSticker, conversationRefs },
     restoreDraft,
   )
-  // What the *next* queued message will be, not a property of any row. Defaults
-  // to the mode that waits: an interjection cuts into work that is already
-  // going, which is not a thing to do by accident.
-  const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId, initialDraft?.settings)
   const probeReference = useReferenceProbe(conversationId)
   const platform = usePlatform()
@@ -777,16 +772,27 @@ function ChatViewInner({
       // cleared only once the row exists, so a refusal is not the user paying
       // for it by retyping.
       if (queueing) {
-        if (!text) return
-        if (hasWorkspaceReferences && queueDelivery === 'interject') {
-          storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
-          return
-        }
-        void queue
-          .enqueue(text, queueDelivery, references, refIds)
+        // The attachments and the sticker go with the text, uploaded now so the
+        // queued copy is the one the person saw. They used to stay behind in
+        // the composer and ride along with whatever was sent next.
+        const files = [...attachedFiles]
+        const queuedSticker = pendingSticker
+        const sticker = queuedSticker
+          ? { type: 'sticker' as const, sticker_id: queuedSticker.emoji.id, name: queuedSticker.emoji.name }
+          : undefined
+        if (!text && !sticker && files.length === 0) return
+        // Always a follow-up: an interjection cuts into work already going,
+        // which is not a thing to do by accident, so it is chosen on the row
+        // afterwards (`PromptQueue`'s steer action).
+        void buildMessageContent(conversationId, text, files, sticker)
+          .then((content) => queue.enqueue(content, 'follow_up', references, refIds))
           .then(() => {
             setInput('')
             setConversationRefs([])
+            // Only what was queued: anything attached while the upload ran
+            // belongs to the next message.
+            setAttachedFiles((prev) => prev.filter((file) => !files.includes(file)))
+            setPendingSticker((prev) => (prev === queuedSticker ? null : prev))
           })
           .catch((error) => storeSetError(conversationId, String(error)))
         return
@@ -797,6 +803,13 @@ function ChatViewInner({
       // once the run has taken the text: a refusal means it was written down
       // nowhere, and retyping it would be the user paying for that.
       if (steering) {
+        // A steer is text; refused rather than sent without them, which used
+        // to leave them in the composer to ride along with the next message.
+        // Ahead of the empty check, so a file on its own says why too.
+        if (attachedFiles.length > 0 || pendingSticker) {
+          storeSetError(conversationId, t('chat.attachmentFollowUpOnly'))
+          return
+        }
         if (!text) return
         if (hasWorkspaceReferences) {
           storeSetError(conversationId, t('chat.referenceFollowUpOnly'))
@@ -828,7 +841,6 @@ function ChatViewInner({
       steerMessage,
       queueing,
       queue,
-      queueDelivery,
       t,
     ],
   )
@@ -850,7 +862,7 @@ function ChatViewInner({
     const intent = parseComposerIntent(input)
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
     const refIds = conversationRefs.map((ref) => ref.id)
-    if (!text && !pendingSticker) return
+    if (!text && !pendingSticker && attachedFiles.length === 0) return
     // A restored draft can point at a file or a conversation that has since
     // gone. They are shown as such; sending them would fail halfway.
     if (attachedFiles.some((file) => file.missing) || conversationRefs.some((ref) => ref.missing)) {
@@ -998,12 +1010,6 @@ function ChatViewInner({
           />
         </AcpNoticeActionsContext.Provider>
 
-        {/* Folded into the queue card when something is stacked: the queue is
-          current-plus-rows, and a TodoBar sitting above it made every
-          queued message look nested under the checklist — interject and
-          follow-up alike. Alone, the bar keeps its own card. */}
-        {queue.items.length === 0 && <TodoBar conversationId={conversationId} />}
-
         {/* Pending conversation references, above the composer the way queued
           rows are: they belong to the next message, not to the one being
           typed. Pressing a chip removes it. */}
@@ -1099,8 +1105,7 @@ function ChatViewInner({
           streaming={streaming || !!shellTurnId}
           steerable={shellTurnId ? false : steerable}
           queueing={queueing}
-          queueDelivery={queueDelivery}
-          onSelectQueueDelivery={setQueueDelivery}
+          todos={activeTodos}
           queue={
             <PromptQueue
               items={queue.items}
@@ -1135,6 +1140,7 @@ function ChatViewInner({
           attachedFiles={attachedFiles}
           onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
           onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+          onReorderFiles={setAttachedFiles}
           pendingSticker={pendingSticker}
           onSelectSticker={setPendingSticker}
           onRemoveSticker={() => setPendingSticker(null)}
