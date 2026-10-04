@@ -122,7 +122,7 @@ const scenes: Scene[] = [
       await page.getByRole('button', { name: /^模型与思维链/ }).click()
       const panel = page.getByRole('dialog', { name: '模型与思维链' })
       await panel.getByRole('button', { name: /^思维链/ }).click()
-      await expect(page.getByRole('listbox', { name: '思维链' })).toBeVisible()
+      await expect(page.getByRole('dialog', { name: '思维链' }).getByRole('switch')).toBeVisible()
     },
   },
   {

@@ -113,7 +113,14 @@ describe('ModelPanel', () => {
     expect(within(dialog).getByRole('searchbox', { name: 'Search models' })).toHaveFocus()
   })
 
-  it("puts the effort on the selected model's row, offering only what the model supports", async () => {
+  async function openEffort(user: ReturnType<typeof userEvent.setup>, chipName: string) {
+    const dialog = await openPanel(user)
+    const selected = await within(dialog).findByRole('row', { name: 'Alpha' })
+    await user.click(within(selected).getByRole('button', { name: chipName }))
+    return screen.findByRole('dialog', { name: 'Thinking' })
+  }
+
+  it("puts the effort on the selected model's row as a slider over only the levels the model has", async () => {
     const user = userEvent.setup()
     const onSelectThinkingLevel = vi.fn()
     render(
@@ -125,16 +132,39 @@ describe('ModelPanel', () => {
         })}
       />,
     )
-    const dialog = await openPanel(user)
-    const selected = await within(dialog).findByRole('row', { name: 'Alpha' })
-    await user.click(within(selected).getByRole('button', { name: 'Thinking: High' }))
-    const levels = await screen.findByRole('listbox', { name: 'Thinking' })
-    const names = within(levels)
-      .getAllByRole('option')
-      .map((o) => o.textContent)
-    expect(names.some((n) => n?.startsWith('Off'))).toBe(false)
-    await user.click(within(levels).getByRole('option', { name: /^Low/ }))
+    const effort = await openEffort(user, 'Thinking: High')
+    const slider = within(effort).getByRole('slider', { name: 'Thinking' })
+    // Two stops — low and high; no off, which this model refuses.
+    expect(slider).toHaveAttribute('max', '1')
+    expect(slider).toHaveValue('1')
+    slider.focus()
+    await user.keyboard('{ArrowLeft}')
     expect(onSelectThinkingLevel).toHaveBeenCalledWith('low')
+  })
+
+  it('makes following the assistant a switch, with the slider waiting under it', async () => {
+    const user = userEvent.setup()
+    const onSelectThinkingLevel = vi.fn()
+    render(<ModelPanel {...props({ thinkingLevel: 'default', onSelectThinkingLevel })} />)
+    const effort = await openEffort(user, 'Thinking: Default')
+    const follow = within(effort).getByRole('switch', { name: 'Follow assistant' })
+    expect(follow).toBeChecked()
+    expect(within(effort).getByRole('slider', { name: 'Thinking' })).toBeDisabled()
+
+    await user.click(follow)
+    // Off the default, it lands on a level of its own — the middle one with
+    // nothing chosen before — never on "default" again.
+    expect(onSelectThinkingLevel).toHaveBeenCalledTimes(1)
+    expect(onSelectThinkingLevel.mock.calls[0][0]).not.toBe('default')
+  })
+
+  it('turns the switch on to follow the assistant again', async () => {
+    const user = userEvent.setup()
+    const onSelectThinkingLevel = vi.fn()
+    render(<ModelPanel {...props({ thinkingLevel: 'high', onSelectThinkingLevel })} />)
+    const effort = await openEffort(user, 'Thinking: High')
+    await user.click(within(effort).getByRole('switch', { name: 'Follow assistant' }))
+    expect(onSelectThinkingLevel).toHaveBeenCalledWith('default')
   })
 
   it('offers fast mode only where the model has it', async () => {
@@ -212,15 +242,15 @@ describe('HostedModelPanel', () => {
     expect(onSet).toHaveBeenCalledWith('model', 'sonnet')
   })
 
-  it('lists the effort itself when the agent offers no model to hang it on', async () => {
+  it('shows the effort itself when the agent offers no model to hang it on', async () => {
     const user = userEvent.setup()
     const onSet = vi.fn()
     render(<HostedModelPanel effort={effort} onSet={onSet} />)
     await user.click(screen.getByRole('button'))
-    const levels = await screen.findByRole('listbox', { name: i18n.t('chat.acp.knob.effort') })
-    await user.click(
-      within(levels).getByRole('option', { name: new RegExp(`^${i18n.t('chat.acp.value.effort.high')}`) }),
-    )
+    const dialog = await screen.findByRole('dialog')
+    // One level beside the default: no slider to drag, only the switch.
+    expect(within(dialog).queryByRole('slider')).toBeNull()
+    await user.click(within(dialog).getByRole('switch', { name: 'Use default' }))
     expect(onSet).toHaveBeenCalledWith('effort', 'high')
   })
 
@@ -229,7 +259,7 @@ describe('HostedModelPanel', () => {
     render(<HostedModelPanel model={{ ...model, currentValue: 'unlisted' }} effort={effort} onSet={() => {}} />)
     await user.click(screen.getByRole('button'))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).getByRole('listbox')).toBeInTheDocument()
+    expect(within(dialog).getByRole('switch', { name: 'Use default' })).toBeInTheDocument()
     expect(within(dialog).queryByRole('button', { name: new RegExp(`^${i18n.t('chat.acp.knob.effort')}`) })).toBeNull()
   })
 
@@ -238,7 +268,7 @@ describe('HostedModelPanel', () => {
     render(<HostedModelPanel model={model} effort={effort} onSet={() => {}} />)
     await user.click(screen.getByRole('button', { name: /Opus/ }))
     const dialog = await screen.findByRole('dialog')
-    expect(within(dialog).queryByRole('listbox')).toBeNull()
+    expect(dialog.querySelector('[data-slot="effort-slider"]')).toBeNull()
     expect(within(within(dialog).getByRole('row', { name: 'Opus' })).getByRole('button')).toBeInTheDocument()
   })
 

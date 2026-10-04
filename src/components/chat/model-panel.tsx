@@ -15,10 +15,10 @@ import {
   DropdownItem,
   DropdownPopover,
   DropdownTrigger,
-  ListBox,
   Popover,
   SearchField,
   Spinner,
+  Slider,
   Switch,
 } from '@/components/base'
 import { ModelIcon } from '@/components/ui/model-icon'
@@ -97,56 +97,114 @@ function PanelTrigger({
   )
 }
 
-/** The levels to choose from, the current one ticked. */
-function EffortChoices({
+/** The level a slider rests on when it has none of its own to show. */
+function middleStep(count: number): number {
+  return Math.max(0, Math.floor((count - 1) / 2))
+}
+
+/**
+ * The effort as a slider from faster to deeper, with "follow the default" as a
+ * switch beside it.
+ *
+ * `default` (the assistant's setting, or the agent's) is not a point on that
+ * axis, so it is not a stop on the track: it is the switch, and while it is on
+ * the slider is greyed and shows where the level would go. Every other level —
+ * `off` included, as the fastest — is a stop. The value moves while the thumb
+ * is dragged and is stored when it is let go, so a drag is one write rather
+ * than one per stop crossed. The header names the level and is a polite live
+ * region, because a slider's own value text is only a number here.
+ *
+ * Pro's slider plays a WebGL flame at its top stop; none here yet.
+ */
+function EffortSlider({
   label,
+  followLabel,
   choices,
   selected,
   onSelect,
   isDisabled,
 }: {
   label: string
+  followLabel: string
   choices: EffortChoice[]
   selected: string
   onSelect: (id: string) => void
   isDisabled?: boolean
 }) {
+  const { t } = useTranslation()
+  const followable = choices.some((c) => c.id === 'default')
+  const steps = choices.filter((c) => c.id !== 'default')
+  const following = followable && selected === 'default'
+  const selectedStep = steps.findIndex((c) => c.id === selected)
+  // Where the thumb sits while the default is followed, and where switching
+  // the default off lands: the last level chosen here, else the middle.
+  const [restingStep, setRestingStep] = useState(selectedStep >= 0 ? selectedStep : middleStep(steps.length))
+  if (selectedStep >= 0 && selectedStep !== restingStep) setRestingStep(selectedStep)
+  const [dragging, setDragging] = useState<number | null>(null)
+  const index = dragging ?? (selectedStep >= 0 ? selectedStep : restingStep)
+  const current = following ? choices.find((c) => c.id === 'default') : steps[index]
+
   return (
-    <ListBox
-      aria-label={label}
-      selectionMode="single"
-      disallowEmptySelection
-      disabledKeys={isDisabled ? choices.map((choice) => choice.id) : undefined}
-      selectedKeys={[selected]}
-      onSelectionChange={(keys) => {
-        const next = [...(keys as Set<Key>)][0]
-        if (next !== undefined && String(next) !== selected) onSelect(String(next))
-      }}
-    >
-      {choices.map((choice) => (
-        <ListBox.Item key={choice.id} id={choice.id} textValue={choice.label}>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="truncate text-body-medium">{choice.label}</span>
-            {choice.description && (
-              <span className="truncate text-caption-1-regular text-text-secondary">{choice.description}</span>
-            )}
-          </span>
-          <ListBox.ItemIndicator />
-        </ListBox.Item>
-      ))}
-    </ListBox>
+    <div data-slot="effort-slider" className="flex flex-col gap-2 p-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <p aria-live="polite" className="min-w-0 truncate text-body-2-medium text-text-secondary">
+          {label} · <span className="text-text-primary">{current?.label ?? selected}</span>
+        </p>
+        {followable && (
+          <Switch
+            size="sm"
+            isSelected={following}
+            isDisabled={isDisabled}
+            onChange={(on) => onSelect(on ? 'default' : (steps[restingStep]?.id ?? 'default'))}
+            className="shrink-0"
+          >
+            <span className="text-caption-1-medium text-text-secondary">{followLabel}</span>
+          </Switch>
+        )}
+      </div>
+      {current?.description && (
+        <p data-slot="effort-slider-description" className="text-caption-1-regular text-text-secondary">
+          {current.description}
+        </p>
+      )}
+      {steps.length > 1 && (
+        <>
+          <Slider
+            thumbLabel={label}
+            showTooltip={false}
+            minValue={0}
+            maxValue={steps.length - 1}
+            step={1}
+            value={index}
+            isDisabled={isDisabled || following}
+            onChange={(value) => setDragging(value as number)}
+            onChangeEnd={(value) => {
+              setDragging(null)
+              const next = steps[value as number]
+              if (next && next.id !== selected) onSelect(next.id)
+            }}
+          />
+          <div aria-hidden className="flex justify-between text-caption-1-regular text-text-secondary">
+            <span>{t('composer.effortFaster')}</span>
+            <span>{t('composer.effortDeeper')}</span>
+          </div>
+        </>
+      )}
+    </div>
   )
 }
 
-/** The selected row's effort, as a chip opening the list of levels. */
+/** The selected row's effort, as a chip opening its slider. */
 function EffortChip({
   label,
+  followLabel,
   choices,
   selected,
   onSelect,
   isDisabled,
 }: {
   label: string
+  followLabel: string
   choices: EffortChoice[]
   selected: string
   onSelect: (id: string) => void
@@ -170,8 +228,13 @@ function EffortChip({
       </AriaButton>
       <Popover.Content placement="bottom end" className="w-[266px] p-1">
         <Popover.Dialog aria-label={label}>
-          <p className="px-2 pb-1 pt-1.5 text-body-2-medium text-text-secondary">{label}</p>
-          <EffortChoices label={label} choices={choices} selected={selected} onSelect={onSelect} />
+          <EffortSlider
+            label={label}
+            followLabel={followLabel}
+            choices={choices}
+            selected={selected}
+            onSelect={onSelect}
+          />
         </Popover.Dialog>
       </Popover.Content>
     </Popover>
@@ -428,6 +491,7 @@ export function ModelPanel(props: ModelPanelProps) {
                   supportsThinking ? (
                     <EffortChip
                       label={t('toolbar.thinking')}
+                      followLabel={t('composer.effortFollowAssistant')}
                       choices={effortChoices}
                       selected={props.thinkingLevel}
                       onSelect={(id) => props.onSelectThinkingLevel(id as ThinkingLevel)}
@@ -541,6 +605,7 @@ export function HostedModelPanel({
                 effort ? (
                   <EffortChip
                     label={effortLabel}
+                    followLabel={t('composer.effortFollowDefault')}
                     choices={effortChoices}
                     selected={effortSelected}
                     onSelect={(value) => onSet(effort.id, value)}
@@ -555,9 +620,9 @@ export function HostedModelPanel({
               data-slot="model-panel-effort"
               className={cx(rows.length > 0 && 'border-t border-separator-border pt-1.5')}
             >
-              <p className="px-2 pb-1 pt-1 text-body-2-medium text-text-secondary">{effortLabel}</p>
-              <EffortChoices
+              <EffortSlider
                 label={effortLabel}
+                followLabel={t('composer.effortFollowDefault')}
                 choices={effortChoices}
                 selected={effortSelected}
                 onSelect={(value) => onSet(effort.id, value)}
