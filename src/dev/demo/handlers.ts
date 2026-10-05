@@ -28,7 +28,6 @@ import {
   IME_STATUS,
   STICKER_IMAGES,
   SKILL_BODY,
-  TEMPLATE_VARIABLES,
   buildCatalog,
   buildMcpTools,
   buildToolCategories,
@@ -895,7 +894,6 @@ const assistants: Record<string, DemoHandler> = {
     state.skillBindings[key] = [...names]
     return state.skillBindings[key]
   },
-  list_template_variables: () => TEMPLATE_VARIABLES,
 }
 
 const mcp: Record<string, DemoHandler> = {

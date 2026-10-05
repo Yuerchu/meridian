@@ -187,6 +187,31 @@ A new decision about one subsystem goes into that subsystem's file.
   - **The roster goes after the message.** Who is present changes every turn and
     is never persisted, so placing it before the message re-creates the very
     divergence the frozen row removes.
+  - **The checklist is frozen the same way.** `<todo_list>` used to sit at the
+    end of the system prompt, and `update_todos` rewrites it several times a
+    turn — so every turn after a change missed the cache from the system block
+    on, which is to say entirely. `agent::todo_context` writes it as a
+    `role="context"` row (`source="todo|list"`, or `todo|none` for the cleared
+    marker sent once after a frozen list is finished), after the memory row and
+    before the message, and only when it differs byte for byte from the most
+    recent frozen one on the live path. One rule covers compaction and trimming:
+    no frozen row on the live path means write the full block. The trailing
+    order is fixed and tested — memory → todo → interrupted → message → roster —
+    because the two persisted blocks stay where they land. `<approved_plan>` is
+    still in the prompt; it changes once per implementation and can afford to be.
+  - **A user message carries its send time, rendered from the row.** There is
+    no clock in the system prompt — the template variables that put one there
+    are gone, and a persona is sent exactly as written. Instead every persisted
+    user message renders `<sent_at>…</sent_at>` from its `created_at`
+    (`provider::format_sent_at`: local date, weekday, time to the minute, UTC
+    offset), so the model knows when each thing was said and, from the newest,
+    roughly what time it is. The marker is part of the cached bytes, so the live
+    turn and the replay have to agree: `agent::persisted_user_message` is the one
+    constructor for both, every live path carries the instant it writes as
+    `created_at` into the `ChatMessage` (`Steered::received_at`,
+    `IncomingMessage::received_at`, the desktop's `sent_at`), and the gates
+    compare the two renderings on a fixed past instant — at minute resolution,
+    two clock reads would agree by luck.
 
 ## Logging
 

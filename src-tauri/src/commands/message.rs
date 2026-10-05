@@ -2204,6 +2204,23 @@ mod tests {
         assert!(!json.to_string().contains("100.subject"));
     }
 
+    /// The checklist is frozen the same way memory is, under its own `source`,
+    /// and the boundary treats every context row alike: no body, no source.
+    /// Narrowed to memory rows, a todo row would cross as a bubble.
+    #[test]
+    fn a_todo_context_row_crosses_the_boundary_blank() {
+        let mut row = exported_row(
+            "context",
+            "<todo_list>\nTitle: Ship it\n1. [pending] step\n</todo_list>",
+        );
+        row.source = Some("todo|list".into());
+        let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
+        assert_eq!(json["role"], "context");
+        assert_eq!(json["content"], "");
+        assert_eq!(json["source"], serde_json::Value::Null);
+        assert!(!json.to_string().contains("Ship it"));
+    }
+
     #[test]
     fn message_dto_rejects_non_boolean_sqlite_values() {
         let mut row = exported_row("assistant", "answer");

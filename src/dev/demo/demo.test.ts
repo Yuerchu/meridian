@@ -215,7 +215,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   update_skill: { args: { request: { dirName: 'commit-message', isEnabled: false } } },
   list_skill_bindings: { args: { request: { layer: 'global', anchorId: null } } },
   set_skill_binding: { args: { request: { layer: 'global', anchorId: null, dirName: 'commit-message', bound: true } } },
-  list_template_variables: {},
   list_mcp_servers: {},
   create_mcp_server: {
     args: {
