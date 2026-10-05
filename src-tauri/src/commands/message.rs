@@ -1854,9 +1854,9 @@ pub async fn upload_file_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::turn::{TurnPhase as CoreTurnPhase, TurnStatus as CoreTurnStatus};
     use meridian_core::db::ops::turn;
-    use meridian_core::db::test_db;
     use meridian_core::turn::TurnOrigin;
 
     fn seed(pool: &meridian_core::db::DbPool) {
@@ -1963,7 +1963,7 @@ mod tests {
 
     #[test]
     fn snapshot_and_transcript_mutations_use_the_conversation_wide_plan_barrier() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         let mut conn = pool.get().unwrap();
         seed_pending_plan_review(&mut conn);
@@ -2380,7 +2380,7 @@ mod tests {
     /// died an hour ago read as one still in progress.
     #[test]
     fn a_running_turn_nobody_holds_is_reported_as_interrupted() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2402,7 +2402,7 @@ mod tests {
     /// *this* one — a new turn must not vouch for the dead one before it.
     #[test]
     fn a_newer_turn_does_not_vouch_for_an_older_one() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2422,7 +2422,7 @@ mod tests {
     /// opinion to add.
     #[test]
     fn a_finished_turn_keeps_the_ending_it_recorded() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2451,7 +2451,7 @@ mod tests {
     #[test]
     fn a_status_this_build_does_not_know_is_rejected() {
         use diesel::prelude::*;
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2478,7 +2478,7 @@ mod tests {
     /// be settled.
     #[test]
     fn an_unsettled_read_calls_nothing_interrupted() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2503,7 +2503,7 @@ mod tests {
     fn the_tree_and_the_turns_describe_the_same_conversation() {
         use diesel::RunQueryDsl;
 
-        let pool = test_db();
+        let pool = diesel_test_db();
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
@@ -2586,7 +2586,7 @@ mod tests {
     /// spinning on the card for ever.
     #[test]
     fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
-        let pool = meridian_core::db::test_db();
+        let pool = meridian_core::db::diesel_test_db();
         seed(&pool);
         let mut conn = pool.get().unwrap();
 

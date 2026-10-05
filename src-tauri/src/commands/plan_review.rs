@@ -1470,7 +1470,7 @@ mod tests {
 
     #[tokio::test]
     async fn direct_native_send_is_refused_by_a_durable_pending_review() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         {
             let mut conn = pool.get().unwrap();
             db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
@@ -1514,7 +1514,7 @@ mod tests {
 
     #[tokio::test]
     async fn native_continuation_is_refused_before_start_when_the_review_workspace_drifted() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let runtime = {
             let mut conn = pool.get().unwrap();
             for (id, path) in [("project-a", "A"), ("project-b", "B")] {
@@ -1577,7 +1577,7 @@ mod tests {
 
     #[test]
     fn snapshot_delivery_state_and_review_diff_span_the_whole_review_episode() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         let document = ops::create_or_resume_document(&mut conn, "c1", 2).unwrap();
