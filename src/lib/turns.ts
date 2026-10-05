@@ -7,6 +7,7 @@ import type {
   TurnUsageInfoResponse,
 } from '@/types'
 import type { BubblePosition } from '@/lib/message-groups'
+import { toolUi } from '@/lib/tool-catalog'
 
 /**
  * A turn is one user message plus everything the agent produced in response.
@@ -173,11 +174,6 @@ export interface BuildTurnsContext {
   unpromptedTurns?: ReadonlyMap<string, TurnTrigger>
 }
 
-/** Tools that block the turn while they wait for a response. `update_todos` is
- *  deliberately absent: the persistent TodoBar already shows that checklist, so
- *  treating it as a question would hold the turn open for nobody. */
-const INTERACTIVE_TOOLS = new Set(['ask_user', 'AskUserQuestion', 'enter_plan', 'exit_plan', 'ExitPlanMode'])
-
 /** The blocks a row renders as. Pre-`_blocks` rows, and any row whose stream
  *  produced nothing structured, read their `content` as one text block. */
 export function blocksOf(message: MessageViewModel): ContentBlock[] {
@@ -197,7 +193,10 @@ export function blocksOf(message: MessageViewModel): ContentBlock[] {
 export function isBlockingCall(data: ToolCallDisplay): boolean {
   if (data.status === 'pending') return true
   if (data.nested_approval) return true
-  return INTERACTIVE_TOOLS.has(data.tool_name) && data.status === 'running'
+  // `interactive` in `lib/tool-catalog.ts`. `update_todos` is deliberately not:
+  // the persistent TodoBar already shows that checklist, so treating it as a
+  // question would hold the turn open for nobody.
+  return toolUi(data.tool_name)?.interactive === true && data.status === 'running'
 }
 
 /**

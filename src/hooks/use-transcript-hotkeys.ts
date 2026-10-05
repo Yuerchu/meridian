@@ -4,6 +4,7 @@ import { blocksOf, type Turn } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useHotkey } from './use-hotkey'
 import { errorMessage } from '@/lib/error-message'
+import { isAskTool } from '@/lib/tool-catalog'
 
 /**
  * The transcript's keyboard shortcuts, for the conversation being read.
@@ -83,9 +84,7 @@ export function lastKeyboard(turns: Turn[]): { toolKeys: string[]; thinkingKey: 
           // The same keys the panels register under — see `usePanelExpansion`
           // callers: a question's key carries a suffix, everything else is its
           // call id.
-          toolKeys: bubble.tools.map((t) =>
-            t.tool_name === 'ask_user' || t.tool_name === 'AskUserQuestion' ? `${t.call_id}:ask` : t.call_id,
-          ),
+          toolKeys: bubble.tools.map((t) => (isAskTool(t.tool_name) ? `${t.call_id}:ask` : t.call_id)),
           thinkingKey: bubble.thinking.length > 0 ? `${bubble.key}:thinking` : null,
         }
       }

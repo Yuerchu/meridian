@@ -6,6 +6,7 @@ import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
+import { isAskTool, toolUi } from '@/lib/tool-catalog'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -51,7 +52,7 @@ export interface Delegation {
 /** The delegation a call is, or null while its arguments are still streaming
  *  in — a call with no description yet is drawn as a plain key until then. */
 export function delegationOf(call: ToolCallDisplay): Delegation | null {
-  if (call.tool_name !== 'run_agent') return null
+  if (toolUi(call.tool_name)?.block !== 'delegate') return null
   let args: Record<string, unknown>
   try {
     args = JSON.parse(call.arguments) as Record<string, unknown>
@@ -439,7 +440,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                 {row.delegation.description} · {t('chat.subAgent.asksFor', { tool: nested.tool_name })}
               </span>
             </div>
-            {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
+            {isAskTool(nested.tool_name) ? (
               <AskUserBlock
                 data={{
                   call_id: nested.call_id,

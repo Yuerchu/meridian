@@ -1,6 +1,7 @@
 import { parsePatchText } from './patch-parse'
 import { parseJsonText, requireRecord } from './strict-json'
 import type { MessageViewModel } from '@/types'
+import { toolUi } from './tool-catalog'
 
 /**
  * Which files a conversation changed, from the tool calls in its transcript.
@@ -50,26 +51,19 @@ function str(args: Record<string, unknown>, key: string): string | null {
 
 /** One call's effect on the filesystem, or nothing if it has none. */
 function callEffects(toolName: string, args: Record<string, unknown>): Array<[string, TouchedOp]> {
-  switch (toolName) {
-    case 'write_file': {
-      const path = str(args, 'path')
+  const touches = toolUi(toolName)?.touches
+  switch (touches?.op) {
+    case 'modify': {
       // `modify`, not `create`: nothing in the arguments says whether the file
       // was there before, and guessing wrong is worse than being vague.
+      const path = str(args, touches.key)
       return path ? [[path, 'modify']] : []
     }
-    // A hosted Claude Code's Write and Edit share edit_file's shape, with the
-    // path under `file_path` in all three.
-    case 'edit_file':
-    case 'Write':
-    case 'Edit': {
-      const path = str(args, 'file_path')
-      return path ? [[path, 'modify']] : []
-    }
-    case 'delete_file': {
-      const path = str(args, 'path')
+    case 'delete': {
+      const path = str(args, touches.key)
       return path ? [[path, 'delete']] : []
     }
-    case 'move_file': {
+    case 'move': {
       // Two paths in one call, and both changed. The tree shows the origin
       // gone and the destination new, which is what a move looks like from
       // the outside.
@@ -80,7 +74,7 @@ function callEffects(toolName: string, args: Record<string, unknown>): Array<[st
       if (to) out.push([to, 'create'])
       return out
     }
-    case 'apply_patch': {
+    case 'patch': {
       const patch = str(args, 'patch')
       if (!patch) return []
       const out: Array<[string, TouchedOp]> = []

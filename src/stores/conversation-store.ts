@@ -1,3 +1,4 @@
+import { isAskTool } from '@/lib/tool-catalog'
 import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
@@ -827,9 +828,7 @@ export type AttentionAskedAt = number | null
 
 export type AttentionItem = ToolAttentionItem | PlanReviewAttentionItem
 
-export function isAskTool(name: string): boolean {
-  return name === 'ask_user' || name === 'AskUserQuestion'
-}
+export { isAskTool }
 
 export interface PendingApprovalEntry {
   providerCallId: string

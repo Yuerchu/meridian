@@ -6,6 +6,7 @@ import { identifyingArg, toolDescription, type IdentifyingArg } from '@/componen
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { errorMessage } from '@/lib/error-message'
+import { TOOLS, toolUi } from '@/lib/tool-catalog'
 
 /**
  * How many questions are on screen at once.
@@ -154,16 +155,9 @@ export function attentionArgs(item: AttentionItem): Record<string, unknown> {
  * under the identifying argument. Anything else the call carries is still
  * hidden, which withdraws the decision as it always has.
  */
-export const READ_ONLY_TOOLS: Readonly<Record<string, readonly string[]>> = {
-  read_file: [],
-  list_directory: [],
-  // `path` is required here and is what decides where the search reads.
-  search_files: ['path', 'max_results'],
-  glob: ['path'],
-  Read: ['offset', 'limit', 'pages'],
-  Glob: ['path'],
-  Grep: ['path', 'glob', 'type', 'output_mode', '-i', '-n', '-A', '-B', '-C', 'multiline', 'head_limit'],
-}
+export const READ_ONLY_TOOLS: Readonly<Record<string, readonly string[]>> = Object.fromEntries(
+  Object.entries(TOOLS).flatMap(([name, ui]) => (ui.readOnly ? [[name, ui.readOnly]] : [])),
+)
 
 /** An argument a row draws beside the identifying one, as it will be read. */
 export interface AttentionScopeArg {
@@ -219,9 +213,7 @@ export function attentionShape(item: AttentionItem): AttentionShape {
   const args = attentionArgs(item)
   const identifying = identifyingArg(item.toolName, args)
   const description = toolDescription(args)
-  const scopeKeys = Object.prototype.hasOwnProperty.call(READ_ONLY_TOOLS, item.toolName)
-    ? READ_ONLY_TOOLS[item.toolName]
-    : null
+  const scopeKeys = toolUi(item.toolName)?.readOnly ?? null
   const risky = scopeKeys === null || item.retry !== undefined
   const scope: AttentionScopeArg[] = []
   for (const key of scopeKeys ?? []) {

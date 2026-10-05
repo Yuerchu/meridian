@@ -76,6 +76,7 @@ import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './tod
 import { ToolTextResult, ToolValue } from '@/components/ui/tool-value'
 import { fieldLabel, isInlineValue, parseStructured } from '@/lib/tool-value'
 import { rendererFor } from '@/lib/tool-renderers'
+import { canonicalToolName, toolUi } from '@/lib/tool-catalog'
 import { parsePartialObject } from '@/lib/partial-json'
 import { ChatSource, ChatSources } from '@/components/base'
 
@@ -797,18 +798,15 @@ function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
 }
 
 function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDiff[] | null {
-  switch (toolName) {
-    case 'write_file':
-    case 'Write':
+  switch (toolUi(toolName)?.diff) {
+    case 'write':
       return writeFileDiff(args)
-    case 'edit_file':
-    case 'Edit':
+    case 'edit':
       return editFileDiff(args)
     // `update_plan`'s patch is the same envelope, aimed at the one `plan.md`.
-    case 'apply_patch':
-    case 'update_plan':
+    case 'patch':
       return applyPatchDiff(args)
-    case 'MultiEdit':
+    case 'multi-edit':
       return multiEditDiff(args)
     default:
       return null
@@ -1151,10 +1149,6 @@ function ToolErrorResult({ result }: { result: string }) {
   )
 }
 
-/** Tools whose result is what they read, and so belongs in the body whatever
- *  its length — never folded into a footer sentence. */
-const READING_TOOLS = new Set(['read_file', 'Read', 'search_files', 'Grep', 'glob', 'Glob', 'list_directory'])
-
 function ToolResult({
   toolName,
   result,
@@ -1166,7 +1160,7 @@ function ToolResult({
   args: Record<string, unknown>
   callId: string
 }) {
-  // Which view is decided per tool in `lib/tool-renderers.ts`, where the gate
+  // Which view is decided per tool in `lib/tool-catalog.ts`, where the gate
   // holds every tool to having decided.
   switch (rendererFor(toolName).result) {
     case 'read-file':
@@ -2158,7 +2152,7 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
  * told apart and shown under its bare id.
  */
 export function toolLabel(t: TFunction, toolName: string): string {
-  const key = `chat.tool.name.${toolName}`
+  const key = `chat.tool.name.${canonicalToolName(toolName)}`
   const name = t(key)
   return name === key ? toolName : name
 }
@@ -2216,47 +2210,18 @@ export interface IdentifyingArg {
  * line is the one place a guess is cheap, and `panelTitleArg` makes it there.
  */
 export function identifyingArg(toolName: string, args: Record<string, unknown>): IdentifyingArg | null {
-  const str = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null)
-  const path = (key: string, value: string | null): IdentifyingArg | null =>
-    value === null ? null : { kind: 'path', value, key }
-  const text = (key: string, value: string | null): IdentifyingArg | null =>
-    value === null ? null : { kind: 'text', value, key }
-  switch (toolName) {
-    case 'read_file':
-    case 'list_directory':
-    case 'write_file':
-      return path('path', str(args.path))
-    case 'edit_file':
-    case 'Read':
-    case 'Write':
-    case 'Edit':
-    case 'NotebookEdit':
-      return str(args.file_path) !== null
-        ? path('file_path', str(args.file_path))
-        : path('notebook_path', str(args.notebook_path))
-    case 'run_command':
-    case 'Bash':
-    case 'SlashCommand': {
-      const command = str(args.command)
-      return command === null ? null : { kind: 'command', value: command, key: 'command' }
-    }
-    case 'search_files':
-    case 'glob':
-    case 'Glob':
-    case 'Grep':
-      return text('pattern', str(args.pattern))
-    case 'WebFetch':
-      return text('url', str(args.url))
-    case 'Skill':
-      return text('skill', str(args.skill))
-    case 'apply_patch': {
-      const patch = typeof args.patch === 'string' ? args.patch : ''
-      const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
-      return m ? { kind: 'path', value: m[1].trim(), key: null } : null
-    }
-    default:
-      return null
+  const ident = toolUi(toolName)?.ident
+  if (ident === undefined) return null
+  if (ident === 'patch') {
+    const patch = typeof args.patch === 'string' ? args.patch : ''
+    const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
+    return m ? { kind: 'path', value: m[1].trim(), key: null } : null
   }
+  for (const key of ident.keys) {
+    const value = args[key]
+    if (typeof value === 'string' && value.trim() !== '') return { kind: ident.kind, value, key }
+  }
+  return null
 }
 
 /**
@@ -2649,7 +2614,8 @@ export function ToolCallBlock({
   // Where an edit lands. Asked here, ahead of the early returns, because it is
   // a hook; it asks nothing unless the call is an edit that has not run yet.
   // Not asked when the agent's own diff is here: its hunks carry their line.
-  const isEdit = agentDiffs === null && (data.tool_name === 'edit_file' || data.tool_name === 'Edit')
+  const diffKind = toolUi(data.tool_name)?.diff
+  const isEdit = agentDiffs === null && diffKind === 'edit'
   const editLine = useEditLocation(
     data,
     isEdit && typeof parsedArgs.file_path === 'string' ? parsedArgs.file_path : null,
@@ -2664,10 +2630,10 @@ export function ToolCallBlock({
     // The agent's hunks are numbered where the agent said, or not at all.
     if (agentDiffs !== null) return fileDiffs
     return fileDiffs.map((diff) => {
-      if (data.tool_name === 'write_file' || data.tool_name === 'Write') {
+      if (diffKind === 'write') {
         return { ...diff, lines: numberDiffLines(diff.lines, { oldStart: 1, newStart: 1 }) }
       }
-      if (data.tool_name === 'edit_file' || data.tool_name === 'Edit') {
+      if (diffKind === 'edit') {
         return editLine === null
           ? diff
           : { ...diff, lines: numberDiffLines(diff.lines, { oldStart: editLine, newStart: editLine }) }
@@ -2675,28 +2641,29 @@ export function ToolCallBlock({
       const start = firstHunkStart(diff.lines)
       return start === null ? diff : { ...diff, lines: numberDiffLines(diff.lines, start) }
     })
-  }, [fileDiffs, agentDiffs, data.tool_name, editLine])
+  }, [fileDiffs, agentDiffs, diffKind, editLine])
 
   // A hosted agent's questions and plans are the same two cards under different
   // names. Matching the name rather than translating it upstream keeps the
   // transcript honest about which tool actually ran — the card is a rendering
   // decision, and `AskUserQuestion` is what the agent called.
-  if (data.tool_name === 'ask_user' || data.tool_name === 'AskUserQuestion') {
+  const block = toolUi(data.tool_name)?.block
+  if (block === 'ask') {
     return <AskUserBlock data={data} />
   }
 
-  if (data.tool_name === 'web_search') {
+  if (block === 'web-search') {
     return <WebSearchBlock data={data} />
   }
 
-  if (data.tool_name === 'enter_plan') {
+  if (block === 'enter-plan') {
     const reason = typeof parsedArgs.reason === 'string' ? parsedArgs.reason.trim() : ''
     if (reason) {
       return <EnterPlanBlock data={data} reason={reason} />
     }
   }
 
-  if (data.tool_name === 'exit_plan' || data.tool_name === 'ExitPlanMode') {
+  if (block === 'exit-plan') {
     if (data.plan_review_id) {
       return <PlanReviewEntryBlock data={data} reviewId={data.plan_review_id} />
     }
@@ -2710,13 +2677,13 @@ export function ToolCallBlock({
   // made together into one group before they reach here. Mid-stream the
   // description is not there yet, so the call renders as a plain tool card
   // until the model has finished writing it.
-  if (data.tool_name === 'run_agent' && typeof parsedArgs.description === 'string' && parsedArgs.description.trim()) {
+  if (block === 'delegate' && typeof parsedArgs.description === 'string' && parsedArgs.description.trim()) {
     return <SubAgentGroup calls={[data]} />
   }
 
   // Mid-stream the arguments are partial JSON and this parse fails, so the
   // call renders as a plain tool card until the checklist is complete.
-  if (data.tool_name === 'update_todos') {
+  if (block === 'todos') {
     const todoArgs = parseTodoArgs(parsedArgs)
     if (todoArgs) {
       return <TodoListBlock data={data} title={todoArgs.title} todos={todoArgs.todos} />
@@ -2725,7 +2692,7 @@ export function ToolCallBlock({
 
   // Claude Code's checklist: the same list under its own spelling
   // (`activeForm`) and with no title of its own.
-  if (data.tool_name === 'TodoWrite') {
+  if (block === 'hosted-todos') {
     const todoArgs = parseTodoArgs({ title: toolLabel(t, 'TodoWrite'), todos: hostedTodos(parsedArgs.todos) })
     if (todoArgs) {
       return <TodoListBlock data={data} title={todoArgs.title} todos={todoArgs.todos} />
@@ -2758,7 +2725,9 @@ export function ToolCallBlock({
   const sentence =
     output !== null &&
     !isCommand &&
-    !READING_TOOLS.has(data.tool_name) &&
+    // A reading tool's result is what it read, and belongs in the body whatever
+    // its length — never folded into a footer sentence.
+    toolUi(data.tool_name)?.reading !== true &&
     isOneLiner(output.body) &&
     parseStructured(output.body) === null
       ? output.body.trim()
