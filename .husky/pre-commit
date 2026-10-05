@@ -42,6 +42,12 @@ if git diff --cached --name-only | grep -qE '^src-tauri/.*\.rs$|^src-tauri/crate
   node scripts/check-transaction-graph.mjs --staged
 fi
 
+# core 的生产代码里不许 block_on：同步到异步只在壳的 setup 和 meridiand 的 main
+# 各跨一次，core 跑在别人的 runtime 里，在那里 block_on 会 panic 或堵死线程。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^scripts/(check-core-block-on|check-transaction-graph|transaction-graph-lib|staged-snapshot)\.mjs$'; then
+  node scripts/check-core-block-on.mjs --staged
+fi
+
 # 壳层引用了 core 在 Android 上编译掉的东西、自己却没有 cfg：桌面编译永远编不到
 # 那一行，本地全绿，只有 CI 的 Android 检查会红——sandbox、onebot、services.acp
 # 三次都是这样。只读文本，几秒；本机跑 Android 编译太重，这是能前移的那一半。

@@ -15,10 +15,19 @@
 import { execFileSync } from 'node:child_process'
 import { join } from 'node:path'
 
+// git 跑钩子时会把外层仓库的位置导出到环境里（在 worktree 里连 GIT_DIR 也导出）。
+// 到子模块目录里再调 git，这几个变量会把它指回外层的对象库，子模块的 commit
+// 就成了"不存在"。外层自己的调用要保留它们——GIT_INDEX_FILE 就是这次要提交的暂存区。
+const OUTER_REPOSITORY_ENV = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR']
+
 export function stagedSnapshot(root) {
+  const submoduleEnv = Object.fromEntries(
+    Object.entries(process.env).filter(([key]) => !OUTER_REPOSITORY_ENV.includes(key)),
+  )
   const git = (args, cwd = root) =>
     execFileSync('git', args, {
       cwd,
+      env: cwd === root ? process.env : submoduleEnv,
       encoding: 'utf8',
       maxBuffer: 64 * 1024 * 1024,
       // git 自己的 fatal 会直接写到终端,盖过脚本要说的话

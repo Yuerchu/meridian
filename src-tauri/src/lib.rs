@@ -136,7 +136,10 @@ pub fn run() {
             let events = events::EventBus::new();
             events.register(Arc::new(WindowSink(app.handle().clone())), true);
 
-            let services = bootstrap::bootstrap(data_dir, events)
+            // The shell's one crossing from sync to async at startup. `setup`
+            // runs on the main thread, not on a runtime worker, which is what
+            // makes blocking here safe; core itself never blocks on a future.
+            let services = tauri::async_runtime::block_on(bootstrap::bootstrap(data_dir, events))
                 .map_err(|error| std::io::Error::other(format!("bootstrap failed: {error}")))?;
             #[cfg(not(target_os = "android"))]
             let onebot_config = meridian_core::onebot::load_config(&services.db)

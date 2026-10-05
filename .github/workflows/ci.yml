@@ -136,6 +136,12 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm txgraph:check
 
+      # Core runs inside someone else's runtime; the sync-to-async crossing is
+      # the shell's setup and meridiand's main, once each, never in core.
+      - name: No block_on in core
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm blockon:check
+
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
       # cargo gate runs twice. The core's runs share `src-tauri/target` through

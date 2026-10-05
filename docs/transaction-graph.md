@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：70
-- Diesel ops 调用点（db/ops 之外）：1024
-- Diesel API 引用：1566
+- Diesel ops 调用点（db/ops 之外）：1029
+- Diesel API 引用：1567
 
 ## R2 无法检查的 SeaORM 事务根
 
