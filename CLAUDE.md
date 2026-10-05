@@ -26,7 +26,7 @@ src-tauri/
     android_bridge.rs       # the Java_* symbols MainActivity.kt calls back into
   crates/                   # git submodule: github.com/Yuerchu/meridian-core (Apache-2.0)
     core/                   # meridian-core: everything framework-free
-      migrations/           # embed_migrations! resolves against this crate root
+      migrations/           # the 65 Diesel migrations, frozen: db/sea/bridge replays them, the SeaORM baseline replaces them
       src/
         agent/engine/       # the turn loop, and the ports the runners plug into
         db/ provider/ tools/ mcp/ secrets/ …
