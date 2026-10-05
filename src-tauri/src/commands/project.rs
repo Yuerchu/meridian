@@ -273,7 +273,7 @@ mod tests {
 
     #[test]
     fn project_path_update_and_delete_are_blocked_by_a_referenced_plan_review() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         db::ops::project::create_project(
             &mut conn,

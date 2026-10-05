@@ -833,7 +833,7 @@ mod tests {
     use super::*;
     use meridian_core::agent::modes::Modes;
     use meridian_core::agent::turn_config::{TurnConfigResolveRequest, resolve};
-    use meridian_core::db::test_db;
+    use meridian_core::db::diesel_test_db;
 
     #[test]
     fn conversation_steer_request_is_named_and_strict() {
@@ -890,7 +890,7 @@ mod tests {
     }
 
     fn config_for(child: AssistantRow) -> meridian_core::agent::turn_config::TurnConfig {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
         resolve(

@@ -279,7 +279,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use meridian_core::db::test_db;
+    use meridian_core::db::diesel_test_db;
 
     fn upsert(conversation_id: Option<&str>, body: &str, revision: i64) -> ComposerDraftUpsertRequest {
         serde_json::from_value(serde_json::json!({
@@ -322,7 +322,7 @@ mod tests {
     /// at the boundary, not dropped on the way to the table.
     #[test]
     fn a_relative_or_uri_attachment_is_refused() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         for path in ["notes.md", "content://media/external/images/1"] {
             let mut request = upsert(None, "x", 1);
@@ -340,7 +340,7 @@ mod tests {
     /// and neither is dropped.
     #[test]
     fn a_read_marks_what_has_gone() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", Some("Draft"), None, None, 0)
             .unwrap();
@@ -401,7 +401,7 @@ mod tests {
     /// continue above it.
     #[test]
     fn a_stale_write_reports_the_winning_revision() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         write_draft(&mut conn, upsert(None, "newest", 7), 1).unwrap();
         assert_eq!(

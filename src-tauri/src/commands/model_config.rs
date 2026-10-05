@@ -746,7 +746,7 @@ mod tests {
     /// Both halves of a save land, and they land together.
     #[test]
     fn a_save_writes_the_profile_and_the_row_in_one_transaction() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         seed_provider(&mut conn);
 
@@ -794,7 +794,7 @@ mod tests {
 
     #[test]
     fn active_review_runtime_blocks_exact_model_config_save_and_delete() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         seed_pending_model_review(&mut conn);
         let conversations = vec!["conversation-1".to_string()];

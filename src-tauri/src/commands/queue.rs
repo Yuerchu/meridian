@@ -412,7 +412,7 @@ mod tests {
 
     #[test]
     fn enqueue_without_plan_barrier_accepts_both_delivery_modes_in_order() {
-        let pool = meridian_core::db::test_db();
+        let pool = meridian_core::db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
 
@@ -443,7 +443,7 @@ mod tests {
         use meridian_core::db::ops::queued_prompt_context_item::list_prepared;
         use meridian_core::workspace::reference::{MessageContextKind, PreparedContextItem};
 
-        let pool = meridian_core::db::test_db();
+        let pool = meridian_core::db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         let context = [PreparedContextItem {
@@ -499,7 +499,7 @@ mod tests {
 
     #[test]
     fn enqueue_and_release_are_both_refused_by_the_durable_plan_barrier() {
-        let pool = meridian_core::db::test_db();
+        let pool = meridian_core::db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
         meridian_core::db::ops::queue::enqueue(

@@ -1181,7 +1181,7 @@ mod response_contract_tests {
 
     #[test]
     fn provider_update_and_delete_are_blocked_by_its_active_review_runtime() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let mut conn = pool.get().unwrap();
         seed_provider_with_pending_review(&mut conn);
         let conversations = vec!["conversation-1".to_string()];
@@ -1313,14 +1313,14 @@ mod cached_model_tests {
     /// provider (this path has no key, no URL and no client to make one with).
     #[test]
     fn an_empty_cache_is_an_empty_list() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         provider(&pool, "p1");
         assert!(cached_models_for(&pool, "p1").unwrap().is_empty());
     }
 
     #[test]
     fn what_was_cached_comes_back_as_the_public_shape() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         provider(&pool, "p1");
         {
             let mut conn = pool.get().unwrap();
@@ -1342,7 +1342,7 @@ mod cached_model_tests {
 
     #[test]
     fn an_unknown_provider_is_named_in_the_error() {
-        let pool = db::test_db();
+        let pool = db::diesel_test_db();
         let error = cached_models_for(&pool, "missing").unwrap_err();
         assert!(error.contains("missing"), "{error}");
     }

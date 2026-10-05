@@ -929,12 +929,12 @@ pub async fn list_conversations_by_project(
 mod tests {
     use super::*;
     use meridian_core::agent::{base_prompt, build_messages};
+    use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::assistant::AssistantInsert;
     use meridian_core::db::models::emoji::EmojiInsert;
     use meridian_core::db::models::emoji_pack::EmojiPackInsert;
     use meridian_core::db::models::memory::MemoryInsert;
     use meridian_core::db::models::project::ProjectInsert;
-    use meridian_core::db::test_db;
 
     fn seed_pending_review(conn: &mut SqliteConnection, conversation_id: &str) {
         let document = db::ops::plan_review::create_or_resume_document(conn, conversation_id, 2).unwrap();
@@ -1000,7 +1000,7 @@ mod tests {
 
     #[test]
     fn a_pending_plan_review_prevents_moving_the_conversation_to_another_project() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         create_project(&mut conn, "project-a", "A");
         create_project(&mut conn, "project-b", "B");
@@ -1234,7 +1234,7 @@ mod tests {
 
     #[test]
     fn persona_resolves_template_variables_and_memory_is_appended() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         db::ops::preference::set_preference(&mut conn, "user_name", "Yuerchu", 1000).unwrap();
         let assistant = make_assistant(
@@ -1275,7 +1275,7 @@ mod tests {
 
     #[test]
     fn persona_expands_sticker_tool_guidance() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         let assistant = make_assistant(&mut conn, "a1", "Nova", "{{emoji_list}}");
 
@@ -1332,7 +1332,7 @@ mod tests {
 
     #[test]
     fn estimated_tokens_account_for_the_system_prompt() {
-        let pool = test_db();
+        let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         let assistant = make_assistant(
             &mut conn,
