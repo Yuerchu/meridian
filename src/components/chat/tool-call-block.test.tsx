@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { ToolCallBlock } from './tool-call-block'
+import { ToolCallBlock, identifyingArg, toolLabel } from './tool-call-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
@@ -1087,5 +1087,26 @@ describe('as bubble blocks', () => {
     )
     expect(keyOf(container)).toHaveAttribute('data-state', 'output-available')
     expect(keyOf(container)).toHaveTextContent(/1 source/)
+  })
+})
+
+describe('identifyingArg', () => {
+  it('reads each twin under its own argument name', () => {
+    expect(identifyingArg('PowerShell', { command: 'Get-ChildItem' })).toEqual({
+      kind: 'command',
+      value: 'Get-ChildItem',
+      key: 'command',
+    })
+    expect(identifyingArg('NotebookEdit', { notebook_path: 'a.ipynb' })?.key).toBe('notebook_path')
+    expect(identifyingArg('WebSearch', { query: 'acp' })?.value).toBe('acp')
+    expect(identifyingArg('ToolSearch', { query: 'select:Read' })?.value).toBe('select:Read')
+    expect(identifyingArg('load_skill', { skill_name: 'review' })?.value).toBe('review')
+    expect(identifyingArg('Skill', { skill: 'review' })?.value).toBe('review')
+  })
+
+  it('reads a bridged tool as the tool it is, and nothing from an unknown one', () => {
+    expect(toolLabel(i18n.t, 'mcp__meridian__read_app_logs')).toBe(i18n.t('chat.tool.name.read_app_logs'))
+    expect(toolLabel(i18n.t, 'mcp__notes__append')).toBe('mcp__notes__append')
+    expect(identifyingArg('mcp__notes__append', { path: 'a.ts' })).toBeNull()
   })
 })

@@ -270,6 +270,27 @@ the machines that want this already have node and a signed-in `claude`.
   put "Terminal" on every shell command — the adapter's stand-in for a `Bash` call whose
   command it has not been told yet — and then the command itself, which belongs in the
   arguments the card already renders.
+- **This client does not say it is JetBrains AIR, and a hosted result is the tool's own
+  text.** Meridian used to declare `_meta.jetbrains.air` with `sessionFailure`, for typed
+  failure records. `claude-agent-acp` reads that block as "the client is AIR" and reports
+  every tool call the way AIR's UI wants it — measured by `tests/acp_tool_probe.rs`
+  against 0.84.0, both recordings in `tests/fixtures/acp/`: a successful `Read`, and a
+  `Grep` or `Glob` given a `path`, arrive with no text at all, and Edit and Write lose
+  their file text from `rawInput`. So the envelope is gone and a failed prompt is a JSON-RPC
+  error again; the failure readers stay, dormant, for a per-capability opt-in upstream.
+
+  What a call stores is `rawOutput` when that is a string — what the model saw, the same
+  thing a native result row holds — and `content` (the adapter's display copy: command
+  output fenced as `console`, a Read fenced bare) only when it is not. A `failed` call whose
+  `_meta.claudeCode.nonExecutionKind` is `user-rejected` or `permission-rule` is
+  `denied`; the kinds are an open set by the adapter's own account, and the rest stay
+  errors. And the update that completes an Edit's `rawInput` is the one carrying its diff,
+  so it maps to a revision *and* a diff: read as a diff alone, the stored arguments stopped
+  one frame short, with `old_string` and no `new_string`. The replay tests in
+  `acp::mapping` run the recordings; re-record before moving `ADAPTER_PACKAGE`.
+
+  How each hosted tool is drawn beside its native twin is `src/lib/tool-catalog.ts`; see
+  "UI Conventions".
 - **A hosted session does not fire the hook gates**, and that needs both repositories.
   The agent inside loads the user's own Claude Code configuration, plugin included, so a
   hosted turn otherwise ends by asking *this* app to review it over the loopback endpoint:

@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
       loadMessages: vi.fn(() => Promise.resolve()),
       loadAllPending: vi.fn(),
       handlePlanReviewEvent: vi.fn(),
+      handleToolApproval: vi.fn(),
       activeId: null,
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' }],
       sessions: {},
@@ -122,6 +123,38 @@ describe('global user-command events', () => {
         },
       }),
     ).toThrow('tool_result event.outcome must be one of')
+  })
+
+  it('calls a question a question in the OS notification, under either name', async () => {
+    vi.mocked(isPermissionGranted).mockResolvedValue(true)
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    renderHook(() => useGlobalEventListener())
+    const listener = mocks.listeners.get('chat-stream')
+    for (const [index, tool_name] of ['ask_user', 'AskUserQuestion', 'run_command'].entries()) {
+      act(() =>
+        listener?.({
+          payload: {
+            type: 'tool_approval_req',
+            approval_id: `approval-${index}`,
+            call_id: `call-${index}`,
+            tool_name,
+            arguments: '{}',
+            message_id: 'message-1',
+            conversation_id: 'conversation-1',
+            delegation: null,
+            retry: null,
+            asked_at: 1_700_000_000_000,
+          },
+        }),
+      )
+    }
+    await waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(3))
+    expect(vi.mocked(sendNotification).mock.calls.map(([n]) => n.body)).toEqual([
+      'Action required: Question',
+      'Action required: Question',
+      'Action required: run_command',
+    ])
+    focus.mockRestore()
   })
 
   it('notifies once when a settled plan continuation first needs attention', async () => {

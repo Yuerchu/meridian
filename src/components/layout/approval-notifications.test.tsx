@@ -392,8 +392,8 @@ describe('which calls may be decided from a row', () => {
       expectViewOnly(call('bs', 'c1', 'Bash', { command: 'ls', dangerouslyDisableSandbox: true }), 'risky')
     })
 
-    it('SlashCommand', () => {
-      expectViewOnly(call('sc', 'c1', 'SlashCommand', { command: '/compact' }), 'risky')
+    it('Claude Code PowerShell', () => {
+      expectViewOnly(call('ps', 'c1', 'PowerShell', { command: 'Get-ChildItem' }), 'risky')
     })
 
     it('write_file', () => {

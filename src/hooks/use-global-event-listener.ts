@@ -4,6 +4,7 @@ import { listen } from '@/lib/transport'
 import i18n from '@/i18n'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
+import { isAskTool } from '@/lib/tool-catalog'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import type { ChatStreamEvent } from '@/types'
@@ -217,7 +218,7 @@ export function useGlobalEventListener() {
             : undefined,
         )
         if (shouldNotify(convId)) {
-          const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name
+          const toolName = isAskTool(p.tool_name) ? 'Question' : p.tool_name
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
         }
         return

@@ -1,5 +1,6 @@
 import { blocksOf, markQueued, type Turn } from '@/lib/turns'
 import type { ContentBlock, ToolCallDisplay } from '@/types'
+import { toolUi, type FoldKind } from '@/lib/tool-catalog'
 
 /**
  * What a turn's answer looks like, as a flat list of bubbles.
@@ -23,7 +24,7 @@ export type BubblePosition = 'single' | 'first' | 'middle' | 'last'
 
 /** The three kinds of call that are folded into a badge rather than drawn as
  *  keys. Their order is the order the badges are drawn in. */
-export type FoldKind = 'commands' | 'files' | 'searches'
+export type { FoldKind }
 
 /**
  * Calls the reader did not need to see one by one: a run of file reads, of
@@ -147,18 +148,6 @@ type OpenBubble = Extract<BubbleModel, { kind: 'text' | 'tools-only' }>
  * nothing from MCP or the custom registry, whose names say nothing about what
  * they do.
  */
-const FOLD_KIND: Record<string, FoldKind> = {
-  run_command: 'commands',
-  Bash: 'commands',
-  read_file: 'files',
-  Read: 'files',
-  search_files: 'searches',
-  glob: 'searches',
-  Glob: 'searches',
-  Grep: 'searches',
-  list_directory: 'searches',
-}
-
 const FOLD_ORDER: FoldKind[] = ['commands', 'files', 'searches']
 
 /** A call that needs nothing more from anyone is folded; every other state —
@@ -166,7 +155,7 @@ const FOLD_ORDER: FoldKind[] = ['commands', 'files', 'searches']
  *  those is something the reader may need to see or act on. */
 export function foldKindOf(tool: ToolCallDisplay): FoldKind | null {
   if (tool.status !== 'completed') return null
-  return FOLD_KIND[tool.tool_name] ?? null
+  return toolUi(tool.tool_name)?.fold ?? null
 }
 
 /**
@@ -487,7 +476,7 @@ function assignPositions(bubbles: BubbleModel[]): void {
 }
 
 function hideThinkingForSearchOnly(blocks: ContentBlock[]): ContentBlock[] {
-  const hasWebSearch = blocks.some((b) => b.type === 'tool_call' && b.data.tool_name === 'web_search')
+  const hasWebSearch = blocks.some((b) => b.type === 'tool_call' && toolUi(b.data.tool_name)?.block === 'web-search')
   if (!hasWebSearch) return blocks
   const hasText = blocks.some((b) => b.type === 'text' && b.text.trim())
   return hasText ? blocks : blocks.filter((b) => b.type !== 'thinking')
