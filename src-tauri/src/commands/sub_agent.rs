@@ -149,7 +149,7 @@ impl DesktopSubAgents {
             )
             .map_err(|busy| busy.to_string())?;
 
-        let user_message_id = self
+        let (user_message_id, sent_at) = self
             .open_conversation(&sub_conversation_id, &turn_id, &spec, &assistant)
             .await?;
 
@@ -186,6 +186,7 @@ impl DesktopSubAgents {
                 &sub_conversation_id,
                 &turn_id,
                 &user_message_id,
+                sent_at,
                 &cancel,
                 &inbox_handle,
             )
@@ -260,6 +261,7 @@ impl DesktopSubAgents {
                 &item.text,
                 None,
                 cursor.as_deref(),
+                item.received_at,
             )
             .await
             {
@@ -363,13 +365,17 @@ impl DesktopSubAgents {
     /// All three or none. A conversation without its turn row would be a run
     /// that startup reconciliation cannot see; a turn row without its
     /// conversation would be a report about somewhere the user cannot go.
+    ///
+    /// Answers with the prompt row's id and the instant it was stamped with:
+    /// `run_loop` builds the live message from that same instant, so the row's
+    /// replay renders the `<sent_at>` the provider was first shown.
     async fn open_conversation(
         &self,
         sub_conversation_id: &str,
         turn_id: &str,
         spec: &SubAgentSpec,
         assistant: &AssistantRow,
-    ) -> Result<String, String> {
+    ) -> Result<(String, i64), String> {
         let pool = self.pool.clone();
         let (conv_id, turn_id) = (sub_conversation_id.to_string(), turn_id.to_string());
         let parent = self.parent_conversation_id.clone();
@@ -383,10 +389,10 @@ impl DesktopSubAgents {
             assistant.model_id.clone(),
         );
         let returned = message_id.clone();
+        let now = now_ms();
 
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            let now = now_ms();
             conn.transaction::<_, diesel::result::Error, _>(|conn| {
                 db::ops::conversation::insert(
                     conn,
@@ -454,7 +460,7 @@ impl DesktopSubAgents {
         .await
         .map_err(|e| e.to_string())??;
 
-        Ok(returned)
+        Ok((returned, now))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -466,6 +472,7 @@ impl DesktopSubAgents {
         sub_conversation_id: &str,
         turn_id: &str,
         user_message_id: &str,
+        sent_at: i64,
         cancel: &CancellationToken,
         inbox: &SubAgentInbox,
     ) -> engine::TurnOutcome {
@@ -487,7 +494,20 @@ impl DesktopSubAgents {
                 anchor_index: None,
                 head_id: None,
             },
-            meridian_core::agent::trailing_with_memory(None, None, &spec.prompt, None),
+            // The prompt row `open_conversation` wrote, built from the instant it
+            // was stamped with — the same way the next turn would replay it.
+            meridian_core::agent::trailing_with_memory(
+                None,
+                None,
+                None,
+                Some(meridian_core::agent::persisted_user_message(
+                    &spec.prompt,
+                    None,
+                    None,
+                    sent_at,
+                )),
+                None,
+            ),
             &Default::default(),
         ) {
             Ok(messages) => messages,
@@ -641,6 +661,16 @@ impl DesktopSubAgents {
             exposure: meridian_core::agent::turn_config::ToolExposure::when(turn_params.caps.supports_tools),
             persona: assistant.system_prompt.clone(),
             context_blocks: Vec::new(),
+            session_tools: None,
+            // The child runs on the parent's tool context, so its commands run
+            // under the parent's shell — and are described as such.
+            #[cfg(not(target_os = "android"))]
+            command_shell: Some(meridian_core::tools::command_shell::CommandShell::select(
+                self.tool_context.shell,
+                self.tool_context.sandbox_policy.is_container(),
+            )),
+            #[cfg(target_os = "android")]
+            command_shell: None,
         };
         let pool = self.pool.clone();
         let registry = self.registry.clone();
@@ -907,6 +937,8 @@ mod tests {
                 exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona: String::new(),
                 context_blocks: Vec::new(),
+                session_tools: None,
+                command_shell: None,
             },
         )
         .unwrap()

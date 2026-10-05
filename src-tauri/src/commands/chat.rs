@@ -7,7 +7,8 @@ use meridian_core::agent::engine;
 use meridian_core::agent::turn_record;
 use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_context_items, do_compact,
-    file_access_prompt, instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
+    file_access_prompt, instruction_budget, load_project_instructions, microcompact, persist_todo_injection,
+    persisted_user_message, plan_todo_injection_async, resolve_file_uris_in_messages,
     resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
@@ -21,7 +22,6 @@ use meridian_core::events::{
 use meridian_core::provider;
 use meridian_core::provider::{ChatMessage, ChatParams};
 use meridian_core::services::Services;
-use meridian_core::template;
 use meridian_core::tools;
 use meridian_core::turn::{TurnLease, TurnOrigin};
 use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
@@ -53,6 +53,10 @@ struct PlanTransitions {
     /// where the turn was set up is undone by the first mode switch — handing
     /// back a local `web_search` to sit beside the provider-side one.
     server_tools: Vec<provider::ServerToolKind>,
+    /// The shell line in the base prompt, carried for the same reason: a mode
+    /// switch that rebuilt the prompt without it would tell the model nothing
+    /// about where its commands run for the rest of the turn.
+    command_shell: Option<meridian_core::tools::command_shell::CommandShell>,
     /// Frozen effective destination/preferences for the durable continuation.
     /// The review can outlive this process and conversation defaults may change
     /// before it is decided, so none of these may be re-resolved at approval.
@@ -85,14 +89,18 @@ async fn load_message_context_items(
     .map_err(|e| e.to_string())?
 }
 
+/// `trailing_with_memory` plus the `@` references and `!` results attached to
+/// this message, spliced in right after it — where the stored context items are
+/// replayed from on the next turn.
 fn trailing_with_user_context(
     memory: Option<&str>,
+    todo: Option<&str>,
     interrupted: Option<&str>,
-    user_message: &str,
+    user: Option<ChatMessage>,
     roster: Option<&str>,
     context: &[meridian_core::workspace::reference::PreparedContextItem],
 ) -> Vec<ChatMessage> {
-    let mut trailing = trailing_with_memory(memory, interrupted, user_message, roster);
+    let mut trailing = trailing_with_memory(memory, todo, interrupted, user, roster);
     let user = trailing
         .iter()
         .rposition(|message| matches!(message.origin, provider::MessageOrigin::LegacyUser))
@@ -158,6 +166,8 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             exposure: meridian_core::agent::turn_config::ToolExposure::when(self.supports_tools),
             persona: self.persona.clone(),
             context_blocks: self.context_blocks.clone(),
+            session_tools: None,
+            command_shell: self.command_shell,
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
@@ -1074,54 +1084,7 @@ async fn chat_inner(
     // only matter once the request parameters are built.
     let conv_mode = conv_prefs.2.clone();
 
-    // Build messages with history (resolve template variables in system prompt)
     let file_access = build_file_access(&pool).await?;
-    let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
-    // Decorative: an unreadable preference costs the assistant the user's name,
-    // nothing more. Logged rather than swallowed so a pool timeout is still
-    // traceable.
-    let user_name = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = match get_conn(&pool2) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(error = %e, "could not read user_name; the assistant will not know it");
-                    return None;
-                }
-            };
-            db::ops::preference::get_preference(&mut conn, "user_name")
-                .ok()
-                .flatten()
-        })
-        .await
-        .ok()
-        .flatten()
-    };
-    let mut tmpl_ctx = template::build_context(assistant.as_ref().map(|a| a.name.as_str()), user_name.as_deref());
-    if let Some(ref a) = assistant {
-        let pool2 = pool.clone();
-        let aid = a.id.clone();
-        // Decorative, same as the name above: without it the assistant simply
-        // has no emoji to reach for.
-        let emoji_names: Option<String> = tokio::task::spawn_blocking(move || {
-            let mut conn = match get_conn(&pool2) {
-                Ok(c) => c,
-                Err(e) => {
-                    tracing::warn!(error = %e, "could not read the emoji list; it is omitted from this turn");
-                    return None;
-                }
-            };
-            db::ops::emoji::format_emoji_list_block(&mut conn, &aid)
-        })
-        .await
-        .ok()
-        .flatten();
-        if let Some(names) = emoji_names {
-            tmpl_ctx.set("emoji_list", &names);
-        }
-    }
-    let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -1144,8 +1107,12 @@ async fn chat_inner(
     let mcp_defs = services.mcp.tool_definitions().as_ref().clone();
     let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()))?;
     // Kept so the turn can be re-resolved in place if the user approves a plan
-    // mid-flight; everything else the resolver needs is still in scope.
-    let persona = system_prompt_resolved;
+    // mid-flight; everything else the resolver needs is still in scope. Sent
+    // exactly as written: there are no template variables any more, and a
+    // clock in the system prompt was the thing they were mostly used for —
+    // which cost the prompt cache on every turn. The time travels on the
+    // messages now (`<sent_at>`).
+    let persona = assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default();
     // Taken from the resolution rather than recomputed from the override and the
     // assistant. Those two miss the third case: with neither set, the resolver
     // falls back to the first enabled provider and really does send the request
@@ -1258,6 +1225,47 @@ async fn chat_inner(
         meridian_core::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
     ];
 
+    // Where this turn's commands run. A read that fails is its own answer and
+    // never "unset": unset is `auto`, and guessing `auto` for somebody who
+    // chose a container runs their commands on the host. With the settings
+    // unread no command runs until the user says, on a card, that it may run
+    // outside the sandbox — see `meridian_core::sandbox::CommandSettings`.
+    //
+    // Read here, ahead of the turn config, because the base prompt tells the
+    // model which shell its commands run under — from the same decision
+    // `run_command` executes (`CommandShell::select`).
+    //
+    // **The error is returned rather than swallowed into `None`.** A
+    // conversation set to run commands in a container and handed no policy
+    // would run them on the host, silently — which is the failure the setting
+    // exists to prevent, and the user would never learn of it. Failing the turn
+    // costs them a message and tells them what is wrong.
+    //
+    // Not on Android, where `run_command` and the sandbox module are compiled
+    // out: there is no command for either setting to govern, so nothing is read.
+    #[cfg(not(target_os = "android"))]
+    let command_settings = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
+            .await
+            .map_err(|e| e.to_string())??
+    };
+    #[cfg(not(target_os = "android"))]
+    let sandbox_policy = meridian_core::sandbox::resolve_command_sandbox(
+        &command_settings,
+        project_path.as_deref(),
+        &conversation_id,
+        Some(services.containers.clone()),
+    )
+    .map_err(|e| e.to_string())?;
+    #[cfg(not(target_os = "android"))]
+    let command_shell = Some(meridian_core::tools::command_shell::CommandShell::select(
+        command_settings.shell(),
+        sandbox_policy.is_container(),
+    ));
+    #[cfg(target_os = "android")]
+    let command_shell = None;
+
     // Read once and carried, not re-read per use. It goes into the tool
     // description as a roster of models, and a mid-turn mode switch that
     // resolved a different one would quietly change what the model may delegate
@@ -1283,6 +1291,8 @@ async fn chat_inner(
                 exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
                 persona: persona2,
                 context_blocks: blocks,
+                session_tools: None,
+                command_shell,
             };
             let turn = meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)?;
             Ok::<_, String>((turn, catalog))
@@ -1418,12 +1428,21 @@ async fn chat_inner(
             .clone()
     };
 
-    // What the provider sees; the stored row keeps the clean transcript. The
-    // [voice] marker matches what push_history_message adds to older rows.
-    let payload_message = match (message.as_deref(), voice == Some(true)) {
-        (Some(m), true) => Some(format!("[voice] {m}")),
-        (m, _) => m.map(String::from),
-    };
+    // The instant this message was sent: the user row's `created_at`, and the
+    // `<sent_at>` the provider is shown. **The only instant in scope for the
+    // message**, by design — the live `ChatMessage` and the row must carry the
+    // same value, or next turn's replay of the row diverges from what the
+    // provider cached at exactly this message. The row is written further down,
+    // after compaction; everything it is written with reads `sent_at`.
+    //
+    // Built through the function the next turn replays it with, so the two
+    // cannot drift. The stored row keeps the clean transcript; the `[voice]`
+    // marker is applied to the payload only. Absent only when regenerating,
+    // which re-answers a question that is already on record.
+    let sent_at = now_ms();
+    let live_user = message
+        .as_deref()
+        .map(|m| persisted_user_message(m, (voice == Some(true)).then_some("voice"), None, sent_at));
 
     // Auto-compact: if enabled and tokens exceed threshold, compact before sending
     let mut compacted = false;
@@ -1433,13 +1452,15 @@ async fn chat_inner(
         let probe =
             meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
                 .await?;
+        let todo_probe = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
             trailing_with_user_context(
                 probe.as_ref().and_then(|i| i.text.as_deref()),
+                todo_probe.as_ref().map(|t| t.text.as_str()),
                 interrupted.as_ref().map(|r| r.text()),
-                payload_message.as_deref().unwrap_or(""),
+                live_user.clone(),
                 None,
                 &prepared_context,
             ),
@@ -1544,14 +1565,18 @@ async fn chat_inner(
     let t0 = now_ms();
     let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await?;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
+    // The checklist, frozen the same way and for the same reason; it goes right
+    // after the memory block, which is the order the two rows are written in.
+    let todo = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
 
     let mut chat_messages = build_messages_with_context_items(
         system_prompt.trim(),
         &ctx,
         trailing_with_user_context(
             injected.as_deref(),
+            todo.as_ref().map(|t| t.text.as_str()),
             interrupted.as_ref().map(|r| r.text()),
-            payload_message.as_deref().unwrap_or(""),
+            live_user,
             None,
             &prepared_context,
         ),
@@ -1573,11 +1598,11 @@ async fn chat_inner(
 
     // Persist user message
     let user_msg_id = uuid::Uuid::new_v4().to_string();
-    // Only the user row uses this: it marks where the turn began. Every later row
-    // stamps its own now_ms(), so relative times differ per message and the turn's
-    // elapsed time is derivable. Reusing one timestamp across the turn made every
-    // message read as sent at the same instant.
-    let now = now_ms();
+    // Stamped with `sent_at`, taken above before the request was assembled: it
+    // marks where the turn began and is the instant the live message already
+    // carries. Every later row stamps its own now_ms(), so relative times differ
+    // per message and the turn's elapsed time is derivable.
+    let now = sent_at;
 
     // Walks down the branch as the turn writes: every row hangs off the one
     // before it, so the whole turn is a single chain and any node with more than
@@ -1597,6 +1622,10 @@ async fn chat_inner(
         parent_cursor =
             meridian_core::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now)
                 .await;
+    }
+    // After memory, before the message: the order `trailing` sent them in.
+    if let Some(ref todo) = todo {
+        parent_cursor = persist_todo_injection(&pool, todo, &conversation_id, &turn_id, parent_cursor, now).await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
@@ -1716,21 +1745,6 @@ async fn chat_inner(
         parent_cursor = Some(user_msg_id.clone());
     }
 
-    // Where this turn's commands run. A read that fails is its own answer and
-    // never "unset": unset is `auto`, and guessing `auto` for somebody who
-    // chose a container runs their commands on the host. With the settings
-    // unread no command runs until the user says, on a card, that it may run
-    // outside the sandbox — see `meridian_core::sandbox::CommandSettings`.
-    //
-    // Not on Android, where `run_command` and the sandbox module are compiled
-    // out: there is no command for either setting to govern, so nothing is read.
-    #[cfg(not(target_os = "android"))]
-    let command_settings = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
-            .await
-            .map_err(|e| e.to_string())??
-    };
     let sleep_enabled = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
@@ -1755,19 +1769,6 @@ async fn chat_inner(
             .await
             .map_err(|e| e.to_string())?
     };
-    // **The error is returned rather than swallowed into `None`.** A
-    // conversation set to run commands in a container and handed no policy
-    // would run them on the host, silently — which is the failure the setting
-    // exists to prevent, and the user would never learn of it. Failing the turn
-    // costs them a message and tells them what is wrong.
-    #[cfg(not(target_os = "android"))]
-    let sandbox_policy = meridian_core::sandbox::resolve_command_sandbox(
-        &command_settings,
-        project_path.as_deref(),
-        &conversation_id,
-        Some(services.containers.clone()),
-    )
-    .map_err(|e| e.to_string())?;
     // The shadow file journal for this turn: what the file primitives append
     // their observed transitions to. Desktop-only wiring for now — SAF paths
     // have no canonical key, so Android runs without one and its writes
@@ -1819,6 +1820,7 @@ async fn chat_inner(
         supports_tools,
         sub_agents: sub_agent_catalog,
         server_tools: turn_server_tools.clone(),
+        command_shell,
         native_runtime: db::models::plan_review::NativePlanReviewRuntimeConfig {
             provider_id: resolved.provider_id.clone(),
             model: model.clone(),

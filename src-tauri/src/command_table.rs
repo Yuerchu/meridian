@@ -632,8 +632,6 @@ macro_rules! with_all_commands {
                 request: $crate::commands::voice_corpus::VoiceCorpusExportRequest,
             ),
 
-            sync commands::assistant => list_template_variables(),
-
             sync commands::skill => list_skills(),
             sync commands::skill => rescan_skills(),
             sync commands::skill => get_skill_body(dir_name: String),

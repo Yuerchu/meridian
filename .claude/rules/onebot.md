@@ -271,3 +271,36 @@ another file here — the index in `CLAUDE.md` says which.
   off whoever happened to trigger the turn instead, an ordinary member gets
   answered with an admin's tools, and `qq_get_friend_list` is a read that needs
   no approval — so the leak needs nobody's consent.
+
+- **Each inbound message keeps the instant it arrived, and that instant is what
+  the model is shown.** `IncomingMessage::received_at` is the inbox item's
+  `created_at`, written as the row's `created_at` and rendered as its `<sent_at>`.
+  The rows of one round used to share a single `now_ms()` taken when the round
+  began, so a message that waited in the inbox through a long turn was stamped
+  minutes late; and the live `ChatMessage` was built before that `now` was even
+  taken, so the replay could never have matched. `incoming_rows` builds the row
+  and the live message from the same fields, and the gate test renders both and
+  compares bytes on a fixed past instant. Nothing orders rows by `created_at`,
+  so a queued message predating the previous round's assistant row costs nothing.
+
+  **The speaker is resolved through the subject table on both sides.** History
+  rows take their nickname from `memory_subjects`; the live message used to take
+  it off the event, and an event with an empty nickname rendered `<sender>1</sender>`
+  while its replay rendered `<sender>张三(1)</sender>` — a divergence at exactly
+  the message the cache was keyed on. Live, steered and replayed messages all go
+  through `sender_ref(uid, &sender_names)` now. That is also why `touch_subject`
+  moved ahead of `try_begin_turn`: a message that gets *queued* returns from
+  there without reaching anything below, and the round that drains it later
+  reads names off a table its speaker was not yet in.
+
+  **The roster is last, so a breakpoint only there is a prefix nobody repeats.**
+  On Anthropic the cache marker went on the last block of the last message —
+  the roster, rebuilt every turn and never persisted — and the next turn's
+  history did not contain it, so no history token was ever read back from the
+  cache on QQ. A third marker on the last persisted user message fixes it; see
+  the Anthropic paragraph in `providers-and-billing.md`.
+
+  **A private admin chat can hold a checklist; a group cannot.** `ToolExposure::All`
+  reaches `update_todos` in a private chat, so the frozen `todo|…` row (CLAUDE.md,
+  "Memory is frozen into the history") is written on QQ too, after the memory row;
+  a group sees only `OPEN_REGISTRY_TOOLS` and the planner is a no-op there.

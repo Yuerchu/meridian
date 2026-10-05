@@ -2316,14 +2316,6 @@ export interface StickerContentPart {
   name?: string
 }
 
-export interface TemplateVariableInfoResponse {
-  name: string
-  description_en: string
-  description_zh: string
-}
-
-export type TemplateVariableListResponse = TemplateVariableInfoResponse[]
-
 export interface ToolCategoryInfoResponse {
   id: string
   name: string

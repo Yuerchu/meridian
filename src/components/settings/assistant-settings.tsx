@@ -12,8 +12,6 @@ import {
   Label,
   TextArea,
   TextField,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
 import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -30,7 +28,6 @@ import type {
   McpToolInfoResponse,
   ProviderModelInfoResponse,
   SkillInfoResponse,
-  TemplateVariableInfoResponse,
   ToolPresetInfoResponse,
 } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -70,7 +67,6 @@ function AssistantEditor({
   const [saved, markSaved] = useTemporaryFlag()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
-  const [templateVars, setTemplateVars] = useState<TemplateVariableInfoResponse[]>([])
   const [allPacks, setAllPacks] = useState<EmojiPackInfoResponse[]>([])
   const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
   const [allSkills, setAllSkills] = useState<SkillInfoResponse[]>([])
@@ -134,7 +130,6 @@ function AssistantEditor({
 
   useEffect(() => {
     api.listAllToolNames().then(setAllTools)
-    api.listTemplateVariables().then(setTemplateVars)
     api.listEmojiPacks().then(setAllPacks)
     api.listToolPresets().then(setToolPresets)
     api.listAssistantEmojiPacks(assistant.id).then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
@@ -202,22 +197,6 @@ function AssistantEditor({
           rows={6}
           className="resize-none font-mono text-caption-1-regular"
         />
-        {templateVars.length > 0 && (
-          <div data-slot="template-variables" className="flex flex-wrap gap-1">
-            {templateVars.map((v) => (
-              <TooltipTrigger key={v.name} delay={0}>
-                <Button
-                  variant="secondary"
-                  className="text-caption-1-regular px-1.5 py-0.5 bg-background-secondary-default/50 text-text-secondary hover:bg-background-primary-hover font-mono"
-                  onPress={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
-                >
-                  {`{{${v.name}}}`}
-                </Button>
-                <Tooltip placement="top">{v.description_en}</Tooltip>
-              </TooltipTrigger>
-            ))}
-          </div>
-        )}
       </TextField>
 
       <ProviderModelPicker

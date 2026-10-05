@@ -15,7 +15,6 @@ use meridian_core::db::models::assistant::AssistantRow;
 use meridian_core::db::models::message_context_item::MessageContextItemRow;
 use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
-use meridian_core::template;
 use meridian_core::util::now_ms;
 
 /// Summarise the conversation's history down to a summary row.
@@ -600,29 +599,25 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
     format!("{base}{persona}{instructions}{file_access}")
 }
 
-/// The persona (template variables resolved) and the project memory block — the
-/// system-prompt parts that come straight out of the database. Split out from
+/// The persona, the project memory block and the checklist block — the parts
+/// of a request that come straight out of the database. Split out from
 /// `assemble_system_prompt` so it can be exercised without an app handle.
 /// `live` is what a turn starting now would actually carry, which is what makes
-/// the memory figure honest: with the block frozen into the history, most turns
-/// inject nothing at all, and counting a full block every time would report a
-/// cost no turn pays. Reads only — an estimate is not a turn, so it must not
-/// write a row or move a cursor.
+/// the memory and checklist figures honest: with both frozen into the history,
+/// most turns inject nothing at all, and counting a full block every time would
+/// report a cost no turn pays. Reads only — an estimate is not a turn, so it
+/// must not write a row or move a cursor.
+///
+/// The persona is the assistant's prompt exactly as written: there are no
+/// template variables to resolve.
 fn load_persona_and_memory(
     conn: &mut SqliteConnection,
+    conversation_id: &str,
     assistant: Option<&AssistantRow>,
     project_id: Option<&str>,
     live: &[db::models::message::MessageRow],
-) -> Result<(String, String), String> {
-    let raw_prompt = assistant.map(|a| a.system_prompt.as_str()).unwrap_or("");
-    let user_name = db::ops::preference::get_preference(conn, "user_name").ok().flatten();
-    let mut ctx = template::build_context(assistant.map(|a| a.name.as_str()), user_name.as_deref());
-    if let Some(a) = assistant
-        && let Some(block) = db::ops::emoji::format_emoji_list_block(conn, &a.id)
-    {
-        ctx.set("emoji_list", &block);
-    }
-    let persona = template::resolve(raw_prompt, &ctx);
+) -> Result<(String, String, String), String> {
+    let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
     let req = meridian_core::agent::MemoryRequest::desktop(
         project_id.map(|s| s.to_string()),
         // Counting uses the largest bracket: an under-reported figure is worse
@@ -632,7 +627,10 @@ fn load_persona_and_memory(
     let memory = meridian_core::agent::plan_injection(conn, &req, live, meridian_core::util::now_ms())?
         .text
         .unwrap_or_default();
-    Ok((persona, memory))
+    let todo = meridian_core::agent::plan_todo_injection(conn, conversation_id, live)?
+        .map(|t| t.text)
+        .unwrap_or_default();
+    Ok((persona, memory, todo))
 }
 
 /// Rebuild the system prompt the way `commands::chat::chat` does, so the token
@@ -665,7 +663,7 @@ async fn assemble_system_prompt(
     // estimate disagree with the prompt actually sent — the drift this function
     // exists to avoid, not to introduce.
     server_tools: Vec<meridian_core::provider::ServerToolKind>,
-) -> Result<(String, String), String> {
+) -> Result<(String, String, String), String> {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
     let mcp_defs = app.services().mcp.tool_definitions().as_ref().clone();
@@ -695,10 +693,19 @@ async fn assemble_system_prompt(
         meridian_core::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
     let live: Vec<db::models::message::MessageRow> = active_path.to_vec();
-    tokio::task::spawn_blocking(move || -> Result<(String, String), String> {
+    tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
         let mut conn = meridian_core::util::get_conn(&pool2)?;
-        let (persona, memory_block) = load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live)?;
+        let (persona, memory_block, todo_block) =
+            load_persona_and_memory(&mut conn, &conv_id, assistant.as_ref(), pid.as_deref(), &live)?;
         let sub_agents = meridian_core::agent::sub_agents::catalog(&mut conn)?;
+        // The shell line the chat loop puts in the base prompt, decided from the
+        // settings alone — `CommandSettings::command_shell` says why that is the
+        // same answer the loop's resolved policy gives. Not on Android, where
+        // there is no `run_command` for the line to describe.
+        #[cfg(not(target_os = "android"))]
+        let command_shell = meridian_core::sandbox::CommandSettings::read_on(&mut conn)?.command_shell();
+        #[cfg(target_os = "android")]
+        let command_shell = None;
         let turn = meridian_core::agent::turn_config::resolve(
             &mut conn,
             &registry,
@@ -721,9 +728,11 @@ async fn assemble_system_prompt(
                 exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona,
                 context_blocks,
+                session_tools: None,
+                command_shell,
             },
         )?;
-        Ok((turn.system_prompt, memory_block))
+        Ok((turn.system_prompt, memory_block, todo_block))
     })
     .await
     .map_err(|error| error.to_string())?
@@ -838,7 +847,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         turn.compact_threshold,
     );
 
-    let (system_prompt, memory_block) = assemble_system_prompt(
+    let (system_prompt, memory_block, todo_block) = assemble_system_prompt(
         &app,
         &pool,
         &conversation_id,
@@ -866,8 +875,11 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         &ctx,
         meridian_core::agent::trailing_with_memory(
             Some(&memory_block),
+            Some(&todo_block),
             interrupted_block.as_ref().map(|r| r.text()),
-            "",
+            // No message: an estimate is what the next turn would carry before
+            // anything is typed.
+            None,
             // A desktop conversation has one implicit speaker, so there is no
             // roster to draw and nothing to count for it.
             None,
@@ -931,8 +943,6 @@ mod tests {
     use meridian_core::agent::{base_prompt, build_messages};
     use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::assistant::AssistantInsert;
-    use meridian_core::db::models::emoji::EmojiInsert;
-    use meridian_core::db::models::emoji_pack::EmojiPackInsert;
     use meridian_core::db::models::memory::MemoryInsert;
     use meridian_core::db::models::project::ProjectInsert;
 
@@ -1232,11 +1242,13 @@ mod tests {
         assert_eq!(compose_system_prompt(None, "PERSONA", "", ""), "PERSONA");
     }
 
+    /// There are no template variables any more. A prompt written for them is
+    /// sent as those characters — re-adding resolution here is what this guards
+    /// against, since a clock in the prompt is what they were mostly used for.
     #[test]
-    fn persona_resolves_template_variables_and_memory_is_appended() {
+    fn persona_is_sent_verbatim_and_memory_is_appended() {
         let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
-        db::ops::preference::set_preference(&mut conn, "user_name", "Yuerchu", 1000).unwrap();
         let assistant = make_assistant(
             &mut conn,
             "a1",
@@ -1263,71 +1275,16 @@ mod tests {
         )
         .unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]).unwrap();
-        assert_eq!(persona, "You are Nova helping Yuerchu.");
+        let (persona, memory, todo) =
+            load_persona_and_memory(&mut conn, "c1", Some(&assistant), Some("p1"), &[]).unwrap();
+        assert_eq!(persona, "You are {{assistant_name}} helping {{user_name}}.");
         assert!(memory.contains("<project_memories>"), "got: {memory}");
         assert!(memory.contains("stack: Rust + Tauri"), "got: {memory}");
+        assert!(todo.is_empty(), "no checklist, no block");
 
         // Without a project there is no memory block at all.
-        let (_, none) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
+        let (_, none, _) = load_persona_and_memory(&mut conn, "c1", Some(&assistant), None, &[]).unwrap();
         assert!(none.is_empty());
-    }
-
-    #[test]
-    fn persona_expands_sticker_tool_guidance() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        let assistant = make_assistant(&mut conn, "a1", "Nova", "{{emoji_list}}");
-
-        // Nothing assigned: the variable stays literal rather than expanding to
-        // an instruction about an empty set.
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
-        assert_eq!(persona, "{{emoji_list}}");
-
-        db::ops::emoji_pack::create_pack(
-            &mut conn,
-            &EmojiPackInsert {
-                id: "pack1",
-                name: "Pack",
-                description: None,
-                cover_image: None,
-                is_builtin: 0,
-                sort_order: 0,
-                created_at: 1000,
-                updated_at: 1000,
-                kind: "manual",
-                source_account_id: None,
-            },
-        )
-        .unwrap();
-        db::ops::emoji::create_emoji(
-            &mut conn,
-            &EmojiInsert {
-                id: "e1",
-                pack_id: "pack1",
-                name: "shocked",
-                tags: None,
-                file_name: "shocked.png",
-                file_format: "png",
-                sort_order: 0,
-                created_at: 1000,
-                source: "local",
-                source_key: None,
-                native_payload: None,
-                semantic_status: "confirmed",
-                suggested_name: None,
-                suggested_tags: None,
-                file_size: 0,
-                seen_count: 1,
-                last_seen_at: Some(1000),
-            },
-        )
-        .unwrap();
-        db::ops::emoji_pack::assign_pack(&mut conn, "a1", "pack1", 1000).unwrap();
-
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]).unwrap();
-        assert!(persona.contains("list_stickers"), "got: {persona}");
-        assert!(!persona.contains("[emoji:shocked]"), "got: {persona}");
     }
 
     #[test]
@@ -1361,8 +1318,8 @@ mod tests {
         )
         .unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]).unwrap();
-        let system_prompt = compose_system_prompt(base_prompt(&[]).as_deref(), &persona, "", "");
+        let (persona, memory, _) = load_persona_and_memory(&mut conn, "c1", Some(&assistant), Some("p1"), &[]).unwrap();
+        let system_prompt = compose_system_prompt(base_prompt(&[], None).as_deref(), &persona, "", "");
 
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
         // Counted the way the chat path sends it: prompt plus the memory block
@@ -1377,7 +1334,7 @@ mod tests {
             &meridian_core::agent::build_messages_with_senders(
                 system_prompt.trim(),
                 &empty,
-                meridian_core::agent::trailing_with_memory(Some(&memory), None, "", None),
+                meridian_core::agent::trailing_with_memory(Some(&memory), None, None, None, None),
                 &Default::default(),
             )
             .unwrap(),

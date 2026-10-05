@@ -193,7 +193,6 @@ import type {
   SkillBindingUpdateRequest,
   SkillCreateRequest,
   SkillUpdateRequest,
-  TemplateVariableListResponse,
   TodoInfoResponse,
   ToolCallDenyRequest,
   ToolCategoryListResponse,
@@ -880,9 +879,6 @@ export const api = {
 
   // Writes the memory hints now rather than at the next minute.
   refreshImeMemoryHints: () => invoke<ImeMemoryHintsInfoResponse>('refresh_ime_memory_hints'),
-
-  // Prompt Templates
-  listTemplateVariables: () => invoke<TemplateVariableListResponse>('list_template_variables'),
 
   // Emoji Packs
   listEmojiPacks: () => invoke<EmojiPackListResponse>('list_emoji_packs'),

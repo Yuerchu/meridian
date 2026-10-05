@@ -26,7 +26,6 @@ import type {
   ProviderCatalogEntryInfoResponse,
   ProviderInfoResponse,
   SkillInfoResponse,
-  TemplateVariableInfoResponse,
   ToolCategoryInfoResponse,
   ToolPresetInfoResponse,
   UsageBucketInfoResponse,
@@ -870,11 +869,6 @@ export function buildEmojis(now: number): EmojiInfoResponse[] {
     last_seen_at: ago(60 * index, now),
   }))
 }
-
-export const TEMPLATE_VARIABLES: TemplateVariableInfoResponse[] = [
-  { name: 'date', description_en: "Today's date", description_zh: '今天的日期' },
-  { name: 'project', description_en: 'Current project name', description_zh: '当前项目名' },
-]
 
 export const APP_INFO: AppInfoResponse = {
   version: '0.3.0-demo',
