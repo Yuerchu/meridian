@@ -806,26 +806,9 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
     // `update_plan`'s patch is the same envelope, aimed at the one `plan.md`.
     case 'patch':
       return applyPatchDiff(args)
-    case 'multi-edit':
-      return multiEditDiff(args)
     default:
       return null
   }
-}
-
-/** Claude Code's `MultiEdit`: several `Edit`s to one file, drawn as one file's
- *  diff with each edit's hunk in order. */
-function multiEditDiff(args: Record<string, unknown>): FileDiff[] | null {
-  const path = typeof args.file_path === 'string' ? args.file_path : null
-  if (path === null || !Array.isArray(args.edits)) return null
-  const lines: DiffLine[] = []
-  for (const edit of args.edits) {
-    if (typeof edit !== 'object' || edit === null) return null
-    const one = editFileDiff({ ...(edit as Record<string, unknown>), file_path: path })
-    if (one === null) return null
-    lines.push(...one[0].lines)
-  }
-  return [{ path, op: 'modify', lines }]
 }
 
 /**

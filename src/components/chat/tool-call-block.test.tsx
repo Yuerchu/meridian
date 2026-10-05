@@ -1097,8 +1097,6 @@ describe('identifyingArg', () => {
       value: 'Get-ChildItem',
       key: 'command',
     })
-    expect(identifyingArg('MultiEdit', { file_path: 'a.ts', edits: [] })?.key).toBe('file_path')
-    expect(identifyingArg('LS', { path: 'src' })?.key).toBe('path')
     expect(identifyingArg('NotebookEdit', { notebook_path: 'a.ipynb' })?.key).toBe('notebook_path')
     expect(identifyingArg('WebSearch', { query: 'acp' })?.value).toBe('acp')
     expect(identifyingArg('ToolSearch', { query: 'select:Read' })?.value).toBe('select:Read')

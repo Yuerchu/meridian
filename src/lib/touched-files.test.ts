@@ -45,17 +45,9 @@ describe('touchedFiles', () => {
     ])
   })
 
-  it('reads the hosted tools that edit a file under another name', () => {
-    const files = touchedFiles([
-      msg(
-        call('MultiEdit', { file_path: 'a.ts', edits: [{ old_string: 'x', new_string: 'y' }] }),
-        call('NotebookEdit', { notebook_path: 'b.ipynb', new_source: 'print(1)' }),
-      ),
-    ])
-    expect(files).toEqual([
-      { path: 'a.ts', op: 'modify', count: 1 },
-      { path: 'b.ipynb', op: 'modify', count: 1 },
-    ])
+  it('reads a notebook edit under its own argument name', () => {
+    const files = touchedFiles([msg(call('NotebookEdit', { notebook_path: 'b.ipynb', new_source: 'print(1)' }))])
+    expect(files).toEqual([{ path: 'b.ipynb', op: 'modify', count: 1 }])
   })
 
   it('splits a move into the two facts it is', () => {

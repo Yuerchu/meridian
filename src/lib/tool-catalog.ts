@@ -54,7 +54,7 @@ export type IdentKind = 'path' | 'command' | 'text'
 export type FoldKind = 'commands' | 'files' | 'searches'
 
 /** Which arguments describe a file change, and so which diff the card draws. */
-export type DiffKind = 'write' | 'edit' | 'multi-edit' | 'patch'
+export type DiffKind = 'write' | 'edit' | 'patch'
 
 /** The tools with a block of their own, beyond the generic card. */
 export type BlockKind = 'ask' | 'web-search' | 'enter-plan' | 'exit-plan' | 'delegate' | 'todos' | 'hosted-todos'
@@ -95,9 +95,6 @@ export interface ToolUi {
   /** A hosted tool: its input keys, as `sdk-tools.d.ts` or a probe recording
    *  states them. Native keys come from the catalog instead. */
   params?: readonly string[]
-  /** A hosted tool the pinned adapter no longer offers, kept so that a session
-   *  imported from an older one still draws its calls. */
-  legacy?: true
   /** Why this twin differs from the others in its group, per property. */
   differs?: Partial<Record<TwinProperty, string>>
 }
@@ -128,8 +125,6 @@ const unrecorded = (params: readonly string[], extra: Partial<ToolUi> = {}): Too
   ...extra,
 })
 
-const LEGACY = 'the pinned adapter no longer offers it; kept only to draw imported sessions'
-
 export const TOOLS: Readonly<Record<string, ToolUi>> = {
   // ---- reading ----
   read_file: {
@@ -155,28 +150,12 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   },
   list_directory: {
     side: 'native',
-    twin: 'list',
     args: 'fields',
     result: 'directory',
     ident: path('path'),
     fold: 'searches',
     reading: true,
     readOnly: [],
-  },
-  LS: {
-    side: 'hosted',
-    twin: 'list',
-    args: 'fields',
-    result: 'text',
-    ident: path('path'),
-    // From the SDK that still offered it; the current `sdk-tools.d.ts` has no `LS`.
-    params: ['path', 'ignore'],
-    legacy: true,
-    differs: {
-      fold: LEGACY + '; no recording shows its result, so nothing folds it unseen',
-      reading: LEGACY,
-      readOnly: LEGACY + '; `ignore` was never reviewed as a narrowing argument',
-    },
   },
   glob: {
     side: 'native',
@@ -277,17 +256,6 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     touches: { op: 'modify', key: 'file_path' },
     params: ['file_path', 'old_string', 'new_string', 'replace_all'],
   },
-  MultiEdit: {
-    side: 'hosted',
-    twin: 'edit',
-    args: 'diff',
-    result: 'text',
-    ident: path('file_path'),
-    diff: 'multi-edit',
-    touches: { op: 'modify', key: 'file_path' },
-    params: ['file_path', 'edits'],
-    legacy: true,
-  },
   NotebookEdit: {
     side: 'hosted',
     args: 'fields',
@@ -336,16 +304,6 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     fold: 'commands',
     params: ['command', 'description'],
   },
-  SlashCommand: {
-    side: 'hosted',
-    args: 'command',
-    result: 'text',
-    ident: command,
-    params: ['command'],
-    legacy: true,
-  },
-  BashOutput: plain('hosted', { params: ['bash_id', 'filter'], legacy: true }),
-  KillShell: plain('hosted', { params: ['shell_id'], legacy: true }),
   TaskOutput: unrecorded(['task_id', 'block', 'timeout']),
   TaskStop: unrecorded(['task_id', 'shell_id']),
   Monitor: unrecorded(['description', 'timeout_ms', 'persistent', 'command', 'ws']),
@@ -454,15 +412,6 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     params: ['todos'],
   },
   run_agent: { side: 'native', twin: 'delegate', args: 'own-block', result: 'own-block', block: 'delegate' },
-  Task: {
-    side: 'hosted',
-    twin: 'delegate',
-    args: 'fields',
-    result: 'markdown',
-    params: ['description', 'prompt', 'subagent_type'],
-    legacy: true,
-    differs: { block: 'a hosted sub-agent’s own calls do not reach this app, so there is no group to draw' },
-  },
   Agent: {
     side: 'hosted',
     twin: 'delegate',

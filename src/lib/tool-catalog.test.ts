@@ -55,7 +55,6 @@ function keysRead(ui: ToolUi): Array<[string, string]> {
   const diffKeys: Record<string, string[]> = {
     write: ['content'],
     edit: ['file_path', 'old_string', 'new_string'],
-    'multi-edit': ['file_path', 'edits'],
     patch: ['patch'],
   }
   for (const key of ui.diff ? diffKeys[ui.diff] : []) out.push([key, 'diff'])
@@ -92,6 +91,11 @@ describe('tool catalog', () => {
       const strings = JSON.parse(readFileSync(`src/i18n/locales/${locale}.json`, 'utf8')) as Record<string, string>
       const missing = entries.map(([name]) => name).filter((name) => !(`chat.tool.name.${name}` in strings))
       expect(missing, locale).toEqual([])
+      const stale = Object.keys(strings)
+        .filter((key) => key.startsWith('chat.tool.name.'))
+        .map((key) => key.slice('chat.tool.name.'.length))
+        .filter((name) => !(name in TOOLS))
+      expect(stale, `${locale}: a label for a tool not in TOOLS`).toEqual([])
     }
   })
 

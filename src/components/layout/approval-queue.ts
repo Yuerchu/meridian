@@ -141,7 +141,7 @@ export function attentionArgs(item: AttentionItem): Record<string, unknown> {
  * `run_command` in full and it is still the call most worth reading in its
  * context — what ran before it, what the turn is for, which directory it lands
  * in — so anything with a side effect is offered only as a way into its card:
- * running a command (`run_command`, `Bash`, `SlashCommand`), writing, editing,
+ * running a command (`run_command`, `Bash`, `PowerShell`), writing, editing,
  * moving or deleting a file, `apply_patch`, anything that reaches the network
  * (`web_search`, `WebFetch`), MCP and custom tools, QQ writes, and any tool the
  * app does not recognise. A call that asks to leave the sandbox — an escalation
