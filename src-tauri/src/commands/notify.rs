@@ -14,11 +14,13 @@ use tauri::Manager;
 
 use crate::ServicesExt;
 use crate::commands::model_config::RequiredNullable;
-use meridian_core::db::models::notification::{
-    MAX_WEBHOOKS, NotificationEventKind, NotificationFormat, NotificationWebhookChangeset, NotificationWebhookInsert,
-    NotificationWebhookRow, SecretMeaning, encode_events,
+use meridian_core::db::entity::notification_webhook::{
+    self, BodyTemplate, NotificationEventKind, NotificationEvents, NotificationFormat, NotificationWebhookChangeset,
+    SecretMeaning,
 };
-use meridian_core::notify;
+use meridian_core::db::sea::ops::notification as notification_ops;
+use meridian_core::db::types::SqlBool;
+use meridian_core::notify::{self, MAX_WEBHOOKS};
 
 #[derive(Debug, serde::Serialize)]
 pub struct NotifyConfigInfoResponse {
@@ -119,17 +121,17 @@ pub struct NotificationWebhookInfoResponse {
 }
 
 impl NotificationWebhookInfoResponse {
-    /// The row's JSON columns are decoded here, and a failure fails the
-    /// boundary. A stored subscription that will not parse is a contract
-    /// violation, not a request to hand back an empty list.
-    fn build(row: NotificationWebhookRow, has_secret: bool) -> Result<Self, String> {
-        let format = row.format()?;
+    /// The row's JSON columns were decoded at the read — a stored subscription
+    /// that will not parse fails the query, not this. What can still fail is
+    /// the one rule that spans two columns: `custom` without a template.
+    fn build(row: notification_webhook::Model, has_secret: bool) -> Result<Self, String> {
+        let body_template = row.body_template()?.cloned();
         Ok(Self {
-            format,
-            secret_meaning: format.secret_meaning(),
-            events: row.events()?,
-            body_template: row.body_template()?,
-            is_enabled: row.is_enabled(),
+            format: row.format,
+            secret_meaning: row.format.secret_meaning(),
+            events: row.events.into_vec(),
+            body_template,
+            is_enabled: row.is_enabled.get(),
             has_secret,
             id: row.id,
             name: row.name,
@@ -208,18 +210,18 @@ pub struct NotificationWebhookUpdateRequest {
     pub body_template: RequiredNullable<serde_json::Value>,
 }
 
-/// Pair a body template with the format that does or does not want one, and
-/// encode it for storage.
+/// Pair a body template with the format that does or does not want one, as the
+/// column type the row stores.
 ///
 /// Both directions are refused, because either alone is an endpoint that looks
 /// configured and posts the wrong thing: a `custom` row with no template posts
 /// nothing and is recorded as delivered, and a template on a vendor format is a
 /// document that will never be sent, sitting in a settings page looking
 /// effective.
-fn encode_body_template(
+fn check_body_template(
     format: NotificationFormat,
     template: Option<&serde_json::Value>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<BodyTemplate>, String> {
     match (format.needs_body_template(), template) {
         (true, None) => Err(format!(
             "`{}` posts a document you define, so `body_template` is required",
@@ -235,9 +237,7 @@ fn encode_body_template(
             // delivery time is caught by nobody, because the delivery it breaks
             // is the one nobody is watching for.
             notify::template::validate(template)?;
-            serde_json::to_string(template)
-                .map(Some)
-                .map_err(|error| format!("could not encode the body template: {error}"))
+            Ok(Some(BodyTemplate::from(template.clone())))
         }
     }
 }
@@ -291,13 +291,9 @@ pub async fn save_notify_config(app: tauri::AppHandle, request: NotifyConfigUpda
 #[tauri::command]
 pub async fn list_notification_webhooks(app: tauri::AppHandle) -> Result<NotificationWebhookListResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let rows = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|error| error.to_string())?;
-        meridian_core::db::ops::notification::list_webhooks(&mut conn).map_err(|error| error.to_string())
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+    let rows = notification_ops::list_webhooks(&services.sea)
+        .await
+        .map_err(|error| error.to_string())?;
 
     let webhooks = rows
         .into_iter()
@@ -315,45 +311,42 @@ pub async fn create_notification_webhook(
     request: NotificationWebhookCreateRequest,
 ) -> Result<NotificationWebhookInfoResponse, String> {
     notify::validate_endpoint(&request.name, &request.url, &request.events)?;
-    let body_template = encode_body_template(request.format, request.body_template.0.as_ref())?;
+    let body_template = check_body_template(request.format, request.body_template.0.as_ref())?;
     let services = app.services();
     let id = uuid::Uuid::new_v4().to_string();
-    let events = encode_events(&request.events)?;
     let now = meridian_core::util::now_ms();
+    let model = notification_webhook::Model {
+        id: id.clone(),
+        name: request.name,
+        url: request.url,
+        format: request.format,
+        events: NotificationEvents::from(request.events),
+        is_enabled: SqlBool::from(request.is_enabled),
+        body_template,
+        last_attempt_at: None,
+        last_success_at: None,
+        last_error: None,
+        consecutive_failures: 0,
+        created_at: now,
+        updated_at: now,
+    };
 
-    let pool = services.db.clone();
-    let row = {
-        let id = id.clone();
-        let name = request.name.clone();
-        let url = request.url.clone();
-        let format = request.format.as_str();
-        let is_enabled = i32::from(request.is_enabled);
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|error| error.to_string())?;
-            if meridian_core::db::ops::notification::count_webhooks(&mut conn).map_err(|e| e.to_string())?
-                >= MAX_WEBHOOKS as i64
-            {
-                return Err(format!("at most {MAX_WEBHOOKS} notification endpoints are supported"));
+    // The count and the insert are one `BEGIN IMMEDIATE` transaction. As two
+    // autocommit statements, two concurrent creates could both see
+    // `MAX_WEBHOOKS - 1` and both insert; under the write lock the second
+    // count sees the first insert. `None` is the ceiling, reported outside so
+    // the closure's error type stays the database's.
+    let row = services
+        .sea
+        .write(async |tx| {
+            if notification_ops::count_webhooks(tx).await? >= MAX_WEBHOOKS as u64 {
+                return Ok(None);
             }
-            meridian_core::db::ops::notification::create_webhook(
-                &mut conn,
-                &NotificationWebhookInsert {
-                    id: &id,
-                    name: &name,
-                    url: &url,
-                    format,
-                    events: &events,
-                    is_enabled,
-                    body_template: body_template.as_deref(),
-                    created_at: now,
-                    updated_at: now,
-                },
-            )
-            .map_err(|error| error.to_string())
+            notification_ops::create_webhook(tx, model).await.map(Some)
         })
         .await
-        .map_err(|error| error.to_string())??
-    };
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| format!("at most {MAX_WEBHOOKS} notification endpoints are supported"))?;
 
     // After the row, so a keyring failure cannot leave a secret behind for an
     // id nothing points at.
@@ -368,31 +361,24 @@ pub async fn update_notification_webhook(
     request: NotificationWebhookUpdateRequest,
 ) -> Result<NotificationWebhookInfoResponse, String> {
     notify::validate_endpoint(&request.name, &request.url, &request.events)?;
-    let body_template = encode_body_template(request.format, request.body_template.0.as_ref())?;
+    let body_template = check_body_template(request.format, request.body_template.0.as_ref())?;
     let services = app.services();
-    let events = encode_events(&request.events)?;
     let now = meridian_core::util::now_ms();
 
-    let pool = services.db.clone();
-    let row = {
-        let id = request.id.clone();
-        let changeset = NotificationWebhookChangeset {
-            name: Some(request.name.clone()),
-            url: Some(request.url.clone()),
-            format: Some(request.format.as_str().to_string()),
-            body_template: Some(body_template.clone()),
-            events: Some(events),
-            is_enabled: Some(i32::from(request.is_enabled)),
-            updated_at: Some(now),
-        };
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|error| error.to_string())?;
-            meridian_core::db::ops::notification::update_webhook(&mut conn, &id, &changeset)
-                .map_err(|error| error.to_string())
-        })
-        .await
-        .map_err(|error| error.to_string())??
+    let changeset = NotificationWebhookChangeset {
+        name: Some(request.name),
+        url: Some(request.url),
+        format: Some(request.format),
+        body_template: Some(body_template),
+        events: Some(NotificationEvents::from(request.events)),
+        is_enabled: Some(SqlBool::from(request.is_enabled)),
+        updated_at: Some(now),
     };
+    let row = services
+        .sea
+        .write(async |tx| notification_ops::update_webhook(tx, &request.id, changeset).await)
+        .await
+        .map_err(|error| error.to_string())?;
 
     notify::write_webhook_secret(&services.secrets, &request.id, request.secret.0.as_deref())?;
     let has_secret = request.secret.0.is_some_and(|secret| !secret.is_empty());
@@ -402,14 +388,11 @@ pub async fn update_notification_webhook(
 #[tauri::command]
 pub async fn delete_notification_webhook(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let row_id = id.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|error| error.to_string())?;
-        meridian_core::db::ops::notification::delete_webhook(&mut conn, &row_id).map_err(|error| error.to_string())
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+    services
+        .sea
+        .write(async |tx| notification_ops::delete_webhook(tx, &id).await)
+        .await
+        .map_err(|error| error.to_string())?;
 
     // After the row is gone: a keyring entry with no row is unreachable, while
     // a row with no secret would silently send unsigned requests to a vendor
@@ -540,28 +523,9 @@ mod tests {
     // The endpoint rules themselves live in `notify::validate_endpoint`, with
     // their tests, because the URL parser is there with the client that uses it.
 
-    /// The response is built from the row, and the row's JSON column is the one
-    /// place this can fail. It fails the boundary rather than reporting an
-    /// endpoint that is subscribed to nothing.
-    #[test]
-    fn an_unreadable_subscription_fails_the_response() {
-        let row = NotificationWebhookRow {
-            id: "w1".into(),
-            name: "x".into(),
-            url: "https://a.invalid/h".into(),
-            format: "generic".into(),
-            events: "not json".into(),
-            is_enabled: 1,
-            body_template: None,
-            last_attempt_at: None,
-            last_success_at: None,
-            last_error: None,
-            consecutive_failures: 0,
-            created_at: 1,
-            updated_at: 1,
-        };
-        assert!(NotificationWebhookInfoResponse::build(row, false).is_err());
-    }
+    // A stored subscription that will not decode fails the *read* now, not the
+    // response: `db::sea::ops::notification` has the test
+    // (`a_row_with_unreadable_json_fails_the_list_rather_than_narrowing_it`).
 
     /// Both directions, because either alone is an endpoint that looks
     /// configured and posts the wrong thing: nothing at all one way, a vendor's
@@ -570,17 +534,16 @@ mod tests {
     fn a_body_template_and_the_custom_format_require_each_other() {
         let template = serde_json::json!({ "title": "{{title}}" });
 
-        let error = encode_body_template(NotificationFormat::Custom, None).unwrap_err();
+        let error = check_body_template(NotificationFormat::Custom, None).unwrap_err();
         assert!(error.contains("required"), "{error}");
 
-        let error = encode_body_template(NotificationFormat::Feishu, Some(&template)).unwrap_err();
+        let error = check_body_template(NotificationFormat::Feishu, Some(&template)).unwrap_err();
         assert!(error.contains("only applies to `custom`"), "{error}");
 
-        assert_eq!(encode_body_template(NotificationFormat::Slack, None).unwrap(), None);
-        assert!(
-            encode_body_template(NotificationFormat::Custom, Some(&template))
-                .unwrap()
-                .is_some()
+        assert_eq!(check_body_template(NotificationFormat::Slack, None).unwrap(), None);
+        assert_eq!(
+            check_body_template(NotificationFormat::Custom, Some(&template)).unwrap(),
+            Some(BodyTemplate::from(template))
         );
     }
 
@@ -589,19 +552,19 @@ mod tests {
     #[test]
     fn a_placeholder_typo_is_refused_before_the_row_is_written() {
         let typo = serde_json::json!({ "title": "{{titel}}" });
-        let error = encode_body_template(NotificationFormat::Custom, Some(&typo)).unwrap_err();
+        let error = check_body_template(NotificationFormat::Custom, Some(&typo)).unwrap_err();
         assert!(error.contains("titel"), "{error}");
     }
 
     #[test]
     fn the_response_never_carries_the_secret() {
-        let row = NotificationWebhookRow {
+        let row = notification_webhook::Model {
             id: "w1".into(),
             name: "x".into(),
             url: "https://a.invalid/h".into(),
-            format: "generic".into(),
-            events: r#"["test"]"#.into(),
-            is_enabled: 1,
+            format: NotificationFormat::Generic,
+            events: NotificationEvents::from(vec![NotificationEventKind::Test]),
+            is_enabled: SqlBool::TRUE,
             body_template: None,
             last_attempt_at: None,
             last_success_at: None,
