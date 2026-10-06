@@ -137,11 +137,24 @@ A new decision about one subsystem goes into that subsystem's file.
   answers. After changing `api.ts` or `types.ts`, run `pnpm responses:generate`
   and `pnpm responses:check`; a generic cast or `unknown` passthrough is never a
   substitute for validation.
+- **A SeaORM entity is a persistence shape, held to the same line as a Row.**
+  `DeriveEntityModel` lives only under `core/src/db/entity/` (or in test code);
+  a `Model` / `ActiveModel` never derives `Serialize` or `Deserialize`; a
+  `DerivePartialModel` struct is named `*Projection`; a money column is
+  `Decimal`, a 0/1 flag is `SqlBool`, a `*_at` column is `EpochMs`, and `bool`
+  does not appear (sqlx reads any non-zero integer as `true`). Outside
+  `db/entity/` nothing aliases or bare-imports an entity's `Model` /
+  `ActiveModel` / `Entity` / `Column` — import the module and write
+  `conversation::Entity` — and no command returns one. Raw SQL
+  (`Statement::from_string`, `from_sql_and_values`, `execute_unprepared`) is
+  confined to `db/sql.rs`, `db/sea/{mod,bridge,legacy,introspect,baseline_gen}.rs`
+  and `db/sea/migration/`; `FromJsonQueryResult`, `BigDecimal` outside
+  `decimal.rs` and sea-orm's `with-bigdecimal` feature are forbidden.
 - Run `pnpm contracts:check` after model or protocol changes. It enforces these
-  naming, strict-object and monetary representation rules and also runs against
-  the staged snapshot in the pre-commit hook. The guard's syntax helpers have
-  focused fixtures under `scripts/model-contract-rules.test.mjs`; run them with
-  `node --test --test-isolation=none scripts/model-contract-rules.test.mjs`.
+  naming, strict-object, monetary representation and entity rules and also runs
+  against the staged snapshot in the pre-commit hook. The guard's syntax
+  helpers have focused fixtures under `scripts/model-contract-rules.test.mjs`;
+  run them with `node --test --test-isolation=none scripts/model-contract-rules.test.mjs`.
 
 ### Core decisions
 

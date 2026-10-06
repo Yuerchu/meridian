@@ -1,4 +1,5 @@
 /** Small, dependency-free syntax helpers used by the model contract guard. */
+import { blank, functions, lineOf, matching, useAliases } from './transaction-graph-lib.mjs'
 
 function blockAfter(source, declaration) {
   const match = declaration.exec(source)
@@ -202,4 +203,207 @@ export function forbiddenJsonFallbacks(source) {
     }
   }
   return findings.sort((left, right) => left.index - right.index)
+}
+
+// ── SeaORM 一侧 ────────────────────────────────────────────────────────────────
+//
+// 下面这些与事务调用图共用同一套近似解析（抹掉注释与字符串、函数切分、`use` 展开），
+// 所以 SQL 字符串里的 `Statement` 字样和文档注释里的示例都骗不到它们。
+
+/**
+ * `schema.snapshot.sql` 里 `CREATE TABLE "table" ( … )` 的括号内文本。
+ *
+ * 表由 sea-query 渲染在一行上，但 CHECK 子句保留原文、会跨行，所以不能按行取；
+ * 括号配对要跳过引号里的内容——金额格式的 CHECK 里有 `'*[^0-9.]*'` 这样的字面量。
+ */
+export function sqlCreateTableBody(sql, table) {
+  const match = new RegExp(`CREATE TABLE "${table}"\\s*\\(`).exec(sql)
+  if (!match) return null
+  const open = match.index + match[0].length - 1
+  let depth = 0
+  let quote = null
+  for (let index = open; index < sql.length; index += 1) {
+    const char = sql[index]
+    if (quote != null) {
+      if (char === quote) quote = null
+      continue
+    }
+    if (char === "'" || char === '"') {
+      quote = char
+      continue
+    }
+    if (char === '(') depth += 1
+    else if (char === ')') {
+      depth -= 1
+      if (depth === 0) return sql.slice(open + 1, index)
+    }
+  }
+  return null
+}
+
+/** 表体里某列的 DEFAULT 字面量（去掉引号）；没有 DEFAULT 或没有这列时为 null。 */
+export function sqlColumnDefault(tableBody, column) {
+  const match = new RegExp(`"${column}"\\s+\\w+(?:\\s+NOT NULL)?\\s+DEFAULT\\s+(?:'([^']*)'|([^\\s,]+))`).exec(
+    tableBody,
+  )
+  if (!match) return null
+  return match[1] ?? match[2]
+}
+
+/**
+ * 金额列的 canonical TEXT CHECK（迁移 49 引入、基线原样保留）：列声明为 text，且有
+ * `CHECK (col IS NULL OR col = '0' OR (typeof(col) = 'text' AND …))`。显式检查
+ * storage class，是因为 SQLite 的 TEXT 亲和不拒绝数字：没有 typeof 那一句，`0.5`
+ * 这样的 REAL 也进得去，之后读出来的就是二进制浮点。
+ */
+export function hasCanonicalDecimalCheck(tableBody, column) {
+  const declared = new RegExp(`"${column}"\\s+text\\b`).test(tableBody)
+  const check = new RegExp(
+    `CHECK\\s*\\(\\s*${column}\\s+IS\\s+NULL\\s+OR\\s+${column}\\s*=\\s*'0'\\s+OR\\s*\\(\\s*typeof\\(${column}\\)\\s*=\\s*'text'\\s+AND`,
+  )
+  return declared && check.test(tableBody)
+}
+
+/**
+ * 把测试代码抹成空白，偏移不变：`#[cfg(test)] mod x { … }` 整块，以及 `#[cfg(test)]`、
+ * `#[test]`、`#[tokio::test]` 标的函数。注释和字符串也一并抹掉（见 blank）。
+ * 之后的正则看到的就只有生产代码。
+ */
+export function rustProductionText(source) {
+  const text = blank(source)
+  const out = text.split('')
+  const wipe = (from, to) => {
+    for (let index = from; index < to; index += 1) if (out[index] !== '\n') out[index] = ' '
+  }
+  const modules = /#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*\{/g
+  let match
+  while ((match = modules.exec(text))) {
+    const open = match.index + match[0].length - 1
+    const close = matching(text, open)
+    if (close > 0) wipe(match.index, close + 1)
+  }
+  for (const fn of functions(text)) if (fn.test) wipe(fn.at, fn.body[1] + 1)
+  return out.join('')
+}
+
+/**
+ * 整个文件都是测试代码的那些：`tests.rs`、`*_tests.rs`，以及被某处 `#[cfg(test)] mod x;`
+ * 声明进来的文件（`db/sea/poc.rs` 就是这样进来的）。声明在 `mod.rs`/`lib.rs` 里时子文件
+ * 与它同目录，声明在 `foo.rs` 里时在 `foo/` 下。
+ */
+export function rustTestOnlyFiles(paths, readSource) {
+  const files = new Set()
+  for (const path of paths) {
+    const base = path.slice(path.lastIndexOf('/') + 1)
+    if (base === 'tests.rs' || base.endsWith('_tests.rs')) files.add(path)
+    const source = readSource(path)
+    if (source == null) continue
+    const dir = path.slice(0, path.lastIndexOf('/'))
+    const childDir = ['mod.rs', 'lib.rs', 'main.rs'].includes(base) ? dir : `${dir}/${base.slice(0, -3)}`
+    for (const match of blank(source).matchAll(/#\[cfg\(test\)\]\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+(\w+)\s*;/g)) {
+      files.add(`${childDir}/${match[1]}.rs`)
+      files.add(`${childDir}/${match[1]}/mod.rs`)
+    }
+  }
+  return files
+}
+
+const ENTITY_ITEM = /(?:^|::)entity::(?:\w+::)*(Model|ActiveModel|Entity|Column)$/
+
+/**
+ * 实体的 `Model` / `ActiveModel` / `Entity` / `Column` 被裸导入进来的 `use`。实体只在
+ * `db/entity/` 下声明（另一条规则钉住），所以它们的路径一定经过 `entity::` 这一段——
+ * `introspect::Column` 那种同名的别物就不会误报。`use entity::conversation;` 之后写
+ * `conversation::Entity` 是允许的写法：实体名在每个用处都看得见。
+ */
+export function bareEntityImports(productionText) {
+  const findings = []
+  for (const [name, path] of useAliases(productionText)) {
+    const item = ENTITY_ITEM.exec(path)?.[1]
+    if (item) findings.push({ name, path, item })
+  }
+  return findings
+}
+
+/** `type X = …::Model;` 这类给实体起的别名：实体类型不离开 db/entity，经 sea/ops 的函数签名暴露。 */
+export function entityTypeAliases(productionText) {
+  return [
+    ...productionText.matchAll(
+      /^[ \t]*(?:pub(?:\([^)]*\))?\s+)?type\s+(\w+)(?:<[^>]*>)?\s*=\s*((?:\w+::)+(?:Model|ActiveModel|Entity))\s*;/gm,
+    ),
+  ].map((match) => ({ name: match[1], target: match[2], line: lineOf(productionText, match.index) }))
+}
+
+const DECIMAL_TYPE = /^(?:Option<)?(?:[\w:]+::)?Decimal>?$/
+const SQL_BOOL_TYPE = /^(?:Option<)?(?:[\w:]+::)?SqlBool>?$/
+const EPOCH_MS_TYPE = /^(?:Option<)?(?:[\w:]+::)?EpochMs>?$/
+
+/**
+ * `db/entity/` 下一个文件里的实体规则。
+ *
+ * - `Model` / `ActiveModel` 不派生 Serialize / Deserialize：实体不是 wire 契约，出去要经 InfoResponse。
+ * - `DerivePartialModel` 的结构体以 Projection 结尾，一眼能看出它只是列的子集。
+ * - 列类型：金额列 Decimal、0/1 标志列 SqlBool、`*_at` 列 EpochMs，别处不得出现 bool——
+ *   sqlx 把任何非零整数读成 true，SqlBool 存在的理由就是在边界上拒绝 2。
+ */
+export function seaEntityProblems(source) {
+  const text = rustProductionText(source)
+  const problems = []
+  for (const { attributes, name } of rustStructDeclarations(text)) {
+    if ((name === 'Model' || name === 'ActiveModel') && /\b(?:Serialize|Deserialize)\b/.test(attributes)) {
+      problems.push(`${name} 不得派生 Serialize / Deserialize：实体不是 wire 契约，经 InfoResponse 出去`)
+    }
+    if (/\bDerivePartialModel\b/.test(attributes) && !name.endsWith('Projection')) {
+      problems.push(`${name} 派生了 DerivePartialModel，名字必须以 Projection 结尾`)
+    }
+    if (!/\bDeriveEntityModel\b/.test(attributes)) continue
+    for (const [field, type] of rustStructFields(text, name) ?? []) {
+      if (isMoneyLeafField(field)) {
+        if (!DECIMAL_TYPE.test(type)) {
+          problems.push(`${name}.${field} 是金额列，必须是 Decimal / Option<Decimal>，当前为 ${type}`)
+        }
+      } else if (isBooleanField(field)) {
+        if (!SQL_BOOL_TYPE.test(type)) {
+          problems.push(`${name}.${field} 是 0/1 标志列，必须是 SqlBool / Option<SqlBool>，当前为 ${type}`)
+        }
+      } else if (field.endsWith('_at')) {
+        if (!EPOCH_MS_TYPE.test(type)) {
+          problems.push(`${name}.${field} 是时间列，必须是 EpochMs / Option<EpochMs>，当前为 ${type}`)
+        }
+      } else if (/\bbool\b/.test(type)) {
+        problems.push(`${name}.${field} 不得用 bool：sqlx 把任何非零整数读成 true，用 SqlBool`)
+      }
+    }
+  }
+  return problems
+}
+
+/**
+ * `SqlBool::from_stored` 必须恰好是 `0 =>`、`1 =>`、`_ => None` 三个分支——这是 SeaORM 侧
+ * 与 `decode_sqlite_bool` 对应的那一道严格 0/1 转换。
+ */
+export function sqlBoolProblems(source) {
+  const problems = []
+  if (!/pub struct SqlBool\(bool\);/.test(source)) {
+    problems.push('缺少 SeaORM 侧的严格 0/1 标志类型 pub struct SqlBool(bool)')
+  }
+  if (!/pub type EpochMs = i64;/.test(source)) problems.push('缺少 pub type EpochMs = i64')
+  const body = source.match(/fn from_stored\(raw: i32\) -> Option<Self>\s*\{([\s\S]*?)\n\s*\}/)?.[1]
+  if (body == null) {
+    problems.push('SqlBool 缺少 fn from_stored(raw: i32) -> Option<Self>')
+    return problems
+  }
+  const arms = [...body.matchAll(/^\s*(\S+)\s*=>\s*([^,\r\n]+),?\s*$/gm)].map((match) => [match[1], match[2].trim()])
+  const expected = [
+    ['0', 'Some(Self::FALSE)'],
+    ['1', 'Some(Self::TRUE)'],
+    ['_', 'None'],
+  ]
+  if (JSON.stringify(arms) !== JSON.stringify(expected)) {
+    const actual = arms.map((arm) => arm.join(' => ')).join('；') || '（没认出分支）'
+    problems.push(
+      `SqlBool::from_stored 必须恰好是 0 => Some(Self::FALSE)、1 => Some(Self::TRUE)、_ => None，当前为 ${actual}`,
+    )
+  }
+  return problems
 }

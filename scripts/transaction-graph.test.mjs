@@ -2,7 +2,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { analyze, baselineProblems, loadSources, uncheckedReceivers, violations } from './check-transaction-graph.mjs'
+import {
+  analyze,
+  baselineProblems,
+  dualImplProblems,
+  dualImplementations,
+  loadSources,
+  parsePendingTables,
+  uncheckedReceivers,
+  violations,
+} from './check-transaction-graph.mjs'
 import {
   blank,
   callsIn,
@@ -451,4 +460,98 @@ test('a Diesel connection named only by its type inside a SeaORM closure is R1',
   })
   assert.equal(problems.length, 1)
   assert.match(problems[0], /^R1 .*Diesel/)
+})
+
+// ── Phase 2c：待迁移的表与双实现登记 ─────────────────────────────────────────
+
+test('pendingTables is a set that only shrinks and only holds known names', () => {
+  const path = 'docs/migration-counters.json'
+  const baseline = { pendingTables: ['a', 'b', 'c'] }
+  assert.deepEqual(baselineProblems({ pendingTables: ['a', 'b', 'c'] }, baseline, path), [])
+  assert.match(
+    baselineProblems({ pendingTables: ['a', 'c'] }, baseline, path)[0],
+    /从 3 降到 2（b 有 entity 了）：把 .*更新为当前列表/,
+  )
+  const stranger = baselineProblems({ pendingTables: ['a', 'b', 'c', 'zz_new'] }, baseline, path)
+  assert.equal(stranger.length, 1)
+  assert.match(stranger[0], /`zz_new` 不在基线里：共存期新建的表必须带 entity，不得进 PENDING_TABLES/)
+  // A stranger beside a removal is reported as the stranger only: updating the
+  // baseline to "the current list" would smuggle the new name in.
+  const both = baselineProblems({ pendingTables: ['a', 'zz_new'] }, baseline, path)
+  assert.equal(both.length, 1)
+  assert.match(both[0], /zz_new/)
+  assert.match(baselineProblems({ pendingTables: ['a'] }, { pendingTables: 1 }, path)[0], /必须是数组/)
+  assert.match(baselineProblems({ pendingTables: ['a'] }, {}, path)[0], /缺少计数 pendingTables/)
+})
+
+test('PENDING_TABLES is parsed exactly, and anything else is a hard error', () => {
+  const wrap = (body) => `/// doc\npub const PENDING_TABLES: &[&str] = &[\n${body}];\n`
+  assert.deepEqual(parsePendingTables(wrap('    "a",\n    "b",\n')), ['a', 'b'])
+  assert.deepEqual(parsePendingTables(wrap('')), [])
+  assert.throws(() => parsePendingTables(wrap('    "b",\n    "a",\n')), /必须排序且不重复：b 后面是 a/)
+  assert.throws(() => parsePendingTables(wrap('    "a",\n    "a",\n')), /必须排序且不重复/)
+  assert.throws(() => parsePendingTables(wrap('    "a", "b",\n')), /每一项必须是/)
+  assert.throws(() => parsePendingTables('pub const OTHER: &[&str] = &[];'), /找不到/)
+})
+
+const DIESEL_TWIN = {
+  [`${CORE}/db/ops/conversation.rs`]: `
+    pub fn rename(conn: &mut SqliteConnection) -> QueryResult<()> {
+        diesel::update(conversations::table).execute(conn).map(|_| ())
+    }
+    pub fn archive(conn: &mut SqliteConnection) -> QueryResult<()> {
+        diesel::update(conversations::table).execute(conn).map(|_| ())
+    }`,
+}
+
+test('a sea op with a same-named Diesel op is a pair, counted by the Diesel callers left', () => {
+  const graph = graphFor({
+    ...DIESEL_TWIN,
+    [`${CORE}/db/sea/ops/conversation.rs`]: `
+      pub async fn rename(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }
+      pub async fn archive(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }
+      pub async fn pin(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }
+      fn helper(tx: &WriteTx) {}`,
+    [`${SHELL}/commands/conversation.rs`]: `
+      use meridian_core::db::ops::conversation as ops;
+      fn a(conn: &mut SqliteConnection) -> QueryResult<()> { ops::rename(conn) }
+      fn b(conn: &mut SqliteConnection) -> QueryResult<()> { ops::rename(conn) }`,
+  })
+  const pairs = dualImplementations(graph)
+  // `pin` has no Diesel twin and `helper` is not pub: neither is a pair.
+  assert.deepEqual(pairs, [
+    { module: 'conversation', name: 'archive', remaining: 0 },
+    { module: 'conversation', name: 'rename', remaining: 2 },
+  ])
+
+  const doc =
+    '# 双实现登记\n\n| 操作 | 剩余 Diesel 调用点 |\n|---|---|\n| conversation::rename | 2 |\n| conversation::archive | 0 |\n'
+  const problems = dualImplProblems(pairs, doc)
+  assert.equal(problems.length, 1)
+  assert.match(
+    problems[0],
+    /conversation::archive 的 Diesel 版本已经没有调用点：删掉 db\/ops\/conversation\.rs 里的 archive/,
+  )
+
+  const renameOnly = pairs.filter((p) => p.name === 'rename')
+  assert.deepEqual(dualImplProblems(renameOnly, doc.replace('| conversation::archive | 0 |\n', '')), [])
+  assert.match(
+    dualImplProblems(renameOnly, doc.replace('| conversation::archive | 0 |\n', '').replace('| 2 |', '| 1 |'))[0],
+    /写的是 1，实际 2/,
+  )
+  assert.match(
+    dualImplProblems(renameOnly, '| 操作 | 剩余 Diesel 调用点 |\n|---|---|\n')[0],
+    /缺少 conversation::rename（剩余 Diesel 调用点 2）/,
+  )
+  assert.match(dualImplProblems([], doc.replace('| conversation::archive | 0 |\n', ''))[0], /多出 conversation::rename/)
+  assert.match(dualImplProblems([], null)[0], /不存在/)
+})
+
+test('a sea op under another name is not a pair, by design', () => {
+  const graph = graphFor({
+    ...DIESEL_TWIN,
+    [`${CORE}/db/sea/ops/conversation.rs`]:
+      'pub async fn rename_conversation(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }',
+  })
+  assert.deepEqual(dualImplementations(graph), [])
 })

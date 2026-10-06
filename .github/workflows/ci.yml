@@ -142,6 +142,25 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm blockon:check
 
+      # The model/DTO contract: layer names, strict first-party objects, Decimal
+      # money, exact invoke responses, and where a SeaORM entity may live.
+      # Pre-commit runs the same check; this is the one `--no-verify` skips.
+      - name: Model contracts
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm contracts:check
+
+      # schema-data.ts against the schema snapshot the core migrations build —
+      # the half of the canvas a machine can check. Pre-commit runs the same.
+      - name: Schema canvas
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm schema:check
+
+      # provider_catalog.json against the ProviderType / ApiFormat enums and the
+      # snapshot's api_format default. Pre-commit runs the same.
+      - name: Provider catalog
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm catalog:check
+
       # The shell and the core are two workspaces — `src-tauri/crates` is the
       # meridian-core submodule, excluded from the shell's workspace — so every
       # cargo gate runs twice. The core's runs share `src-tauri/target` through

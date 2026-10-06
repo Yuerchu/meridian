@@ -1,13 +1,17 @@
 /**
  * Meridian 数据库模型 —— 画布与文档的唯一数据源。
  *
- * 由 src-tauri/crates/core/migrations/00000000000001_initial …
- * 00000000000051_plan_review_documents 与 src-tauri/crates/core/src/db/ 归纳而成。
+ * 结构来自 src-tauri/crates/core/schema.snapshot.sql——SeaORM 基线建出来的库导出的 DDL，
+ * 由 `cargo run -p meridian-core --example gen_schema_snapshot --features test-support`
+ * 生成、core 的一个测试钉住；说明文字来自 src-tauri/crates/core/src/db/ 和当年写下
+ * 每一列的那些迁移（现在是冻结的历史，只给旧库的桥接重放）。
  *
  * 一半是散文，只有人能写：为什么 parent_id 不建外键、为什么两个 cache 列上 NULL 和 0
  * 是不同的答案、为什么价格要抄到审计行上。另一半是纯结构，由
- * scripts/check-db-schema.mjs 拿迁移重放着核对——那半边一旦漂移，整份文档就开始
- * 很有说服力地骗人。改了 migrations/ 就要改这里，pre-commit 会拦。
+ * scripts/check-db-schema.mjs 把快照装进真实 SQLite 核对——那半边一旦漂移，整份文档就
+ * 开始很有说服力地骗人。类型按 SQLite 亲和比（这里的 BIGINT / REAL 是桥接过来的旧库
+ * 的拼写，快照里是 sea-query 的 integer / double，同一回事）。改了 SeaORM 迁移就要
+ * 重新生成快照、再改这里，pre-commit 会拦。
  *
  * 说明文字里只认两个标记：<code>…</code> 与 <b>…</b>，由 schema-lab 的 richText 渲染。
  */
