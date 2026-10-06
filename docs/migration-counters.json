@@ -1,6 +1,6 @@
 {
-  "dieselOpsCalls": 924,
-  "dieselApiRefs": 1417,
+  "dieselOpsCalls": 890,
+  "dieselApiRefs": 1332,
   "pendingTables": [
     "acp_context_deliveries",
     "acp_session_notices",
@@ -44,9 +44,6 @@
     "todo_lists",
     "tool_categories",
     "tool_presets",
-    "turns",
-    "voice_blobs",
-    "voice_clips",
-    "voice_sender_optouts"
+    "turns"
   ]
 }

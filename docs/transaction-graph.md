@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：84
-- Diesel ops 调用点（db/ops 之外）：924
-- Diesel API 引用：1417
+- 事务根（非测试）：94
+- Diesel ops 调用点（db/ops 之外）：890
+- Diesel API 引用：1332
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -65,7 +65,6 @@
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `take_next` | diesel-deferred | audit, message, model_config, queue |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/ops/turn.rs` › `reconcile_interrupted` | diesel-deferred | queue |
-| `src-tauri/crates/core/src/db/ops/voice_corpus.rs` › `tombstone_unreferenced` | diesel-immediate | — |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
 | `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |
@@ -76,10 +75,21 @@
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `record_attempt` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `save_config` | sea-write | preference |
-| `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | diesel-immediate | voice_corpus |
+| `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `export` | sea-read | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `forget_sender` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `list_sessions` | sea-read | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `resolve_handle` | sea-read | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `set_optout` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
