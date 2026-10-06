@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：91
+- 事务根（非测试）：94
 - Diesel ops 调用点（db/ops 之外）：890
 - Diesel API 引用：1332
 
@@ -81,7 +81,10 @@
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `export` | sea-read | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `forget_sender` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `list_sessions` | sea-read | voice_corpus |
+| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `resolve_handle` | sea-read | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `set_optout` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
