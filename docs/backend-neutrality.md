@@ -28,3 +28,15 @@ PostgreSQL 服务端版本动工时按这份清单逐项给出对应实现。
 - 行为：一组每条约束各一行的反例在两个库上都必须被同一类约束拒绝，另有一组去掉唯一
   缺陷的对照行在两边都必须被接受。
 - 生成器：`render(读回放库)` 的文本必须与入库文件逐字相同。
+
+## `db/sql.rs`：登记的原生 SQL
+
+SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly` 常量登记——构造器对模块私有，
+模块外造不出一个 `ReadOnly`，模型契约检查器又拒绝桥接/基线文件之外的 `Statement::from_*`，
+所以这张表就是全部。每条都用位置 `?` 占位（按出现顺序传值），不用 SQLite 自己的 `?1` 编号。
+
+| 常量 | 用途 | SQLite 专属的部分 | PostgreSQL 时要做的事 |
+|---|---|---|---|
+| `JOURNAL_CHAINS_UNDER_PREFIX` | 路径前缀下每条链及其头 sha（死头为 NULL），按更新时间倒序，带上限 | 只有占位符与 `DbBackend::Sqlite`；`LIKE … ESCAPE '\'`、相关子查询 `MAX(seq)` 是标准 SQL | 改占位符为 `$1`/`$2`，`LIKE` 的大小写语义按 `norm_path` 的实际需要选 `LIKE`/`ILIKE` |
+| `JOURNAL_LIVE_CHAINS_UNDER_PREFIX` | 同上，只要活着的链（`new_sha IS NOT NULL`），上限按活文件计 | 同上 | 同上 |
+| `JOURNAL_UNREFERENCED_BLOBS` | 没有任何版本引用的 blob sha | 无（`NOT EXISTS` 是标准 SQL） | 无 |
