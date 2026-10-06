@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：77
-- Diesel ops 调用点（db/ops 之外）：987
-- Diesel API 引用：1500
+- 事务根（非测试）：84
+- Diesel ops 调用点（db/ops 之外）：968
+- Diesel API 引用：1475
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -45,8 +45,6 @@
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `delete_subtree` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `switch_branch` | diesel-deferred | message |
-| `src-tauri/crates/core/src/db/ops/notification.rs` › `record_delivery_attempt` | diesel-immediate | notification |
-| `src-tauri/crates/core/src/db/ops/notification.rs` › `record_raised` | diesel-immediate | notification |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `approve` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `append_assistant_revision` | diesel-deferred | plan_review |
@@ -73,11 +71,17 @@
 | `src-tauri/crates/core/src/db/ops/voice_corpus.rs` › `tombstone_unreferenced` | diesel-immediate | — |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
+| `src-tauri/crates/core/src/notify/mod.rs` › `clear` | sea-write | notification |
+| `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
+| `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
+| `src-tauri/crates/core/src/notify/mod.rs` › `record_attempt` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | diesel-immediate | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
+| `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
+| `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | diesel-deferred | audit, emoji, message, message_context_item, model_config, queue, queued_prompt_context_item |
@@ -90,6 +94,9 @@
 | `src-tauri/src/commands/message.rs` › `switch_branch_unless_plan_barrier` | diesel-immediate | message, plan_review |
 | `src-tauri/src/commands/model_config.rs` › `delete_model_config_unless_plan_barrier` | diesel-immediate | conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/model_config.rs` › `upsert_model_config_unless_plan_barrier` | diesel-immediate | conversation, model_config, model_profile, plan_review |
+| `src-tauri/src/commands/notify.rs` › `create_notification_webhook` | sea-write | notification |
+| `src-tauri/src/commands/notify.rs` › `delete_notification_webhook` | sea-write | notification |
+| `src-tauri/src/commands/notify.rs` › `update_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/plan_review.rs` › `decide_plan_review` | diesel-deferred | acp_session, audit, conversation, message, model_config, plan_review, turn |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `delete_project_unless_plan_barrier` | diesel-immediate | conversation, memory, plan_review, project |
