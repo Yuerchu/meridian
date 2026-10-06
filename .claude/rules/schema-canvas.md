@@ -1,6 +1,8 @@
 ---
 paths:
   - "src-tauri/crates/core/migrations/**"
+  - "src-tauri/crates/core/schema.snapshot.sql"
+  - "src-tauri/crates/core/src/db/sea/migration/**"
   - "src/dev/schema-*.ts*"
   - "scripts/check-db-schema.mjs"
 ---
@@ -26,16 +28,26 @@ from `src/dev/schema-data.ts`, which is the single source both halves of this fe
   the audit row — none of it is. A new column is worth a line saying what it decides;
   a new table is worth `note` / `rels` / `rules`.
 - **The other half is checked by a machine, against a real SQLite.**
-  `scripts/check-db-schema.mjs` runs every `migrations/*/up.sql` into an in-memory
-  `node:sqlite` — under `PRAGMA foreign_keys=OFF`, which is how `db/mod.rs:78` runs them —
-  and reads the result back through `PRAGMA table_info` / `foreign_key_list`. Structure
-  that drifts is worse than no diagram: it is wrong in a way that reads as authoritative.
+  `scripts/check-db-schema.mjs` loads `src-tauri/crates/core/schema.snapshot.sql` into an
+  in-memory `node:sqlite` — under `PRAGMA foreign_keys=OFF`, as the baseline builds a new
+  database — and reads the result back through `PRAGMA table_info` / `foreign_key_list`.
+  The snapshot is the live schema as SQLite stores it, one `CREATE …;` per object;
+  `cargo run -p meridian-core --example gen_schema_snapshot --features test-support`
+  regenerates it and a core test pins it to the migrations, so a schema change that
+  forgets the file is red there first. The 65 Diesel migrations are frozen history,
+  replayed only by the bridge for old databases; a checker that reads them guards
+  nothing live. Types are compared by SQLite affinity, not spelling: a bridged
+  database carries Diesel's `BIGINT` / `REAL` and a fresh one sea-query's `integer` /
+  `double`, and SQLite treats the two alike. Structure that drifts is worse than no
+  diagram: it is wrong in a way that reads as authoritative.
 
   It used to parse the SQL itself, and that version was wrong about the one thing worth
   being right about. `ALTER TABLE … RENAME TO` does not just rename: since SQLite 3.25 it
   **rewrites the `REFERENCES` clauses of other tables that point at it** — under both
   `foreign_keys` settings, measured on 3.50.4. Migration 24 is exactly that shape, and a
-  checker that models a rename as a rename goes quiet precisely where it is needed.
+  checker that models a rename as a rename goes quiet precisely where it is needed. The
+  snapshot has that rename folded in — it records the *result* — but the lesson stands
+  for how the file is consumed: SQLite executes it, nothing re-derives its grammar.
 
   What that turned up was a real defect: migration 24 rewrote
   `tool_permissions.mcp_server_id` to point at `mcp_servers_old`, then dropped that table.

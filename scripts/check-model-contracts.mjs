@@ -10,17 +10,25 @@
  *   pnpm contracts:check:staged
  */
 import { Buffer } from 'node:buffer'
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stagedSnapshot } from './staged-snapshot.mjs'
 import {
+  bareEntityImports,
+  entityTypeAliases,
   forbiddenJsonFallbacks,
+  hasCanonicalDecimalCheck,
   isBooleanField,
   isMoneyLeafField,
+  rustProductionText,
   rustStructDeclarations,
   rustStructFields,
   rustTauriCommandDeclarations,
+  rustTestOnlyFiles,
+  seaEntityProblems,
+  sqlBoolProblems,
+  sqlCreateTableBody,
   typescriptInterfaceFieldDeclarations,
   typescriptInterfaceFields,
 } from './model-contract-rules.mjs'
@@ -57,6 +65,82 @@ function filesUnder(path, extensions) {
 
 function add(file, message) {
   problems.push(`${file}: ${message}`)
+}
+
+// 这个检查器按固定路径读的每一个文件。--staged 下 readAt 对缺失的文件返回 null，
+// 之后大多数规则就静默跳过——删掉一个被检查的文件，规则会从「红」变成「没跑」，
+// 而不是变成一条失败。所以先点名：少一个就是一条问题，两种模式都一样。
+// 按目录枚举的文件（commands/、remote/、hooks/、src/）不在这里，少一个目录是另一种事故。
+const REQUIRED_FILES = [
+  'scripts/generate-invoke-response-schema.mjs',
+  'src-tauri/Cargo.toml',
+  'src-tauri/crates/core/Cargo.toml',
+  'src-tauri/crates/core/schema.snapshot.sql',
+  'src-tauri/crates/core/src/acp/import.rs',
+  'src-tauri/crates/core/src/agent/auto_review/mod.rs',
+  'src-tauri/crates/core/src/agent/compact.rs',
+  'src-tauri/crates/core/src/agent/pricing.rs',
+  'src-tauri/crates/core/src/db/entity/mod.rs',
+  'src-tauri/crates/core/src/db/ops/conversation.rs',
+  'src-tauri/crates/core/src/db/ops/message.rs',
+  'src-tauri/crates/core/src/db/ops/usage.rs',
+  'src-tauri/crates/core/src/db/schema.rs',
+  'src-tauri/crates/core/src/db/types.rs',
+  'src-tauri/crates/core/src/decimal.rs',
+  'src-tauri/crates/core/src/events.rs',
+  'src-tauri/crates/core/src/hooks/mod.rs',
+  'src-tauri/crates/core/src/logging/reader.rs',
+  'src-tauri/crates/core/src/onebot/mod.rs',
+  'src-tauri/crates/core/src/provider/balance.rs',
+  'src-tauri/crates/core/src/provider/catalog.rs',
+  'src-tauri/crates/core/src/provider/mod.rs',
+  'src-tauri/crates/core/src/tools/mod.rs',
+  'src-tauri/crates/core/src/workspace/reference.rs',
+  'src-tauri/src/command_table.rs',
+  'src-tauri/src/commands/acp.rs',
+  'src-tauri/src/commands/approval.rs',
+  'src-tauri/src/commands/assistant.rs',
+  'src-tauri/src/commands/chat.rs',
+  'src-tauri/src/commands/conversation.rs',
+  'src-tauri/src/commands/dev.rs',
+  'src-tauri/src/commands/emoji.rs',
+  'src-tauri/src/commands/entity_response.rs',
+  'src-tauri/src/commands/hooks.rs',
+  'src-tauri/src/commands/journal.rs',
+  'src-tauri/src/commands/logs.rs',
+  'src-tauri/src/commands/mcp.rs',
+  'src-tauri/src/commands/memory.rs',
+  'src-tauri/src/commands/message.rs',
+  'src-tauri/src/commands/model_config.rs',
+  'src-tauri/src/commands/onebot.rs',
+  'src-tauri/src/commands/preference.rs',
+  'src-tauri/src/commands/project.rs',
+  'src-tauri/src/commands/provider.rs',
+  'src-tauri/src/commands/queue.rs',
+  'src-tauri/src/commands/remote.rs',
+  'src-tauri/src/commands/secret.rs',
+  'src-tauri/src/commands/skill.rs',
+  'src-tauri/src/commands/sub_agent.rs',
+  'src-tauri/src/commands/tool_system.rs',
+  'src-tauri/src/commands/usage.rs',
+  'src-tauri/src/commands/user_command.rs',
+  'src-tauri/src/commands/voice.rs',
+  'src-tauri/src/commands/voice_corpus.rs',
+  'src-tauri/src/commands/workspace.rs',
+  'src-tauri/src/platform.rs',
+  'src-tauri/src/remote/dispatch.rs',
+  'src-tauri/src/remote/http.rs',
+  'src/api.ts',
+  'src/dev/schema-data.ts',
+  'src/lib/app-event.ts',
+  'src/lib/composer-intent.ts',
+  'src/lib/invoke-response-schema.generated.ts',
+  'src/lib/transport.ts',
+  'src/types.ts',
+]
+for (const file of REQUIRED_FILES) {
+  const present = STAGED ? snapshot.read(file) != null : existsSync(join(ROOT, file))
+  if (!present) add(file, '缺少必需文件：这个检查器按路径读它，文件没了规则就只是不跑，不会红')
 }
 
 try {
@@ -221,7 +305,8 @@ for (const file of commandFiles) {
   for (const match of source.matchAll(
     /#\[tauri::command\][\s\S]{0,700}?\b(?:async\s+)?fn\s+(\w+)[\s\S]{0,500}?->\s*Result<([^\r\n{]+)/g,
   )) {
-    if (/\b(?:Row|Insert|Changeset)\b/.test(match[2])) {
+    // Diesel 的 Row / Insert / Changeset，和 SeaORM 的 Model / ActiveModel，都是持久化层的形状。
+    if (/\b(?:Row|Insert|Changeset|Model|ActiveModel)\b/.test(match[2])) {
       add(file, `命令 ${match[1]} 的公开返回值泄漏 persistence 类型`)
     }
   }
@@ -1763,60 +1848,35 @@ if (schema != null) {
   }
 }
 
-const exactDecimalMigrationFile = 'src-tauri/crates/core/migrations/00000000000049_exact_decimal_money/up.sql'
-const exactDecimalMigration = readAt(exactDecimalMigrationFile)
-for (const [migrationTable, liveTable] of [
-  ['model_configs_decimal', 'model_configs'],
-  ['audit_messages_decimal', 'audit_messages'],
-]) {
-  const tableBody = exactDecimalMigration?.match(
-    new RegExp(`CREATE TABLE ${migrationTable}\\s*\\(([\\s\\S]*?)\\r?\\n\\);`),
-  )?.[1]
+// 现行 schema 的唯一出处是 schema.snapshot.sql：SeaORM 基线建出来的库，由 core 的例子
+// 生成、core 的测试钉住。65 个 Diesel 迁移是冻结的历史，只给旧库的桥接重放——曾经在
+// 这里读迁移 49 的那条规则守的只是历史文本，基线改了它也不会红。
+const schemaSnapshotFile = 'src-tauri/crates/core/schema.snapshot.sql'
+const schemaSnapshot = readAt(schemaSnapshotFile)
+for (const table of ['model_configs', 'audit_messages']) {
+  const tableBody = schemaSnapshot == null ? null : sqlCreateTableBody(schemaSnapshot, table)
+  if (tableBody == null) {
+    add(schemaSnapshotFile, `快照里没有 CREATE TABLE "${table}"`)
+    continue
+  }
   for (const column of ['input_price', 'output_price', 'cache_read_price', 'cache_write_price', 'server_tool_price']) {
-    const canonicalTextCheck = new RegExp(
-      `\\b${column}\\s+TEXT\\s+CHECK\\s*\\(\\s*${column}\\s+IS\\s+NULL\\s+OR\\s+${column}\\s*=\\s*'0'\\s+OR\\s*\\(\\s*typeof\\(${column}\\)\\s*=\\s*'text'\\s+AND`,
-    )
-    if (tableBody == null || !canonicalTextCheck.test(tableBody)) {
+    if (!hasCanonicalDecimalCheck(tableBody, column)) {
       add(
-        exactDecimalMigrationFile,
-        `${liveTable}.${column} 必须在 canonical decimal CHECK 中显式拒绝非 TEXT SQLite storage class`,
+        schemaSnapshotFile,
+        `${table}.${column} 必须在 canonical decimal CHECK 中显式拒绝非 TEXT SQLite storage class`,
       )
     }
   }
 }
 
-const canonicalAutoReviewMigrationFile = 'src-tauri/crates/core/migrations/00000000000050_canonical_auto_review/up.sql'
-const canonicalAutoReviewMigration = readAt(canonicalAutoReviewMigrationFile)
-const autoReviewRewrite = canonicalAutoReviewMigration?.match(
-  /UPDATE messages\s+SET auto_review\s*=\s*\([\s\S]*?\)\s*WHERE auto_review IS NOT NULL;/,
-)?.[0]
-if (canonicalAutoReviewMigration == null) {
-  add(canonicalAutoReviewMigrationFile, '缺少 auto_review 历史数据 canonical migration')
-} else {
-  for (const pattern of [
-    /json_valid\(auto_review\)/,
-    /CONSTRAINT valid_auto_review_shape CHECK \(ok = 1\)/,
-    /COUNT\(DISTINCT verdict\.key\)/,
-    /COUNT\(DISTINCT usage_field\.key\)/,
-    /COUNT\(DISTINCT field\.key\)/,
-  ]) {
-    if (!pattern.test(canonicalAutoReviewMigration)) {
-      add(canonicalAutoReviewMigrationFile, 'migration 50 必须拒绝 malformed / duplicate-key auto_review JSON')
-      break
-    }
-  }
-}
-if (autoReviewRewrite == null) {
-  add(canonicalAutoReviewMigrationFile, 'migration 50 必须原地重写 messages.auto_review')
-} else {
-  for (const key of ['outcome', 'risk', 'authorization', 'rationale', 'stage', 'model', 'evidence']) {
-    if (!new RegExp(`['"]${key}['"]\\s*,`).test(autoReviewRewrite)) {
-      add(canonicalAutoReviewMigrationFile, `migration 50 canonical verdict 缺少 ${key}`)
-    }
-  }
-  if (/['"]usage['"]\s*,/.test(autoReviewRewrite)) {
-    add(canonicalAutoReviewMigrationFile, 'migration 50 canonical verdict 禁止保留重复的 usage payload')
-  }
+// `messages.auto_review` 的形状没有表级 CHECK 可守：迁移 50 那张 `valid_auto_review_shape`
+// 是 TEMP 守卫表，一次性数据改写的一部分，不在现行 schema 里（快照里 messages 没有 CHECK）。
+// 对历史改写文本的断言已删——它是冻结的历史。现行的形状约束在 Rust 侧，上面
+// record_auto_review 那几条规则守着；这里只钉住列本身：可空的 TEXT。
+const messagesBody = schemaSnapshot == null ? null : sqlCreateTableBody(schemaSnapshot, 'messages')
+if (messagesBody == null) add(schemaSnapshotFile, '快照里没有 CREATE TABLE "messages"')
+else if (!/"auto_review" text(?:,|\s*\))/.test(messagesBody)) {
+  add(schemaSnapshotFile, 'messages.auto_review 必须是可空 TEXT 列：typed AutoReviewVerdict 的 JSON 存在这里')
 }
 const schemaDataFile = 'src/dev/schema-data.ts'
 const schemaDataSource = readAt(schemaDataFile)
@@ -1858,6 +1918,89 @@ for (const [pattern, message] of [
 ]) {
   if (decimalSource != null && !pattern.test(decimalSource)) add(decimalFile, message)
 }
+
+// ── SeaORM 一侧 ────────────────────────────────────────────────────────────────
+//
+// Diesel 与 SeaORM 共存期间，实体是新的持久化形状，和 Row / Insert / Changeset 一样不许
+// 离开持久化层。规则都是语法层面的，和上面的 Diesel 规则一个脾气：
+//   · 实体只在 db/entity/ 下声明（或测试代码里）；Model / ActiveModel 不派生 Serialize；
+//     DerivePartialModel 的结构体叫 *Projection；列类型 Decimal / SqlBool / EpochMs。
+//   · 别处不给实体起别名、不裸导入它的 Model / ActiveModel / Entity / Column，命令返回值
+//     不提它——实体从 sea/ops 的函数签名出去，到命令边界已经是 InfoResponse。
+//   · 原生 SQL 只经 db/sql.rs 和桥接/基线那几个文件（docs/backend-neutrality.md）。
+//   · 没有 FromJsonQueryResult（JSON 列在边界上显式解码，不靠 serde 的宽松默认），没有
+//     BigDecimal（Decimal 的内部表示只在 decimal.rs），没有 sea-orm 的 with-bigdecimal
+//     （SQLite 上它的读取经过 f64）。
+// 看不见的绕法：`use entity::conversation; conversation::Entity::find()` 在 sea/ops 之外
+// 直接查——那是模块限定的用法，这里不拦；dieselOpsCalls 之外没有计数守它，靠审查。
+const ENTITY_DIR = 'src-tauri/crates/core/src/db/entity/'
+const RUST_CRATE_DIRS = ['src-tauri/crates/core/src', 'src-tauri/src', 'src-tauri/crates/meridiand/src']
+const STATEMENT_ALLOWED = new Set([
+  'src-tauri/crates/core/src/db/sql.rs',
+  'src-tauri/crates/core/src/db/sea/mod.rs',
+  'src-tauri/crates/core/src/db/sea/bridge.rs',
+  'src-tauri/crates/core/src/db/sea/legacy.rs',
+  'src-tauri/crates/core/src/db/sea/introspect.rs',
+  'src-tauri/crates/core/src/db/sea/baseline_gen.rs',
+])
+const STATEMENT_ALLOWED_DIR = 'src-tauri/crates/core/src/db/sea/migration/'
+const RAW_SQL = /\bStatement::from_string\b|\bStatement::from_sql_and_values\b|\.execute_unprepared\(/g
+
+const rustFiles = RUST_CRATE_DIRS.flatMap((dir) =>
+  STAGED || existsSync(join(ROOT, dir)) ? filesUnder(dir, ['.rs']) : [],
+)
+const rustSources = new Map(rustFiles.map((file) => [file, readAt(file)]))
+const testOnlyFiles = rustTestOnlyFiles(rustFiles, (file) => rustSources.get(file))
+for (const [file, source] of rustSources) {
+  if (source == null || testOnlyFiles.has(file)) continue
+  const text = rustProductionText(source)
+  const inEntityDir = file.startsWith(ENTITY_DIR)
+
+  if (/\bDeriveEntityModel\b/.test(text) && !inEntityDir) {
+    add(file, `DeriveEntityModel 只能出现在 ${ENTITY_DIR} 下（或测试代码里）`)
+  }
+  if (inEntityDir) for (const problem of seaEntityProblems(source)) add(file, problem)
+
+  for (const { name, target, line } of entityTypeAliases(text)) {
+    add(
+      file,
+      `第 ${line} 行禁止给实体起别名 type ${name} = ${target}：实体类型不离开 db/entity，经 sea/ops 的函数签名暴露`,
+    )
+  }
+  if (!inEntityDir) {
+    for (const { path } of bareEntityImports(text)) {
+      add(file, `禁止裸导入实体项 ${path}：导入实体模块，写 module::${path.split('::').pop()}`)
+    }
+  }
+  if (/\bFromJsonQueryResult\b/.test(text)) {
+    add(file, '禁止 FromJsonQueryResult：JSON 列在边界上显式解码，解码失败是错误而不是默认值')
+  }
+  if (file !== decimalFile && /\bBigDecimal\b/.test(text)) {
+    add(file, `BigDecimal 只在 ${decimalFile} 里出现：别处用 Decimal`)
+  }
+  if (!STATEMENT_ALLOWED.has(file) && !file.startsWith(STATEMENT_ALLOWED_DIR)) {
+    for (const match of text.matchAll(RAW_SQL)) {
+      const line = text.slice(0, match.index).split('\n').length
+      add(file, `第 ${line} 行禁止 ${match[0].replace(/\($/, '')}：原生 SQL 只经 db/sql.rs 与桥接 / 基线文件`)
+    }
+  }
+}
+
+// 两个 Cargo.toml 都不许开 sea-orm 的 with-bigdecimal。先去掉 `#` 注释：core 的那份正是在
+// 注释里解释为什么不开它。
+for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.toml']) {
+  const source = readAt(manifest)
+  if (source == null) continue
+  const uncommented = source.replace(/#[^\n]*/g, '')
+  if (/with-bigdecimal/.test(uncommented)) {
+    add(manifest, '禁止 sea-orm 的 with-bigdecimal feature：SQLite 上它的读取经过 f64，金额走 decimal.rs 的 TEXT 映射')
+  }
+}
+
+// SeaORM 侧与 decode_sqlite_bool 对应的那一道严格 0/1 转换，和 *_at 列的类型。
+const sqlBoolFile = 'src-tauri/crates/core/src/db/types.rs'
+const sqlBoolSource = readAt(sqlBoolFile)
+if (sqlBoolSource != null) for (const problem of sqlBoolProblems(sqlBoolSource)) add(sqlBoolFile, problem)
 
 // These names described the same cache-read rate and tier collection under
 // different spellings before API revision 3.  Historical migrations keep the

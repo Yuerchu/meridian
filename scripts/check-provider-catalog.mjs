@@ -25,6 +25,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import { sqlColumnDefault, sqlCreateTableBody } from './model-contract-rules.mjs'
 import { stagedSnapshot } from './staged-snapshot.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
@@ -39,10 +40,8 @@ const CATALOG_REL = `${CORE}/provider/provider_catalog.json`
 const REGISTRY_REL = `${CORE}/provider/registry.rs`
 const CAPABILITIES_REL = `${CORE}/provider/capabilities.rs`
 const MODEL_CATALOG_REL = `${CORE}/provider/model_catalog.json`
-const MIGRATIONS_REL = 'src-tauri/crates/core/migrations'
-
-/** 数据库里 api_format 列的合法取值。迁移 10 建的列,NOT NULL DEFAULT 'chat_completions'。 */
-const API_FORMATS = ['chat_completions', 'responses', 'gemma_tool', 'gemini_generate_content']
+/** 现行 schema：SeaORM 基线建出来的库导出的 DDL，core 的例子生成、测试钉住。 */
+const SCHEMA_SNAPSHOT_REL = 'src-tauri/crates/core/schema.snapshot.sql'
 
 /**
  * transport_profile 的合法取值。
@@ -116,19 +115,28 @@ if (entries.length === 0) fail('目录是空的')
 // `create_provider` 的字符串分支或兜底臂猜测。枚举当前只有无载荷单元变体，
 // `strum(serialize_all = "snake_case")` 决定持久化/IPC 拼写。
 const registrySrc = read(REGISTRY_REL)
-const providerTypeBody = registrySrc.match(/pub enum ProviderType\s*\{([\s\S]*?)\n\}/)?.[1] ?? ''
 const rustVariantToSnake = (variant) =>
   variant
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
     .toLowerCase()
-const KNOWN_TYPES = new Set(
-  [...providerTypeBody.matchAll(/^\s*([A-Z][A-Za-z0-9]*)\s*,\s*$/gm)].map((match) => rustVariantToSnake(match[1])),
-)
+/** registry.rs 里一个 `pub enum Name { … }` 的单元变体，按 strum 的 snake_case 拼写。 */
+const enumVariantsSnake = (name) => {
+  const body = registrySrc.match(new RegExp(`pub enum ${name}\\s*\\{([\\s\\S]*?)\\n\\}`))?.[1] ?? ''
+  return new Set([...body.matchAll(/^\s*([A-Z][A-Za-z0-9]*)\s*,\s*$/gm)].map((match) => rustVariantToSnake(match[1])))
+}
+const KNOWN_TYPES = enumVariantsSnake('ProviderType')
 if (KNOWN_TYPES.size === 0) fail(`没能从 ${REGISTRY_REL} 里认出任何 provider_type,校验器需要更新`)
 
 // `create_provider` 对这个枚举做穷尽匹配；未知 provider_type 在 parse 时即失败。
 // 多家兼容厂商仍可共享 `ProviderType::Openai`，共享的是已声明的类型，不是未知值兜底。
+
+// ── api_format 的合法取值 ──────────────────────────────────────
+//
+// 同样是 registry.rs 里的闭合枚举 `ApiFormat`，`strum(serialize_all = "snake_case")`
+// 决定数据库和目录里的拼写。以前这里是一份手写常量,枚举加了变体它不会跟上。
+const API_FORMATS = [...enumVariantsSnake('ApiFormat')]
+if (API_FORMATS.length === 0) fail(`没能从 ${REGISTRY_REL} 里认出任何 ApiFormat 变体,校验器需要更新`)
 
 // ── capabilities 认哪些 catalog namespace ──────────────────────
 const capsSrc = read(CAPABILITIES_REL)
@@ -137,17 +145,17 @@ const NAMESPACES = new Set([...resolveFn.matchAll(/"([a-z0-9_]+)"\s*\)/g)].map((
 const modelCatalog = JSON.parse(read(MODEL_CATALOG_REL))
 for (const m of modelCatalog.models ?? []) NAMESPACES.add(m.provider)
 
-// ── api_format 列的合法取值,和迁移对账 ────────────────────────
+// ── api_format 列的默认值,和现行 schema 对账 ──────────────────
 //
-// 迁移里那句 DEFAULT 是这一列语义的唯一出处。上面 API_FORMATS 是手写的常量,
-// 这里确认它至少包含迁移声明的默认值——默认值要是变了而常量没跟上,后面所有
-// 校验都建立在一个过时的集合上。
-const migrationDefault = (() => {
-  const sql = read(`${MIGRATIONS_REL}/00000000000010_provider_api_format/up.sql`)
-  return sql.match(/DEFAULT\s+'([a-z_]+)'/)?.[1]
-})()
-if (migrationDefault && !API_FORMATS.includes(migrationDefault)) {
-  fail(`迁移 10 的 api_format 默认值是 '${migrationDefault}',不在校验器的 API_FORMATS 里`)
+// 一行没写 api_format 时拿到的就是这个 DEFAULT,所以它必须是枚举认的一个值——枚举
+// 改了拼写而列的默认没跟上,新建的行一读就失败。出处是 schema 快照里 providers 的
+// CREATE TABLE,不是迁移 10：那是冻结的历史,基线改了它也不会变。
+const providersBody = sqlCreateTableBody(read(SCHEMA_SNAPSHOT_REL), 'providers')
+const schemaDefault = providersBody == null ? null : sqlColumnDefault(providersBody, 'api_format')
+if (schemaDefault == null) {
+  fail(`${SCHEMA_SNAPSHOT_REL} 里没认出 providers.api_format 的 DEFAULT,校验器需要更新`)
+} else if (!API_FORMATS.includes(schemaDefault)) {
+  fail(`schema 里 providers.api_format 的默认值是 '${schemaDefault}',不是 ApiFormat 的变体`)
 }
 
 // ── 逐条 entry ─────────────────────────────────────────────────

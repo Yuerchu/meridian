@@ -1,24 +1,32 @@
 #!/usr/bin/env node
 /**
- * 把 migrations/ 在一个真实的内存 SQLite 里跑一遍，和 src/dev/schema-data.ts 对账。
+ * 把 schema.snapshot.sql 装进一个真实的内存 SQLite，和 src/dev/schema-data.ts 对账。
  *
  * 那份数据一半是散文——为什么 parent_id 不建外键、为什么 NULL 和 0 是两个答案——
  * 这半边只能人写。另一半是纯事实：有哪些表、哪些列、什么类型、外键删的时候怎么走。
- * 事实那半边一旦和迁移对不上，整张图就开始骗人，而且骗得很有说服力。
+ * 事实那半边一旦和库对不上，整张图就开始骗人，而且骗得很有说服力。
  *
- * **用真实 SQLite 而不是手写 SQL 解析器**,是因为手写的那版会在关键处答错。它把
- * `ALTER TABLE ... RENAME TO` 当成只改表名,而 SQLite 3.25 起会同时改写其它表里
- * 指向它的 REFERENCES 子句——两种 foreign_keys 设置下都会(在 3.50.4 上实测过)。
- * 迁移 24 曾因此留下一条悬空外键，直到迁移 48 连同死表一起清掉。一个会在重命名
- * 上答错的校验器，恰好会在最需要它的地方沉默。
+ * **现行 schema 的唯一出处是 `src-tauri/crates/core/schema.snapshot.sql`**：SeaORM 基线
+ * 在一个新库上建出来的东西，按 SQLite 自己存的样子导出成 DDL，由
+ * `cargo run -p meridian-core --example gen_schema_snapshot --features test-support` 生成、
+ * core 的一个测试钉住（`introspect::ddl`，快照和迁移对不上那边先红）。65 个 Diesel 迁移
+ * 是冻结的历史，只给旧库的桥接重放；读它们的校验器守的是历史文本，不是现行的库。
  *
- * 重放条件对齐 `db/mod.rs:78`:迁移就是在 `PRAGMA foreign_keys=OFF` 下跑的。
+ * **仍然用真实 SQLite 而不是解析 SQL 文本**：快照是可执行的 DDL，装进去再用
+ * `PRAGMA table_info` / `foreign_key_list` 读回来，比在正则里重造一遍 SQLite 的语法
+ * 可靠得多。这条教训来自它的前身：手写解析器那版把 `ALTER TABLE ... RENAME TO` 当成
+ * 只改表名，而 SQLite 3.25 起会同时改写其它表里指向它的 REFERENCES 子句——迁移 24
+ * 曾因此留下一条悬空外键，直到迁移 48 连同死表一起清掉。那个重命名今天已经折叠在
+ * 快照里了（快照记录的是它的*结果*），但一个会在语法上答错的校验器，恰好会在最需要它
+ * 的地方沉默，所以执行的还是 SQLite 本身。
+ *
+ * 装载条件对齐基线的建库方式：`PRAGMA foreign_keys=OFF`，建表顺序由快照决定。
  *
  *   pnpm schema:check            核对工作树
  *   pnpm schema:check --staged   核对暂存区(pre-commit 用这个)
  *   pnpm schema                  打开画布(#playground/schema)
  */
-import { readFileSync, readdirSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -27,8 +35,9 @@ import { stagedSnapshot } from './staged-snapshot.mjs'
 
 const SELF = fileURLToPath(import.meta.url)
 const ROOT = join(dirname(SELF), '..')
-const MIG_DIR = 'src-tauri/crates/core/migrations'
+const SNAPSHOT_REL = 'src-tauri/crates/core/schema.snapshot.sql'
 const DATA_REL = 'src/dev/schema-data.ts'
+const REGENERATE = 'cargo run -p meridian-core --example gen_schema_snapshot --features test-support'
 
 const STAGED = process.argv.includes('--staged')
 
@@ -53,7 +62,7 @@ try {
   ;({ DatabaseSync } = await import('node:sqlite'))
 } catch {
   if (process.execArgv.includes('--experimental-sqlite')) {
-    console.error('✗ 这个 Node 没有 node:sqlite，无法重放迁移。需要 Node >= 22.5。')
+    console.error('✗ 这个 Node 没有 node:sqlite，无法装载 schema 快照。需要 Node >= 22.5。')
     process.exit(1)
   }
   const r = spawnSync(process.execPath, ['--experimental-sqlite', SELF, ...process.argv.slice(2)], {
@@ -63,45 +72,39 @@ try {
 }
 
 // ── 取内容:工作树还是暂存区 ─────────────────────────────────────
-// pre-commit 要校验的是**将要提交的东西**。读工作树的话,暂存了迁移、却把
+// pre-commit 要校验的是**将要提交的东西**。读工作树的话,暂存了 core 指针、却把
 // schema-data.ts 的修改留在工作区没暂存,校验会通过而提交进去的两半对不上。
-// 迁移在 meridian-core 子模块里,「暂存」在那边指外层将要指向的 commit——
+// 快照在 meridian-core 子模块里,「暂存」在那边指外层将要指向的 commit——
 // 见 staged-snapshot.mjs。
 const snapshot = STAGED ? stagedSnapshot(ROOT) : null
 
 function readAt(relPath) {
-  if (!STAGED) return readFileSync(join(ROOT, relPath), 'utf8')
+  if (!STAGED) return existsSync(join(ROOT, relPath)) ? readFileSync(join(ROOT, relPath), 'utf8') : null
   return snapshot.read(relPath) // 暂存区里没有这个文件（未跟踪 / 未暂存 / 已删除）时为 null
 }
 
-function migrationFiles() {
-  if (!STAGED) {
-    return readdirSync(join(ROOT, MIG_DIR), { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => `${MIG_DIR}/${d.name}/up.sql`)
-      .sort()
+// ── 装载快照 ────────────────────────────────────────────────────
+function loadSnapshot() {
+  const sql = readAt(SNAPSHOT_REL)
+  if (sql == null) {
+    // 没有快照就没有可核对的 schema。它随 core 的提交走：改了基线的那次提交必须带上
+    // 重新生成的快照（core 的测试会先拦住一次没带的）。
+    console.error(
+      `✗ 缺少 ${SNAPSHOT_REL}${STAGED ? '（外层指向的 core 提交里没有它）' : ''}。\n` +
+        `  现行 schema 只从这份快照读；core 的提交必须带上它：在 src-tauri/crates 里运行\n` +
+        `  ${REGENERATE}`,
+    )
+    process.exit(1)
   }
-  return snapshot
-    .list(MIG_DIR)
-    .filter((p) => p.endsWith('/up.sql'))
-    .sort()
-}
 
-// ── 真实重放 ────────────────────────────────────────────────────
-function replayMigrations() {
   const db = new DatabaseSync(':memory:')
-  // 和 db/mod.rs 一致:迁移期间外键是关的,好让重建表的 DROP 不触发 ON DELETE。
+  // 和基线建库时一致:外键关着,建表顺序不必按引用关系排。
   db.exec('PRAGMA foreign_keys=OFF')
-
-  for (const file of migrationFiles()) {
-    const sql = readAt(file)
-    if (sql == null) continue
-    try {
-      db.exec(sql)
-    } catch (e) {
-      console.error(`✗ 迁移执行失败：${file}\n  ${e.message}`)
-      process.exit(1)
-    }
+  try {
+    db.exec(sql)
+  } catch (e) {
+    console.error(`✗ 快照装载失败：${SNAPSHOT_REL}\n  ${e.message}\n  它不是手写的；重新生成：${REGENERATE}`)
+    process.exit(1)
   }
 
   const tables = new Map()
@@ -147,10 +150,10 @@ async function loadDocData() {
   if (STAGED) {
     const src = readAt(DATA_REL)
     if (src == null) {
-      // 迁移进了暂存区、这份数据却没有，正是这个校验存在的理由：两半必须一起提交。
+      // core 指针进了暂存区、这份数据却没有，正是这个校验存在的理由：两半必须一起提交。
       console.error(
         `✗ ${DATA_REL} 不在暂存区里（未跟踪，或改了没 git add）。\n` +
-          `  迁移和这份数据得一起提交，否则提交历史里会出现一个「结构变了但图没变」的版本。\n` +
+          `  schema 和这份数据得一起提交，否则提交历史里会出现一个「结构变了但图没变」的版本。\n` +
           `  git add ${DATA_REL}`,
       )
       process.exit(1)
@@ -169,7 +172,18 @@ async function loadDocData() {
 }
 
 // ── 对账 ────────────────────────────────────────────────────────
-const NORM = (t) => (t === 'INT' ? 'INTEGER' : t)
+// 类型按 SQLite 的亲和比，不按拼写：Diesel 迁移写的是 BIGINT / REAL，桥接过来的旧库
+// 就是那样存的；sea-query 给新库渲染的是 integer / double。两种拼写在 SQLite 里是同一
+// 回事（datatype3 §3.1 的规则），画布上的 BIGINT 和快照里的 integer 没有可报的差别。
+// 真正的类型漂移——整数列变成文本列——照样红。
+const NORM = (t) => {
+  const type = String(t).toUpperCase()
+  if (type.includes('INT')) return 'INTEGER'
+  if (type.includes('CHAR') || type.includes('CLOB') || type.includes('TEXT')) return 'TEXT'
+  if (type === '' || type.includes('BLOB')) return 'BLOB'
+  if (type.includes('REAL') || type.includes('FLOA') || type.includes('DOUB')) return 'REAL'
+  return 'NUMERIC'
+}
 
 function compare(sqlTables, doc) {
   const problems = []
@@ -201,8 +215,8 @@ function compare(sqlTables, doc) {
       const flags = new Set(docC.flags)
 
       const st = NORM(sqlC.type)
-      const dt = NORM(String(docC.type).toUpperCase())
-      if (st !== dt) add(name, `${colName} 类型：迁移 ${st}，数据 ${dt}`)
+      const dt = NORM(docC.type)
+      if (st !== dt) add(name, `${colName} 类型：快照 ${sqlC.type}（${st} 亲和），数据 ${docC.type}（${dt} 亲和）`)
 
       // SQLite 的 INTEGER PRIMARY KEY 隐含 NOT NULL，table_info 却报 notnull=0。
       if (sqlC.notNull && !flags.has('NN') && !flags.has('PK')) add(name, `${colName}：迁移是 NOT NULL，数据没标 NN`)
@@ -261,7 +275,7 @@ function compare(sqlTables, doc) {
 }
 
 // ── 跑 ──────────────────────────────────────────────────────────
-const sqlTables = replayMigrations()
+const sqlTables = loadSnapshot()
 const doc = await loadDocData()
 const problems = compare(sqlTables, doc)
 
@@ -270,11 +284,13 @@ const fkTotal = doc.EDGES.filter((e) => e.kind === 'fk').length
 const colTotal = doc.TABLES.reduce((n, t) => n + t.columns.length, 0)
 
 if (problems.length === 0) {
-  console.log(`✓ ${DATA_REL} 与迁移一致（${where}）：${sqlTables.size} 张表 / ${colTotal} 个字段 / ${fkTotal} 条外键`)
+  console.log(
+    `✓ ${DATA_REL} 与 schema 快照一致（${where}）：${sqlTables.size} 张表 / ${colTotal} 个字段 / ${fkTotal} 条外键`,
+  )
   process.exit(0)
 }
 
-console.error(`✗ ${DATA_REL} 与迁移对不上（${where}），共 ${problems.length} 处：\n`)
+console.error(`✗ ${DATA_REL} 与 schema 快照对不上（${where}），共 ${problems.length} 处：\n`)
 const byTable = new Map()
 for (const p of problems) {
   if (!byTable.has(p.table)) byTable.set(p.table, [])
@@ -285,7 +301,9 @@ for (const [table, list] of byTable) {
   for (const w of list) console.error(`    · ${w}`)
 }
 console.error(
-  `\n  改了 migrations/ 就要同步 ${DATA_REL} —— 结构（表/列/类型/外键）必须对上，` +
+  `\n  改了 SeaORM 迁移（db/sea/migration/）就要在 src-tauri/crates 里重新生成快照：` +
+    `\n    ${REGENERATE}` +
+    `\n  再同步 ${DATA_REL} —— 结构（表/列/类型/外键）必须对上，` +
     '\n  说明文字（note / rels / rules）是这份数据真正的价值所在，顺手补上新决策背后的理由。' +
     '\n  画布：pnpm schema',
 )

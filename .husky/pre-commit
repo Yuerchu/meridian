@@ -18,39 +18,43 @@ if git diff --cached --name-only | grep -qE '^src-tauri/crates$'; then
   fi
 fi
 
-# 动了迁移就核一遍 src/dev/schema-data.ts:那份数据一半是说明文字,只能人写;
-# 另一半是纯结构,一旦和迁移对不上,那张图就开始很有说服力地骗人。
+# 动了 schema 就核一遍 src/dev/schema-data.ts:那份数据一半是说明文字,只能人写;
+# 另一半是纯结构,一旦和库对不上,那张图就开始很有说服力地骗人。现行 schema 读的是
+# core 里的 schema.snapshot.sql（SeaORM 基线建出来的库导出的 DDL），不再重放迁移。
 #
-# --staged:校验的是**将要提交的东西**。读工作树的话,暂存了迁移、却把 schema-data.ts
+# --staged:校验的是**将要提交的东西**。读工作树的话,暂存了 core 指针、却把 schema-data.ts
 # 的改动留在工作区没暂存,这里会通过,而提交进去的两半对不上。
 #
 # src-tauri/crates 是 meridian-core 子模块:core 的文件不会出现在外层的暂存列表里,
 # 出现的只有那个 gitlink 本身(`src-tauri/crates`,指针动了才有)。所以下面三处
-# 都把它算作触发条件——指针一动,迁移/目录/合约都可能跟着变,三个检查一起跑
+# 都把它算作触发条件——指针一动,快照/目录/合约都可能跟着变,三个检查一起跑
 # 也就几秒。脚本读子模块内容走的是外层暂存的那个 commit(scripts/staged-snapshot.mjs)。
-if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^src/dev/schema-data\.ts$'; then
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^src/dev/schema-data\.ts$|^scripts/(check-db-schema|model-contract-rules|staged-snapshot)\.mjs$'; then
   node scripts/check-db-schema.mjs --staged
 fi
 
 # 厂商目录同理:它只描述展示与预填,却会以很有把握的样子出错——写着某家走
 # responses,而 adapter 根本不认那个 provider_type,建出来的行发不出请求。
 # registry / capabilities 那两侧改了也要核,因为对不上可能是它们动了而目录没跟。
-if git diff --cached --name-only | grep -qE '^src-tauri/crates$'; then
+# api_format 的取值来自 registry 的枚举,默认值来自 schema 快照,都在子模块里。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^scripts/(check-provider-catalog|model-contract-rules|staged-snapshot)\.mjs$'; then
   node scripts/check-provider-catalog.mjs --staged
 fi
 
-# 模型层的四条红线：持久化/DTO 命名分层、first-party 请求拒绝未知字段、
-# 金额全程 Decimal 字符串、invoke response 的生成式 runtime exact schema。
+# 模型层的红线：持久化/DTO 命名分层、first-party 请求拒绝未知字段、
+# 金额全程 Decimal 字符串、invoke response 的生成式 runtime exact schema，
+# 以及 SeaORM 实体的归属与列类型（CLAUDE.md「Hard model and protocol standards」）。
 # 任何一侧改动都检查暂存快照，避免靠未暂存文件通过；生成器和它依赖的
 # syntax helper 自己变化也必须触发 freshness check。
-if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crates$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?|staged-snapshot)\.mjs$'; then
+if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crates$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?|transaction-graph-lib|staged-snapshot)\.mjs$'; then
   node scripts/check-model-contracts.mjs --staged
 fi
 
 # 事务调用图：Diesel 与 SeaORM 共存期间，一个事务必须整个落在一个连接池上；
 # Diesel 事务里不能再碰到另一个 immediate_transaction。docs/transaction-graph.md
-# 是它生成的分期依据，过期也算失败（node scripts/check-transaction-graph.mjs --write）。
-if git diff --cached --name-only | grep -qE '^src-tauri/.*\.rs$|^src-tauri/crates$|^scripts/(check-transaction-graph|transaction-graph-lib|staged-snapshot)\.mjs$|^docs/(transaction-graph\.md|migration-counters\.json)$'; then
+# 是它生成的分期依据，过期也算失败（node scripts/check-transaction-graph.mjs --write）；
+# docs/migration-counters.json 是只减不增的基线，docs/dual-impl.md 是双实现登记表。
+if git diff --cached --name-only | grep -qE '^src-tauri/.*\.rs$|^src-tauri/crates$|^scripts/(check-transaction-graph|transaction-graph-lib|staged-snapshot)\.mjs$|^docs/(transaction-graph\.md|migration-counters\.json|dual-impl\.md)$'; then
   node scripts/check-transaction-graph.mjs --staged
 fi
 

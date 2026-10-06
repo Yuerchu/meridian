@@ -25,8 +25,10 @@
  *   - 宏展开出来的代码。
  * 能力类型（写只能经 WriteTx）和运行时守卫是另外两层防线，这里是第三层。
  *
- * 另外统计两个迁移计数（Diesel ops 调用点、Diesel API 引用）。计数只有在
- * docs/migration-counters.json 存在时才强制"只减不增"：基线在 Phase 2 合入时写入。
+ * 另外统计迁移进度：两个计数（Diesel ops 调用点、Diesel API 引用）、还没有 entity 的表
+ * （db/entity/mod.rs 的 PENDING_TABLES），和双实现登记（docs/dual-impl.md：db/ops 与
+ * db/sea/ops 里同名的一对 pub fn，带 Diesel 那边剩余的调用点数）。计数和表单只有在
+ * docs/migration-counters.json 存在时才强制"只减不增、只认已知的名字"：基线在 Phase 2c 写入。
  *
  * 用法：node scripts/check-transaction-graph.mjs [--staged] [--write]
  *   --staged  读将要提交的内容（含子模块 pinned commit）
@@ -352,27 +354,160 @@ function names(fns) {
   return [...new Set(fns.map((fn) => `${fn.file.module.join('::') || fn.file.crate.name}::${fn.name}`))].join('、')
 }
 
+const PENDING_TABLES_FILE = 'src-tauri/crates/core/src/db/entity/mod.rs'
+
+/**
+ * `PENDING_TABLES` 的内容：`pub const PENDING_TABLES: &[&str] = &[` 之后每行一个
+ * `    "name",`。找不到、格式不对、没排序、有重复都是硬错误——这个常量就是为了被
+ * 解析才写成那样，解析不了就不能假装它是空的。读的是原文，不是抹掉字符串的那份。
+ */
+export function parsePendingTables(source) {
+  const match = /pub const PENDING_TABLES: &\[&str\] = &\[([\s\S]*?)\];/.exec(source)
+  if (!match) {
+    throw new Error(
+      `${PENDING_TABLES_FILE} 里找不到 \`pub const PENDING_TABLES: &[&str] = &[ … ];\`，检查器按这个写法解析`,
+    )
+  }
+  const names = []
+  for (const line of match[1]
+    .split('\n')
+    .map((l) => l.trim())
+    .filter(Boolean)) {
+    const item = /^"([a-z][a-z0-9_]*)",$/.exec(line)
+    if (!item) throw new Error(`PENDING_TABLES 的每一项必须是 \`"table_name",\` 一行一个，这一行不是：${line}`)
+    names.push(item[1])
+  }
+  for (let k = 1; k < names.length; k++) {
+    if (names[k - 1] >= names[k]) throw new Error(`PENDING_TABLES 必须排序且不重复：${names[k - 1]} 后面是 ${names[k]}`)
+  }
+  return names
+}
+
 export function counters({ files, callSites }) {
   const dieselOpsCalls = callSites.filter(
     (s) => !s.fn.file.path.includes('/db/ops/') && s.targets.some((t) => t.opsModule && t.diesel),
   ).length
   let dieselApiRefs = 0
   for (const file of files) dieselApiRefs += (file.text.match(DIESEL_API) ?? []).length
-  return { dieselOpsCalls, dieselApiRefs }
+  const entityMod = files.find((f) => f.path === PENDING_TABLES_FILE)
+  if (!entityMod)
+    throw new Error(`找不到 ${PENDING_TABLES_FILE}：PENDING_TABLES 是迁移进度的一部分，没有它就没有可比的基线`)
+  return { dieselOpsCalls, dieselApiRefs, pendingTables: parsePendingTables(entityMod.raw) }
 }
 
 /**
  * 计数必须等于提交的基线：涨了是倒退；降了也要把基线跟下去，否则 100 → 80
  * 之后再涨回 99 也能通过，"只减不增"就只剩一个天花板。
+ *
+ * 数组（pendingTables）按集合比：现在的每个名字都得在基线里——共存期新建的表自带
+ * entity，不进待办；少了名字就把基线更新成当前列表。同样是"只减"，减的是名字。
  */
 export function baselineProblems(counts, baseline, baselinePath) {
   const problems = []
   for (const [name, value] of Object.entries(counts)) {
-    if (!(name in baseline)) problems.push(`${baselinePath} 缺少计数 ${name}`)
-    else if (value > baseline[name]) problems.push(`计数 ${name} 从 ${baseline[name]} 涨到 ${value}：只减不增`)
-    else if (value < baseline[name]) {
-      problems.push(`计数 ${name} 从 ${baseline[name]} 降到 ${value}：把 ${baselinePath} 里的基线更新为 ${value}`)
+    if (!(name in baseline)) {
+      problems.push(`${baselinePath} 缺少计数 ${name}`)
+      continue
     }
+    const expected = baseline[name]
+    if (Array.isArray(value)) {
+      if (!Array.isArray(expected)) {
+        problems.push(`${baselinePath} 里的 ${name} 必须是数组`)
+        continue
+      }
+      const known = new Set(expected)
+      const strangers = value.filter((item) => !known.has(item))
+      for (const item of strangers) {
+        problems.push(`\`${item}\` 不在基线里：共存期新建的表必须带 entity，不得进 PENDING_TABLES`)
+      }
+      if (strangers.length === 0 && value.length < expected.length) {
+        const gone = expected.filter((item) => !value.includes(item))
+        problems.push(
+          `${name} 从 ${expected.length} 降到 ${value.length}（${gone.join('、')} 有 entity 了）：把 ${baselinePath} 里的基线更新为当前列表`,
+        )
+      }
+      continue
+    }
+    if (value > expected) problems.push(`计数 ${name} 从 ${expected} 涨到 ${value}：只减不增`)
+    else if (value < expected) {
+      problems.push(`计数 ${name} 从 ${expected} 降到 ${value}：把 ${baselinePath} 里的基线更新为 ${value}`)
+    }
+  }
+  return problems
+}
+
+export const DUAL_IMPL_DOC = 'docs/dual-impl.md'
+
+/** `fn` 前面是不是 `pub`（含 `pub(crate)`），中间允许 `async` / `unsafe` / `const`。 */
+function isPub(text, at) {
+  return /\bpub(?:\([^)]*\))?\s+(?:(?:async|unsafe|const)\s+)*$/.test(text.slice(Math.max(0, at - 60), at))
+}
+
+/**
+ * 双实现：db/sea/ops/<module>.rs 里的 pub fn，在 db/ops/<module>.rs 里有同名的那一个
+ * （Diesel 版本）。每一对记下 Diesel 版本在 db/ops 之外还剩多少调用点——和 dieselOpsCalls
+ * 同一口径，含测试代码：测试还在调它，它就还删不掉。
+ *
+ * 看不见的绕法：SeaORM 版本换个名字写就不是一对，这张表看不见它。兜住它的只有
+ * dieselOpsCalls 只减不增——新的 Diesel 调用点进不来，旧的只能往 SeaORM 挪。
+ */
+export function dualImplementations({ files, callSites }) {
+  const isModule = (file, ...prefix) =>
+    file.crate.name === 'core' &&
+    file.module.length === prefix.length + 1 &&
+    prefix.every((segment, k) => file.module[k] === segment)
+  const pairs = []
+  for (const file of files) {
+    if (!isModule(file, 'db', 'sea', 'ops')) continue
+    const module = file.module[3]
+    const dieselFns = files
+      .filter((f) => isModule(f, 'db', 'ops') && f.module[2] === module)
+      .flatMap((f) => f.fns.filter((fn) => !fn.test))
+    for (const fn of file.fns) {
+      if (fn.test || !isPub(file.text, fn.at)) continue
+      const diesel = dieselFns.filter((twin) => twin.name === fn.name)
+      if (!diesel.length) continue
+      const remaining = callSites.filter(
+        (s) => !s.fn.file.path.includes('/db/ops/') && s.targets.some((t) => diesel.includes(t)),
+      ).length
+      pairs.push({ module, name: fn.name, remaining })
+    }
+  }
+  return pairs.sort((a, b) => (`${a.module}::${a.name}` < `${b.module}::${b.name}` ? -1 : 1))
+}
+
+/**
+ * docs/dual-impl.md 必须恰好登记这些对：一行 `| module::name | 剩余 Diesel 调用点 |`。
+ * 少一行、多一行、数字不对都是红；剩余调用点为 0 的那一对也是红——那时该删掉
+ * Diesel 版本，而不是让两份永远并存。
+ */
+export function dualImplProblems(pairs, doc) {
+  if (doc == null) return [`${DUAL_IMPL_DOC} 不存在：双实现登记表必须在，哪怕是空的`]
+  const problems = []
+  const rows = new Map()
+  for (const m of doc.matchAll(/^\|\s*(\w+::\w+)\s*\|\s*(\d+)\s*\|\s*$/gm)) {
+    if (rows.has(m[1])) problems.push(`${DUAL_IMPL_DOC} 里 ${m[1]} 登记了两次`)
+    rows.set(m[1], Number(m[2]))
+  }
+  const seen = new Set()
+  for (const { module, name, remaining } of pairs) {
+    const key = `${module}::${name}`
+    seen.add(key)
+    if (!rows.has(key)) {
+      problems.push(
+        `${DUAL_IMPL_DOC} 缺少 ${key}（剩余 Diesel 调用点 ${remaining}）：加一行 \`| ${key} | ${remaining} |\``,
+      )
+    } else if (rows.get(key) !== remaining) {
+      problems.push(`${DUAL_IMPL_DOC} 里 ${key} 的剩余 Diesel 调用点写的是 ${rows.get(key)}，实际 ${remaining}`)
+    }
+    if (remaining === 0) {
+      problems.push(
+        `${key} 的 Diesel 版本已经没有调用点：删掉 db/ops/${module}.rs 里的 ${name}（和登记表里的这一行），不要让两份永远并存`,
+      )
+    }
+  }
+  for (const key of rows.keys()) {
+    if (!seen.has(key)) problems.push(`${DUAL_IMPL_DOC} 多出 ${key}：db/sea/ops 与 db/ops 里不是一对同名 pub fn`)
   }
   return problems
 }
@@ -465,7 +600,13 @@ function main() {
   }
 
   const graph = analyze(loadSources(read, list))
-  const counts = counters(graph)
+  let counts
+  try {
+    counts = counters(graph)
+  } catch (error) {
+    console.error(`✗ ${error.message}`)
+    process.exit(1)
+  }
   const problems = [...violations(graph), ...expectedEdgeProblems(graph)]
   for (const where of uncheckedReceivers(graph)) {
     console.warn(`⚠ R2 无法检查 ${where}：接收者是一次调用的结果，认不出是哪个池`)
@@ -474,6 +615,7 @@ function main() {
   const baselinePath = 'docs/migration-counters.json'
   const baselineRaw = read(baselinePath)
   if (baselineRaw != null) problems.push(...baselineProblems(counts, JSON.parse(baselineRaw), baselinePath))
+  problems.push(...dualImplProblems(dualImplementations(graph), read(DUAL_IMPL_DOC)))
 
   const docPath = 'docs/transaction-graph.md'
   const doc = render(graph, counts)
@@ -491,7 +633,8 @@ function main() {
   }
   console.log(
     `✓ 事务调用图：${graph.roots.filter((r) => !r.test).length} 个事务根，` +
-      `Diesel ops 调用点 ${counts.dieselOpsCalls}，Diesel API 引用 ${counts.dieselApiRefs}`,
+      `Diesel ops 调用点 ${counts.dieselOpsCalls}，Diesel API 引用 ${counts.dieselApiRefs}，` +
+      `待迁移的表 ${counts.pendingTables.length}，双实现 ${dualImplementations(graph).length} 对`,
   )
 }
 
