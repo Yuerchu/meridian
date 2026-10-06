@@ -133,10 +133,11 @@ pub async fn journal_blame(
     } = request;
     let root = super::workspace::require_root(&app, conversation_id).await?;
     let services = app.services();
-    let pool = services.db.clone();
     let blob_root = meridian_core::journal::journal_root(&services.paths.data_dir);
 
-    tokio::task::spawn_blocking(move || {
+    // The disk read stays on a blocking thread; the blame itself prefetches
+    // the chain on the runtime and walks it on a blocking thread of its own.
+    let (disk, norm) = tokio::task::spawn_blocking(move || {
         // Opened on the checked handle, and the *canonical* path from that
         // handle is what keys the journal — the requested spelling is not
         // what was opened, and it is not what the capture side recorded.
@@ -161,13 +162,15 @@ pub async fn journal_blame(
         }
 
         let norm = meridian_core::journal::norm_path(&real).ok_or("non-utf8 path: not journalled")?;
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let cancel = tokio_util::sync::CancellationToken::new();
-        meridian_core::journal::blame::blame(&mut conn, &blob_root, &norm, &disk, &cancel)
+        Ok::<_, String>((disk, norm))
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map(Into::into)
+    .map_err(|e| e.to_string())??;
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    meridian_core::journal::blame::blame(&services.sea, &blob_root, &norm, disk, cancel)
+        .await
+        .map(Into::into)
 }
 
 /// Every journalled version of one file, oldest first.
@@ -182,24 +185,27 @@ pub async fn journal_file_history(
     } = request;
     let root = super::workspace::require_root(&app, conversation_id).await?;
     let services = app.services();
-    let pool = services.db.clone();
 
-    tokio::task::spawn_blocking(move || {
+    let norm = tokio::task::spawn_blocking(move || {
         let resolved =
             meridian_core::tools::verified::verify_path(&root.join(&rel_path), Some(&root)).map_err(|e| e.message())?;
-        let norm = meridian_core::journal::norm_path(&resolved).ok_or("non-utf8 path: not journalled")?;
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let Some(file) = db::ops::journal::file_by_path(&mut conn, &norm).map_err(|e| e.to_string())? else {
-            return Ok(Vec::new());
-        };
-        db::ops::journal::chain(&mut conn, &file.id)
-            .map_err(|e| e.to_string())?
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect()
+        meridian_core::journal::norm_path(&resolved).ok_or_else(|| "non-utf8 path: not journalled".to_string())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    let Some(file) = db::sea::ops::journal::file_by_path(&services.sea, &norm)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(Vec::new());
+    };
+    db::sea::ops::journal::chain(&services.sea, &file.id)
+        .await
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .map(TryInto::try_into)
+        .collect()
 }
 
 /// The full content a version left behind. `404`-shaped errors rather than
@@ -212,17 +218,17 @@ pub async fn journal_version_content(
 ) -> Result<JournalVersionContentResponse, String> {
     let version_id = request.version_id;
     let services = app.services();
-    let pool = services.db.clone();
     let blob_root: PathBuf = meridian_core::journal::journal_root(&services.paths.data_dir);
 
+    let version = db::sea::ops::journal::version_by_id(&services.sea, &version_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("no such version")?;
+    let sha = version
+        .new_sha
+        .ok_or("this version is a deletion; it left no content")?;
+    // The blob store re-hashes what it reads: file work, off the runtime.
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let version = db::ops::journal::version_by_id(&mut conn, &version_id)
-            .map_err(|e| e.to_string())?
-            .ok_or("no such version")?;
-        let sha = version
-            .new_sha
-            .ok_or("this version is a deletion; it left no content")?;
         meridian_core::journal::blobs::load(&blob_root, &sha)
             .map(|content| JournalVersionContentResponse { content })
             .map_err(|e| format!("snapshot unavailable: {e}"))

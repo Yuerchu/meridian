@@ -1770,7 +1770,7 @@ async fn chat_inner(
     // surface as `external` on the next desktop observation.
     #[cfg(not(target_os = "android"))]
     let journal = Some(meridian_core::journal::capture::JournalCtx::new(
-        pool.clone(),
+        services.sea.clone(),
         meridian_core::journal::journal_root(&services.paths.data_dir),
         conversation_id.clone(),
         turn_id.clone(),

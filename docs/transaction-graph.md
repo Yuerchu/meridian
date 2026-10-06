@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：84
-- Diesel ops 调用点（db/ops 之外）：968
-- Diesel API 引用：1475
+- Diesel ops 调用点（db/ops 之外）：924
+- Diesel API 引用：1417
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -39,9 +39,6 @@
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
-| `src-tauri/crates/core/src/db/ops/journal.rs` › `append_command_observed` | diesel-immediate | journal |
-| `src-tauri/crates/core/src/db/ops/journal.rs` › `append_version` | diesel-immediate | journal |
-| `src-tauri/crates/core/src/db/ops/journal.rs` › `reconcile_external` | diesel-immediate | journal |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `delete_subtree` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `switch_branch` | diesel-deferred | message |
@@ -71,6 +68,9 @@
 | `src-tauri/crates/core/src/db/ops/voice_corpus.rs` › `tombstone_unreferenced` | diesel-immediate | — |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
+| `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |
+| `src-tauri/crates/core/src/journal/capture.rs` › `record` | sea-write | journal |
+| `src-tauri/crates/core/src/journal/capture.rs` › `settle_command_bracket` | sea-write | journal |
 | `src-tauri/crates/core/src/notify/mod.rs` › `clear` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |

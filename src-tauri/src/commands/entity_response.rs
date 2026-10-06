@@ -4,13 +4,13 @@
 //! lists explicit: adding a column to a Diesel row must not silently expand the
 //! desktop or remote API.
 
+use meridian_core::db::entity::journal_version;
 use meridian_core::db::models::{
     assistant::AssistantRow,
     conversation::ConversationRow,
     custom_tool::CustomToolRow,
     emoji::EmojiRow,
     emoji_pack::EmojiPackRow,
-    journal::JournalVersionRow,
     mcp_server::McpServerRow,
     memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
@@ -185,19 +185,19 @@ pub enum JournalOperation {
     Rewind,
 }
 
-impl JournalOperation {
-    fn parse(value: &str) -> Result<Self, String> {
+impl From<journal_version::VersionOp> for JournalOperation {
+    fn from(value: journal_version::VersionOp) -> Self {
+        use journal_version::VersionOp;
         match value {
-            "write" => Ok(Self::Write),
-            "edit" => Ok(Self::Edit),
-            "patch" => Ok(Self::Patch),
-            "delete" => Ok(Self::Delete),
-            "rename_from" => Ok(Self::RenameFrom),
-            "rename_to" => Ok(Self::RenameTo),
-            "command_observed" => Ok(Self::CommandObserved),
-            "external" => Ok(Self::External),
-            "rewind" => Ok(Self::Rewind),
-            _ => Err(format!("unknown journal operation `{value}`")),
+            VersionOp::Write => Self::Write,
+            VersionOp::Edit => Self::Edit,
+            VersionOp::Patch => Self::Patch,
+            VersionOp::Delete => Self::Delete,
+            VersionOp::RenameFrom => Self::RenameFrom,
+            VersionOp::RenameTo => Self::RenameTo,
+            VersionOp::CommandObserved => Self::CommandObserved,
+            VersionOp::External => Self::External,
+            VersionOp::Rewind => Self::Rewind,
         }
     }
 }
@@ -212,15 +212,15 @@ pub enum JournalSource {
     Rewind,
 }
 
-impl JournalSource {
-    fn parse(value: &str) -> Result<Self, String> {
+impl From<journal_version::VersionSource> for JournalSource {
+    fn from(value: journal_version::VersionSource) -> Self {
+        use journal_version::VersionSource;
         match value {
-            "native" => Ok(Self::Native),
-            "hosted" => Ok(Self::Hosted),
-            "inferred" => Ok(Self::Inferred),
-            "external" => Ok(Self::External),
-            "rewind" => Ok(Self::Rewind),
-            _ => Err(format!("unknown journal source `{value}`")),
+            VersionSource::Native => Self::Native,
+            VersionSource::Hosted => Self::Hosted,
+            VersionSource::Inferred => Self::Inferred,
+            VersionSource::External => Self::External,
+            VersionSource::Rewind => Self::Rewind,
         }
     }
 }
@@ -633,12 +633,12 @@ pub struct JournalVersionInfoResponse {
     pub created_at: i64,
 }
 
-impl TryFrom<JournalVersionRow> for JournalVersionInfoResponse {
+impl TryFrom<journal_version::Model> for JournalVersionInfoResponse {
     type Error = String;
 
-    fn try_from(row: JournalVersionRow) -> Result<Self, Self::Error> {
-        let op = JournalOperation::parse(&row.op)?;
-        let source = JournalSource::parse(&row.source)?;
+    fn try_from(row: journal_version::Model) -> Result<Self, Self::Error> {
+        let op = JournalOperation::from(row.op);
+        let source = JournalSource::from(row.source);
         let origin = row
             .origin
             .as_deref()
@@ -1340,11 +1340,11 @@ mod tests {
             "confirmed"
         );
         assert_eq!(
-            serde_json::to_value(JournalOperation::parse("command_observed").unwrap()).unwrap(),
+            serde_json::to_value(JournalOperation::from(journal_version::VersionOp::CommandObserved)).unwrap(),
             "command_observed"
         );
         assert_eq!(
-            serde_json::to_value(JournalSource::parse("hosted").unwrap()).unwrap(),
+            serde_json::to_value(JournalSource::from(journal_version::VersionSource::Hosted)).unwrap(),
             "hosted"
         );
         assert_eq!(
@@ -1359,8 +1359,6 @@ mod tests {
         assert!(EmojiPackKind::parse("future").is_err());
         assert!(EmojiSource::parse("future").is_err());
         assert!(EmojiSemanticStatus::parse("future").is_err());
-        assert!(JournalOperation::parse("future").is_err());
-        assert!(JournalSource::parse("future").is_err());
         assert!(SkillSource::parse("future").is_err());
     }
 

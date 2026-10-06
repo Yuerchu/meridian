@@ -1,6 +1,6 @@
 {
-  "dieselOpsCalls": 968,
-  "dieselApiRefs": 1475,
+  "dieselOpsCalls": 924,
+  "dieselApiRefs": 1417,
   "pendingTables": [
     "acp_context_deliveries",
     "acp_session_notices",
@@ -14,9 +14,6 @@
     "custom_tools",
     "emoji_packs",
     "emojis",
-    "journal_blobs",
-    "journal_files",
-    "journal_versions",
     "mcp_servers",
     "memories",
     "memory_proposals",
