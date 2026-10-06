@@ -4,14 +4,12 @@
 //! lists explicit: adding a column to a Diesel row must not silently expand the
 //! desktop or remote API.
 
-use meridian_core::db::entity::journal_version;
+use meridian_core::db::entity::{custom_tool, journal_version, mcp_server, tool_category, tool_preset};
 use meridian_core::db::models::{
     assistant::AssistantRow,
     conversation::ConversationRow,
-    custom_tool::CustomToolRow,
     emoji::EmojiRow,
     emoji_pack::EmojiPackRow,
-    mcp_server::McpServerRow,
     memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
     model_profile::ModelProfileRow,
@@ -20,9 +18,8 @@ use meridian_core::db::models::{
     queue::QueuedPromptRow,
     skill::SkillRow,
     todo::{TodoItemRow, TodoListRow, TodoListView},
-    tool_category::ToolCategoryRow,
-    tool_preset::ToolPresetRow,
 };
+use meridian_core::db::types::Json;
 use std::collections::BTreeMap;
 
 macro_rules! entity_response {
@@ -670,7 +667,7 @@ pub type JournalVersionListResponse = Vec<JournalVersionInfoResponse>;
 pub struct McpServerInfoResponse {
     pub id: String,
     pub name: String,
-    pub transport_type: meridian_core::db::models::mcp_server::McpTransport,
+    pub transport_type: meridian_core::db::entity::mcp_server::McpTransport,
     pub command: Option<String>,
     pub args: Option<Vec<String>>,
     pub env: Option<BTreeMap<String, String>>,
@@ -682,43 +679,22 @@ pub struct McpServerInfoResponse {
     pub headers: Option<BTreeMap<String, String>>,
 }
 
-impl TryFrom<McpServerRow> for McpServerInfoResponse {
-    type Error = String;
-
-    fn try_from(row: McpServerRow) -> Result<Self, Self::Error> {
-        let transport_type = meridian_core::db::models::mcp_server::McpTransport::parse(&row.transport_type)?;
-        let args = row
-            .args
-            .as_deref()
-            .map(|raw| serde_json::from_str(raw).map_err(|error| format!("invalid persisted mcp_server.args: {error}")))
-            .transpose()?;
-        let env = row
-            .env
-            .as_deref()
-            .map(|raw| serde_json::from_str(raw).map_err(|error| format!("invalid persisted mcp_server.env: {error}")))
-            .transpose()?;
-        let headers = row
-            .headers
-            .as_deref()
-            .map(|raw| {
-                serde_json::from_str(raw).map_err(|error| format!("invalid persisted mcp_server.headers: {error}"))
-            })
-            .transpose()?;
-        let is_enabled = decode_sqlite_bool(row.is_enabled, "mcp_server.is_enabled")?;
-        Ok(Self {
+impl From<mcp_server::Model> for McpServerInfoResponse {
+    fn from(row: mcp_server::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
-            transport_type,
+            transport_type: row.transport_type,
             command: row.command,
-            args,
-            env,
+            args: row.args.map(Json::into_inner),
+            env: row.env.map(Json::into_inner),
             url: row.url,
-            is_enabled,
+            is_enabled: row.is_enabled.get(),
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            headers,
-        })
+            headers: row.headers.map(Json::into_inner),
+        }
     }
 }
 
@@ -1168,7 +1144,7 @@ impl TryFrom<TodoListView> for TodoInfoResponse {
     }
 }
 
-entity_response!(ToolCategoryRow, ToolCategoryInfoResponse, ToolCategoryListResponse, {
+entity_response!(tool_category::Model, ToolCategoryInfoResponse, ToolCategoryListResponse, {
     id: String,
     name: String,
     description: Option<String>,
@@ -1195,30 +1171,24 @@ pub struct CustomToolInfoResponse {
     pub is_enabled: bool,
 }
 
-impl TryFrom<CustomToolRow> for CustomToolInfoResponse {
-    type Error = String;
-
-    fn try_from(row: CustomToolRow) -> Result<Self, Self::Error> {
-        let parameters_schema = serde_json::from_str(&row.parameters_schema)
-            .map_err(|error| format!("invalid persisted custom_tool.parameters_schema: {error}"))?;
-        let permission = meridian_core::tools::Permission::parse(&row.permission)?;
-        let is_enabled = decode_sqlite_bool(row.is_enabled, "custom_tool.is_enabled")?;
-        Ok(Self {
+impl From<custom_tool::Model> for CustomToolInfoResponse {
+    fn from(row: custom_tool::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
             description: row.description,
             category_id: row.category_id,
-            parameters_schema,
+            parameters_schema: row.parameters_schema.into_inner(),
             command: row.command,
             args_template: row.args_template,
             working_directory: row.working_directory,
             timeout_ms: row.timeout_ms,
-            permission,
+            permission: row.permission,
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            is_enabled,
-        })
+            is_enabled: row.is_enabled.get(),
+        }
     }
 }
 
@@ -1237,23 +1207,19 @@ pub struct ToolPresetInfoResponse {
     pub updated_at: i64,
 }
 
-impl TryFrom<ToolPresetRow> for ToolPresetInfoResponse {
-    type Error = String;
-
-    fn try_from(row: ToolPresetRow) -> Result<Self, Self::Error> {
-        let tool_names = parse_string_list(&row.tool_names, "tool_preset.tool_names")?;
-        let is_builtin = decode_sqlite_bool(row.is_builtin, "tool_preset.is_builtin")?;
-        Ok(Self {
+impl From<tool_preset::Model> for ToolPresetInfoResponse {
+    fn from(row: tool_preset::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
             description: row.description,
             icon: row.icon,
-            tool_names,
-            is_builtin,
+            tool_names: row.tool_names.into_inner(),
+            is_builtin: row.is_builtin.get(),
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }
     }
 }
 
@@ -1362,41 +1328,30 @@ mod tests {
         assert!(SkillSource::parse("future").is_err());
     }
 
-    fn custom_tool_row(parameters_schema: &str) -> CustomToolRow {
-        CustomToolRow {
+    #[test]
+    fn custom_tool_schema_leaves_ipc_as_an_object() {
+        let schema = serde_json::json!({"type": "object", "properties": {"path": {"type": "string"}}});
+        let response = CustomToolInfoResponse::from(custom_tool::Model {
             id: "tool".into(),
             name: "tool".into(),
             description: "description".into(),
             category_id: None,
-            parameters_schema: parameters_schema.into(),
+            parameters_schema: Json(schema.as_object().unwrap().clone()),
             command: "tool".into(),
             args_template: None,
             working_directory: None,
             timeout_ms: None,
-            permission: "ask".into(),
-            is_enabled: 1,
+            permission: meridian_core::tools::Permission::Ask,
+            is_enabled: meridian_core::db::types::SqlBool::TRUE,
             sort_order: 0,
             created_at: 1,
             updated_at: 1,
-        }
-    }
-
-    #[test]
-    fn custom_tool_schema_leaves_ipc_as_an_object() {
-        let response = CustomToolInfoResponse::try_from(custom_tool_row(
-            r#"{"type":"object","properties":{"path":{"type":"string"}}}"#,
-        ))
-        .unwrap();
+        });
         let value = serde_json::to_value(response).unwrap();
         assert!(value["parameters_schema"].is_object());
         assert_eq!(value["parameters_schema"]["type"], "object");
         assert_eq!(value["permission"], "ask");
-    }
-
-    #[test]
-    fn malformed_or_non_object_custom_tool_schema_fails_at_the_response_boundary() {
-        assert!(CustomToolInfoResponse::try_from(custom_tool_row("{")).is_err());
-        assert!(CustomToolInfoResponse::try_from(custom_tool_row(r#"["path"]"#)).is_err());
+        assert_eq!(value["is_enabled"], true);
     }
 
     fn model_config_row() -> ModelConfigRow {

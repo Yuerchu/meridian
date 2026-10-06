@@ -693,8 +693,8 @@ macro_rules! with_all_commands {
             sync commands::emoji => list_assistant_emoji_packs(assistant_id: String),
             sync commands::emoji => get_emoji_file_url(emoji_id: String),
 
-            sync commands::tool_system => list_tool_categories(),
-            sync commands::tool_system => list_custom_tools(),
+            async commands::tool_system => list_tool_categories(),
+            async commands::tool_system => list_custom_tools(),
             // `local`: `command` plus `permission: always` is a shell tool that
             // never asks, and custom tools skip the OS sandbox. Same ACE
             // reason as `acp.command`.
@@ -704,15 +704,15 @@ macro_rules! with_all_commands {
             local commands::tool_system => update_custom_tool(
                 request: $crate::commands::tool_system::CustomToolUpdateRequest,
             ),
-            sync commands::tool_system => delete_custom_tool(id: String),
-            sync commands::tool_system => list_tool_presets(),
-            sync commands::tool_system => create_tool_preset(
+            async commands::tool_system => delete_custom_tool(id: String),
+            async commands::tool_system => list_tool_presets(),
+            async commands::tool_system => create_tool_preset(
                 request: $crate::commands::tool_system::ToolPresetCreateRequest,
             ),
-            sync commands::tool_system => update_tool_preset(
+            async commands::tool_system => update_tool_preset(
                 request: $crate::commands::tool_system::ToolPresetUpdateRequest,
             ),
-            sync commands::tool_system => delete_tool_preset(id: String),
+            async commands::tool_system => delete_tool_preset(id: String),
             sync commands::tool_system => set_service_key(
                 request: $crate::commands::tool_system::ServiceKeyUpdateRequest,
             ),
