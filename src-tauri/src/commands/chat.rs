@@ -1084,7 +1084,7 @@ async fn chat_inner(
     // only matter once the request parameters are built.
     let conv_mode = conv_prefs.2.clone();
 
-    let file_access = build_file_access(&pool).await?;
+    let file_access = build_file_access(&services.sea).await?;
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -1746,15 +1746,10 @@ async fn chat_inner(
     }
 
     let sleep_enabled = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let stored = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled")
-                .map_err(|error| error.to_string())?;
-            db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)
-        })
-        .await
-        .map_err(|error| error.to_string())??
+        let stored = db::sea::ops::preference::get_preference(&services.sea, "sleep_inhibitor.enabled")
+            .await
+            .map_err(|error| error.to_string())?;
+        db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
     };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of

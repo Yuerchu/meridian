@@ -25,7 +25,7 @@ pub(crate) mod ws;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use meridian_core::db::DbPool;
+use meridian_core::db::sea::cap::Db;
 use meridian_core::events::SinkId;
 use meridian_core::listen_guard::validate_listen_config;
 use meridian_core::services::Services;
@@ -98,33 +98,37 @@ fn parse_stored_port(key: &str, raw: Option<String>, default: u16) -> Result<u16
     Ok(port)
 }
 
-pub fn load_config(pool: &DbPool) -> Result<ListenConfig, String> {
-    let mut conn = pool.get().map_err(|error| error.to_string())?;
-    let mut get = |key: &str| -> Result<Option<String>, String> {
-        meridian_core::db::ops::preference::get_preference(&mut conn, key)
-            .map_err(|error| format!("failed to read preference {key}: {error}"))
-    };
+async fn read_preference(db: &Db, key: &str) -> Result<Option<String>, String> {
+    meridian_core::db::sea::ops::preference::get_preference(db, key)
+        .await
+        .map_err(|error| format!("failed to read preference {key}: {error}"))
+}
 
+pub async fn load_config(db: &Db) -> Result<ListenConfig, String> {
     Ok(ListenConfig {
-        enabled: parse_stored_bool("remote.enabled", get("remote.enabled")?, false)?,
-        host: get("remote.host")?.unwrap_or_else(|| DEFAULT_HOST.into()),
-        port: parse_stored_port("remote.port", get("remote.port")?, DEFAULT_PORT)?,
-        token: get("remote.token")?.filter(|s| !s.is_empty()),
+        enabled: parse_stored_bool("remote.enabled", read_preference(db, "remote.enabled").await?, false)?,
+        host: read_preference(db, "remote.host")
+            .await?
+            .unwrap_or_else(|| DEFAULT_HOST.into()),
+        port: parse_stored_port("remote.port", read_preference(db, "remote.port").await?, DEFAULT_PORT)?,
+        token: read_preference(db, "remote.token").await?.filter(|s| !s.is_empty()),
     })
 }
 
-pub fn save_config(pool: &DbPool, config: &ListenConfig) -> Result<(), String> {
-    let mut conn = pool.get().map_err(|e| e.to_string())?;
-    let now = meridian_core::util::now_ms();
-    let mut set = |key: &str, value: &str| -> Result<(), String> {
-        meridian_core::db::ops::preference::set_preference(&mut conn, key, value, now).map_err(|e| e.to_string())
-    };
+/// The four keys land in one transaction: a config half-written when the
+/// process dies is one the next start refuses, not one it half-applies.
+pub async fn save_config(db: &Db, config: &ListenConfig) -> Result<(), String> {
+    use meridian_core::db::sea::ops::preference::set_preference;
 
-    set("remote.enabled", if config.enabled { "true" } else { "false" })?;
-    set("remote.host", &config.host)?;
-    set("remote.port", &config.port.to_string())?;
-    set("remote.token", config.token.as_deref().unwrap_or(""))?;
-    Ok(())
+    let now = meridian_core::util::now_ms();
+    db.write(async |tx| {
+        set_preference(tx, "remote.enabled", if config.enabled { "true" } else { "false" }, now).await?;
+        set_preference(tx, "remote.host", &config.host, now).await?;
+        set_preference(tx, "remote.port", &config.port.to_string(), now).await?;
+        set_preference(tx, "remote.token", config.token.as_deref().unwrap_or(""), now).await
+    })
+    .await
+    .map_err(|error| error.to_string())
 }
 
 /// Everything a request needs, shared by every connection.

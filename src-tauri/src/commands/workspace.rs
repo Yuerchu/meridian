@@ -362,7 +362,7 @@ pub async fn workspace_suggest_refs(
     request: WorkspaceReferenceSuggestRequest,
 ) -> Result<WorkspaceReferenceSuggestionListResponse, String> {
     let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
     let context = reference_context(&root, file_access);
     // domain-default: how many completions to offer, the picker's own choice
     let suggestions =
@@ -387,7 +387,7 @@ pub async fn workspace_resolve_ref(
         line_end,
     } = request;
     let root = require_reference_directory(&app, conversation_id, project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
     let context = reference_context(&root, file_access);
     let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
     let reference = workspace::reference::WorkspaceReferenceRequest {
@@ -412,7 +412,7 @@ pub async fn workspace_probe_ref(
     request: WorkspaceReferenceProbeRequest,
 ) -> Result<WorkspaceReferenceProbeResponse, String> {
     let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
     let context = reference_context(&root, file_access);
     workspace::reference::probe_reference(&context, &request.path)
         .await
@@ -454,21 +454,21 @@ pub async fn open_in_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenR
     } = request;
     let services = app.services();
     let pool = services.db.clone();
-    let (root, template) = tokio::task::spawn_blocking({
+    let root = tokio::task::spawn_blocking({
         let conversation_id = conversation_id.clone();
-        move || -> Result<(PathBuf, Option<String>), String> {
+        move || -> Result<PathBuf, String> {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let root = match workspace::resolve_workspace_root(&mut conn, &conversation_id)? {
-                WorkspaceRoot::Ok { root, .. } => PathBuf::from(root),
-                _ => return Err("workspace unavailable".into()),
-            };
-            let template =
-                db::ops::preference::get_preference(&mut conn, "files.editor_command").map_err(|e| e.to_string())?;
-            Ok((root, template))
+            match workspace::resolve_workspace_root(&mut conn, &conversation_id)? {
+                WorkspaceRoot::Ok { root, .. } => Ok(PathBuf::from(root)),
+                _ => Err("workspace unavailable".into()),
+            }
         }
     })
     .await
     .map_err(|e| e.to_string())??;
+    let template = db::sea::ops::preference::get_preference(&services.sea, "files.editor_command")
+        .await
+        .map_err(|e| e.to_string())?;
 
     let Some(template) = template.filter(|t| !t.trim().is_empty()) else {
         // A distinguishable error: the frontend routes this one to settings

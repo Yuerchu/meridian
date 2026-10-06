@@ -245,7 +245,7 @@ fn encode_body_template(
 #[tauri::command]
 pub async fn get_notify_config(app: tauri::AppHandle) -> Result<NotifyConfigInfoResponse, String> {
     let services = app.services();
-    let config = notify::load_config(&services.db)?;
+    let config = notify::load_config(&services.sea).await?;
     let running = {
         let watcher = app.state::<notify::AppNotify>();
         let server = watcher.0.lock().await;
@@ -275,7 +275,7 @@ pub async fn get_notify_config(app: tauri::AppHandle) -> Result<NotifyConfigInfo
 pub async fn save_notify_config(app: tauri::AppHandle, request: NotifyConfigUpdateRequest) -> Result<(), String> {
     let services = app.services();
     let config = notify::NotifyConfig::try_from(request)?;
-    notify::save_config(&services.db, &config)?;
+    notify::save_config(&services.sea, &config).await?;
 
     let watcher = app.state::<notify::AppNotify>();
     let mut server = watcher.0.lock().await;

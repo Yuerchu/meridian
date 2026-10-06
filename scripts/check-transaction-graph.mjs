@@ -103,8 +103,16 @@ export function analyze(files) {
       fn.diesel = DIESEL_SIGNATURE.test(fn.signature) || DIESEL_BODY.test(body)
       fn.sea = SEA_SIGNATURE.test(fn.signature) || isSeaReadBound(file, fn) || SEA_BODY.test(body)
       fn.immediate = /\.\s*immediate_transaction\s*\(/.test(body)
+      // db/ops/<m> and db/sea/ops/<m> both count as ops module <m>: the graph
+      // names the table a root touches, and the kind column says which pool.
       fn.opsModule =
-        file.crate.name === 'core' && file.module[0] === 'db' && file.module[1] === 'ops' ? file.module[2] : null
+        file.crate.name === 'core' && file.module[0] === 'db'
+          ? file.module[1] === 'ops'
+            ? file.module[2]
+            : file.module[1] === 'sea' && file.module[2] === 'ops'
+              ? file.module[3]
+              : null
+          : null
       const k = key(file.crate.name, file.module, fn.name)
       if (!index.has(k)) index.set(k, [])
       index.get(k).push(fn)

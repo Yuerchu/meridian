@@ -76,7 +76,7 @@ impl DesktopApprovals {
         // Worked out once, here, rather than by the waiter. Both would produce
         // the same number, but only one of them can be *the* answer to "when
         // does this stop standing" — and the listing paths read the stored one.
-        let ttl = meridian_core::approval::ttl(services)?;
+        let ttl = meridian_core::approval::ttl(services).await?;
         // Stamped once and sent both ways: on the event, and in the register
         // every listing reads, so a card rebuilt after a reload keeps its time.
         let asked_at = meridian_core::util::now_ms();

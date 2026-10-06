@@ -71,7 +71,7 @@ pub async fn save_listen_config(
     if config.enabled && config.token.as_deref().unwrap_or("").is_empty() {
         config.token = Some(generate_token());
     }
-    save_config(&services.db, &config)?;
+    save_config(&services.sea, &config).await?;
     restart(&app, config).await
 }
 
@@ -79,9 +79,9 @@ pub async fn save_listen_config(
 #[tauri::command]
 pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConfigInfoResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db)?;
+    let mut config = load_config(&services.sea).await?;
     config.token = Some(generate_token());
-    save_config(&services.db, &config)?;
+    save_config(&services.sea, &config).await?;
     restart(&app, config.clone()).await?;
     Ok(config.into())
 }
@@ -89,21 +89,21 @@ pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConf
 #[tauri::command]
 pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db)?;
+    let mut config = load_config(&services.sea).await?;
     config.enabled = true;
     if config.token.as_deref().unwrap_or("").is_empty() {
         config.token = Some(generate_token());
     }
-    save_config(&services.db, &config)?;
+    save_config(&services.sea, &config).await?;
     restart(&app, config).await
 }
 
 #[tauri::command]
 pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
     let services = app.services();
-    let mut config = load_config(&services.db)?;
+    let mut config = load_config(&services.sea).await?;
     config.enabled = false;
-    save_config(&services.db, &config)?;
+    save_config(&services.sea, &config).await?;
     restart(&app, config).await
 }
 

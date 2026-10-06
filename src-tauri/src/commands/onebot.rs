@@ -139,7 +139,7 @@ pub async fn get_onebot_status(app: tauri::AppHandle) -> Result<OneBotStatusInfo
 #[tauri::command]
 pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfoResponse, String> {
     let services = app.services();
-    onebot::load_config(&services.db).map(Into::into)
+    onebot::load_config(&services.sea).await.map(Into::into)
 }
 
 #[cfg(not(target_os = "android"))]
@@ -147,7 +147,7 @@ pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfo
 pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpdateRequest) -> Result<(), String> {
     let services = app.services();
     let config = onebot::OneBotConfig::try_from(request)?;
-    onebot::save_config(&services.db, &config)?;
+    onebot::save_config(&services.sea, &config).await?;
 
     // 语音策略立刻生效，不等重启。
     //
@@ -171,7 +171,7 @@ pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpda
 #[tauri::command]
 pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
     let services = app.services();
-    let config = onebot::load_config(&services.db)?;
+    let config = onebot::load_config(&services.sea).await?;
     Ok(onebot::voice_send_readiness(&services, &config).into())
 }
 
@@ -179,7 +179,7 @@ pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSend
 #[tauri::command]
 pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
-    let config = onebot::load_config(&services.db)?;
+    let config = onebot::load_config(&services.sea).await?;
 
     let ob = app.state::<onebot::AppOneBot>();
     let mut server_guard = ob.0.lock().await;

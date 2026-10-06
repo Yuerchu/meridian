@@ -141,16 +141,18 @@ pub fn run() {
             // makes blocking here safe; core itself never blocks on a future.
             let services = tauri::async_runtime::block_on(bootstrap::bootstrap(data_dir, events))
                 .map_err(|error| std::io::Error::other(format!("bootstrap failed: {error}")))?;
+            // The stored configs are read on the same crossing: four awaits
+            // inside the one `block_on`, not four crossings.
             #[cfg(not(target_os = "android"))]
-            let onebot_config = meridian_core::onebot::load_config(&services.db)
+            let onebot_config = tauri::async_runtime::block_on(meridian_core::onebot::load_config(&services.sea))
                 .map_err(|error| std::io::Error::other(format!("invalid stored OneBot config: {error}")))?;
             #[cfg(not(target_os = "android"))]
-            let hooks_config = meridian_core::hooks::load_config(&services.db)
+            let hooks_config = tauri::async_runtime::block_on(meridian_core::hooks::load_config(&services.sea))
                 .map_err(|error| std::io::Error::other(format!("invalid stored hooks config: {error}")))?;
             #[cfg(not(target_os = "android"))]
-            let remote_config = remote::load_config(&services.db)
+            let remote_config = tauri::async_runtime::block_on(remote::load_config(&services.sea))
                 .map_err(|error| std::io::Error::other(format!("invalid stored remote config: {error}")))?;
-            let notify_config = meridian_core::notify::load_config(&services.db)
+            let notify_config = tauri::async_runtime::block_on(meridian_core::notify::load_config(&services.sea))
                 .map_err(|error| std::io::Error::other(format!("invalid stored notification config: {error}")))?;
             // The one thing core needs from up here: how to run a turn. The
             // prompt queue lives below the line and has to be able to start

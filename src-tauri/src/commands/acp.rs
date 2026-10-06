@@ -281,7 +281,7 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
         })
         .await
         .map_err(|e| e.to_string())??;
-        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
+        let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
         let tool_context = meridian_core::tools::ToolContext {
             working_directory: Some(cwd),
             shell: meridian_core::tools::ShellType::default_for_platform(),
@@ -503,7 +503,7 @@ pub async fn acp_set_session_config(
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_get_config(app: tauri::AppHandle) -> Result<AcpConfigInfoResponse, String> {
-    AcpConfig::load(&app.services().db).map(Into::into)
+    AcpConfig::load(&app.services().sea).await.map(Into::into)
 }
 
 /// `local`, and this is the one row here where that is load-bearing:
@@ -520,8 +520,8 @@ pub async fn acp_save_config(
 ) -> Result<AcpConfigInfoResponse, String> {
     let services = app.services();
     let config = AcpConfig::from(request);
-    config.save(&services.db)?;
-    AcpConfig::load(&services.db).map(Into::into)
+    config.save(&services.sea).await?;
+    AcpConfig::load(&services.sea).await.map(Into::into)
 }
 
 /// What a working adapter says about itself.
@@ -546,7 +546,7 @@ pub struct AcpCheckResponse {
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_check_adapter(app: tauri::AppHandle) -> Result<AcpCheckResponse, String> {
-    let config = AcpConfig::load(&app.services().db)?;
+    let config = AcpConfig::load(&app.services().sea).await?;
     match acp::check_adapter(&config).await {
         Ok(report) => Ok(AcpCheckResponse {
             ok: true,

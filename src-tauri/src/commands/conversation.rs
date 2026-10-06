@@ -676,7 +676,7 @@ async fn assemble_system_prompt(
             None
         }
     };
-    let file_access = build_file_access(pool).await?;
+    let file_access = build_file_access(&app.services().sea).await?;
 
     // The very same resolver the chat loop runs. Counting anything else here is
     // how the estimate ended up short of what actually gets sent — the checklist
