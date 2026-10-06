@@ -6,7 +6,7 @@
 //! 那台电脑。
 
 use crate::ServicesExt;
-use meridian_core::db::models::voice_corpus::VoiceCorpusSourceType;
+use meridian_core::db::entity::voice_blob::VoiceCorpusSourceType;
 use meridian_core::voice_corpus;
 use meridian_core::voice_corpus::manage::{self, CorpusSelector, DeleteReport, ExportReport, SessionTotal};
 
@@ -145,35 +145,37 @@ pub type VoiceCorpusSessionListResponse = Vec<VoiceCorpusSessionInfoResponse>;
 #[tauri::command]
 pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<VoiceCorpusSessionListResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    // 假名化密钥取一次，每一行都用同一把；取它是异步事务，所以在闭包外面。
+    // 假名化密钥取一次，每一行都用同一把。
     let storage_key = voice_corpus::storage_key(&services.sea).await?;
-    tokio::task::spawn_blocking(move || {
-        let totals = manage::list_sessions(&pool)?;
-        let untranscribed = manage::untranscribed_counts(&pool)?;
-        totals
-            .into_iter()
-            .map(|total| {
-                let key = format!("{}|{}|{}", total.bot_self_id, total.source_type, total.source_id);
-                Ok(VoiceCorpusSessionInfoResponse {
-                    handle: manage::session_label(&storage_key, &total)?,
-                    kind: session_kind(&total)?,
-                    clips: total.clips,
-                    bytes: total.bytes,
-                    untranscribed: untranscribed.get(&key).copied().unwrap_or(0),
-                    last_captured_at: total.last_captured_at,
-                })
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let totals = manage::list_sessions(&services.sea).await?;
+    let untranscribed = manage::untranscribed_counts(&services.sea).await?;
+    Ok(totals
+        .into_iter()
+        .map(|total| {
+            let key = format!(
+                "{}|{}|{}",
+                total.bot_self_id,
+                total.source_type.as_str(),
+                total.source_id
+            );
+            VoiceCorpusSessionInfoResponse {
+                handle: manage::session_label(&storage_key, &total),
+                kind: session_kind(&total),
+                clips: total.clips,
+                bytes: total.bytes,
+                untranscribed: untranscribed.get(&key).copied().unwrap_or(0),
+                last_captured_at: total.last_captured_at,
+            }
+        })
+        .collect())
 }
 
-fn session_kind(total: &SessionTotal) -> Result<VoiceCorpusSessionKind, String> {
-    match VoiceCorpusSourceType::parse(&total.source_type)? {
-        VoiceCorpusSourceType::OnebotGroup => Ok(VoiceCorpusSessionKind::Group),
-        VoiceCorpusSourceType::OnebotPrivate => Ok(VoiceCorpusSessionKind::Private),
+/// 存储里的类型是闭合枚举（认不出来的值在读的时候就失败了），所以这里只是
+/// 一个换名。
+fn session_kind(total: &SessionTotal) -> VoiceCorpusSessionKind {
+    match total.source_type {
+        VoiceCorpusSourceType::OnebotGroup => VoiceCorpusSessionKind::Group,
+        VoiceCorpusSourceType::OnebotPrivate => VoiceCorpusSessionKind::Private,
     }
 }
 
@@ -185,15 +187,9 @@ pub async fn delete_voice_corpus(
 ) -> Result<VoiceCorpusDeleteResponse, String> {
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
-    manage::delete(
-        &services.db,
-        &services.sea,
-        &data_dir,
-        &services.corpus,
-        request.selector.into(),
-    )
-    .await
-    .map(Into::into)
+    manage::delete(&services.sea, &data_dir, &services.corpus, request.selector.into())
+        .await
+        .map(Into::into)
 }
 
 /// "以后别再录我"。与删除历史是两件事，所以是两个命令。
@@ -201,13 +197,9 @@ pub async fn delete_voice_corpus(
 pub async fn set_voice_optout(app: tauri::AppHandle, request: VoiceCorpusOptoutUpdateRequest) -> Result<(), String> {
     let VoiceCorpusOptoutUpdateRequest { sender_id, enabled } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let corpus = services.corpus.clone();
     #[cfg(not(target_os = "android"))]
     let config = meridian_core::onebot::load_config(&services.sea).await?;
-    tokio::task::spawn_blocking(move || manage::set_optout(&pool, &corpus, &sender_id, enabled))
-        .await
-        .map_err(|e| e.to_string())??;
+    manage::set_optout(&services.sea, &services.corpus, &sender_id, enabled).await?;
     // 名单立刻生效，不等下一次重启——这是一个人刚刚说的"别录我"。
     #[cfg(not(target_os = "android"))]
     {
@@ -242,16 +234,9 @@ pub async fn forget_voice_sender(
     };
     #[cfg(target_os = "android")]
     let refresh = || async { Ok::<(), String>(()) };
-    manage::forget_sender(
-        &services.db,
-        &services.sea,
-        &data_dir,
-        &services.corpus,
-        &sender_id,
-        refresh,
-    )
-    .await
-    .map(Into::into)
+    manage::forget_sender(&services.sea, &data_dir, &services.corpus, &sender_id, refresh)
+        .await
+        .map(Into::into)
 }
 
 /// 导出成 bundle。`local`，见模块头。
@@ -267,20 +252,17 @@ pub async fn export_voice_corpus(
     } = request;
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
-    let pool = services.db.clone();
     let key = voice_corpus::storage_key(&services.sea).await?;
-    tokio::task::spawn_blocking(move || {
-        manage::export(
-            &pool,
-            &key,
-            &data_dir,
-            std::path::Path::new(&output_dir),
-            include_sender,
-            include_untranscribed,
-        )
-    })
+    // 拷文件和写 manifest 在 `manage::export` 自己的阻塞线程上。
+    manage::export(
+        &services.sea,
+        &key,
+        &data_dir,
+        std::path::Path::new(&output_dir),
+        include_sender,
+        include_untranscribed,
+    )
     .await
-    .map_err(|e| e.to_string())?
     .map(Into::into)
 }
 
@@ -288,10 +270,10 @@ pub async fn export_voice_corpus(
 mod tests {
     use super::*;
 
-    fn total(source_type: &str) -> SessionTotal {
+    fn total(source_type: VoiceCorpusSourceType) -> SessionTotal {
         SessionTotal {
             bot_self_id: 1,
-            source_type: source_type.to_string(),
+            source_type,
             source_id: "123".to_string(),
             clips: 1,
             bytes: 2,
@@ -299,19 +281,19 @@ mod tests {
         }
     }
 
+    /// 存储类型到响应类型是一一对应的；存储那边的闭合性由 core 的 entity
+    /// 测试守着（一个认不出来的值在读的时候就失败）。
     #[test]
     fn response_session_kind_is_closed() {
         assert_eq!(
-            session_kind(&total("onebot_group")).unwrap(),
+            session_kind(&total(VoiceCorpusSourceType::OnebotGroup)),
             VoiceCorpusSessionKind::Group
         );
         assert_eq!(
-            session_kind(&total("onebot_private")).unwrap(),
+            session_kind(&total(VoiceCorpusSourceType::OnebotPrivate)),
             VoiceCorpusSessionKind::Private
         );
-
-        let error = session_kind(&total("onebot_channel")).unwrap_err();
-        assert!(error.contains("unknown voice corpus source_type"), "{error}");
+        assert!(VoiceCorpusSourceType::parse("onebot_channel").is_err());
     }
 
     #[test]
