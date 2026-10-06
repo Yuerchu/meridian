@@ -171,7 +171,7 @@ pub async fn queue_enqueue(
                 .ok_or_else(|| "workspace unavailable".to_string())
         })
         .await?;
-        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
+        let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
         let context = meridian_core::tools::ToolContext {
             working_directory: Some(working_directory),
             shell: meridian_core::tools::ShellType::default_for_platform(),

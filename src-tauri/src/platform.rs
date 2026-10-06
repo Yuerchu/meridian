@@ -186,14 +186,10 @@ mod saf_root_response_tests {
 }
 
 #[cfg(target_os = "android")]
-async fn load_saf_roots(pool: &meridian_core::db::DbPool) -> Result<Vec<SafRootEntry>, String> {
-    let pool = pool.clone();
-    let json = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
-        meridian_core::db::ops::preference::get_preference(&mut conn, "android.saf_roots").map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+async fn load_saf_roots(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<SafRootEntry>, String> {
+    let json = meridian_core::db::sea::ops::preference::get_preference(db, "android.saf_roots")
+        .await
+        .map_err(|e| e.to_string())?;
     match json {
         Some(j) => serde_json::from_str(&j).map_err(|e| format!("corrupt saf_roots: {e}")),
         None => Ok(Vec::new()),
@@ -201,21 +197,19 @@ async fn load_saf_roots(pool: &meridian_core::db::DbPool) -> Result<Vec<SafRootE
 }
 
 #[cfg(target_os = "android")]
-async fn save_saf_roots(pool: &meridian_core::db::DbPool, roots: &[SafRootEntry]) -> Result<(), String> {
-    let pool = pool.clone();
+async fn save_saf_roots(db: &meridian_core::db::sea::cap::Db, roots: &[SafRootEntry]) -> Result<(), String> {
     let json = serde_json::to_string(roots).map_err(|e| e.to_string())?;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
-        meridian_core::db::ops::preference::set_preference(
-            &mut conn,
+    db.write(async |tx| {
+        meridian_core::db::sea::ops::preference::set_preference(
+            tx,
             "android.saf_roots",
             &json,
             meridian_core::util::now_ms(),
         )
-        .map_err(|e| e.to_string())
+        .await
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -283,12 +277,12 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<SafRootListResp
         use crate::ServicesExt;
         let Some((uri, display_name)) = meridian_core::android_bridge::pick_directory().await? else {
             // user cancelled; return the unchanged list
-            let pool = app.services().db.clone();
-            return load_saf_roots(&pool).await.map(saf_root_list_response);
+            let db = app.services().sea.clone();
+            return load_saf_roots(&db).await.map(saf_root_list_response);
         };
 
-        let pool = app.services().db.clone();
-        let mut roots = load_saf_roots(&pool).await?;
+        let db = app.services().sea.clone();
+        let mut roots = load_saf_roots(&db).await?;
         if roots.iter().any(|r| r.uri == uri) {
             return Ok(saf_root_list_response(roots));
         }
@@ -310,7 +304,7 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<SafRootListResp
             display_name,
             virtual_prefix: prefix,
         });
-        save_saf_roots(&pool, &roots).await?;
+        save_saf_roots(&db, &roots).await?;
         Ok(saf_root_list_response(roots))
     }
     #[cfg(not(target_os = "android"))]
@@ -326,8 +320,8 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<SafRootListResponse
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
-        let pool = app.services().db.clone();
-        load_saf_roots(&pool).await.map(saf_root_list_response)
+        let db = app.services().sea.clone();
+        load_saf_roots(&db).await.map(saf_root_list_response)
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -388,10 +382,10 @@ pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<SafRo
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
-        let pool = app.services().db.clone();
-        let mut roots = load_saf_roots(&pool).await?;
+        let db = app.services().sea.clone();
+        let mut roots = load_saf_roots(&db).await?;
         roots.retain(|r| r.uri != uri);
-        save_saf_roots(&pool, &roots).await?;
+        save_saf_roots(&db, &roots).await?;
         // Best-effort: the grant may already be gone (e.g. directory deleted)
         let _ = meridian_core::android_bridge::release_persisted_uri(&uri);
         Ok(saf_root_list_response(roots))

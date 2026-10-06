@@ -119,14 +119,13 @@ async fn transcribe_samples(
     let services = app.services();
     let engine = get_or_load_engine(&services.voice, dir).await?;
 
-    let pool = services.db.clone();
+    let level = {
+        let pref = db::sea::ops::preference::get_preference(&services.sea, "voice.filter_level")
+            .await
+            .map_err(|e| e.to_string())?;
+        voice::filter::FilterLevel::from_preference(pref.as_deref())?
+    };
     let text = tokio::task::spawn_blocking(move || {
-        let level = {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let pref =
-                db::ops::preference::get_preference(&mut conn, "voice.filter_level").map_err(|e| e.to_string())?;
-            voice::filter::FilterLevel::from_preference(pref.as_deref())?
-        };
         let raw = engine.transcribe(&samples, sample_rate);
         Ok::<_, String>(voice::filter::clean(&raw, level))
     })

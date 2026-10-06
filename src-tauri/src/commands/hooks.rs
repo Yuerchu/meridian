@@ -92,7 +92,7 @@ pub async fn get_hooks_status(app: tauri::AppHandle) -> Result<HookStatusInfoRes
 #[tauri::command]
 pub async fn get_hooks_config(app: tauri::AppHandle) -> Result<HookConfigInfoResponse, String> {
     let services = app.services();
-    hooks::load_config(&services.db).map(Into::into)
+    hooks::load_config(&services.sea).await.map(Into::into)
 }
 
 #[cfg(not(target_os = "android"))]
@@ -113,11 +113,11 @@ pub async fn save_hooks_config(
         },
         ..config
     };
-    hooks::save_config(&services.db, &config)?;
+    hooks::save_config(&services.sea, &config).await?;
     apply_to_running(&app).await?;
     // Read back rather than echoing what came in: `save_config` clamps, so what
     // is stored is not always what was sent.
-    hooks::load_config(&services.db).map(Into::into)
+    hooks::load_config(&services.sea).await.map(Into::into)
 }
 
 #[cfg(not(target_os = "android"))]
@@ -127,9 +127,9 @@ pub async fn regenerate_hooks_token(app: tauri::AppHandle) -> Result<String, Str
     let token = meridian_core::listen_guard::generate_token();
     let config = hooks::HookConfig {
         token: Some(token.clone()),
-        ..hooks::load_config(&services.db)?
+        ..hooks::load_config(&services.sea).await?
     };
-    hooks::save_config(&services.db, &config)?;
+    hooks::save_config(&services.sea, &config).await?;
     // Otherwise the running server keeps checking the old token and the
     // handshake file keeps advertising it — the new one would be a value in the
     // database that nothing honours.
@@ -169,7 +169,7 @@ async fn apply_to_running(app: &tauri::AppHandle) -> Result<(), String> {
 #[cfg(not(target_os = "android"))]
 async fn restart(app: &tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
-    let config = hooks::load_config(&services.db)?;
+    let config = hooks::load_config(&services.sea).await?;
 
     let state = app.state::<hooks::AppHooks>();
     let mut guard = state.0.lock().await;

@@ -7,6 +7,7 @@
 
 use crate::ServicesExt;
 use meridian_core::db::models::voice_corpus::VoiceCorpusSourceType;
+use meridian_core::voice_corpus;
 use meridian_core::voice_corpus::manage::{self, CorpusSelector, DeleteReport, ExportReport, SessionTotal};
 
 /// The exact target of a corpus deletion. This tagged union lives at the shell
@@ -145,6 +146,8 @@ pub type VoiceCorpusSessionListResponse = Vec<VoiceCorpusSessionInfoResponse>;
 pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<VoiceCorpusSessionListResponse, String> {
     let services = app.services();
     let pool = services.db.clone();
+    // 假名化密钥取一次，每一行都用同一把；取它是异步事务，所以在闭包外面。
+    let storage_key = voice_corpus::storage_key(&services.sea).await?;
     tokio::task::spawn_blocking(move || {
         let totals = manage::list_sessions(&pool)?;
         let untranscribed = manage::untranscribed_counts(&pool)?;
@@ -153,7 +156,7 @@ pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<VoiceCorpusSessi
             .map(|total| {
                 let key = format!("{}|{}|{}", total.bot_self_id, total.source_type, total.source_id);
                 Ok(VoiceCorpusSessionInfoResponse {
-                    handle: manage::session_label(&pool, &total)?,
+                    handle: manage::session_label(&storage_key, &total)?,
                     kind: session_kind(&total)?,
                     clips: total.clips,
                     bytes: total.bytes,
@@ -182,9 +185,15 @@ pub async fn delete_voice_corpus(
 ) -> Result<VoiceCorpusDeleteResponse, String> {
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
-    manage::delete(&services.db, &data_dir, &services.corpus, request.selector.into())
-        .await
-        .map(Into::into)
+    manage::delete(
+        &services.db,
+        &services.sea,
+        &data_dir,
+        &services.corpus,
+        request.selector.into(),
+    )
+    .await
+    .map(Into::into)
 }
 
 /// "以后别再录我"。与删除历史是两件事，所以是两个命令。
@@ -195,7 +204,7 @@ pub async fn set_voice_optout(app: tauri::AppHandle, request: VoiceCorpusOptoutU
     let pool = services.db.clone();
     let corpus = services.corpus.clone();
     #[cfg(not(target_os = "android"))]
-    let config = meridian_core::onebot::load_config(&services.db)?;
+    let config = meridian_core::onebot::load_config(&services.sea).await?;
     tokio::task::spawn_blocking(move || manage::set_optout(&pool, &corpus, &sender_id, enabled))
         .await
         .map_err(|e| e.to_string())??;
@@ -225,7 +234,7 @@ pub async fn forget_voice_sender(
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
     #[cfg(not(target_os = "android"))]
-    let config = meridian_core::onebot::load_config(&services.db)?;
+    let config = meridian_core::onebot::load_config(&services.sea).await?;
     #[cfg(not(target_os = "android"))]
     let refresh = || {
         let services = services.clone();
@@ -233,9 +242,16 @@ pub async fn forget_voice_sender(
     };
     #[cfg(target_os = "android")]
     let refresh = || async { Ok::<(), String>(()) };
-    manage::forget_sender(&services.db, &data_dir, &services.corpus, &sender_id, refresh)
-        .await
-        .map(Into::into)
+    manage::forget_sender(
+        &services.db,
+        &services.sea,
+        &data_dir,
+        &services.corpus,
+        &sender_id,
+        refresh,
+    )
+    .await
+    .map(Into::into)
 }
 
 /// 导出成 bundle。`local`，见模块头。
@@ -252,9 +268,11 @@ pub async fn export_voice_corpus(
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
     let pool = services.db.clone();
+    let key = voice_corpus::storage_key(&services.sea).await?;
     tokio::task::spawn_blocking(move || {
         manage::export(
             &pool,
+            &key,
             &data_dir,
             std::path::Path::new(&output_dir),
             include_sender,

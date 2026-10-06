@@ -199,10 +199,7 @@ pub struct LogSettingsResponse {
 #[tauri::command]
 pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettingsResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let level = tokio::task::spawn_blocking(move || logging::load_saved_level(&pool))
-        .await
-        .map_err(|e| e.to_string())??;
+    let level = logging::load_saved_level(&services.sea).await?;
 
     let (max_file_bytes, max_files) = logging::file_limits();
     Ok(LogSettingsResponse {
@@ -227,19 +224,19 @@ pub async fn set_log_level(app: tauri::AppHandle, request: LogLevelUpdateRequest
     logging::set_level(request.level)?;
 
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::preference::set_preference(
-            &mut conn,
-            logging::LEVEL_PREFERENCE_KEY,
-            request.level.as_str(),
-            now_ms(),
-        )
+    services
+        .sea
+        .write(async |tx| {
+            db::sea::ops::preference::set_preference(
+                tx,
+                logging::LEVEL_PREFERENCE_KEY,
+                request.level.as_str(),
+                now_ms(),
+            )
+            .await
+        })
+        .await
         .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[derive(Debug, serde::Deserialize)]

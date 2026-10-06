@@ -460,30 +460,25 @@ pub async fn get_preference(
     app: tauri::AppHandle,
     request: PreferenceReadRequest,
 ) -> Result<PreferenceInfoResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let raw = db::ops::preference::get_preference(&mut conn, request.key.as_str()).map_err(|e| e.to_string())?;
-        decode_preference(request.key, raw)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let services = app.services();
+    let raw = db::sea::ops::preference::get_preference(&services.sea, request.key.as_str())
+        .await
+        .map_err(|e| e.to_string())?;
+    decode_preference(request.key, raw)
 }
 
 #[tauri::command]
 pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequest) -> Result<(), String> {
     let (key, value) = request.into_storage()?;
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        match value {
-            Some(value) => db::ops::preference::set_preference(&mut conn, key.as_str(), &value, now_ms()),
-            None => db::ops::preference::delete_preference(&mut conn, key.as_str()),
-        }
+    let services = app.services();
+    services
+        .sea
+        .write(async |tx| match value {
+            Some(value) => db::sea::ops::preference::set_preference(tx, key.as_str(), &value, now_ms()).await,
+            None => db::sea::ops::preference::delete_preference(tx, key.as_str()).await,
+        })
+        .await
         .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]

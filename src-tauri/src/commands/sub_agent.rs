@@ -292,14 +292,11 @@ impl DesktopSubAgents {
             .clone()
             .ok_or("This conversation has no assistant, so there is nothing to run a sub-agent on.")?;
 
-        let pool = self.pool.clone();
         let key = default_model_preference(spec.kind);
-        let configured = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool).ok()?;
-            db::ops::preference::get_preference(&mut conn, &key).ok().flatten()
-        })
-        .await
-        .map_err(|e| e.to_string())?;
+        let configured = db::sea::ops::preference::get_preference(&self.services.sea, &key)
+            .await
+            .ok()
+            .flatten();
 
         let chosen = spec.model.clone().or(configured).filter(|s| !s.trim().is_empty());
         let (provider_id, model_id) = match chosen.as_deref() {
