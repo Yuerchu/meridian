@@ -723,7 +723,16 @@ const projects: Record<string, DemoHandler> = {
       .filter((entry) => entry.rel_path.toLowerCase().includes(query))
       .map((entry) => ({ path: entry.rel_path, name: entry.name, is_dir: entry.is_dir }))
   },
-  workspace_git_status: () => GIT_STATUS,
+  // The same answers `workspace_root` gives: only the Meridian project is a
+  // repository, and a conversation without a folder is refused, as
+  // `require_root` refuses it.
+  workspace_git_status: (args, { state }) => {
+    const convo = state.conversations.find((c) => c.id === request<{ conversationId: string }>(args).conversationId)
+    const project = convo?.project_id ? state.projects.find((p) => p.id === convo.project_id) : undefined
+    if (!project) throw 'no_project'
+    if (!project.path) throw 'no_path'
+    return project.id === PROJECT_MERIDIAN ? GIT_STATUS : { state: 'not_repo' }
+  },
   workspace_git_diff: (args) => ({
     diff_text: gitDiff(request<{ relPath: string | null }>(args).relPath),
     truncated: false,
