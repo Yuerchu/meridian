@@ -25,6 +25,10 @@ function arc(c: number, r: number, from: number, to: number): string {
  * Hovering a segment or its legend row dims the others and puts that part's
  * figure in the centre. The ring is decoration for the list, which carries
  * every figure — so the SVG is hidden from assistive technology.
+ *
+ * `formatShare` is null when the values are lower bounds: the ring still shows
+ * the rough proportions, but no row claims an exact percentage of a whole
+ * nobody knows.
  */
 function DonutChart({
   items,
@@ -40,7 +44,7 @@ function DonutChart({
   centerValue: string
   centerLabel: string
   format: (value: number) => string
-  formatShare: (share: number) => string
+  formatShare: ((share: number) => string) | null
   size?: number
   thickness?: number
   className?: string
@@ -127,7 +131,9 @@ function DonutChart({
             <span aria-hidden="true" className="size-2 rounded-full" style={{ backgroundColor: item.color }} />
             <span className="truncate text-text-secondary">{item.label}</span>
             <span className="text-caption-1-medium text-text-primary">{format(item.value)}</span>
-            <span className="text-end text-text-secondary">{total > 0 ? formatShare(item.value / total) : '—'}</span>
+            <span data-slot="donut-chart-legend-share" className="text-end text-text-secondary">
+              {formatShare === null ? '' : total > 0 ? formatShare(item.value / total) : '—'}
+            </span>
           </li>
         ))}
       </ul>

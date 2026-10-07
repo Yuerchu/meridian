@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useRef, useState, type KeyboardEvent } from 'react'
+import { heatmapMove, heatmapStep } from '@/lib/heatmap'
 import { cx } from '@/utils/cx'
 
 /**
@@ -14,18 +15,19 @@ const STEPS = [
   'var(--heatmap-color)',
 ] as const
 
-/** Which of the four non-empty steps a value falls on, scaled to the busiest cell. */
-export function heatmapStep(value: number, max: number): number {
-  return value <= 0 || max <= 0 ? 0 : Math.min(4, Math.ceil((value / max) * 4))
-}
-
 /**
  * A rows × columns grid of counts (weekday × hour, for the usage page).
  *
- * Hovering a cell outlines it and writes its caption in the line under the
- * grid, where it does not cover the neighbouring cells the way a tooltip
- * would. The grid itself is one image with a summary label; the caption line
- * is `aria-live`, so a screen reader hears what a pointer would have read.
+ * Pointing at a cell, focusing it or pressing it outlines it and writes its
+ * caption in the line under the grid, where it does not cover the neighbouring
+ * cells the way a tooltip would.
+ *
+ * It is an ARIA grid with one tab stop: Tab lands on the active cell and the
+ * arrow keys (Home/End, with Ctrl for the corners) move within it, so 168
+ * cells cost a keyboard user one Tab rather than 168. Each cell is labelled
+ * with its own caption, which is what a screen reader reads on focus; the
+ * visible caption line is therefore hidden from it, or every move would be
+ * announced twice.
  */
 function ActivityHeatmap({
   data,
@@ -42,7 +44,7 @@ function ActivityHeatmap({
   rowLabels: readonly string[]
   /** The label under a column, or `''` to leave it blank. */
   columnLabel: (column: number) => string
-  /** What the caption line says about a hovered cell. */
+  /** What a cell says about itself: its accessible name and the caption line. */
   caption: (row: number, column: number, value: number) => string
   less: string
   more: string
@@ -51,8 +53,26 @@ function ActivityHeatmap({
   className?: string
 }) {
   const [hover, setHover] = useState<[number, number] | null>(null)
+  /** The roving tab stop, and the cell outlined while the grid has focus. */
+  const [active, setActive] = useState<[number, number]>([0, 0])
+  const [focused, setFocused] = useState(false)
+  const grid = useRef<HTMLDivElement>(null)
+  const rows = data.length
   const columns = data[0]?.length ?? 0
   const max = Math.max(0, ...data.flat())
+  const shown = hover ?? (focused ? active : null)
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const next = heatmapMove(event.key, active, rows, columns, event.ctrlKey || event.metaKey)
+    if (!next) return
+    event.preventDefault()
+    // The pointer may still rest on a cell; the caption follows whichever
+    // input moved last, or it would keep naming the cell under the mouse.
+    setHover(null)
+    setActive(next)
+    grid.current?.querySelector<HTMLElement>(`[data-row="${next[0]}"][data-column="${next[1]}"]`)?.focus()
+  }
+
   return (
     <div
       data-slot="activity-heatmap"
@@ -60,49 +80,70 @@ function ActivityHeatmap({
       style={{ ['--heatmap-color' as string]: color }}
     >
       <div
+        ref={grid}
         data-slot="activity-heatmap-grid"
-        role="img"
+        role="grid"
         aria-label={ariaLabel}
         className="grid items-center gap-[3px]"
         style={{ gridTemplateColumns: `2rem repeat(${columns}, minmax(0, 1fr))` }}
         onMouseLeave={() => setHover(null)}
+        onKeyDown={onKeyDown}
+        onFocus={() => setFocused(true)}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false)
+        }}
       >
         {data.map((row, r) => (
-          <div key={r} className="contents">
-            <span className="truncate text-caption-2-regular text-text-secondary">{rowLabels[r]}</span>
-            {row.map((value, c) => (
-              <span
-                key={c}
-                data-slot="activity-heatmap-cell"
-                data-step={heatmapStep(value, max)}
-                onMouseEnter={() => setHover([r, c])}
-                className={cx(
-                  'aspect-square rounded-[3px]',
-                  hover?.[0] === r && hover[1] === c && 'ring-[1.5px] ring-text-primary',
-                )}
-                style={{ backgroundColor: STEPS[heatmapStep(value, max)] }}
-              />
-            ))}
+          <div key={r} role="row" className="contents">
+            <span role="rowheader" className="truncate text-caption-2-regular text-text-secondary">
+              {rowLabels[r]}
+            </span>
+            {row.map((value, c) => {
+              const isShown = shown?.[0] === r && shown[1] === c
+              return (
+                <span
+                  key={c}
+                  role="gridcell"
+                  data-slot="activity-heatmap-cell"
+                  data-row={r}
+                  data-column={c}
+                  data-step={heatmapStep(value, max)}
+                  aria-label={caption(r, c, value)}
+                  tabIndex={active[0] === r && active[1] === c ? 0 : -1}
+                  onMouseEnter={() => setHover([r, c])}
+                  // A tap focuses a tabbable cell in most browsers, but not all;
+                  // setting it on press makes touch reliable either way.
+                  onPointerDown={() => setActive([r, c])}
+                  onFocus={() => setActive([r, c])}
+                  className={cx(
+                    'aspect-square rounded-xs outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring',
+                    isShown && 'ring-[1.5px] ring-text-primary',
+                  )}
+                  style={{ backgroundColor: STEPS[heatmapStep(value, max)] }}
+                />
+              )
+            })}
           </div>
         ))}
-        <span />
+        {/* The hour axis is for the eye: every cell's label already names its hour. */}
+        <span aria-hidden="true" />
         {Array.from({ length: columns }, (_, c) => (
-          <span key={c} className="text-caption-2-regular whitespace-nowrap text-text-secondary">
+          <span key={c} aria-hidden="true" className="text-caption-2-regular whitespace-nowrap text-text-secondary">
             {columnLabel(c)}
           </span>
         ))}
       </div>
-      <div data-slot="activity-heatmap-footer" className="flex items-center gap-2 text-caption-1-regular">
-        <span
-          data-slot="activity-heatmap-caption"
-          aria-live="polite"
-          className="min-h-4 flex-1 truncate text-text-primary tabular-nums"
-        >
-          {hover ? caption(hover[0], hover[1], data[hover[0]][hover[1]]) : ''}
+      <div
+        data-slot="activity-heatmap-footer"
+        aria-hidden="true"
+        className="flex items-center gap-2 text-caption-1-regular"
+      >
+        <span data-slot="activity-heatmap-caption" className="min-h-4 flex-1 truncate text-text-primary tabular-nums">
+          {shown ? caption(shown[0], shown[1], data[shown[0]][shown[1]]) : ''}
         </span>
         <span className="text-text-secondary">{less}</span>
         {STEPS.map((step, i) => (
-          <span key={i} aria-hidden="true" className="size-2.5 rounded-xs" style={{ backgroundColor: step }} />
+          <span key={i} className="size-2.5 rounded-xs" style={{ backgroundColor: step }} />
         ))}
         <span className="text-text-secondary">{more}</span>
       </div>
