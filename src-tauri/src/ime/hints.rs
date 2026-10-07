@@ -20,9 +20,9 @@
 
 use std::time::Duration;
 
-use meridian_core::db;
-use meridian_core::db::models::memory::{GLOBAL_SCOPE_ID, MemoryScope};
-use meridian_core::db::ops::memory::VisibilityCtx;
+use meridian_core::db::entity::memory::{GLOBAL_SCOPE_ID, MemoryScope};
+use meridian_core::db::sea::ops::memory as mem_ops;
+use meridian_core::db::sea::ops::memory::VisibilityCtx;
 use meridian_core::services::Services;
 use meridian_ime_config::{HINTS_VERSION, Hints, ImeDirs, MAX_HINT_CHARS, MAX_HINTS};
 
@@ -93,15 +93,15 @@ pub fn phrases<'a>(contents: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 }
 
 /// The hints as they stand in the database now.
-pub fn compute(services: &Services) -> Result<Vec<String>, String> {
-    let mut conn = services.db.get().map_err(|e| e.to_string())?;
-    let rows = db::ops::memory::list_by_scopes(
-        &mut conn,
+pub async fn compute(services: &Services) -> Result<Vec<String>, String> {
+    let rows = mem_ops::list_by_scopes(
+        &services.sea,
         MemoryScope::ClientGlobal,
         &[GLOBAL_SCOPE_ID.to_string()],
         &VisibilityCtx::private_injection(),
         None,
     )
+    .await
     .map_err(|e| e.to_string())?;
     Ok(redacted_phrases(
         rows.iter().map(|r| r.content.as_str()),
@@ -151,15 +151,18 @@ pub fn spawn_refresh(services: Services, dirs: ImeDirs) {
         let mut interval = tokio::time::interval(REFRESH);
         loop {
             interval.tick().await;
-            let services = services.clone();
             let dirs = dirs.clone();
             let mut prev = last.clone();
-            let result = tokio::task::spawn_blocking(move || {
-                let hints = compute(&services)?;
-                let count = hints.len();
-                write_if_changed(&dirs, hints, &mut prev).map(|wrote| (wrote, count, prev))
-            })
-            .await;
+            let result = match compute(&services).await {
+                Ok(hints) => {
+                    tokio::task::spawn_blocking(move || {
+                        let count = hints.len();
+                        write_if_changed(&dirs, hints, &mut prev).map(|wrote| (wrote, count, prev))
+                    })
+                    .await
+                }
+                Err(e) => Ok(Err(e)),
+            };
             match result {
                 Ok(Ok((wrote, count, prev))) => {
                     if wrote {

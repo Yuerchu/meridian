@@ -6,14 +6,15 @@
 
 use meridian_core::db::entity::emoji::{EmojiSemanticStatus, EmojiSource};
 use meridian_core::db::entity::emoji_pack::EmojiPackKind;
+use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    custom_tool, emoji, emoji_pack, journal_version, mcp_server, skill, tool_category, tool_preset,
+    custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, skill, tool_category,
+    tool_preset,
 };
 use meridian_core::db::models::{
     assistant::AssistantRow,
     conversation::ConversationRow,
-    memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
     model_profile::ModelProfileRow,
     project::ProjectRow,
@@ -36,36 +37,6 @@ macro_rules! entity_response {
                 Self {
                     $($field: row.$field,)*
                 }
-            }
-        }
-
-        pub type $list = Vec<$info>;
-    };
-}
-
-macro_rules! strict_bool_entity_response {
-    (
-        $row:path, $info:ident, $list:ident,
-        |$value:ident| $validate:block,
-        { $($field:ident: $ty:ty),* $(,)? },
-        { $($bool_field:ident),* $(,)? }
-    ) => {
-        #[derive(Debug, Clone, serde::Serialize)]
-        pub struct $info {
-            $(pub $field: $ty,)*
-            $(pub $bool_field: bool,)*
-        }
-
-        impl TryFrom<$row> for $info {
-            type Error = String;
-
-            fn try_from($value: $row) -> Result<Self, Self::Error> {
-                $validate
-                $(let $bool_field = decode_sqlite_bool($value.$bool_field, stringify!($bool_field))?;)*
-                Ok(Self {
-                    $($field: $value.$field,)*
-                    $($bool_field,)*
-                })
             }
         }
 
@@ -619,63 +590,70 @@ pub type McpServerListResponse = Vec<McpServerInfoResponse>;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct MemoryInfoResponse {
     pub id: String,
-    pub scope_type: meridian_core::db::models::memory::MemoryScope,
+    pub scope_type: MemoryScope,
     pub scope_id: String,
     pub key: String,
     pub content: String,
-    pub memory_type: meridian_core::db::models::memory::MemoryType,
+    pub memory_type: MemoryType,
     pub subject_scope_id: Option<String>,
-    pub origin: meridian_core::db::models::memory::Origin,
-    pub visibility: meridian_core::db::models::memory::Visibility,
+    pub origin: Origin,
+    pub visibility: Visibility,
     pub source_session_id: Option<String>,
     pub deleted_at: Option<i64>,
-    pub deleted_by: Option<meridian_core::db::models::memory::DeletedBy>,
+    pub deleted_by: Option<DeletedBy>,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
-impl TryFrom<MemoryRow> for MemoryInfoResponse {
-    type Error = String;
-
-    fn try_from(row: MemoryRow) -> Result<Self, Self::Error> {
-        use meridian_core::db::models::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
-
-        let scope_type = MemoryScope::parse(&row.scope_type)?;
-        let memory_type = MemoryType::parse(&row.memory_type)?;
-        let origin = Origin::parse(&row.origin)?;
-        let visibility = Visibility::parse(&row.visibility)?;
-        let deleted_by = row.deleted_by.as_deref().map(DeletedBy::parse).transpose()?;
-        Ok(Self {
+impl From<memory::Model> for MemoryInfoResponse {
+    fn from(row: memory::Model) -> Self {
+        Self {
             id: row.id,
-            scope_type,
+            scope_type: row.scope_type,
             scope_id: row.scope_id,
             key: row.key,
             content: row.content,
-            memory_type,
+            memory_type: row.memory_type,
             subject_scope_id: row.subject_scope_id,
-            origin,
-            visibility,
+            origin: row.origin,
+            visibility: row.visibility,
             source_session_id: row.source_session_id,
             deleted_at: row.deleted_at,
-            deleted_by,
+            deleted_by: row.deleted_by,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }
     }
 }
 
 pub type MemoryListResponse = Vec<MemoryInfoResponse>;
 
-strict_bool_entity_response!(MemorySubjectRow, MemorySubjectInfoResponse, MemorySubjectListResponse, |_row| {}, {
-    scope_id: String,
-    display_name: Option<String>,
-    last_seen_at: i64,
-    created_at: i64,
-}, {
-    is_protected,
-    is_pinned,
-    opted_out,
-});
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MemorySubjectInfoResponse {
+    pub scope_id: String,
+    pub display_name: Option<String>,
+    pub last_seen_at: i64,
+    pub created_at: i64,
+    pub is_protected: bool,
+    pub is_pinned: bool,
+    pub opted_out: bool,
+}
+
+impl From<memory_subject::Model> for MemorySubjectInfoResponse {
+    fn from(row: memory_subject::Model) -> Self {
+        Self {
+            scope_id: row.scope_id,
+            display_name: row.display_name,
+            last_seen_at: row.last_seen_at,
+            created_at: row.created_at,
+            is_protected: row.is_protected.get(),
+            is_pinned: row.is_pinned.get(),
+            opted_out: row.opted_out.get(),
+        }
+    }
+}
+
+pub type MemorySubjectListResponse = Vec<MemorySubjectInfoResponse>;
 
 /// What a model is, independent of who serves it.
 ///
@@ -1216,10 +1194,7 @@ mod tests {
             serde_json::to_value(SkillSource::parse("official").unwrap()).unwrap(),
             "official"
         );
-        assert_eq!(
-            serde_json::to_value(meridian_core::db::models::memory::DeletedBy::parse("self").unwrap()).unwrap(),
-            "self"
-        );
+        assert_eq!(serde_json::to_value(DeletedBy::parse("self").unwrap()).unwrap(), "self");
 
         assert!(SkillSource::parse("future").is_err());
     }

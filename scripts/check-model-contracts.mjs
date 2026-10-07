@@ -365,9 +365,10 @@ if (entityResponses != null) {
     }
   }
 
-  // SQLite represents booleans as i32. The response macro owns the strict
-  // 0/1 conversion so neither Rust IPC DTOs nor generated TS types can inherit
-  // that persistence representation.
+  // SQLite represents booleans as i32. A Diesel row reaches IPC through
+  // decode_sqlite_bool, the one strict 0/1 conversion, so neither Rust IPC DTOs
+  // nor generated TS types can inherit that persistence representation. (A
+  // SeaORM row carries SqlBool, which is strict at the read.)
   for (const [pattern, message] of [
     [
       /fn decode_sqlite_bool\(value: i32, field: &str\) -> Result<bool, String>/,
@@ -376,8 +377,6 @@ if (entityResponses != null) {
     [/0\s*=>\s*Ok\(false\)/, 'SQLite bool 转换必须只把 0 解释为 false'],
     [/1\s*=>\s*Ok\(true\)/, 'SQLite bool 转换必须只把 1 解释为 true'],
     [/_\s*=>\s*Err\(/, 'SQLite bool 转换必须拒绝 0/1 以外的持久化值'],
-    [/\$\(\s*pub\s+\$bool_field\s*:\s*bool\s*,\s*\)\*/, 'SQLite bool response macro 必须公开为 Rust bool'],
-    [/decode_sqlite_bool\(\$value\.\$bool_field,/, 'SQLite bool response macro 必须执行严格 0/1 转换'],
   ]) {
     if (!pattern.test(entityResponses)) add(entityResponseFile, message)
   }
