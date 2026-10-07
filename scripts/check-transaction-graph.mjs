@@ -16,7 +16,10 @@
  *   R5 同一个函数里，SeaORM 写事务开始之前不能先拿同一个池去读——读到的计数、
  *      "是否已存在"在锁外，写的时候可能已经不成立（两个请求都看见还剩一个名额，
  *      都插进去）。读放进写事务里；确实不需要的（启动期没有并发写者、有别的锁、
- *      读完就返回不写），在函数体里写一行 `// pool-read-before-write: <理由>`。
+ *      读完就返回不写），在那次读的正上方写一行 `// pool-read-before-write: <理由>`。
+ *      一条理由只管它所在注释块之后的那一条语句（按括号深度切）里的读：2026-10-08 给
+ *      update_provider 里读会话 id 写的理由，曾把同一函数里后来加的一次 provider
+ *      读也豁免了，检查器照样绿。
  *      2026-10 同一类竞态出现了三次：preference 的 storage_key、redaction 的
  *      规则上限、skill 绑定上限。近似规则：只认实参直接是那个池句柄的调用，经
  *      别的值（`&services`）转手的看不见。
@@ -314,6 +317,57 @@ function isSeaReadBound(file, fn) {
 }
 
 /** 只读的 SeaORM 函数：参数是读能力（`impl Read` / `impl Snapshot` / `&ReadTx`），不收 `WriteTx`。 */
+/**
+ * The lines a `// pool-read-before-write: <reason>` justifies: the one
+ * statement after the comment block it sits in. The statement is read off the
+ * blanked text by bracket depth: it ends at a `;` at depth 0, or where a block
+ * closes back to depth 0 with no `else`, `.` or `?` after it, or where the
+ * enclosing block closes. So a rustfmt-broken call chain, a multi-line macro
+ * and a `match` on the read are each one statement, and the next statement is
+ * not. One reason, one read — a function-wide pass would excuse a read added
+ * later for a reason written about another.
+ */
+function justifiedLines(raw, text, from, to) {
+  const lines = raw.split('\n')
+  const lineStarts = [0]
+  for (let k = 0; k < raw.length; k++) if (raw[k] === '\n') lineStarts.push(k + 1)
+  const first = raw.slice(0, from).split('\n').length
+  const last = raw.slice(0, to).split('\n').length
+  const justified = new Set()
+  for (let line = first; line <= last; line++) {
+    if (!/\/\/\s*pool-read-before-write:\s*\S/.test(lines[line - 1] ?? '')) continue
+    let blockEnd = line
+    while (/^\s*\/\//.test(lines[blockEnd] ?? '')) blockEnd++
+    const begin = lineStarts[blockEnd] ?? raw.length
+    let depth = 0
+    let stop = text.length
+    for (let k = begin; k < text.length; k++) {
+      const c = text[k]
+      if (c === '(' || c === '[' || c === '{') depth++
+      else if (c === ')' || c === ']' || c === '}') {
+        depth--
+        if (depth < 0) {
+          stop = k
+          break
+        }
+        if (depth === 0 && c === '}') {
+          const rest = text.slice(k + 1).match(/^\s*(\S+)/)
+          if (!rest || !/^(?:else\b|\.|\?)/.test(rest[1])) {
+            stop = k
+            break
+          }
+        }
+      } else if (c === ';' && depth === 0) {
+        stop = k
+        break
+      }
+    }
+    const lastLine = text.slice(0, stop).split('\n').length
+    for (let covered = blockEnd + 1; covered <= lastLine; covered++) justified.add(covered)
+  }
+  return justified
+}
+
 function isSeaReadOp(fn) {
   if (/\bWriteTx\b/.test(fn.signature)) return false
   return isSeaReadBound(fn.file, fn) || /\bimpl\s+(?:[\w:]*::)?Snapshot\b|&\s*ReadTx\b/.test(fn.signature)
@@ -370,12 +424,13 @@ export function violations({ roots }) {
       }
     }
     if (root.poolReads?.length && !root.owner.test) {
-      const excused = /\/\/\s*pool-read-before-write:\s*\S/.test(root.file.raw.slice(root.owner.body[0], root.at))
-      for (const read of excused ? [] : root.poolReads) {
+      const excused = justifiedLines(root.file.raw, root.file.text, root.owner.body[0], root.at)
+      const reads = root.poolReads.filter((read) => !excused.has(lineOf(root.file.text, read.at)))
+      for (const read of reads) {
         const message =
           `R5 ${root.file.path}:${lineOf(root.file.text, read.at)}: ${read.name}(${root.receiver}) 在池上读，` +
           `随后开写事务；把读放进写事务，` +
-          '或在函数里写 `// pool-read-before-write: <理由>`'
+          '或在这次读的正上方写 `// pool-read-before-write: <理由>`'
         if (!problems.includes(message)) problems.push(message)
       }
     }

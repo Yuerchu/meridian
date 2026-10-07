@@ -17,6 +17,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
 | cached_model::list_by_provider | 1 |
+| conversation::all_ids | 9 |
 | conversation::get_conversation | 40 |
 | emoji::create_emoji | 1 |
 | emoji::list_confirmed_for_packs | 1 |
@@ -24,9 +25,14 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | emoji_pack::create_pack | 1 |
 | emoji_pack::list_assigned_pack_ids | 1 |
 | memory::list_subjects | 1 |
+| plan_review::list_reviews_for_conversation | 1 |
 | preference::delete_preference | 1 |
 | preference::get_preference | 12 |
 | preference::set_preference | 4 |
+| provider::create_provider | 9 |
+| provider::get_provider | 5 |
+| provider::list_providers | 5 |
+| provider::update_provider | 2 |
 | skill_binding::resolve_available | 1 |
 | tool_preset::create_preset | 1 |
 | tool_preset::get_preset | 1 |
