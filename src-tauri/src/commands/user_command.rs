@@ -441,6 +441,7 @@ pub async fn run_user_command(
         turn_id: Some(turn_id.clone()),
         assistant_id: None,
         db_pool: Some(services.db.clone()),
+        sea: Some(services.sea.clone()),
         sandbox_policy: policy,
         tool_secrets: Default::default(),
         cancel: lease.cancel_token().clone(),

@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：106
-- Diesel ops 调用点（db/ops 之外）：867
-- Diesel API 引用：1293
+- 事务根（非测试）：108
+- Diesel ops 调用点（db/ops 之外）：861
+- Diesel API 引用：1269
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -21,6 +21,7 @@
 - 1 个：mcp_server
 - 1 个：notification
 - 1 个：preference
+- 1 个：redaction_rule
 - 1 个：tool_category
 - 1 个：tool_preset
 - 1 个：voice_corpus
@@ -85,6 +86,8 @@
 | `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
+| `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
+| `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
