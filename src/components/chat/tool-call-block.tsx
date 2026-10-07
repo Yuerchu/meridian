@@ -26,6 +26,7 @@ import {
 import { ShikiCode } from './shiki-code'
 import { NumberedCode } from './numbered-code'
 import { SubAgentGroup } from './sub-agent-group'
+import { PlanReviewEntryBlock } from './plan-review-entry'
 import { DiffStats, FileDiffCard, FileIcon } from './file-diff-card'
 import { pathExtension } from '@/lib/paths'
 import { PathLabel } from '@/components/ui/path-label'
@@ -62,7 +63,6 @@ import {
   ChatToolTrigger,
   type ChatToolState,
 } from '@/components/ui/chat-tool'
-import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
@@ -84,8 +84,6 @@ import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useConversationStore } from '@/stores/conversation-store'
-import { planReviewStatusOfTool } from '@/lib/plan-review-status'
-import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { ApprovalEscalation, ApprovalRetryKind, AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -2012,71 +2010,6 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         {wasRejected && <X className="ml-auto size-3.5 text-text-secondary" />}
       </div>
       {body}
-    </div>
-  )
-}
-
-function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay; reviewId: string }) {
-  const { t } = useTranslation()
-  const openReview = usePlanReviewStore((state) => state.openReview)
-  const summary = usePlanReviewStore((state) => state.summaries[reviewId])
-  const status = summary?.status ?? planReviewStatusOfTool(data.status)
-  const presentation = useContext(ChatToolPresentationContext)
-
-  // A key that goes somewhere rather than opening something: the review has a
-  // page of its own, and a panel here would be a second, smaller copy of it.
-  if (presentation === 'bubble') {
-    return (
-      <BubbleBlockButton
-        data-slot="plan-review-entry"
-        data-status={status}
-        state={status === 'pending' ? 'navigate' : 'output-available'}
-        onClick={() => openReview(reviewId)}
-      >
-        <List aria-hidden className="size-3.5 shrink-0" />
-        <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
-          {t('chat.plan.title')}
-        </span>
-        <Chip size="sm" variant="secondary" className="ml-auto">
-          {t(`planReview.status.${status}`)}
-        </Chip>
-      </BubbleBlockButton>
-    )
-  }
-
-  return (
-    <div
-      data-slot="plan-review-entry"
-      data-status={status}
-      className={cx(
-        // Same edge rule as CHAT_TOOL_CARD: a card in the transcript sits on
-        // `--surface` and is invisible in the dark theme without a ring.
-        'my-3 rounded-xl bg-background-primary-default p-4 text-body-regular shadow-card ring-1 ring-inset',
-        status === 'pending' ? 'ring-status-info/40' : 'ring-border-button-default',
-      )}
-    >
-      <div data-slot="plan-review-entry-row" className="flex min-w-0 items-center gap-3">
-        <List aria-hidden className="size-4 shrink-0 text-text-secondary" />
-        <div data-slot="plan-review-entry-body" className="min-w-0 flex-1">
-          <div data-slot="plan-review-entry-heading" className="flex flex-wrap items-center gap-2">
-            <span data-slot="plan-review-entry-title" className="text-body-medium text-text-primary">
-              {t('chat.plan.title')}
-            </span>
-            <Chip size="sm" variant="secondary">
-              {t(`planReview.status.${status}`)}
-            </Chip>
-          </div>
-          <p
-            data-slot="plan-review-entry-description"
-            className="mt-1 line-clamp-2 text-caption-1-regular text-text-secondary"
-          >
-            {status === 'pending' ? t('chat.plan.reviewReady') : t('chat.plan.reviewHistory')}
-          </p>
-        </div>
-        <Button variant={status === 'pending' ? 'primary' : 'secondary'} onPress={() => openReview(reviewId)}>
-          {t('chat.plan.review')}
-        </Button>
-      </div>
     </div>
   )
 }

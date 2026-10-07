@@ -24,6 +24,7 @@ import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
+import { useProjectBranch } from '@/hooks/use-project-branch'
 import { useConfirm } from '@/hooks/use-confirm'
 import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
@@ -88,6 +89,13 @@ function ChatViewInner({
     const conv = s.conversations.find((c) => c.id === conversationId)
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
     return project?.source_type.startsWith('onebot') ?? false
+  })
+  // A local project with a folder is the only kind `workspace_git_status`
+  // answers for; a OneBot project has no folder and a plain chat no project.
+  const hasProjectFolder = useConversationStore((s) => {
+    const conv = s.conversations.find((c) => c.id === conversationId)
+    const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
+    return project?.source_type === 'local' && project.path !== null
   })
   const isHostedAgent = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.agent_kind === 'claude_code',
@@ -344,6 +352,7 @@ function ChatViewInner({
     compactBoundary,
     compacting,
   })
+  const branch = useProjectBranch(conversationId, hasProjectFolder, streaming || !!shellTurnId)
 
   // Only a delegated run keeps an inbox open, and only while it is going. The
   // main conversation is unchanged: nothing can be submitted until the answer
@@ -1135,6 +1144,7 @@ function ChatViewInner({
           onToggleAcceptEdits={settings.onToggleAcceptEdits}
           capabilities={settings.capabilities}
           contextInfo={contextInfo}
+          branch={branch}
           compacting={compacting}
           onCompact={() => handleCompact()}
           attachedFiles={attachedFiles}
