@@ -346,9 +346,13 @@ const entityResponseFile = 'src-tauri/src/commands/entity_response.rs'
 const entityResponses = readAt(entityResponseFile)
 if (entityResponses != null) {
   for (const match of entityResponses.matchAll(
-    /\b(?:strict_)?entity_response!\(\s*(?:[\w:]+::)?(\w+)\s*,\s*(\w+)\s*,\s*(\w+)/g,
+    /\b(?:strict_)?entity_response!\(\s*([\w:]+)\s*,\s*(\w+)\s*,\s*(\w+)/g,
   )) {
-    if (!match[1].endsWith('Row')) add(entityResponseFile, `${match[1]} 不是明确的 persistence Row`)
+    // A Diesel row, or a SeaORM entity's Model named through its module
+    // (`tool_category::Model`): either way the shape stops at this file.
+    if (!match[1].endsWith('Row') && !/^\w+::Model$/.test(match[1])) {
+      add(entityResponseFile, `${match[1]} 不是明确的 persistence Row 或 <entity>::Model`)
+    }
     if (!match[2].endsWith('InfoResponse')) add(entityResponseFile, `${match[2]} 必须以 InfoResponse 结尾`)
     if (!match[3].endsWith('ListResponse')) add(entityResponseFile, `${match[3]} 必须以 ListResponse 结尾`)
   }

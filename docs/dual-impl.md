@@ -19,3 +19,5 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | preference::delete_preference | 1 |
 | preference::get_preference | 14 |
 | preference::set_preference | 5 |
+| tool_preset::create_preset | 1 |
+| tool_preset::get_preset | 1 |

@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：94
-- Diesel ops 调用点（db/ops 之外）：890
-- Diesel API 引用：1332
+- 事务根（非测试）：106
+- Diesel ops 调用点（db/ops 之外）：867
+- Diesel API 引用：1293
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -16,9 +16,13 @@
 ## ops 模块的事务连通分量
 
 - 21 个：acp_session acp_session_notice assistant audit cached_model conversation emoji memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 1 个：custom_tool
 - 1 个：journal
+- 1 个：mcp_server
 - 1 个：notification
 - 1 个：preference
+- 1 个：tool_category
+- 1 个：tool_preset
 - 1 个：voice_corpus
 
 ## 事务根
@@ -32,6 +36,9 @@
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | diesel-deferred | audit, conversation, message, message_context_item, model_config, queue, queued_prompt_context_item, turn |
 | `src-tauri/crates/core/src/agent/queue.rs` › `steer` | diesel-immediate | queue |
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | diesel-immediate | audit, conversation, message, model_config, queue |
+| `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
+| `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
+| `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
 | `src-tauri/crates/core/src/db/ops/cached_model.rs` › `list_cached_for_provider` | diesel-deferred | cached_model |
 | `src-tauri/crates/core/src/db/ops/cached_model.rs` › `replace_models` | diesel-deferred | — |
@@ -98,6 +105,9 @@
 | `src-tauri/src/commands/conversation.rs` › `mutate_conversation_unless_plan_barrier` | diesel-immediate | conversation, plan_review · 回调来自 3 处 |
 | `src-tauri/src/commands/conversation.rs` › `update_conversation_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review |
 | `src-tauri/src/commands/logs.rs` › `set_log_level` | sea-write | preference |
+| `src-tauri/src/commands/mcp.rs` › `create_mcp_server` | sea-write | mcp_server |
+| `src-tauri/src/commands/mcp.rs` › `delete_mcp_server` | sea-write | mcp_server |
+| `src-tauri/src/commands/mcp.rs` › `update_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/message.rs` › `delete_message_unless_plan_barrier` | diesel-immediate | message, plan_review |
 | `src-tauri/src/commands/message.rs` › `read_message_context_item` | diesel-deferred | conversation, message, message_context_item |
 | `src-tauri/src/commands/message.rs` › `read_snapshot` | diesel-deferred | acp_session_notice, conversation, message, message_context_item, plan_review, turn, usage |
@@ -117,5 +127,11 @@
 | `src-tauri/src/commands/queue.rs` › `enqueue_unless_plan_barrier` | diesel-immediate | plan_review, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/queue.rs` › `release_unless_plan_barrier` | diesel-immediate | plan_review, queue |
 | `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | diesel-deferred | audit, conversation, message, model_config, turn |
+| `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
+| `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |
+| `src-tauri/src/commands/tool_system.rs` › `delete_custom_tool` | sea-write | custom_tool |
+| `src-tauri/src/commands/tool_system.rs` › `delete_tool_preset` | sea-write | tool_preset |
+| `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
+| `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/platform.rs` › `save_saf_roots` | sea-write | preference |
 | `src-tauri/src/remote/mod.rs` › `save_config` | sea-write | preference |

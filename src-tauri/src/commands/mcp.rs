@@ -3,8 +3,10 @@ use std::collections::BTreeMap;
 use crate::ServicesExt;
 use crate::commands::entity_response::{McpServerInfoResponse, McpServerListResponse};
 use crate::commands::model_config::RequiredNullable;
-use meridian_core::db;
-use meridian_core::db::models::mcp_server::{McpServerChangeset, McpServerInsert, McpTransport};
+use meridian_core::db::entity::mcp_server;
+use meridian_core::db::entity::mcp_server::{McpServerChangeset, McpTransport};
+use meridian_core::db::sea::ops::mcp_server as mcp_server_ops;
+use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::mcp;
 use meridian_core::util::{double_option, now_ms};
 
@@ -131,32 +133,13 @@ pub struct McpServerUpdateRequest {
     is_enabled: Option<bool>,
 }
 
-fn encode_json_patch<T: serde::Serialize>(
-    patch: Option<Option<T>>,
-    field: &str,
-) -> Result<Option<Option<String>>, String> {
-    patch
-        .map(|value| {
-            value
-                .map(|value| {
-                    serde_json::to_string(&value).map_err(|error| format!("could not encode {field}: {error}"))
-                })
-                .transpose()
-        })
-        .transpose()
-}
-
 #[tauri::command]
 pub async fn list_mcp_servers(app: tauri::AppHandle) -> Result<McpServerListResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows = db::ops::mcp_server::list_mcp_servers(&mut conn).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = mcp_server_ops::list_mcp_servers(&services.sea)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
@@ -165,51 +148,30 @@ pub async fn create_mcp_server(
     request: McpServerCreateRequest,
 ) -> Result<McpServerInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let args = request
-            .args
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| format!("could not encode args: {error}")))
-            .transpose()?;
-        let env = request
-            .env
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| format!("could not encode env: {error}")))
-            .transpose()?;
-        let headers = request
-            .headers
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| format!("could not encode headers: {error}")))
-            .transpose()?;
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = now_ms();
-        let row = db::ops::mcp_server::create_mcp_server(
-            &mut conn,
-            &McpServerInsert {
-                id: &id,
-                name: &request.name,
-                transport_type: request.transport_type.as_str(),
-                command: request.command.0.as_deref(),
-                args: args.as_deref(),
-                env: env.as_deref(),
-                url: request.url.0.as_deref(),
-                headers: headers.as_deref(),
-                // `is_enabled` now means "connect this one at startup", which is
-                // not something a server should opt into merely by existing. The
-                // user turns it on once they know the configuration works.
-                is_enabled: 0,
-                sort_order: 0,
-                created_at: now,
-                updated_at: now,
-            },
-        )
+    let now = now_ms();
+    let row = mcp_server::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name,
+        transport_type: request.transport_type,
+        command: request.command.0,
+        args: request.args.0.map(Json),
+        env: request.env.0.map(Json),
+        url: request.url.0,
+        headers: request.headers.0.map(Json),
+        // `is_enabled` now means "connect this one at startup", which is
+        // not something a server should opt into merely by existing. The
+        // user turns it on once they know the configuration works.
+        is_enabled: SqlBool::FALSE,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    };
+    let row = services
+        .sea
+        .write(async |tx| mcp_server_ops::create_mcp_server(tx, row).await)
+        .await
         .map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    Ok(row.into())
 }
 
 #[tauri::command]
@@ -218,57 +180,44 @@ pub async fn update_mcp_server(
     request: McpServerUpdateRequest,
 ) -> Result<McpServerInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let args = encode_json_patch(request.args, "args")?;
-        let env = encode_json_patch(request.env, "env")?;
-        let headers = encode_json_patch(request.headers, "headers")?;
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let row = db::ops::mcp_server::update_mcp_server(
-            &mut conn,
-            &request.id,
-            &McpServerChangeset {
-                name: request.name,
-                transport_type: request.transport_type.map(|transport| transport.as_str().to_owned()),
-                command: request.command,
-                args,
-                env,
-                url: request.url,
-                headers,
-                is_enabled: request.is_enabled.map(i32::from),
-                updated_at: Some(now_ms()),
-            },
-        )
+    let changeset = McpServerChangeset {
+        name: request.name,
+        transport_type: request.transport_type,
+        command: request.command,
+        args: request.args.map(|args| args.map(Json)),
+        env: request.env.map(|env| env.map(Json)),
+        url: request.url,
+        headers: request.headers.map(|headers| headers.map(Json)),
+        is_enabled: request.is_enabled.map(SqlBool::from),
+        updated_at: Some(now_ms()),
+    };
+    let row = services
+        .sea
+        .write(async |tx| mcp_server_ops::update_mcp_server(tx, &request.id, changeset).await)
+        .await
         .map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    Ok(row.into())
 }
 
 #[tauri::command]
 pub async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
     services.mcp.disconnect(&id).await;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::mcp_server::delete_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    services
+        .sea
+        .write(async |tx| mcp_server_ops::delete_mcp_server(tx, &id).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let server = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::mcp_server::get_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let server = mcp_server_ops::get_mcp_server(&services.sea, &id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("MCP server `{id}` not found"))?;
 
     let registry = services.mcp.clone();
     registry.connect(&server).await

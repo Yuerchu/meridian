@@ -4,38 +4,35 @@ use crate::commands::entity_response::{
     ToolPresetListResponse,
 };
 use crate::commands::model_config::RequiredNullable;
-use meridian_core::db;
-use meridian_core::db::models::custom_tool::{CustomToolChangeset, CustomToolInsert};
-use meridian_core::db::models::tool_preset::{ToolPresetChangeset, ToolPresetInsert};
+use meridian_core::db::entity::custom_tool::CustomToolChangeset;
+use meridian_core::db::entity::tool_preset::ToolPresetChangeset;
+use meridian_core::db::entity::{custom_tool, tool_preset};
+use meridian_core::db::sea::ops::{
+    custom_tool as custom_tool_ops, tool_category as tool_category_ops, tool_preset as tool_preset_ops,
+};
+use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::secrets::{SecretName, SecretScope};
 use meridian_core::tools::Permission;
-use meridian_core::util::{double_option, get_conn, now_ms};
+use meridian_core::util::{double_option, now_ms};
 
 /// Rebuild the runtime registry's custom tool set from the DB so permission
 /// changes, disables and deletions apply immediately, not on next restart.
-fn reload_custom_tools(app: &tauri::AppHandle) -> Result<(), String> {
+async fn reload_custom_tools(app: &tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
     // A reload failure is part of the command result: reporting a successful
     // save while the running registry kept the old definition is not success.
-    let mut conn = services.db.get().map_err(|e| e.to_string())?;
-    let list = db::ops::custom_tool::list_enabled_tools(&mut conn).map_err(|e| e.to_string())?;
+    let list = custom_tool_ops::list_enabled_tools(&services.sea)
+        .await
+        .map_err(|e| e.to_string())?;
     let tools = list
         .iter()
         .map(|ct| {
-            meridian_core::tools::custom::CustomToolExecutor::from_db(ct)
-                .map(|tool| std::sync::Arc::new(tool) as std::sync::Arc<dyn meridian_core::tools::Tool>)
+            std::sync::Arc::new(meridian_core::tools::custom::CustomToolExecutor::from_db(ct))
+                as std::sync::Arc<dyn meridian_core::tools::Tool>
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect();
     services.tools.set_custom_tools(tools);
     Ok(())
-}
-
-fn encode_string_list(items: &[String]) -> Result<String, String> {
-    serde_json::to_string(items).map_err(|error| error.to_string())
-}
-
-fn encode_json_object(object: &serde_json::Map<String, serde_json::Value>) -> Result<String, String> {
-    serde_json::to_string(object).map_err(|error| error.to_string())
 }
 
 fn default_parameters_schema() -> serde_json::Map<String, serde_json::Value> {
@@ -101,166 +98,160 @@ pub struct ToolPresetCreateRequest {
 }
 
 #[tauri::command]
-pub fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryListResponse, String> {
+pub async fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryListResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    db::ops::tool_category::list_categories(&mut conn)
+    tool_category_ops::list_categories(&services.sea)
+        .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn list_custom_tools(app: tauri::AppHandle) -> Result<CustomToolListResponse, String> {
+pub async fn list_custom_tools(app: tauri::AppHandle) -> Result<CustomToolListResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let rows = db::ops::custom_tool::list_tools(&mut conn).map_err(|e| e.to_string())?;
-    rows.into_iter().map(TryInto::try_into).collect()
+    custom_tool_ops::list_tools(&services.sea)
+        .await
+        .map(|rows| rows.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_custom_tool(
+pub async fn create_custom_tool(
     app: tauri::AppHandle,
     request: CustomToolCreateRequest,
 ) -> Result<CustomToolInfoResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
-    let parameters_schema = request.parameters_schema.0.unwrap_or_else(default_parameters_schema);
-    let encoded_parameters_schema = encode_json_object(&parameters_schema)?;
-    let permission = request.permission.0.unwrap_or(Permission::Ask);
-    let perm = permission.as_str();
-    let created = db::ops::custom_tool::create_tool(
-        &mut conn,
-        &CustomToolInsert {
-            id: &id,
-            name: &request.name,
-            description: &request.description,
-            category_id: request.category_id.0.as_deref(),
-            parameters_schema: &encoded_parameters_schema,
-            command: &request.command,
-            args_template: request.args_template.0.as_deref(),
-            working_directory: request.working_directory.0.as_deref(),
-            timeout_ms: request.timeout_ms.0,
-            permission: perm,
-            is_enabled: 1,
-            sort_order: 0,
-            created_at: now,
-            updated_at: now,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    drop(conn);
-    reload_custom_tools(&app)?;
-    created.try_into()
+    let row = custom_tool::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name,
+        description: request.description,
+        category_id: request.category_id.0,
+        parameters_schema: Json(request.parameters_schema.0.unwrap_or_else(default_parameters_schema)),
+        command: request.command,
+        args_template: request.args_template.0,
+        working_directory: request.working_directory.0,
+        timeout_ms: request.timeout_ms.0,
+        permission: request.permission.0.unwrap_or(Permission::Ask),
+        is_enabled: SqlBool::TRUE,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    };
+    let created = services
+        .sea
+        .write(async |tx| custom_tool_ops::create_tool(tx, row).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    reload_custom_tools(&app).await?;
+    Ok(created.into())
 }
 
 #[tauri::command]
-pub fn update_custom_tool(
+pub async fn update_custom_tool(
     app: tauri::AppHandle,
     request: CustomToolUpdateRequest,
 ) -> Result<CustomToolInfoResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let parameters_schema = request.parameters_schema.as_ref().map(encode_json_object).transpose()?;
-    let updated = db::ops::custom_tool::update_tool(
-        &mut conn,
-        &request.id,
-        &CustomToolChangeset {
-            name: request.name,
-            description: request.description,
-            command: request.command,
-            category_id: request.category_id,
-            parameters_schema,
-            args_template: request.args_template,
-            working_directory: request.working_directory,
-            timeout_ms: request.timeout_ms,
-            permission: request.permission.map(|permission| permission.as_str().to_string()),
-            is_enabled: request.is_enabled.map(i32::from),
-            updated_at: Some(now_ms()),
-            ..Default::default()
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    drop(conn);
-    reload_custom_tools(&app)?;
-    updated.try_into()
+    let changeset = CustomToolChangeset {
+        name: request.name,
+        description: request.description,
+        command: request.command,
+        category_id: request.category_id,
+        parameters_schema: request.parameters_schema.map(Json),
+        args_template: request.args_template,
+        working_directory: request.working_directory,
+        timeout_ms: request.timeout_ms,
+        permission: request.permission,
+        is_enabled: request.is_enabled.map(SqlBool::from),
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    };
+    let updated = services
+        .sea
+        .write(async |tx| custom_tool_ops::update_tool(tx, &request.id, changeset).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    reload_custom_tools(&app).await?;
+    Ok(updated.into())
 }
 
 #[tauri::command]
-pub fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())?;
-    drop(conn);
-    reload_custom_tools(&app)?;
-    Ok(())
+    services
+        .sea
+        .write(async |tx| custom_tool_ops::delete_tool(tx, &id).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    reload_custom_tools(&app).await
 }
 
 #[tauri::command]
-pub fn list_tool_presets(app: tauri::AppHandle) -> Result<ToolPresetListResponse, String> {
+pub async fn list_tool_presets(app: tauri::AppHandle) -> Result<ToolPresetListResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let rows = db::ops::tool_preset::list_presets(&mut conn).map_err(|e| e.to_string())?;
-    rows.into_iter().map(TryInto::try_into).collect()
+    tool_preset_ops::list_presets(&services.sea)
+        .await
+        .map(|rows| rows.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_tool_preset(
+pub async fn create_tool_preset(
     app: tauri::AppHandle,
     request: ToolPresetCreateRequest,
 ) -> Result<ToolPresetInfoResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let id = uuid::Uuid::new_v4().to_string();
     let now = now_ms();
-    let encoded_tool_names = encode_string_list(&request.tool_names)?;
-    let row = db::ops::tool_preset::create_preset(
-        &mut conn,
-        &ToolPresetInsert {
-            id: &id,
-            name: &request.name,
-            description: request.description.0.as_deref(),
-            icon: None,
-            tool_names: &encoded_tool_names,
-            is_builtin: 0,
-            sort_order: 0,
-            created_at: now,
-            updated_at: now,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    row.try_into()
+    let row = tool_preset::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name,
+        description: request.description.0,
+        icon: None,
+        tool_names: Json(request.tool_names),
+        is_builtin: SqlBool::FALSE,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    };
+    services
+        .sea
+        .write(async |tx| tool_preset_ops::create_preset(tx, row).await)
+        .await
+        .map(Into::into)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn update_tool_preset(
+pub async fn update_tool_preset(
     app: tauri::AppHandle,
     request: ToolPresetUpdateRequest,
 ) -> Result<ToolPresetInfoResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let tool_names = request.tool_names.as_deref().map(encode_string_list).transpose()?;
-    let row = db::ops::tool_preset::update_preset(
-        &mut conn,
-        &request.id,
-        &ToolPresetChangeset {
-            name: request.name,
-            description: request.description,
-            tool_names,
-            updated_at: Some(now_ms()),
-            ..Default::default()
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    row.try_into()
+    let changeset = ToolPresetChangeset {
+        name: request.name,
+        description: request.description,
+        tool_names: request.tool_names.map(Json),
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    };
+    services
+        .sea
+        .write(async |tx| tool_preset_ops::update_preset(tx, &request.id, changeset).await)
+        .await
+        .map(Into::into)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    db::ops::tool_preset::delete_preset(&mut conn, &id).map_err(|e| e.to_string())
+    services
+        .sea
+        .write(async |tx| tool_preset_ops::delete_preset(tx, &id).await)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
