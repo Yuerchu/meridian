@@ -1,12 +1,16 @@
 export { ActionBar } from './action-bar'
+export { ActivityHeatmap } from './activity-heatmap'
 export { Alert } from './alert'
 export { AlertDialog } from './alert-dialog'
 export { AreaChart } from './area-chart'
+export { BarChart } from './bar-chart'
+export { BarList, type BarListItem } from './bar-list'
 export { Avatar } from './avatar/avatar'
 export { Button, type ButtonVariant, type ButtonProps, buttonStyles } from './buttons/button'
 export { CloseButton } from './buttons/close-button'
 export { LinkButton, type LinkButtonProps, linkButtonStyles } from './buttons/link-button'
 export { Card } from './card'
+export { ChartCard, ChartLegend } from './chart-card'
 export { CellSwitch } from './cell-switch'
 export { ChatAttachment, ChatAttachmentGroup } from './chat-attachment'
 export { ChatSource, ChatSources } from './chat-source'
@@ -19,6 +23,7 @@ export { DataGrid, type DataGridColumn, type DataGridSelection } from './data-gr
 export { Description } from './description'
 export { Disclosure, DisclosureGroup } from './disclosure'
 export { dom } from './dom'
+export { DonutChart, type DonutChartItem } from './donut-chart'
 export {
   Dropdown,
   DropdownTrigger,
