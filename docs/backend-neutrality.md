@@ -19,6 +19,15 @@ PostgreSQL 服务端版本动工时按这份清单逐项给出对应实现。
 
 数量由 `db/sea/equivalence_tests.rs` 里的常量钉住，改了基线会先在那里红。
 
+## 基线之后的迁移
+
+基线之后的每个迁移整文件是 SQLite 文本（`sqlite_statements()`，`diesel_test_db` 执行同一份），
+非 SQLite 后端在 `up` 里直接拒绝：PostgreSQL 的 schema 从约束完整的形状起步，不需要这些改表步骤。
+
+| 迁移 | SQLite 专属的部分 | PostgreSQL 时要做的事 |
+|---|---|---|
+| `m0002_skill_keys` | 建新表、拷贝、删旧表、改名的重建（SQLite 不能给已有列补 `NOT NULL`/`CHECK`）；`CHECK` 用 `GLOB '*[^-a-z0-9]*'`；`PRAGMA foreign_keys` 守卫与 `foreign_key_check` 收尾检查 | 建表时直接写 `dir_name text NOT NULL PRIMARY KEY CHECK (dir_name ~ '^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$')`，不需要迁移 |
+
 ## 等价验收怎么证明基线对
 
 - 结构：`introspect::Schema` 读 `pragma_table_info` / `foreign_key_list` / `index_list` /
