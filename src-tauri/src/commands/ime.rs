@@ -831,9 +831,8 @@ pub async fn remove_ime_lm(
 #[tauri::command]
 pub async fn refresh_ime_memory_hints(app: tauri::AppHandle) -> Result<ImeMemoryHintsInfoResponse, String> {
     let bridge = bridge(&app).await;
-    let services = app.services();
+    let found = hints::compute(&app.services()).await?;
     tokio::task::spawn_blocking(move || {
-        let found = hints::compute(&services)?;
         let count = found.len() as u32;
         hints::write_if_changed(&bridge.dirs, found, &mut None)?;
         Ok(ImeMemoryHintsInfoResponse {

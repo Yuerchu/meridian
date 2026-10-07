@@ -1,8 +1,11 @@
 use crate::ServicesExt;
 use crate::commands::entity_response::{MemoryInfoResponse, MemoryListResponse, MemorySubjectListResponse};
 use crate::commands::model_config::RequiredNullable;
-use meridian_core::db;
-use meridian_core::db::models::memory::{DeletedBy, GLOBAL_SCOPE_ID, MemoryScope, MemoryType, Origin, Visibility};
+use meridian_core::db::entity::memory;
+use meridian_core::db::entity::memory::{
+    DeletedBy, GLOBAL_SCOPE_ID, MAX_PINNED_SUBJECTS, MemoryChangeset, MemoryScope, MemoryType, Origin, Visibility,
+};
+use meridian_core::db::sea::ops::memory as mem_ops;
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
@@ -65,16 +68,10 @@ fn resolve_scope(
 
 #[tauri::command]
 pub async fn list_memories(app: tauri::AppHandle, project_id: String) -> Result<MemoryListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows =
-            db::ops::memory::list_by_scope(&mut conn, MemoryScope::Project, &project_id).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = mem_ops::list_by_scope(&app.services().sea, MemoryScope::Project, &project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
@@ -101,95 +98,94 @@ pub async fn save_memory_scoped(
     app: tauri::AppHandle,
     request: MemoryScopedUpsertRequest,
 ) -> Result<MemoryInfoResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let (scope, scope_id) = resolve_scope(
-            request.scope,
-            request.project_id.0.as_deref(),
-            request.subject_scope_id.0.as_deref(),
-        )?;
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::validate_memory(&mut conn, scope, &scope_id, &request.key, &request.content)?;
+    let row = scoped_memory(request, now_ms())?;
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::remember(tx, row).await)
+        .await
+        .map_err(|e| e.to_string())?
+        .map(Into::into)
+}
 
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = now_ms();
-        let memory_type = request.memory_type.0.unwrap_or(MemoryType::General);
-        let visibility = if request.owner_only.0.unwrap_or(false) {
-            Visibility::OwnerOnly
-        } else {
-            Visibility::Normal
-        };
-        let subject = match scope {
-            MemoryScope::OnebotUser => Some(scope_id.as_str()),
-            _ => request.subject_scope_id.0.as_deref(),
-        };
-        // `Desktop` is not in `Origin::group_visible()`, so a row written here
-        // with that origin would be filtered out of every group turn — the
-        // operator would see it saved and active while it never reached a
-        // conversation. Anything aimed at the OneBot layers is the operator
-        // teaching the bot, which is what `Admin` means.
-        // The client layers are injected without an origin filter, so `Desktop`
-        // reaches the conversations they belong to.
-        let origin = match scope {
-            MemoryScope::Project | MemoryScope::ClientGlobal => Origin::Desktop,
-            MemoryScope::OnebotGlobal | MemoryScope::OnebotUser => Origin::Admin,
-        };
-        let row = db::ops::memory::upsert_memory(
-            &mut conn,
-            &db::models::memory::MemoryInsert {
-                id: &id,
-                scope_type: scope.as_str(),
-                scope_id: &scope_id,
-                key: &request.key,
-                content: &request.content,
-                memory_type: memory_type.as_str(),
-                subject_scope_id: subject,
-                origin: origin.as_str(),
-                visibility: visibility.as_str(),
-                source_session_id: None,
-                created_at: now,
-                updated_at: now,
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        row.try_into()
+/// The row a scoped save writes, before the quota has had its say.
+fn scoped_memory(request: MemoryScopedUpsertRequest, now: i64) -> Result<memory::Model, String> {
+    let (scope, scope_id) = resolve_scope(
+        request.scope,
+        request.project_id.0.as_deref(),
+        request.subject_scope_id.0.as_deref(),
+    )?;
+    let visibility = if request.owner_only.0.unwrap_or(false) {
+        Visibility::OwnerOnly
+    } else {
+        Visibility::Normal
+    };
+    let subject = match scope {
+        MemoryScope::OnebotUser => Some(scope_id.clone()),
+        _ => request.subject_scope_id.0,
+    };
+    // `Desktop` is not in `Origin::group_visible()`, so a row written here
+    // with that origin would be filtered out of every group turn — the
+    // operator would see it saved and active while it never reached a
+    // conversation. Anything aimed at the OneBot layers is the operator
+    // teaching the bot, which is what `Admin` means.
+    // The client layers are injected without an origin filter, so `Desktop`
+    // reaches the conversations they belong to.
+    let origin = match scope {
+        MemoryScope::Project | MemoryScope::ClientGlobal => Origin::Desktop,
+        MemoryScope::OnebotGlobal | MemoryScope::OnebotUser => Origin::Admin,
+    };
+    Ok(memory::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        scope_type: scope,
+        scope_id,
+        key: request.key,
+        content: request.content,
+        memory_type: request.memory_type.0.unwrap_or(MemoryType::General),
+        subject_scope_id: subject,
+        origin,
+        visibility,
+        source_session_id: None,
+        deleted_at: None,
+        deleted_by: None,
+        created_at: now,
+        updated_at: now,
     })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn update_memory(app: tauri::AppHandle, request: MemoryUpdateRequest) -> Result<MemoryInfoResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        if let Some(ref c) = request.content {
-            let existing = db::ops::memory::get_memory(&mut conn, &request.id).map_err(|e| e.to_string())?;
-            let scope = MemoryScope::parse(&existing.scope_type)?;
-            db::ops::memory::validate_memory(&mut conn, scope, &existing.scope_id, &existing.key, c)?;
-        }
-        let memory_type = request.memory_type.map(|value| value.as_str().to_owned());
-        let row = db::ops::memory::update_memory(
-            &mut conn,
-            &request.id,
-            &db::models::memory::MemoryChangeset {
-                content: request.content,
-                memory_type,
-                visibility: request.owner_only.map(|o| {
-                    if o { Visibility::OwnerOnly } else { Visibility::Normal }
-                        .as_str()
-                        .to_string()
-                }),
-                updated_at: Some(now_ms()),
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let MemoryUpdateRequest {
+        id,
+        content,
+        memory_type,
+        owner_only,
+    } = request;
+    let changeset = MemoryChangeset {
+        content,
+        memory_type,
+        visibility: owner_only.map(|o| if o { Visibility::OwnerOnly } else { Visibility::Normal }),
+        updated_at: Some(now_ms()),
+    };
+    app.services()
+        .sea
+        .write(async |tx| {
+            // The length check reads the row it guards in the same write.
+            if let Some(content) = &changeset.content {
+                let Some(existing) = mem_ops::get_memory(tx, &id).await? else {
+                    return Ok(Err(format!("memory `{id}` not found")));
+                };
+                let checked =
+                    mem_ops::validate_memory(tx, existing.scope_type, &existing.scope_id, &existing.key, content)
+                        .await?;
+                if let Err(refused) = checked {
+                    return Ok(Err(refused));
+                }
+            }
+            mem_ops::update_memory(tx, &id, changeset).await.map(Ok)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map(Into::into)
 }
 
 #[tauri::command]
@@ -201,14 +197,12 @@ pub async fn delete_memory(app: tauri::AppHandle, id: String) -> Result<(), Stri
 /// same rows regardless of who removed them.
 #[tauri::command]
 pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::soft_delete_memories(&mut conn, &ids, DeletedBy::Admin, now_ms()).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::soft_delete_memories(tx, &ids, DeletedBy::Admin, now_ms()).await)
+        .await
+        .map(|n| n as usize)
+        .map_err(|e| e.to_string())
 }
 
 /// Every live memory in one call. The browser needs all three scopes, and
@@ -216,43 +210,30 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
 /// return the bot-wide or per-person layers at all.
 #[tauri::command]
 pub async fn list_all_memories(app: tauri::AppHandle) -> Result<MemoryListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows = db::ops::memory::list_all(&mut conn).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = mem_ops::list_all(&app.services().sea)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 pub async fn list_memory_subjects(app: tauri::AppHandle) -> Result<MemorySubjectListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows = db::ops::memory::list_subjects(&mut conn).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = mem_ops::list_subjects(&app.services().sea)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 pub async fn forget_memory_subject(app: tauri::AppHandle, subject_scope_id: String) -> Result<usize, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        // The operator can clear their own notes too; a person doing this to
-        // themselves cannot (see the /memory optout path).
-        db::ops::memory::forget_subject(&mut conn, &subject_scope_id, true, DeletedBy::Admin, now_ms())
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    // The operator can clear their own notes too; a person doing this to
+    // themselves cannot (see the /memory optout path).
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::forget_subject(tx, &subject_scope_id, true, DeletedBy::Admin, now_ms()).await)
+        .await
+        .map(|n| n as usize)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -265,57 +246,42 @@ pub async fn set_memory_subject_flags(
         is_pinned,
         opted_out,
     } = request;
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::set_subject_flags(&mut conn, &subject_scope_id, is_pinned.0, opted_out.0).map_err(|_| {
-            format!(
-                "Cannot pin more than {} people",
-                db::models::memory::MAX_PINNED_SUBJECTS
-            )
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::set_subject_flags(tx, &subject_scope_id, is_pinned.0, opted_out.0).await)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|_| format!("Cannot pin more than {MAX_PINNED_SUBJECTS} people"))
 }
 
 #[tauri::command]
 pub async fn list_memory_trash(app: tauri::AppHandle, limit: Option<i64>) -> Result<MemoryListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        // domain-default: a page size the caller did not ask about, not a fact about a model
-        let rows = db::ops::memory::list_trash(&mut conn, limit.unwrap_or(200)).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    // domain-default: a page size the caller did not ask about, not a fact about a model
+    let limit = u64::try_from(limit.unwrap_or(200)).map_err(|_| "the trash page size must not be negative")?;
+    let rows = mem_ops::list_trash(&app.services().sea, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::restore_memories(&mut conn, &ids, meridian_core::util::now_ms()).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::restore_memories(tx, &ids, now_ms()).await)
+        .await
+        .map(|n| n as usize)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn purge_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::purge_memories(&mut conn, &ids).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| mem_ops::purge_memories(tx, &ids).await)
+        .await
+        .map(|n| n as usize)
+        .map_err(|e| e.to_string())
 }
 
 /// Enum values live in Rust and reach the front end through here, so the UI
@@ -334,7 +300,7 @@ pub async fn memory_enums(_app: tauri::AppHandle) -> Result<MemoryEnumsResponse,
         scopes: MemoryScope::all(),
         origins: Origin::all(),
         visibilities: Visibility::all(),
-        memory_types: db::models::memory::MemoryType::all(),
+        memory_types: MemoryType::all(),
     })
 }
 

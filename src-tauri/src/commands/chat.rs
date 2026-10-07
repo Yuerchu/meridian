@@ -1450,9 +1450,13 @@ async fn chat_inner(
     if auto_compact && circuit_breaker.can_compact() {
         // Only to size the window. The real decision is taken after compaction,
         // against the path compaction leaves behind — see below.
-        let probe =
-            meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
-                .await?;
+        let probe = meridian_core::agent::plan_injection_async(
+            &services.sea,
+            memory_request.clone(),
+            ctx.live().to_vec(),
+            now_ms(),
+        )
+        .await?;
         let todo_probe = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
@@ -1564,7 +1568,8 @@ async fn chat_inner(
     // is exactly the signal that everything has to be re-sent, getting this
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
-    let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await?;
+    let injection =
+        meridian_core::agent::plan_injection_async(&services.sea, memory_request, ctx.live().to_vec(), t0).await?;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
     // The checklist, frozen the same way and for the same reason; it goes right
     // after the memory block, which is the order the two rows are written in.

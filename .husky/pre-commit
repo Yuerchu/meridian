@@ -71,6 +71,16 @@ if git diff --cached --name-only | grep -qE '^src-tauri/src/.*\.rs$|^src-tauri/c
   node scripts/check-android-cfg.mjs --staged
 fi
 
+# 一个描述模型、厂商或配置上限的值，没配就是 None，不许编一个数顶上（no-invented-domain-default
+# 的 Rust 半边）。原来只在 CI 跑：2026-10-07 壳 PR 114 本地全绿、推上去 Linux CI 红在这一步。
+# 读暂存快照，core 读外层将要指向的那个 commit，和上面几项一致。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates$|^scripts/(check-rust-invented-default|staged-snapshot)\.mjs$|^scripts/eslint-rules/domain-vocabulary\.mjs$'; then
+  node scripts/check-rust-invented-default.mjs --staged src-tauri/crates/core/src
+fi
+if git diff --cached --name-only | grep -qE '^src-tauri/src/.*\.rs$|^scripts/(check-rust-invented-default|staged-snapshot)\.mjs$|^scripts/eslint-rules/domain-vocabulary\.mjs$'; then
+  node scripts/check-rust-invented-default.mjs --staged
+fi
+
 # Tauri CLI 要求 npm 包和对应 Rust crate 的主/次版本一致，否则 `tauri dev` /
 # `tauri build` 直接拒绝；CI 里没有任何一步跑 Tauri CLI，所以只能靠这里和
 # frontend-build 里的同一个脚本。只读两份 lock，不需要安装或编译。

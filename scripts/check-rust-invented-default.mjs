@@ -21,10 +21,17 @@
 //
 //   node scripts/check-rust-invented-default.mjs                 # src-tauri/src
 //   node scripts/check-rust-invented-default.mjs src-tauri/crates/core/src
+//   node scripts/check-rust-invented-default.mjs --staged src-tauri/crates/core/src
+//
+// --staged reads what is about to be committed, the submodule at the commit
+// the outer index pins (scripts/staged-snapshot.mjs). The pre-commit hook runs
+// it that way: CI was the only place this ran, and a core change that tripped
+// it went red there after every local check had passed (2026-10-07, PR 114).
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { vocabularyWord } from './eslint-rules/domain-vocabulary.mjs'
+import { stagedSnapshot } from './staged-snapshot.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 
@@ -168,13 +175,31 @@ function lineOf(text, index) {
   return text.slice(0, index).split('\n').length
 }
 
-const targets = (process.argv.slice(2).length > 0 ? process.argv.slice(2) : ['src-tauri/src']).map((d) =>
-  resolve(root, d),
-)
+const args = process.argv.slice(2)
+const staged = args.includes('--staged')
+const dirs = args.filter((arg) => arg !== '--staged')
+const targets = dirs.length > 0 ? dirs : ['src-tauri/src']
+
+/** Every `.rs` under the targets, as `[path from the repository root, text]`. */
+function sources() {
+  if (!staged) {
+    return targets
+      .flatMap((dir) => walk(resolve(root, dir)))
+      .map((file) => [relative(root, file).replace(/\\/g, '/'), readFileSync(file, 'utf8')])
+  }
+  const snap = stagedSnapshot(root)
+  return targets.flatMap((dir) =>
+    snap
+      .list(dir)
+      // The same directories `walk` skips.
+      .filter((path) => path.endsWith('.rs') && !/(^|\/)(tests|target)\//.test(path.slice(dir.length + 1)))
+      .map((path) => [path, snap.read(path)]),
+  )
+}
 
 const hits = []
-for (const file of targets.flatMap(walk)) {
-  const text = withoutTests(readFileSync(file, 'utf8'))
+for (const [file, source] of sources()) {
+  const text = withoutTests(source)
   const lines = text.split('\n')
   for (const match of text.matchAll(CALL)) {
     const fallback = match[1] ?? match[2] ?? match[3] ?? match[4]
@@ -192,7 +217,7 @@ for (const file of targets.flatMap(walk)) {
       /\/\/\s*domain-default:\s*\S/.test(lines[l] ?? ''),
     )
     if (annotated) continue
-    hits.push(`${relative(root, file)}:${line}: \`${named}\` defaulted to ${fallback}`)
+    hits.push(`${file}:${line}: \`${named}\` defaulted to ${fallback}`)
   }
 }
 

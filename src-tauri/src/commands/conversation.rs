@@ -599,38 +599,50 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
     format!("{base}{persona}{instructions}{file_access}")
 }
 
-/// The persona, the project memory block and the checklist block — the parts
-/// of a request that come straight out of the database. Split out from
-/// `assemble_system_prompt` so it can be exercised without an app handle.
-/// `live` is what a turn starting now would actually carry, which is what makes
-/// the memory and checklist figures honest: with both frozen into the history,
-/// most turns inject nothing at all, and counting a full block every time would
-/// report a cost no turn pays. Reads only — an estimate is not a turn, so it
-/// must not write a row or move a cursor.
+/// The persona and the checklist block — the parts of a request that come
+/// straight out of the Diesel tables. Split out from `assemble_system_prompt`
+/// so it can be exercised without an app handle. `live` is what a turn starting
+/// now would actually carry, which is what makes the checklist figure honest:
+/// with it frozen into the history, most turns inject nothing at all, and
+/// counting a full block every time would report a cost no turn pays. Reads
+/// only — an estimate is not a turn, so it must not write a row or move a
+/// cursor.
 ///
 /// The persona is the assistant's prompt exactly as written: there are no
 /// template variables to resolve.
-fn load_persona_and_memory(
+fn load_persona_and_todo(
     conn: &mut SqliteConnection,
     conversation_id: &str,
     assistant: Option<&AssistantRow>,
+    live: &[db::models::message::MessageRow],
+) -> Result<(String, String), String> {
+    let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
+    let todo = meridian_core::agent::plan_todo_injection(conn, conversation_id, live)?
+        .map(|t| t.text)
+        .unwrap_or_default();
+    Ok((persona, todo))
+}
+
+/// The memory block a turn starting now would send, through the same planner
+/// the chat loop runs and against the same `live` path, so it is as honest as
+/// the checklist figure beside it. Reads only, like the rest of the estimate.
+async fn load_memory_estimate(
+    db: &meridian_core::db::sea::cap::Db,
     project_id: Option<&str>,
     live: &[db::models::message::MessageRow],
-) -> Result<(String, String, String), String> {
-    let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
+) -> Result<String, String> {
     let req = meridian_core::agent::MemoryRequest::desktop(
         project_id.map(|s| s.to_string()),
         // Counting uses the largest bracket: an under-reported figure is worse
         // than a slightly generous one.
         meridian_core::agent::memory_budget(usize::MAX),
     );
-    let memory = meridian_core::agent::plan_injection(conn, &req, live, meridian_core::util::now_ms())?
-        .text
-        .unwrap_or_default();
-    let todo = meridian_core::agent::plan_todo_injection(conn, conversation_id, live)?
-        .map(|t| t.text)
-        .unwrap_or_default();
-    Ok((persona, memory, todo))
+    Ok(
+        meridian_core::agent::plan_injection_async(db, req, live.to_vec(), meridian_core::util::now_ms())
+            .await?
+            .and_then(|injection| injection.text)
+            .unwrap_or_default(),
+    )
 }
 
 /// Rebuild the system prompt the way `commands::chat::chat` does, so the token
@@ -693,10 +705,10 @@ async fn assemble_system_prompt(
         meridian_core::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
     let live: Vec<db::models::message::MessageRow> = active_path.to_vec();
+    let memory_block = load_memory_estimate(&app.services().sea, project_id, &live).await?;
     tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
         let mut conn = meridian_core::util::get_conn(&pool2)?;
-        let (persona, memory_block, todo_block) =
-            load_persona_and_memory(&mut conn, &conv_id, assistant.as_ref(), pid.as_deref(), &live)?;
+        let (persona, todo_block) = load_persona_and_todo(&mut conn, &conv_id, assistant.as_ref(), &live)?;
         let sub_agents = meridian_core::agent::sub_agents::catalog(&mut conn)?;
         // The shell line the chat loop puts in the base prompt, decided from the
         // settings alone — `CommandSettings::command_shell` says why that is the
@@ -943,7 +955,6 @@ mod tests {
     use meridian_core::agent::{base_prompt, build_messages};
     use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::assistant::AssistantInsert;
-    use meridian_core::db::models::memory::MemoryInsert;
     use meridian_core::db::models::project::ProjectInsert;
 
     fn seed_pending_review(conn: &mut SqliteConnection, conversation_id: &str) {
@@ -1180,24 +1191,6 @@ mod tests {
         .unwrap()
     }
 
-    fn make_project(conn: &mut SqliteConnection, id: &str) {
-        db::ops::project::create_project(
-            conn,
-            &ProjectInsert {
-                id,
-                name: "Proj",
-                path: None,
-                source_type: "local",
-                source_id: None,
-                assistant_id: None,
-                description: None,
-                created_at: 1000,
-                updated_at: 1000,
-            },
-        )
-        .unwrap();
-    }
-
     fn make_message(id: &str, role: &str, content: &str) -> db::models::message::MessageRow {
         db::models::message::MessageRow {
             id: id.into(),
@@ -1245,8 +1238,42 @@ mod tests {
     /// There are no template variables any more. A prompt written for them is
     /// sent as those characters — re-adding resolution here is what this guards
     /// against, since a clock in the prompt is what they were mostly used for.
-    #[test]
-    fn persona_is_sent_verbatim_and_memory_is_appended() {
+    /// One project memory, in a database of its own: the memory block reads
+    /// through SeaORM, and nothing else in these tests reads it.
+    async fn memory_db(content: &str) -> meridian_core::db::sea::cap::Db {
+        use meridian_core::db::entity::memory::{MemoryScope, MemoryType, Origin, Visibility};
+
+        let db = meridian_core::db::sea::sea_test_db().await;
+        meridian_core::db::sea::execute_for_tests(
+            &db,
+            "INSERT INTO projects (id, name, source_type, created_at, updated_at) VALUES ('p1', 'P', 'local', 1, 1)",
+        )
+        .await
+        .unwrap();
+        let row = meridian_core::db::entity::memory::Model {
+            id: "m1".into(),
+            scope_type: MemoryScope::Project,
+            scope_id: "p1".into(),
+            key: "stack".into(),
+            content: content.into(),
+            memory_type: MemoryType::General,
+            subject_scope_id: None,
+            origin: Origin::Desktop,
+            visibility: Visibility::Normal,
+            source_session_id: None,
+            deleted_at: None,
+            deleted_by: None,
+            created_at: 1000,
+            updated_at: 1000,
+        };
+        db.write(async |tx| meridian_core::db::sea::ops::memory::upsert_memory(tx, row).await)
+            .await
+            .unwrap();
+        db
+    }
+
+    #[tokio::test]
+    async fn persona_is_sent_verbatim_and_memory_is_appended() {
         let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         let assistant = make_assistant(
@@ -1255,40 +1282,21 @@ mod tests {
             "Nova",
             "You are {{assistant_name}} helping {{user_name}}.",
         );
-        make_project(&mut conn, "p1");
-        db::ops::memory::upsert_memory(
-            &mut conn,
-            &MemoryInsert {
-                id: "m1",
-                scope_type: "project",
-                scope_id: "p1",
-                key: "stack",
-                content: "Rust + Tauri",
-                memory_type: "general",
-                subject_scope_id: None,
-                origin: "desktop",
-                visibility: "normal",
-                source_session_id: None,
-                created_at: 1000,
-                updated_at: 1000,
-            },
-        )
-        .unwrap();
+        let memory_db = memory_db("Rust + Tauri").await;
 
-        let (persona, memory, todo) =
-            load_persona_and_memory(&mut conn, "c1", Some(&assistant), Some("p1"), &[]).unwrap();
+        let (persona, todo) = load_persona_and_todo(&mut conn, "c1", Some(&assistant), &[]).unwrap();
+        let memory = load_memory_estimate(&memory_db, Some("p1"), &[]).await.unwrap();
         assert_eq!(persona, "You are {{assistant_name}} helping {{user_name}}.");
         assert!(memory.contains("<project_memories>"), "got: {memory}");
         assert!(memory.contains("stack: Rust + Tauri"), "got: {memory}");
         assert!(todo.is_empty(), "no checklist, no block");
 
         // Without a project there is no memory block at all.
-        let (_, none, _) = load_persona_and_memory(&mut conn, "c1", Some(&assistant), None, &[]).unwrap();
-        assert!(none.is_empty());
+        assert!(load_memory_estimate(&memory_db, None, &[]).await.unwrap().is_empty());
     }
 
-    #[test]
-    fn estimated_tokens_account_for_the_system_prompt() {
+    #[tokio::test]
+    async fn estimated_tokens_account_for_the_system_prompt() {
         let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         let assistant = make_assistant(
@@ -1298,27 +1306,10 @@ mod tests {
             "You are {{assistant_name}}, a meticulous engineering assistant. \
              Answer precisely and cite the files you touched.",
         );
-        make_project(&mut conn, "p1");
-        db::ops::memory::upsert_memory(
-            &mut conn,
-            &MemoryInsert {
-                id: "m1",
-                scope_type: "project",
-                scope_id: "p1",
-                key: "stack",
-                content: "Rust backend, React frontend, SQLite storage",
-                memory_type: "general",
-                subject_scope_id: None,
-                origin: "desktop",
-                visibility: "normal",
-                source_session_id: None,
-                created_at: 1000,
-                updated_at: 1000,
-            },
-        )
-        .unwrap();
+        let memory_db = memory_db("Rust backend, React frontend, SQLite storage").await;
 
-        let (persona, memory, _) = load_persona_and_memory(&mut conn, "c1", Some(&assistant), Some("p1"), &[]).unwrap();
+        let (persona, _) = load_persona_and_todo(&mut conn, "c1", Some(&assistant), &[]).unwrap();
+        let memory = load_memory_estimate(&memory_db, Some("p1"), &[]).await.unwrap();
         let system_prompt = compose_system_prompt(base_prompt(&[], None).as_deref(), &persona, "", "");
 
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);

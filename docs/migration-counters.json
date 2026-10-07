@@ -1,15 +1,12 @@
 {
-  "dieselOpsCalls": 780,
-  "dieselApiRefs": 1178,
+  "dieselOpsCalls": 692,
+  "dieselApiRefs": 1086,
   "pendingTables": [
     "acp_context_deliveries",
     "acp_session_notices",
     "acp_sessions",
     "audit_messages",
     "cached_models",
-    "memories",
-    "memory_proposals",
-    "memory_subjects",
     "message_context_items",
     "mode_artifacts",
     "model_configs",

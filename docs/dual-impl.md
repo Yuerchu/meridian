@@ -22,6 +22,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | emoji_pack::assign_pack | 1 |
 | emoji_pack::create_pack | 1 |
 | emoji_pack::list_assigned_pack_ids | 1 |
+| memory::list_subjects | 1 |
 | preference::delete_preference | 1 |
 | preference::get_preference | 12 |
 | preference::set_preference | 4 |
