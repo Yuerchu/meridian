@@ -92,10 +92,12 @@ function ChatViewInner({
   })
   // A local project with a folder is the only kind `workspace_git_status`
   // answers for; a OneBot project has no folder and a plain chat no project.
-  const hasProjectFolder = useConversationStore((s) => {
+  // The folder itself, not whether there is one: moving the conversation to
+  // another project keeps its id and changes the repository.
+  const projectFolder = useConversationStore((s) => {
     const conv = s.conversations.find((c) => c.id === conversationId)
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
-    return project?.source_type === 'local' && project.path !== null
+    return project?.source_type === 'local' ? project.path : null
   })
   const isHostedAgent = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.agent_kind === 'claude_code',
@@ -352,7 +354,7 @@ function ChatViewInner({
     compactBoundary,
     compacting,
   })
-  const branch = useProjectBranch(conversationId, hasProjectFolder, streaming || !!shellTurnId)
+  const branch = useProjectBranch(conversationId, projectFolder, streaming || !!shellTurnId)
 
   // Only a delegated run keeps an inbox open, and only while it is going. The
   // main conversation is unchanged: nothing can be submitted until the answer

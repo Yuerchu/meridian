@@ -37,10 +37,16 @@ export interface TokenRankItem {
   key: string
   label: string
   tokens: number
+  /** Some of this bucket's replies are missing input or output usage, so
+   *  `tokens` is a lower bound, not the count. */
+  incomplete: boolean
   /** Length of the bar, as a share of the largest item. */
   width: `${string}%`
-  /** Share of every item's tokens together. */
-  share: number
+  /** Share of every item's tokens together, or null when any bucket's count is
+   *  a lower bound: the denominator is then unknown too, and every share —
+   *  the complete buckets' included — would be presented as exact without
+   *  being so. */
+  share: number | null
 }
 
 /**
@@ -49,25 +55,39 @@ export interface TokenRankItem {
  * Tokens rather than cost on purpose: a model nobody priced — a local one, a
  * subscription — still did the work, and a cost ranking leaves it out
  * entirely. A bucket with no tokens has nothing to draw and is left out.
+ *
+ * An incomplete bucket is ranked by its lower bound. Its true place may be
+ * higher; the row says `≥` so the order is not read as settled.
  */
 export function rankByTokens(
-  buckets: readonly { key: string; label: string | null; input_tokens: number; output_tokens: number }[],
+  buckets: readonly {
+    key: string
+    label: string | null
+    input_tokens: number
+    output_tokens: number
+    incomplete_token_usage_messages: number
+  }[],
   limit: number,
 ): TokenRankItem[] {
-  const rows = buckets
-    .map((bucket) => ({
-      key: bucket.key,
-      label: bucket.label ?? bucket.key,
-      tokens: bucket.input_tokens + bucket.output_tokens,
-    }))
-    .filter((row) => row.tokens > 0)
-    .sort((a, b) => b.tokens - a.tokens)
+  const rows: Omit<TokenRankItem, 'width' | 'share'>[] = []
+  let sum = 0
+  let anyIncomplete = false
+  for (const bucket of buckets) {
+    const incomplete = bucket.incomplete_token_usage_messages > 0
+    // Checked before the zero filter: a bucket whose usage is missing entirely
+    // draws nothing, but it still leaves the total unknown.
+    anyIncomplete ||= incomplete
+    const tokens = bucket.input_tokens + bucket.output_tokens
+    if (tokens <= 0) continue
+    sum += tokens
+    rows.push({ key: bucket.key, label: bucket.label ?? bucket.key, tokens, incomplete })
+  }
   if (rows.length === 0) return []
-  const sum = rows.reduce((total, row) => total + row.tokens, 0)
+  rows.sort((a, b) => b.tokens - a.tokens)
   const max = rows[0].tokens
   return rows.slice(0, limit).map((row) => ({
     ...row,
     width: `${(row.tokens / max) * 100}%`,
-    share: row.tokens / sum,
+    share: anyIncomplete ? null : row.tokens / sum,
   }))
 }

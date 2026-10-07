@@ -447,9 +447,91 @@ it('draws replies by weekday and hour, and names the busiest slot', async () => 
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
   const card = await chartCard('When it was used')
-  expect(within(card).getByRole('img')).toHaveAccessibleName(
+  expect(within(card).getByRole('grid')).toHaveAccessibleName(
     'Replies by weekday and hour of day. Busiest: Tue 14:00, 9 replies.',
   )
+})
+
+/**
+ * Every figure a pointer can read has to be reachable from the keyboard too,
+ * and the grid must not cost 168 Tab presses to get past.
+ */
+it('walks the heatmap with the arrow keys from a single tab stop', async () => {
+  serve({
+    total: [bucket()],
+    hour: [bucket({ key: '2026-10-06T14', messages: 9 })],
+  })
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const card = await chartCard('When it was used')
+  const grid = within(card).getByRole('grid')
+  const cells = within(grid).getAllByRole('gridcell')
+  expect(cells).toHaveLength(7 * 24)
+  const tabbable = () => cells.filter((cell) => cell.tabIndex === 0)
+  expect(tabbable()).toEqual([cells[0]])
+  const caption = card.querySelector('[data-slot="activity-heatmap-caption"]')
+
+  await user.click(cells[0])
+  expect(cells[0]).toHaveFocus()
+  expect(caption).toHaveTextContent('Mon 00:00 · 0 replies')
+
+  await user.keyboard('{ArrowDown}{End}')
+  for (let i = 0; i < 9; i += 1) await user.keyboard('{ArrowLeft}')
+  expect(document.activeElement).toHaveAccessibleName('Tue 14:00 · 9 replies')
+  expect(caption).toHaveTextContent('Tue 14:00 · 9 replies')
+  expect(tabbable()).toEqual([document.activeElement])
+
+  await user.keyboard('{Control>}{Home}{/Control}')
+  expect(cells[0]).toHaveFocus()
+})
+
+/**
+ * A model whose replies lost their input or output counts moved at least what
+ * is recorded. The ranking says so, and no share is exact once any count in
+ * the whole is a lower bound.
+ */
+it('marks incomplete token counts as lower bounds in the ranking and the composition', async () => {
+  serve({
+    total: [
+      bucket({ input_tokens: 1_000, cache_read_tokens: 250, output_tokens: 500, incomplete_token_usage_messages: 1 }),
+    ],
+    model: [
+      bucket({ key: 'whole', label: 'whole-model', input_tokens: 2_000, output_tokens: 1_000 }),
+      bucket({
+        key: 'partial',
+        label: 'partial-model',
+        input_tokens: 1_000,
+        output_tokens: 0,
+        incomplete_token_usage_messages: 2,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const list = within(await chartCard('Tokens by model')).getByRole('list', { name: 'Tokens by model' })
+  expect(
+    within(list)
+      .getAllByRole('listitem')
+      .map((row) => row.textContent),
+  ).toEqual(['whole-model3K', 'partial-model≥ 1K'])
+
+  const composition = await chartCard('Where the tokens went')
+  expect(within(composition).getByText('≥ 1.5K')).toBeInTheDocument()
+  expect(
+    within(composition)
+      .getAllByRole('listitem')
+      .map((row) => row.textContent),
+  ).toEqual(['Input · uncached≥ 750', 'Input · cache hit≥ 250', 'Output≥ 500'])
+})
+
+it('holds a place for every chart card while the first report loads', async () => {
+  mockApi.usageReport.mockReturnValue(new Promise(() => {}))
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const skeleton = await screen.findByRole('status', { name: 'Loading...' })
+  // Trend, two cost cards, two token cards, activity.
+  expect(skeleton.querySelectorAll('[data-slot="usage-skeleton-card"]')).toHaveLength(6)
 })
 
 it('treats a malformed hour bucket as a load failure rather than an empty chart', async () => {

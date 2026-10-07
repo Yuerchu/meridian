@@ -32,11 +32,12 @@ describe('weekdayHourGrid', () => {
 })
 
 describe('rankByTokens', () => {
-  const bucket = (key: string, input: number, output: number, label: string | null = key) => ({
+  const bucket = (key: string, input: number, output: number, label: string | null = key, incomplete = 0) => ({
     key,
     label,
     input_tokens: input,
     output_tokens: output,
+    incomplete_token_usage_messages: incomplete,
   })
 
   it('ranks by prompt plus reply tokens and measures bars against the largest', () => {
@@ -58,5 +59,22 @@ describe('rankByTokens', () => {
 
   it('falls back to the key when a bucket has no label', () => {
     expect(rankByTokens([bucket('local-model', 1, 1, null)], 5)[0].label).toBe('local-model')
+  })
+
+  it('marks a lower-bound bucket and withholds every share once the total is unknown', () => {
+    const items = rankByTokens([bucket('a', 300, 100), bucket('b', 50, 0, 'b', 2)], 10)
+    expect(items.map((item) => [item.key, item.incomplete])).toEqual([
+      ['a', false],
+      ['b', true],
+    ])
+    // `a` is complete, but its share is over a sum that is itself a lower bound.
+    expect(items.map((item) => item.share)).toEqual([null, null])
+    expect(rankByTokens([bucket('a', 1, 1)], 10)[0].share).toBe(1)
+  })
+
+  it('counts a bucket with no usage at all towards the unknown total', () => {
+    const items = rankByTokens([bucket('a', 300, 100), bucket('gone', 0, 0, 'gone', 4)], 10)
+    expect(items.map((item) => item.key)).toEqual(['a'])
+    expect(items[0].share).toBeNull()
   })
 })

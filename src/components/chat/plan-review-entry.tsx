@@ -9,7 +9,13 @@ import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { ChatToolPresentationContext } from '@/components/ui/chat-tool'
 import { errorMessage } from '@/lib/error-message'
-import { approveFromCard, planCardPreview, sendBackFromCard, type PlanCardPreview } from '@/lib/plan-card'
+import {
+  approveFromCard,
+  draftIsPristine,
+  planCardPreview,
+  sendBackFromCard,
+  type PlanCardPreview,
+} from '@/lib/plan-card'
 import { PlanDecisionAttempt, PlanDecisionInDoubtError } from '@/lib/plan-review-draft'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
@@ -26,11 +32,21 @@ const FIELD_ON_CARD = 'bg-background-secondary-default'
  * when the review page closes, so a card under a page that was just used is
  * not describing the plan as it was before. A failed read leaves the card
  * without a preview: it still opens the page, which reports the failure.
+ *
+ * Each read also says whether the draft is untouched, numbered so the card can
+ * tell a read taken after it found a draft in progress from one taken before.
  */
-type PreviewState = { status: 'loading' } | { status: 'ready'; preview: PlanCardPreview } | { status: 'unavailable' }
+interface CardRead {
+  preview: PlanCardPreview
+  pristine: boolean
+  seq: number
+}
 
-function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): PlanCardPreview | null {
-  const [state, setState] = useState<PreviewState>({ status: 'loading' })
+type CardReadState = { status: 'loading' } | { status: 'ready'; read: CardRead } | { status: 'unavailable' }
+
+function usePlanCardRead(reviewId: string, lockVersion: number | undefined): CardRead | null {
+  const [state, setState] = useState<CardReadState>({ status: 'loading' })
+  const seq = useRef(0)
   const pageOpen = usePlanReviewStore((state) => state.activeReviewId === reviewId)
   useEffect(() => {
     if (pageOpen) return
@@ -38,7 +54,12 @@ function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): 
     api
       .getPlanReview({ reviewId })
       .then((info) => {
-        if (!cancelled) setState({ status: 'ready', preview: planCardPreview(info) })
+        if (cancelled) return
+        seq.current += 1
+        setState({
+          status: 'ready',
+          read: { preview: planCardPreview(info), pristine: draftIsPristine(info), seq: seq.current },
+        })
       })
       .catch(() => {
         if (!cancelled) setState({ status: 'unavailable' })
@@ -47,7 +68,7 @@ function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): 
       cancelled = true
     }
   }, [reviewId, lockVersion, pageOpen])
-  return state.status === 'ready' ? state.preview : null
+  return state.status === 'ready' ? state.read : null
 }
 
 export type CardUi =
@@ -79,21 +100,36 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
   const openReview = usePlanReviewStore((state) => state.openReview)
   const summary = usePlanReviewStore((state) => state.summaries[reviewId])
   const status = summary?.status ?? planReviewStatusOfTool(data.status)
-  const preview = usePlanCardPreview(reviewId, summary?.lock_version)
+  const read = usePlanCardRead(reviewId, summary?.lock_version)
+  const readSeq = read?.seq ?? 0
 
   const [ui, setUi] = useState<CardUi>({ step: 'idle' })
+  // Which read was current when a press found the draft in progress. A later
+  // read that finds the draft untouched again — the one taken when the review
+  // page closes, after the reviewer discarded or undid their work — lifts it;
+  // a held `draft` step would otherwise keep both decisions off this card for
+  // as long as the transcript stayed mounted.
+  const [draftSeenAt, setDraftSeenAt] = useState(0)
+  const shownUi: CardUi =
+    ui.step === 'draft' && read !== null && read.seq > draftSeenAt && read.pristine ? { step: 'idle' } : ui
   const [note, setNote] = useState('')
   // One per card, kept across presses: a reply lost on the way back is retried
   // under the same decision id, which the backend answers idempotently.
-  const attempt = useRef(new PlanDecisionAttempt())
+  const attemptRef = useRef<PlanDecisionAttempt | null>(null)
+  attemptRef.current ??= new PlanDecisionAttempt()
+  const attempt = attemptRef.current
 
   const decide = useCallback(
     (run: () => ReturnType<typeof approveFromCard>) => {
       setUi({ step: 'deciding' })
       run()
         .then((outcome) => {
-          if (outcome.kind === 'draft_in_progress') setUi({ step: 'draft' })
-          else setUi({ step: 'idle' })
+          // `decided` and `settled` were already taken into the stores by
+          // `lib/plan-card.ts`, so `status` moves without waiting on the event.
+          if (outcome.kind === 'draft_in_progress') {
+            setDraftSeenAt(readSeq)
+            setUi({ step: 'draft' })
+          } else setUi({ step: 'idle' })
         })
         .catch((error: unknown) => {
           setUi({
@@ -105,18 +141,18 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
           })
         })
     },
-    [t],
+    [t, readSeq],
   )
-  const approve = () => decide(() => approveFromCard(reviewId, attempt.current))
+  const approve = () => decide(() => approveFromCard(reviewId, attempt))
   const sendBack = () => {
-    if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt.current))
+    if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt))
   }
 
   return (
     <PlanReviewEntryView
       status={status}
-      preview={preview}
-      ui={ui}
+      preview={read?.preview ?? null}
+      ui={shownUi}
       note={note}
       onNoteChange={setNote}
       onUiChange={setUi}
@@ -186,9 +222,9 @@ export function PlanReviewEntryView({
             {preview.excerpt.title}
           </span>
         )}
-        {preview.excerpt.lines.map((line, i) => (
+        {keyedLines(preview.excerpt.lines).map(({ line, key }) => (
           <span
-            key={i}
+            key={key}
             data-slot="plan-review-entry-excerpt-line"
             className="block truncate text-body-2-regular text-text-secondary"
           >
@@ -344,4 +380,15 @@ export function PlanReviewEntryView({
       )}
     </div>
   )
+}
+
+/** Keys for the excerpt's lines: the text, and which occurrence of it this is,
+ *  since a plan can repeat a line ("- [ ] test") inside three of them. */
+function keyedLines(lines: string[]): { line: string; key: string }[] {
+  const seen = new Map<string, number>()
+  return lines.map((line) => {
+    const n = seen.get(line) ?? 0
+    seen.set(line, n + 1)
+    return { line, key: `${n}:${line}` }
+  })
 }

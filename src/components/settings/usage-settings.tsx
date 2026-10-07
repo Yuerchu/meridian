@@ -594,11 +594,19 @@ function UsageSkeleton() {
           <Skeleton key={i} className="h-26 w-full rounded-2xl" />
         ))}
       </div>
-      <Skeleton className="h-[200px] w-full rounded-lg" />
-      <div data-slot="usage-skeleton-charts" className="grid gap-6 @2xl/pane:grid-cols-2">
-        <Skeleton className="h-40 w-full rounded-lg" />
-        <Skeleton className="h-40 w-full rounded-lg" />
+      {/* One block per chart card below, at about its loaded height, so the
+          page does not grow by several hundred pixels when the numbers land:
+          the trend, the two cost cards, the two token cards, the activity. */}
+      <Skeleton data-slot="usage-skeleton-card" className="h-72 w-full rounded-2xl" />
+      <div data-slot="usage-skeleton-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
+        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
       </div>
+      <div data-slot="usage-skeleton-token-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
+        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
+      </div>
+      <Skeleton data-slot="usage-skeleton-card" className="h-60 w-full rounded-2xl" />
     </div>
   )
 }
@@ -782,9 +790,9 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
       items={items.map((item) => ({
         key: item.key,
         label: item.label,
-        value: compact.format(item.tokens),
+        value: item.incomplete ? `≥ ${compact.format(item.tokens)}` : compact.format(item.tokens),
         width: item.width,
-        share: share.format(item.share),
+        share: item.share === null ? undefined : share.format(item.share),
       }))}
     />
   )
@@ -812,12 +820,16 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
     )
   }
   const sum = bands.reduce((acc, band) => acc + parts[band.key], 0)
+  // A reply missing its input or its output leaves every band, and the whole,
+  // a lower bound — which band is short is not recorded. Same `≥` as the KPIs.
+  const incomplete = total.incomplete_token_usage_messages > 0
+  const format = (value: number) => (incomplete ? `≥ ${compact.format(value)}` : compact.format(value))
   return (
     <DonutChart
-      centerValue={compact.format(sum)}
+      centerValue={format(sum)}
       centerLabel={t('settings.usage.compositionCenter')}
-      format={(value) => compact.format(value)}
-      formatShare={(value) => share.format(value)}
+      format={format}
+      formatShare={incomplete ? null : (value) => share.format(value)}
       items={bands.map((band) => ({
         key: band.key,
         label: t(band.labelKey),
@@ -828,6 +840,8 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
   )
 }
 
+const hour = (h: number) => String(h).padStart(2, '0')
+
 /** Replies by weekday and hour of day, Monday first, in local time. */
 function Activity({ grid }: { grid: number[][] }) {
   const { t, i18n } = useTranslation()
@@ -837,7 +851,6 @@ function Activity({ grid }: { grid: number[][] }) {
     const format = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' })
     return Array.from({ length: 7 }, (_, i) => format.format(new Date(Date.UTC(2024, 0, 1 + i))))
   }, [locale])
-  const hour = (h: number) => String(h).padStart(2, '0')
   let busiest = { row: 0, column: 0, value: 0 }
   grid.forEach((row, r) =>
     row.forEach((value, c) => {

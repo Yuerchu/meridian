@@ -5,7 +5,8 @@ import i18n from '@/i18n'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
 import { isAskTool } from '@/lib/tool-catalog'
-import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
+import type { PlanReviewEventInfo } from '@/stores/plan-review-store'
+import { receivePlanReview } from '@/lib/plan-review-sync'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import type { ChatStreamEvent } from '@/types'
 
@@ -354,16 +355,6 @@ export function useGlobalEventListener() {
       if (error) useConversationStore.getState().setError(conversation_id, error)
       useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
     })
-
-    const receivePlanReview = (payload: PlanReviewEventInfo) => {
-      const planReviews = usePlanReviewStore.getState()
-      const previous = planReviews.summaries[payload.review_id]
-      if (!planReviews.receiveReviewEvent(payload)) return { accepted: false, previous }
-      const conversation = useConversationStore.getState()
-      conversation.handlePlanReviewEvent(payload)
-      if (conversation.sessions[payload.conversation_id]) void conversation.loadMessages(payload.conversation_id)
-      return { accepted: true, previous }
-    }
 
     const planReviewRequestedUnlisten = listen('plan-review-requested', (event) => {
       if (receivePlanReview(event.payload).accepted && shouldNotify(event.payload.conversation_id)) {

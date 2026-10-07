@@ -922,7 +922,13 @@ export function InputBar({
                 // The branch's first read is held for too, hosted or not: it is
                 // one local `git status` and always answers.
                 pending={(!isHosted && contextInfo?.status === 'loading') || branch?.status === 'loading'}
-                branch={branch ? <ProjectBranchChip branch={branch} /> : null}
+                // Only a state the chip draws: an element that renders nothing
+                // is still truthy, and the tab would hold an empty row for it.
+                branch={
+                  branch?.status === 'branch' || branch?.status === 'detached' ? (
+                    <ProjectBranchChip branch={branch} />
+                  ) : null
+                }
                 progress={todos && todos.todos.length > 0 ? <TodoProgressChip todos={todos} /> : null}
                 usage={
                   hasContextReading({ context: contextInfo, hosted: !!isHosted, agentUsage: acp.usage }) ? (
