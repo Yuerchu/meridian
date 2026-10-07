@@ -777,9 +777,11 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   const share = useMemo(() => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }), [locale])
   const items = useMemo(() => rankByTokens(buckets, 6), [buckets])
   if (items.length === 0) {
+    // Nothing to rank is not "no usage" when the replies just lost their counts.
+    const unknown = buckets.some((bucket) => bucket.incomplete_token_usage_messages > 0)
     return (
       <p data-slot="tokens-by-model-empty" className="text-body-regular text-text-secondary">
-        {t('settings.usage.noTokens')}
+        {t(unknown ? 'settings.usage.tokensUnavailable' : 'settings.usage.noTokens')}
       </p>
     )
   }
@@ -812,17 +814,18 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
   const share = useMemo(() => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }), [locale])
   const parts = split(total)
   const bands = present([parts])
+  // A reply missing its input or its output leaves every band, and the whole,
+  // a lower bound — which band is short is not recorded. Same `≥` as the KPIs.
+  const incomplete = total.incomplete_token_usage_messages > 0
   if (bands.length === 0) {
+    // Every known band at zero with counts missing is unknown usage, not none.
     return (
       <p data-slot="token-composition-empty" className="text-body-regular text-text-secondary">
-        {t('settings.usage.noTokens')}
+        {t(incomplete ? 'settings.usage.tokensUnavailable' : 'settings.usage.noTokens')}
       </p>
     )
   }
   const sum = bands.reduce((acc, band) => acc + parts[band.key], 0)
-  // A reply missing its input or its output leaves every band, and the whole,
-  // a lower bound — which band is short is not recorded. Same `≥` as the KPIs.
-  const incomplete = total.incomplete_token_usage_messages > 0
   const format = (value: number) => (incomplete ? `≥ ${compact.format(value)}` : compact.format(value))
   return (
     <DonutChart

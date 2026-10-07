@@ -520,6 +520,7 @@
   "settings.usage.byModel": "按模型成本",
   "settings.usage.tokensByModel": "按模型 token",
   "settings.usage.noTokens": "这段时间没有 token 用量",
+  "settings.usage.tokensUnavailable": "服务商没有返回这段时间的 token 用量",
   "settings.usage.composition": "token 去向",
   "settings.usage.compositionCenter": "token",
   "settings.usage.activity": "使用时段",

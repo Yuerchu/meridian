@@ -111,9 +111,13 @@ function ActivityHeatmap({
                   aria-label={caption(r, c, value)}
                   tabIndex={active[0] === r && active[1] === c ? 0 : -1}
                   onMouseEnter={() => setHover([r, c])}
-                  // A tap focuses a tabbable cell in most browsers, but not all;
-                  // setting it on press makes touch reliable either way.
-                  onPointerDown={() => setActive([r, c])}
+                  // A tap focuses a tabbable cell in most browsers, but not all,
+                  // and the outline and caption follow focus; focusing on press
+                  // makes touch reliable either way.
+                  onPointerDown={(event) => {
+                    setActive([r, c])
+                    event.currentTarget.focus()
+                  }}
                   onFocus={() => setActive([r, c])}
                   className={cx(
                     'aspect-square rounded-xs outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring',

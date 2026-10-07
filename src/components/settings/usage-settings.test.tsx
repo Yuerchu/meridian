@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { UsageSettings } from './usage-settings'
 // Imported for the side effect of initialising i18next. Without it every `t()`
@@ -743,4 +743,48 @@ it('asks for the whole log when the range is cleared', async () => {
     const request = mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest
     expect(request.sinceMs).toBeNull()
   })
+})
+
+/**
+ * Replies whose counts never arrived leave nothing to draw, which is not the
+ * same as a range with no usage in it.
+ */
+it('says token usage is unavailable rather than absent when every count is missing', async () => {
+  serve({
+    total: [bucket({ input_tokens: 0, cache_read_tokens: 0, output_tokens: 0, incomplete_token_usage_messages: 3 })],
+    model: [
+      bucket({
+        key: 'lost',
+        label: 'lost-model',
+        input_tokens: 0,
+        output_tokens: 0,
+        incomplete_token_usage_messages: 3,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const unavailable = 'The provider did not report token usage for this range'
+  expect(within(await chartCard('Tokens by model')).getByText(unavailable)).toBeInTheDocument()
+  expect(within(await chartCard('Where the tokens went')).getByText(unavailable)).toBeInTheDocument()
+  expect(screen.queryByText('No token usage in this range')).toBeNull()
+})
+
+/**
+ * Some touch browsers do not focus a tapped cell. A press alone, with no focus
+ * from the browser, still has to outline the cell and write its caption.
+ */
+it('shows the pressed heatmap cell when the browser does not focus it', async () => {
+  serve({
+    total: [bucket()],
+    hour: [bucket({ key: '2026-10-06T14', messages: 9 })],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const card = await chartCard('When it was used')
+  const cell = within(card).getByRole('gridcell', { name: 'Tue 14:00 · 9 replies' })
+  fireEvent.pointerDown(cell, { pointerType: 'touch' })
+
+  expect(cell).toHaveFocus()
+  expect(card.querySelector('[data-slot="activity-heatmap-caption"]')).toHaveTextContent('Tue 14:00 · 9 replies')
 })
