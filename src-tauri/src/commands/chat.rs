@@ -133,6 +133,7 @@ fn reference_tool_context(
         turn_id: None,
         assistant_id: None,
         db_pool: None,
+        sea: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
         tool_secrets: Default::default(),
@@ -1796,6 +1797,7 @@ async fn chat_inner(
         turn_id: Some(turn_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
+        sea: Some(services.sea.clone()),
         #[cfg(not(target_os = "android"))]
         sandbox_policy,
         tool_secrets,
