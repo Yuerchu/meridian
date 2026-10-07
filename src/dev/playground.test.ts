@@ -17,6 +17,8 @@ import { dirname, join, resolve } from 'node:path'
 
 const SRC = resolve(process.cwd(), 'src')
 const PLAYGROUND = join(SRC, 'dev', 'playground.tsx')
+/** The gallery pages the router lazy-loads; each previews components too. */
+const GALLERY = join(SRC, 'dev', 'gallery')
 
 /**
  * Directories that are not the product.
@@ -34,17 +36,8 @@ const NOT_PRODUCT = [join(SRC, 'dev'), join(SRC, 'test')]
  * promise that something will use this, not a place to park things that turned
  * out to be unwanted. When the caller lands, delete the entry — the check will
  * then keep the component honest on its own.
- *
- * These are all slots of a compound component whose parent *is* in use, which
- * is why deleting them would be the wrong call: the playground assembles a full
- * `Turn` to show what the component supports, and `turn-item.tsx` currently
- * renders a subset of that.
  */
-const ALLOWED_WITHOUT_CALLER = new Map<string, string>([
-  ['TurnResult', 'Turn slot: the answer area, for when turn-item renders results separately from steps'],
-  ['TurnFooter', 'Turn slot: per-turn footer, staged for token counts and the branch pager'],
-  ['TurnActions', 'Turn slot: copy/regenerate row, not yet moved off message-item'],
-])
+const ALLOWED_WITHOUT_CALLER = new Map<string, string>([])
 
 /** `import { A, B as C }` / `import type { … }` / multi-line forms. */
 const IMPORT_RE = /import\s+(type\s+)?\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g
@@ -102,9 +95,13 @@ function moduleToFile(module: string, from: string): string | null {
 
 describe('playground', () => {
   it('only previews components the product still uses', () => {
-    const playground = readFileSync(PLAYGROUND, 'utf8')
-    const previewed = parseNamedImports(playground).filter((i) => i.module.startsWith('@/components/'))
-    expect(previewed.length, 'expected the playground to import some components').toBeGreaterThan(0)
+    const pages = [PLAYGROUND, ...walk(GALLERY).filter((f) => !/\.test\.tsx?$/.test(f))]
+    const previewed = pages.flatMap((page) =>
+      parseNamedImports(readFileSync(page, 'utf8'))
+        .filter((i) => i.module.startsWith('@/components/'))
+        .map((i) => ({ ...i, page })),
+    )
+    expect(previewed.length, 'expected the gallery to import some components').toBeGreaterThan(0)
 
     // Anything the product imports by name is in use. Import is the signal
     // rather than JSX usage, because a component can be handed to
@@ -129,13 +126,13 @@ describe('playground', () => {
       }
     }
 
-    const orphans = previewed.filter(({ name, module }) => {
+    const orphans = previewed.filter(({ name, module, page }) => {
       if (ALLOWED_WITHOUT_CALLER.has(name)) return false
       // A component can also be used by a sibling inside its own file without
       // ever being imported anywhere — `TodoBar` renders `TodoBarView` that
       // way. Missing this is what makes a naive version of this check delete
       // live code.
-      const file = moduleToFile(module, PLAYGROUND)
+      const file = moduleToFile(module, page)
       if (!file) return true
       if (importedByProduct.has(`${file}::${name}`)) return false
       const source = readFileSync(file, 'utf8')
@@ -143,7 +140,7 @@ describe('playground', () => {
     })
 
     expect(
-      orphans.map((o) => `${o.name} (${o.module})`),
+      orphans.map((o) => `${o.name} (${o.module}, previewed in ${o.page.slice(SRC.length + 1)})`),
       'These are previewed in the playground but nothing in the product uses them. ' +
         'Delete the component and its playground section, or wire it up. If it is ' +
         'deliberately staged ahead of its caller, add it to ALLOWED_WITHOUT_CALLER ' +
