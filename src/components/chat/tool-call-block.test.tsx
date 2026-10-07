@@ -20,6 +20,9 @@ vi.mock('@/api', () => ({
     approveToolCall: vi.fn().mockResolvedValue(undefined),
     denyToolCall: vi.fn().mockResolvedValue(undefined),
     respondToAsk: vi.fn().mockResolvedValue(undefined),
+    // The plan card reads its review for the revision and the excerpt; these
+    // tests are about the card as a way into the page, so the read never lands.
+    getPlanReview: vi.fn(() => new Promise(() => {})),
   },
 }))
 
@@ -1062,10 +1065,12 @@ describe('as bubble blocks', () => {
         }}
       />,
     )
-    const key = container.querySelector<HTMLElement>('[data-slot="plan-review-entry"]')!
-    expect(key).toHaveAttribute('data-state', 'navigate')
+    // Still waiting on the reader: a block of the bubble holding the decision,
+    // with the page one press away.
+    const block = container.querySelector<HTMLElement>('[data-slot="plan-review-entry"]')!
+    expect(block).toHaveAttribute('data-bubble-block')
     expect(container.textContent).not.toContain('A very long plan body')
-    await userEvent.click(key)
+    await userEvent.click(within(block).getByRole('button', { name: 'Review plan' }))
     expect(usePlanReviewStore.getState().activeReviewId).toBe('review-2')
   })
 

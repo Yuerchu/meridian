@@ -279,7 +279,9 @@ function SidebarMenuItem({
         // boardui's NavItem: `p-2` around a 20px icon is the 36px row, and the
         // rail's row is the same element at `w-9` with its label collapsed.
         'sidebar__menu-item-content group/menu-item flex min-h-9 w-full items-center gap-2 overflow-hidden p-2',
-        'text-text-secondary transition-[width,background-color] duration-300 ease-in-out',
+        // Width rides the rail's 300ms collapse; the hover and selection fills are
+        // colour steps, 150ms like every other (registry NavItem: `transition-colors`).
+        'text-text-secondary [transition-property:width,background-color] [transition-duration:300ms,150ms] ease-in-out',
         thread ? 'text-body-2-regular' : 'text-body-medium',
         'group-data-[state=collapsed]/sidebar:w-9',
         appearance === 'pill'

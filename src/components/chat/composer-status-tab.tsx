@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { GitBranch } from '@keyline-icons/react/two-tone'
+
+import type { ProjectBranch } from '@/hooks/use-project-branch'
 
 /**
  * What the conversation is doing, on a tab hanging from the composer's top
@@ -23,7 +26,7 @@ export function ComposerStatusTab({
   usage,
   pending,
 }: {
-  /** The project's branch. Nothing provides it yet. */
+  /** The project's branch (`ProjectBranchChip`). */
   branch?: ReactNode
   progress?: ReactNode
   usage?: ReactNode
@@ -47,5 +50,35 @@ export function ComposerStatusTab({
         {usage}
       </div>
     </div>
+  )
+}
+
+/**
+ * The project's branch, at the start of the status tab: where the agent's
+ * edits and commits will land, seen before anything is sent. Read-only — it
+ * says which branch, it does not switch one.
+ *
+ * The name is the mono face because it is an identifier, not prose, and is
+ * cut at the chip's width. A screen reader hears "Branch" before it, which the
+ * icon says to everyone else.
+ */
+export function ProjectBranchChip({ branch }: { branch: ProjectBranch }) {
+  const { t } = useTranslation()
+  if (branch.status !== 'branch' && branch.status !== 'detached') return null
+  const name = branch.status === 'branch' ? branch.name : t('composer.branchDetached')
+  return (
+    <span
+      data-slot="project-branch-chip"
+      className="flex h-7 min-w-0 items-center gap-1.5 px-1.5 text-body-2-medium text-text-secondary"
+    >
+      <GitBranch className="size-4 shrink-0" aria-hidden />
+      <span className="sr-only">{t('composer.branch')}</span>
+      <span
+        data-slot="project-branch-chip-name"
+        className={branch.status === 'branch' ? 'min-w-0 max-w-48 truncate font-mono' : 'min-w-0 max-w-48 truncate'}
+      >
+        {name}
+      </span>
+    </span>
   )
 }

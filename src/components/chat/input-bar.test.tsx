@@ -533,3 +533,20 @@ describe('InputBar with only attachments', () => {
     expect(screen.queryByRole('button', { name: i18n.t('chat.send') })).toBeNull()
   })
 })
+
+/**
+ * The branch chip renders nothing for `none` (no git, not a repository, a
+ * failed read), but an element that renders nothing is still a truthy node,
+ * and the status tab used to keep an empty row for it.
+ */
+describe('composer status tab and the branch', () => {
+  it('has no tab when the branch has nothing to show and nothing else does', () => {
+    const { container } = renderBar({ conversationId: 'c1', branch: { status: 'none' } })
+    expect(container.querySelector('[data-slot="composer-status-tab"]')).toBeNull()
+  })
+
+  it('shows the tab for a branch', () => {
+    const { container } = renderBar({ conversationId: 'c1', branch: { status: 'branch', name: 'main' } })
+    expect(container.querySelector('[data-slot="project-branch-chip"]')).not.toBeNull()
+  })
+})

@@ -33,10 +33,11 @@ import { ComposerMenu } from './composer-menu'
 import { HostedModelPanel, ModelPanel } from './model-panel'
 import { EmojiPicker } from './emoji-picker'
 import { ContextGauge, hasContextReading } from './context-gauge'
-import { ComposerStatusTab } from './composer-status-tab'
+import { ComposerStatusTab, ProjectBranchChip } from './composer-status-tab'
 import { TodoProgressChip } from './todo-progress-chip'
 import type { TodoArgs } from './todo-list'
 import type { ContextInfo } from '@/hooks/use-context-info'
+import type { ProjectBranch } from '@/hooks/use-project-branch'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import { currentValueName, isEffortKnob, isModeKnob, isModelKnob } from '@/lib/acp-knob-names'
 import { HostedModeChip, ModeChip } from './mode-chip'
@@ -132,6 +133,8 @@ interface InputBarProps {
   onToggleAcceptEdits: (next: boolean) => void | Promise<boolean>
   capabilities?: ProviderCapabilitiesInfoResponse | null
   contextInfo?: ContextInfo
+  /** The project's branch, for the status tab. Null without a project folder. */
+  branch?: ProjectBranch | null
   compacting?: boolean
   onCompact?: () => void
 }
@@ -212,6 +215,7 @@ export function InputBar({
   onToggleAcceptEdits,
   capabilities,
   contextInfo,
+  branch,
   compacting,
   onCompact,
   attachedFiles = [],
@@ -915,7 +919,16 @@ export function InputBar({
                 // The first reading of a conversation's own window is a fetch
                 // away when it opens; a hosted session's arrives whenever the
                 // agent says so, and holding the tab for it could be for ever.
-                pending={!isHosted && contextInfo?.status === 'loading'}
+                // The branch's first read is held for too, hosted or not: it is
+                // one local `git status` and always answers.
+                pending={(!isHosted && contextInfo?.status === 'loading') || branch?.status === 'loading'}
+                // Only a state the chip draws: an element that renders nothing
+                // is still truthy, and the tab would hold an empty row for it.
+                branch={
+                  branch?.status === 'branch' || branch?.status === 'detached' ? (
+                    <ProjectBranchChip branch={branch} />
+                  ) : null
+                }
                 progress={todos && todos.todos.length > 0 ? <TodoProgressChip todos={todos} /> : null}
                 usage={
                   hasContextReading({ context: contextInfo, hosted: !!isHosted, agentUsage: acp.usage }) ? (

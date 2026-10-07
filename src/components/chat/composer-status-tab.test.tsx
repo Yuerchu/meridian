@@ -1,7 +1,7 @@
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
-import { ComposerStatusTab } from './composer-status-tab'
+import { ComposerStatusTab, ProjectBranchChip } from './composer-status-tab'
 import { TodoProgressChip } from './todo-progress-chip'
 import type { TodoArgs } from './todo-list'
 
@@ -34,6 +34,24 @@ describe('ComposerStatusTab', () => {
     const tab = screen.getByRole('group', { name: i18n.t('composer.status') })
     expect(within(tab).getByText('progress')).toBeInTheDocument()
     expect(within(tab).getByText('usage')).toBeInTheDocument()
+  })
+})
+
+describe('ProjectBranchChip', () => {
+  it('names the branch, announced as one', () => {
+    render(<ProjectBranchChip branch={{ status: 'branch', name: 'feat/design-parity' }} />)
+    expect(screen.getByText('feat/design-parity')).toBeInTheDocument()
+    expect(screen.getByText(i18n.t('composer.branch'))).toHaveClass('sr-only')
+  })
+
+  it('says a detached HEAD in words rather than as a branch name', () => {
+    render(<ProjectBranchChip branch={{ status: 'detached' }} />)
+    expect(screen.getByText(i18n.t('composer.branchDetached'))).toBeInTheDocument()
+  })
+
+  it.each([{ status: 'loading' }, { status: 'none' }] as const)('draws nothing while $status', (branch) => {
+    const { container } = render(<ProjectBranchChip branch={branch} />)
+    expect(container).toBeEmptyDOMElement()
   })
 })
 

@@ -147,7 +147,8 @@ const scenes: Scene[] = [
     name: 'plan-review',
     arrange: async (page) => {
       await openConversation(page, '导出功能计划')
-      await page.getByRole('button', { name: '审阅计划' }).click()
+      // The transcript's plan card and the banner over the composer both offer it.
+      await page.getByRole('button', { name: '审阅计划' }).first().click()
       await expect(page.getByRole('button', { name: /批准/ }).first()).toBeVisible()
     },
   },
