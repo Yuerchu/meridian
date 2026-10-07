@@ -4,11 +4,12 @@ use crate::ServicesExt;
 use crate::commands::entity_response::{SkillInfoResponse, SkillListResponse};
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::agent::skills;
-use meridian_core::db;
-use meridian_core::db::models::skill::SkillChangeset;
-use meridian_core::db::models::skill_binding::SkillLayer;
-use meridian_core::db::ops::skill_binding::MAX_BINDINGS_PER_ANCHOR;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::db::entity::skill::SkillChangeset;
+use meridian_core::db::sea::ops::skill as skill_ops;
+use meridian_core::db::sea::ops::skill_binding as binding_ops;
+use meridian_core::db::sea::ops::skill_binding::{MAX_BINDINGS_PER_ANCHOR, SkillLayer};
+use meridian_core::db::types::SqlBool;
+use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -27,25 +28,23 @@ pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-pub fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
+pub async fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    db::ops::skill::list_skills(&mut conn)
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .map(TryInto::try_into)
-        .collect()
+    skill_ops::list_skills(&services.sea)
+        .await
+        .map(|rows| rows.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
+pub async fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let root = skills_root(&app)?;
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    skills::sync_index(&mut conn, &root)?
+    Ok(skills::sync_index(&services.sea, &root)
+        .await?
         .into_iter()
-        .map(TryInto::try_into)
-        .collect()
+        .map(Into::into)
+        .collect())
 }
 
 #[tauri::command]
@@ -55,7 +54,7 @@ pub fn get_skill_body(app: tauri::AppHandle, dir_name: String) -> Result<String,
 }
 
 #[tauri::command]
-pub fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) -> Result<SkillInfoResponse, String> {
+pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) -> Result<SkillInfoResponse, String> {
     let root = skills_root(&app)?;
     if root.join(&request.dir_name).exists() {
         return Err(format!("A skill directory named '{}' already exists", request.dir_name));
@@ -71,24 +70,30 @@ pub fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) -> Resul
     )?;
 
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    skills::sync_index(&mut conn, &root)?;
+    skills::sync_index(&services.sea, &root).await?;
 
-    if let Some(name) = request.display_name.0.filter(|n| !n.trim().is_empty()) {
-        db::ops::skill::update_skill(
-            &mut conn,
-            &request.dir_name,
-            &SkillChangeset {
-                display_name: Some(name),
-                updated_at: Some(now_ms()),
-                ..Default::default()
-            },
-        )
+    let dir_name = request.dir_name;
+    let display_name = request.display_name.0.filter(|n| !n.trim().is_empty());
+    let row = services
+        .sea
+        .write(async |tx| match display_name {
+            Some(name) => skill_ops::update_skill(
+                tx,
+                &dir_name,
+                SkillChangeset {
+                    display_name: Some(name),
+                    updated_at: Some(now_ms()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map(Some),
+            None => skill_ops::get_skill(tx, &dir_name).await,
+        })
+        .await
         .map_err(|e| e.to_string())?;
-    }
-    db::ops::skill::get_skill(&mut conn, &request.dir_name)
-        .map_err(|e| e.to_string())?
-        .try_into()
+    row.map(Into::into)
+        .ok_or_else(|| format!("skill '{dir_name}' was not indexed after it was written"))
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -101,16 +106,25 @@ pub struct SkillUpdateRequest {
     is_enabled: Option<bool>,
 }
 
+async fn existing_skill(
+    services: &meridian_core::services::Services,
+    dir_name: &str,
+) -> Result<meridian_core::db::entity::skill::Model, String> {
+    skill_ops::get_skill(&services.sea, dir_name)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("skill '{dir_name}' is not in the index"))
+}
+
 #[tauri::command]
-pub fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) -> Result<SkillInfoResponse, String> {
+pub async fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) -> Result<SkillInfoResponse, String> {
     let dir_name = request.dir_name;
     let root = skills_root(&app)?;
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    let current = db::ops::skill::get_skill(&mut conn, &dir_name).map_err(|e| e.to_string())?;
+    let current = existing_skill(&services, &dir_name).await?;
 
     if request.llm_description.is_some() || request.body.is_some() {
-        if current.is_builtin == 1 {
+        if current.is_builtin.get() {
             return Err(format!(
                 "'{dir_name}' is generated by Meridian; its contents are rewritten on every launch"
             ));
@@ -127,38 +141,41 @@ pub fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) -> Resul
                 .ok_or_else(|| format!("skill '{dir_name}' has no readable SKILL.md"))?,
         };
         skills::write_skill_file(&root, &dir_name, &current.llm_name, &description, &body)?;
-        skills::sync_index(&mut conn, &root)?;
+        skills::sync_index(&services.sea, &root).await?;
     }
 
-    db::ops::skill::update_skill(
-        &mut conn,
-        &dir_name,
-        &SkillChangeset {
-            display_name: request.display_name,
-            is_enabled: request.is_enabled.map(i32::from),
-            updated_at: Some(now_ms()),
-            ..Default::default()
-        },
-    )
-    .map_err(|e| e.to_string())?
-    .try_into()
+    let changeset = SkillChangeset {
+        display_name: request.display_name,
+        is_enabled: request.is_enabled.map(SqlBool::from),
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    };
+    services
+        .sea
+        .write(async |tx| skill_ops::update_skill(tx, &dir_name, changeset).await)
+        .await
+        .map(Into::into)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(), String> {
+pub async fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(), String> {
     let root = skills_root(&app)?;
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
 
     // Enforced here and not only in the UI: the frontend hiding a button is not
     // a guarantee, and a regenerated skill would reappear anyway.
-    let skill = db::ops::skill::get_skill(&mut conn, &dir_name).map_err(|e| e.to_string())?;
-    if skill.is_builtin == 1 {
+    if existing_skill(&services, &dir_name).await?.is_builtin.get() {
         return Err(format!("'{dir_name}' is a built-in skill and cannot be deleted"));
     }
 
     skills::delete_skill_dir(&root, &dir_name)?;
-    db::ops::skill::delete_skill(&mut conn, &dir_name).map_err(|e| e.to_string())
+    services
+        .sea
+        .write(async |tx| skill_ops::delete_skill(tx, &dir_name).await)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -180,18 +197,18 @@ pub struct SkillBindingUpdateRequest {
 pub type SkillBindingNamesResponse = Vec<String>;
 
 #[tauri::command]
-pub fn list_skill_bindings(
+pub async fn list_skill_bindings(
     app: tauri::AppHandle,
     request: SkillBindingListRequest,
 ) -> Result<SkillBindingNamesResponse, String> {
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
-    db::ops::skill_binding::list_layer(&mut conn, request.layer, request.anchor_id.as_deref())
+    binding_ops::list_layer(&services.sea, request.layer, request.anchor_id.as_deref())
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn set_skill_binding(
+pub async fn set_skill_binding(
     app: tauri::AppHandle,
     request: SkillBindingUpdateRequest,
 ) -> Result<SkillBindingNamesResponse, String> {
@@ -202,43 +219,42 @@ pub fn set_skill_binding(
         ));
     }
     let services = app.services();
-    let mut conn = get_conn(&services.db)?;
+    let layer = request.layer;
+    let anchor = request.anchor_id.as_deref();
+    let dir_name = request.dir_name.as_str();
 
-    if request.bound {
-        // Each binding costs context on every request, so the cap is per anchor
-        // rather than a global storage limit.
-        let count = db::ops::skill_binding::count_layer(&mut conn, request.layer, request.anchor_id.as_deref())
-            .map_err(|e| e.to_string())?;
-        if count >= MAX_BINDINGS_PER_ANCHOR {
-            return Err(format!(
-                "At most {MAX_BINDINGS_PER_ANCHOR} skills can be bound here; each one costs context on every message"
-            ));
-        }
-        db::ops::skill_binding::bind(
-            &mut conn,
-            request.layer,
-            request.anchor_id.as_deref(),
-            &request.dir_name,
-        )
+    // The count and the bind share one write lock: checked outside it, two
+    // binds racing for the last slot would both see room.
+    let refused = services
+        .sea
+        .write(async |tx| {
+            if !request.bound {
+                return binding_ops::unbind(tx, layer, anchor, dir_name).await.map(|()| false);
+            }
+            // Each binding costs context on every request, so the cap is per
+            // anchor rather than a global storage limit.
+            if binding_ops::count_layer(tx, layer, anchor).await? >= MAX_BINDINGS_PER_ANCHOR {
+                return Ok(true);
+            }
+            binding_ops::bind(tx, layer, anchor, dir_name).await.map(|()| false)
+        })
+        .await
         .map_err(|e| e.to_string())?;
-    } else {
-        db::ops::skill_binding::unbind(
-            &mut conn,
-            request.layer,
-            request.anchor_id.as_deref(),
-            &request.dir_name,
-        )
-        .map_err(|e| e.to_string())?;
+    if refused {
+        return Err(format!(
+            "At most {MAX_BINDINGS_PER_ANCHOR} skills can be bound here; each one costs context on every message"
+        ));
     }
 
-    db::ops::skill_binding::list_layer(&mut conn, request.layer, request.anchor_id.as_deref())
+    binding_ops::list_layer(&services.sea, layer, anchor)
+        .await
         .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{SkillBindingListRequest, SkillBindingUpdateRequest};
-    use meridian_core::db::models::skill_binding::SkillLayer;
+    use meridian_core::db::sea::ops::skill_binding::SkillLayer;
 
     #[test]
     fn skill_binding_requests_are_strict_and_typed() {

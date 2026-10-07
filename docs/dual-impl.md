@@ -17,7 +17,8 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
 | preference::delete_preference | 1 |
-| preference::get_preference | 13 |
-| preference::set_preference | 5 |
+| preference::get_preference | 12 |
+| preference::set_preference | 4 |
+| skill_binding::resolve_available | 1 |
 | tool_preset::create_preset | 1 |
 | tool_preset::get_preset | 1 |

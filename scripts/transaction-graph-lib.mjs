@@ -301,6 +301,8 @@ export function receiverBefore(text, dot) {
     if (text[k] === '.') k--
     else if (text[k] === ':' && text[k - 1] === ':') k -= 2
     else break
+    // rustfmt breaks a long chain before each `.`: `services\n    .sea\n    .write(`.
+    while (k >= 0 && /\s/.test(text[k])) k--
   }
   while (k >= 0 && text[k] === '&') k--
   return text.slice(k + 1, end).trim()
@@ -318,6 +320,7 @@ export function normalizeReceiver(expr) {
     e = e.replace(/^&\s*(?:mut\s+)?/, '').trim()
     if (e.startsWith('(') && matchingParen(e) === e.length - 1) e = e.slice(1, -1).trim()
     e = e.replace(/\.\s*clone\s*\(\s*\)$/, '').trim()
+    e = e.replace(/\s*(\.|::)\s*/g, '$1')
     changed = e !== before
   }
   if (!e || e.endsWith(')')) return null

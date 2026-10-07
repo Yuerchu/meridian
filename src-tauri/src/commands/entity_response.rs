@@ -4,7 +4,8 @@
 //! lists explicit: adding a column to a Diesel row must not silently expand the
 //! desktop or remote API.
 
-use meridian_core::db::entity::{custom_tool, journal_version, mcp_server, tool_category, tool_preset};
+use meridian_core::db::entity::skill::SkillSource;
+use meridian_core::db::entity::{custom_tool, journal_version, mcp_server, skill, tool_category, tool_preset};
 use meridian_core::db::models::{
     assistant::AssistantRow,
     conversation::ConversationRow,
@@ -16,7 +17,6 @@ use meridian_core::db::models::{
     project::ProjectRow,
     provider::ProviderRow,
     queue::QueuedPromptRow,
-    skill::SkillRow,
     todo::{TodoItemRow, TodoListRow, TodoListView},
 };
 use meridian_core::db::types::Json;
@@ -218,27 +218,6 @@ impl From<journal_version::VersionSource> for JournalSource {
             VersionSource::Inferred => Self::Inferred,
             VersionSource::External => Self::External,
             VersionSource::Rewind => Self::Rewind,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SkillSource {
-    Official,
-    User,
-    Assistant,
-    Imported,
-}
-
-impl SkillSource {
-    fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "official" => Ok(Self::Official),
-            "user" => Ok(Self::User),
-            "assistant" => Ok(Self::Assistant),
-            "imported" => Ok(Self::Imported),
-            _ => Err(format!("unknown skill source `{value}`")),
         }
     }
 }
@@ -1042,26 +1021,21 @@ pub struct SkillInfoResponse {
     pub is_builtin: bool,
 }
 
-impl TryFrom<SkillRow> for SkillInfoResponse {
-    type Error = String;
-
-    fn try_from(row: SkillRow) -> Result<Self, Self::Error> {
-        let source = SkillSource::parse(&row.source)?;
-        let is_enabled = decode_sqlite_bool(row.is_enabled, "skill.is_enabled")?;
-        let is_builtin = decode_sqlite_bool(row.is_builtin, "skill.is_builtin")?;
-        Ok(Self {
+impl From<skill::Model> for SkillInfoResponse {
+    fn from(row: skill::Model) -> Self {
+        Self {
             dir_name: row.dir_name,
             llm_name: row.llm_name,
             llm_description: row.llm_description,
             display_name: row.display_name,
             display_description: row.display_description,
-            source,
+            source: row.source,
             mtime_hash: row.mtime_hash,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            is_enabled,
-            is_builtin,
-        })
+            is_enabled: row.is_enabled.get(),
+            is_builtin: row.is_builtin.get(),
+        }
     }
 }
 

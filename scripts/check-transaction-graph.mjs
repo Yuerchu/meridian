@@ -13,6 +13,13 @@
  *   R3 Diesel 根里不能传递调用到另一个 `immediate_transaction`——Diesel 不能嵌套
  *      `BEGIN IMMEDIATE`，运行时报 `AlreadyInTransaction`（2026-10-03 queue_enqueue
  *      就是这样在 main 上坏了一个月）。
+ *   R5 同一个函数里，SeaORM 写事务开始之前不能先拿同一个池去读——读到的计数、
+ *      "是否已存在"在锁外，写的时候可能已经不成立（两个请求都看见还剩一个名额，
+ *      都插进去）。读放进写事务里；确实不需要的（启动期没有并发写者、有别的锁、
+ *      读完就返回不写），在函数体里写一行 `// pool-read-before-write: <理由>`。
+ *      2026-10 同一类竞态出现了三次：preference 的 storage_key、redaction 的
+ *      规则上限、skill 绑定上限。近似规则：只认实参直接是那个池句柄的调用，经
+ *      别的值（`&services`）转手的看不见。
  *   R0 Diesel 事务的实参必须是闭包字面量。具名闭包和函数项跟不进去，与其当它不存在，
  *      不如拒绝这种写法。
  *
@@ -39,7 +46,16 @@ import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { stagedSnapshot } from './staged-snapshot.mjs'
-import { aliasScopes, blank, callsIn, functions, lineOf, matching, transactionRoots } from './transaction-graph-lib.mjs'
+import {
+  aliasScopes,
+  blank,
+  callsIn,
+  functions,
+  lineOf,
+  matching,
+  normalizeReceiver,
+  transactionRoots,
+} from './transaction-graph-lib.mjs'
 
 const CRATES = [
   { name: 'core', dir: 'src-tauri/crates/core/src', selfNames: ['meridian_core'] },
@@ -242,6 +258,17 @@ export function analyze(files) {
         }
       }
       const reached = reach(seeds)
+      const poolReads = []
+      if (root.kind === 'sea-write' && root.receiver && owner) {
+        for (const call of callsIn(file.text, [owner.body[0], root.at])) {
+          const open = file.text.indexOf('(', call.at)
+          const close = matching(file.text, open)
+          if (open < 0 || close < 0 || close > root.at) continue
+          const first = splitArgs(file.text.slice(open + 1, close))[0]
+          if (!first || normalizeReceiver(first) !== root.receiver) continue
+          if (resolve(file, call).some(isSeaReadOp)) poolReads.push({ name: call.name, at: call.at })
+        }
+      }
       roots.push({
         ...root,
         file,
@@ -250,6 +277,7 @@ export function analyze(files) {
         reached,
         via,
         direct,
+        poolReads,
         modules: [...new Set(reached.map((fn) => fn.opsModule).filter(Boolean))].sort(),
         nestedImmediate:
           /\.\s*immediate_transaction\s*\(/.test(file.text.slice(root.region[0], root.region[1])) ||
@@ -283,6 +311,12 @@ function isSeaReadBound(file, fn) {
   if (!/\bimpl\s+Read\b/.test(fn.signature)) return false
   const path = file.aliases.get('Read', fn.at)
   return Boolean(path && /(?:^|::)cap::Read$/.test(path))
+}
+
+/** 只读的 SeaORM 函数：参数是读能力（`impl Read` / `impl Snapshot` / `&ReadTx`），不收 `WriteTx`。 */
+function isSeaReadOp(fn) {
+  if (/\bWriteTx\b/.test(fn.signature)) return false
+  return isSeaReadBound(fn.file, fn) || /\bimpl\s+(?:[\w:]*::)?Snapshot\b|&\s*ReadTx\b/.test(fn.signature)
 }
 
 function splitArgs(text) {
@@ -333,6 +367,16 @@ export function violations({ roots }) {
       const handle = new RegExp(String.raw`(?<![\w.:])` + escapeRegExp(root.receiver) + String.raw`(?![\w:])`)
       if (handle.test(body)) {
         problems.push(`R2 ${where(root)}: 事务闭包里又引用了开启它的 \`${root.receiver}\`，应该用事务本身`)
+      }
+    }
+    if (root.poolReads?.length && !root.owner.test) {
+      const excused = /\/\/\s*pool-read-before-write:\s*\S/.test(root.file.raw.slice(root.owner.body[0], root.at))
+      for (const read of excused ? [] : root.poolReads) {
+        const message =
+          `R5 ${root.file.path}:${lineOf(root.file.text, read.at)}: ${read.name}(${root.receiver}) 在池上读，` +
+          `随后开写事务；把读放进写事务，` +
+          '或在函数里写 `// pool-read-before-write: <理由>`'
+        if (!problems.includes(message)) problems.push(message)
       }
     }
     if (!sea && root.nestedImmediate) {
