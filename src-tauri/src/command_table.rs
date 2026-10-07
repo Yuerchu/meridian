@@ -666,32 +666,32 @@ macro_rules! with_all_commands {
             async commands::logs => set_log_level(request: $crate::commands::logs::LogLevelUpdateRequest),
             local commands::logs => export_logs(request: $crate::commands::logs::LogExportRequest),
 
-            sync commands::emoji => list_emoji_packs(),
-            sync commands::emoji => create_emoji_pack(
+            async commands::emoji => list_emoji_packs(),
+            async commands::emoji => create_emoji_pack(
                 request: $crate::commands::emoji::EmojiPackCreateRequest,
             ),
-            sync commands::emoji => delete_emoji_pack(id: String),
-            sync commands::emoji => list_emojis(pack_id: String),
+            async commands::emoji => delete_emoji_pack(id: String),
+            async commands::emoji => list_emojis(pack_id: String),
             local commands::emoji => import_emojis(
                 request: $crate::commands::emoji::EmojiImportRequest,
             ),
-            sync commands::emoji => delete_emoji(id: String),
-            sync commands::emoji => rename_emoji(
+            async commands::emoji => delete_emoji(id: String),
+            async commands::emoji => rename_emoji(
                 request: $crate::commands::emoji::EmojiRenameRequest,
             ),
             async commands::emoji => suggest_sticker_semantics(id: String),
-            sync commands::emoji => confirm_sticker_semantics(
+            async commands::emoji => confirm_sticker_semantics(
                 request: $crate::commands::emoji::EmojiSemanticsConfirmRequest,
             ),
-            sync commands::emoji => search_emojis(query: String),
-            sync commands::emoji => assign_emoji_pack(
+            async commands::emoji => search_emojis(query: String),
+            async commands::emoji => assign_emoji_pack(
                 request: $crate::commands::emoji::AssistantEmojiPackAssignmentRequest,
             ),
-            sync commands::emoji => unassign_emoji_pack(
+            async commands::emoji => unassign_emoji_pack(
                 request: $crate::commands::emoji::AssistantEmojiPackAssignmentRequest,
             ),
-            sync commands::emoji => list_assistant_emoji_packs(assistant_id: String),
-            sync commands::emoji => get_emoji_file_url(emoji_id: String),
+            async commands::emoji => list_assistant_emoji_packs(assistant_id: String),
+            async commands::emoji => get_emoji_file_url(emoji_id: String),
 
             async commands::tool_system => list_tool_categories(),
             async commands::tool_system => list_custom_tools(),

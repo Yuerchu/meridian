@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：115
-- Diesel ops 调用点（db/ops 之外）：831
-- Diesel API 引用：1232
+- 事务根（非测试）：133
+- Diesel ops 调用点（db/ops 之外）：787
+- Diesel API 引用：1201
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 21 个：acp_session acp_session_notice assistant audit cached_model conversation emoji memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 22 个：acp_session acp_session_notice assistant audit cached_model conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
 - 2 个：preference skill_binding
 - 1 个：custom_tool
 - 1 个：journal
@@ -89,9 +89,18 @@
 | `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
+| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `list_stickers` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `send_sticker` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
+| `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
+| `src-tauri/crates/core/src/onebot/stickers.rs` › `ensure_pack` | sea-write | emoji_pack |
+| `src-tauri/crates/core/src/onebot/stickers.rs` › `evict_candidates` | sea-write | emoji |
+| `src-tauri/crates/core/src/onebot/stickers.rs` › `record_new` | sea-write | emoji |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
+| `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
@@ -111,6 +120,15 @@
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | diesel-deferred | audit, emoji, message, message_context_item, model_config, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/conversation.rs` › `mutate_conversation_unless_plan_barrier` | diesel-immediate | conversation, plan_review · 回调来自 3 处 |
 | `src-tauri/src/commands/conversation.rs` › `update_conversation_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review |
+| `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `confirm_sticker_semantics` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `create_emoji_pack` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `delete_emoji_pack` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `delete_emoji` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `import_emojis` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `rename_emoji` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `suggest_sticker_semantics` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `unassign_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/logs.rs` › `set_log_level` | sea-write | preference |
 | `src-tauri/src/commands/mcp.rs` › `create_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `delete_mcp_server` | sea-write | mcp_server |
