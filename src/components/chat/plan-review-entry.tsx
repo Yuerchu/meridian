@@ -13,7 +13,7 @@ import { approveFromCard, planCardPreview, sendBackFromCard, type PlanCardPrevie
 import { PlanDecisionAttempt, PlanDecisionInDoubtError } from '@/lib/plan-review-draft'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import type { ToolCallDisplay } from '@/types'
+import type { PlanReviewStatus, ToolCallDisplay } from '@/types'
 import { cx } from '@/utils/cx'
 
 /** See `FIELD_ON_CARD` in `tool-call-block.tsx`. */
@@ -50,7 +50,7 @@ function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): 
   return state.status === 'ready' ? state.preview : null
 }
 
-type CardUi =
+export type CardUi =
   | { step: 'idle' }
   | { step: 'feedback' }
   | { step: 'deciding' }
@@ -79,9 +79,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
   const openReview = usePlanReviewStore((state) => state.openReview)
   const summary = usePlanReviewStore((state) => state.summaries[reviewId])
   const status = summary?.status ?? planReviewStatusOfTool(data.status)
-  const presentation = useContext(ChatToolPresentationContext)
   const preview = usePlanCardPreview(reviewId, summary?.lock_version)
-  const pending = status === 'pending'
 
   const [ui, setUi] = useState<CardUi>({ step: 'idle' })
   const [note, setNote] = useState('')
@@ -114,6 +112,51 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
     if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt.current))
   }
 
+  return (
+    <PlanReviewEntryView
+      status={status}
+      preview={preview}
+      ui={ui}
+      note={note}
+      onNoteChange={setNote}
+      onUiChange={setUi}
+      onOpen={() => openReview(reviewId)}
+      onApprove={approve}
+      onSendBack={sendBack}
+    />
+  )
+}
+
+/**
+ * The card as drawn, from its state alone: no store, no backend. The
+ * container above owns the reads and the decisions; this is what the
+ * playground renders for every step a press can lead to.
+ */
+export function PlanReviewEntryView({
+  status,
+  preview,
+  ui,
+  note,
+  onNoteChange,
+  onUiChange,
+  onOpen,
+  onApprove,
+  onSendBack,
+}: {
+  status: PlanReviewStatus
+  preview: PlanCardPreview | null
+  ui: CardUi
+  note: string
+  onNoteChange: (note: string) => void
+  onUiChange: (ui: CardUi) => void
+  onOpen: () => void
+  onApprove: () => void
+  onSendBack: () => void
+}) {
+  const { t } = useTranslation()
+  const presentation = useContext(ChatToolPresentationContext)
+  const pending = status === 'pending'
+
   const revision = preview ? (
     <span data-slot="plan-review-entry-revision" className="shrink-0 text-text-secondary tabular-nums">
       {t('chat.plan.revision', { n: preview.revisionNo })}
@@ -132,7 +175,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
       // which plan is the part that opens it.
       <AriaButton
         data-slot="plan-review-entry-excerpt"
-        onPress={() => openReview(reviewId)}
+        onPress={onOpen}
         className="block w-full min-w-0 cursor-pointer rounded-xl bg-background-primary-default px-3 py-2.5 text-left outline-none transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
       >
         {preview.excerpt.title && (
@@ -165,10 +208,10 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             autoComplete="off"
             aria-label={t('chat.plan.feedbackLabel')}
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => onNoteChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') sendBack()
+              if (e.key === 'Enter') onSendBack()
             }}
             placeholder={t('chat.plan.feedbackPlaceholder')}
             className="text-caption-1-regular"
@@ -176,10 +219,10 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             autoFocus
           />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="small" variant="secondary" onPress={() => setUi({ step: 'idle' })}>
+            <Button size="small" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
-            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={sendBack}>
+            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={onSendBack}>
               {t('chat.plan.sendBack')}
             </Button>
           </div>
@@ -200,19 +243,19 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="small" onPress={() => openReview(reviewId)}>
+            <Button size="small" onPress={onOpen}>
               {t('chat.plan.review')}
             </Button>
             {ui.step !== 'draft' && (
               <>
-                <Button size="small" variant="secondary" leadingIcon={Check} onPress={approve}>
+                <Button size="small" variant="secondary" leadingIcon={Check} onPress={onApprove}>
                   {t('chat.plan.approve')}
                 </Button>
                 <Button
                   size="small"
                   variant="secondary"
                   leadingIcon={ArrowUTurnLeft}
-                  onPress={() => setUi({ step: 'feedback' })}
+                  onPress={() => onUiChange({ step: 'feedback' })}
                 >
                   {t('chat.plan.revise')}
                 </Button>
@@ -228,12 +271,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
   // nothing left to decide: the review has a page of its own.
   if (presentation === 'bubble' && !pending) {
     return (
-      <BubbleBlockButton
-        data-slot="plan-review-entry"
-        data-status={status}
-        state="output-available"
-        onClick={() => openReview(reviewId)}
-      >
+      <BubbleBlockButton data-slot="plan-review-entry" data-status={status} state="output-available" onClick={onOpen}>
         <List aria-hidden className="size-3.5 shrink-0" />
         <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
           {t('chat.plan.title')}
@@ -299,7 +337,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
           >
             {t('chat.plan.reviewHistory')}
           </p>
-          <Button size="small" variant="secondary" onPress={() => openReview(reviewId)}>
+          <Button size="small" variant="secondary" onPress={onOpen}>
             {t('chat.plan.review')}
           </Button>
         </div>

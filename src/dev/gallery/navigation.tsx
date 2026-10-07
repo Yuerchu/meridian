@@ -4,6 +4,7 @@ import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@k
 import { Pagination, Sidebar, Tab, TabList, TabPanel, Tabs } from '@/components/base'
 import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 import { Row, Section, Stage } from './shell'
+import { NavigationParts } from './parts'
 
 function TabsCase() {
   const [pill, setPill] = useState('all')
@@ -146,6 +147,7 @@ export default function Navigation() {
       <Section title="Sidebar · 导航行 / 线程行 / 胶囊 / 图标栏">
         <SidebarCase />
       </Section>
+      <NavigationParts />
     </>
   )
 }

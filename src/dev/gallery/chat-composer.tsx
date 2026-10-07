@@ -4,7 +4,7 @@ import { Tooltip, TooltipTrigger } from '@/components/base'
 import { AttachmentTiles } from '@/components/chat/attachment-tiles'
 import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
-import { ComposerStatusTab } from '@/components/chat/composer-status-tab'
+import { ComposerStatusTab, ProjectBranchChip } from '@/components/chat/composer-status-tab'
 import { ModeChip } from '@/components/chat/mode-chip'
 import { ModelPanel } from '@/components/chat/model-panel'
 import { PromptQueue } from '@/components/chat/prompt-queue'
@@ -15,6 +15,7 @@ import { cx } from '@/utils/cx'
 import type { ChatMode, ThinkingLevel } from '@/types'
 import { PG_STICKERS, TODO_NO_CURRENT, TODO_RUNNING, TODO_SINGLE, caps, noop, queued } from './fixtures'
 import { Section } from './shell'
+import { BranchChipSection } from './agent-plan'
 
 /**
  * The `+` menu and the mode chip beside it, with nothing behind them:
@@ -134,7 +135,7 @@ export default function ChatComposer() {
               whole list. The usage reading needs a live conversation and is
               photographed in the demo transcript instead. */}
         <div data-slot="gallery-status-tabs" className="flex max-w-2xl flex-col gap-4">
-          {[TODO_RUNNING, TODO_SINGLE, TODO_NO_CURRENT].map((todos) => (
+          {[TODO_RUNNING, TODO_SINGLE, TODO_NO_CURRENT].map((todos, i) => (
             <Composer
               key={todos}
               value=""
@@ -142,11 +143,17 @@ export default function ChatComposer() {
               onSubmit={() => {}}
               ariaLabel="status tab probe"
               placeholder="发送消息…"
-              status={<ComposerStatusTab progress={<TodoProgressChip todos={JSON.parse(todos)} />} />}
+              status={
+                <ComposerStatusTab
+                  branch={i === 0 ? <ProjectBranchChip branch={{ status: 'branch', name: 'main' }} /> : undefined}
+                  progress={<TodoProgressChip todos={JSON.parse(todos)} />}
+                />
+              }
             />
           ))}
         </div>
       </Section>
+      <BranchChipSection />
       <Section title="PromptQueue / 插队与做完再说">
         {/* The queue is a child of PromptInput, which is the composer's
               card. Two modes in one list: a follow-up is a sibling of the

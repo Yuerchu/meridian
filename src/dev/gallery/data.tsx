@@ -14,6 +14,7 @@ import {
   type DataGridSelection,
 } from '@/components/base'
 import { Section, Stage } from './shell'
+import { DataParts } from './parts'
 
 interface Server {
   id: string
@@ -184,6 +185,7 @@ export default function Data() {
       <Section title="ScrollShadow">
         <Scroll />
       </Section>
+      <DataParts />
     </>
   )
 }

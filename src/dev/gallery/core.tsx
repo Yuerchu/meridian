@@ -16,6 +16,7 @@ import {
 } from '@/components/base'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
+import { CoreParts } from './parts'
 
 const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger', 'neutral']
 const SIZES = ['medium', 'small', 'xs'] as const
@@ -178,6 +179,7 @@ export default function Core() {
       <Section title="Spinner">
         <Spinners />
       </Section>
+      <CoreParts />
     </>
   )
 }

@@ -26,6 +26,7 @@ import { CommandPalette } from '@/components/layout/command-palette'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { noop, PALETTE_PROJECTS, PALETTE_ROWS } from './fixtures'
 import { Row, Section, Stage } from './shell'
+import { OverlayParts } from './parts'
 
 function Menus() {
   return (
@@ -333,6 +334,7 @@ export default function Overlays() {
             a browser — the browser is not the environment in question. */}
         <HotkeyProbe />
       </Section>
+      <OverlayParts />
     </>
   )
 }

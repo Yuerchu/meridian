@@ -11,7 +11,7 @@ export const GROUPS = [
   { id: 'navigation', title: '导航', description: '标签页、分页、侧栏' },
   { id: 'feedback', title: '反馈', description: '提示条、空状态、进度、骨架' },
   { id: 'data', title: '数据', description: '表格、列表、折叠、条目卡' },
-  { id: 'charts', title: '图表', description: '指标卡、面积图' },
+  { id: 'charts', title: '图表', description: '指标卡、柱状、排名、环形、热力图、面积图' },
   { id: 'chat', title: '对话', description: '工具块、回合排版、输入框' },
   { id: 'agent', title: '智能体', description: '子 agent、待办、计划模式、改动' },
   { id: 'content', title: '内容', description: 'Markdown、代码、diff、富文本、附件' },

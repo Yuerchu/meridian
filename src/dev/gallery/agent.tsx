@@ -15,6 +15,7 @@ import {
   tool,
 } from './fixtures'
 import { Section } from './shell'
+import { PlanCardSections } from './agent-plan'
 
 export default function Agent() {
   return (
@@ -251,6 +252,7 @@ export default function Agent() {
           />
         </div>
       </Section>
+      <PlanCardSections />
       <Section title="TodoBoard / 三列看板">
         {/* Rendered directly as well as through the bar's own toggle: the
               cases worth looking at are an empty column and a card long enough
