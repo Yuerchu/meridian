@@ -1586,7 +1586,13 @@ const RAW_TABLES: RawTable[] = [
     show: ['dir_name', 'llm_name', 'source', 'is_enabled', 'mtime_hash'],
     note: '内容在磁盘 <code>{app_data_dir}/skills/&lt;dir_name&gt;/SKILL.md</code>，这张表只是索引：让绑定有外键目标，也让列表不必扫盘。',
     cols: [
-      ['dir_name', 'TEXT', ['PK'], '—', '<b>目录名即主键</b>'],
+      [
+        'dir_name',
+        'TEXT',
+        ['PK', 'NN'],
+        '—',
+        '<b>目录名即主键</b>，CHECK 要求是 slug（小写字母、数字、中间的连字符，1–64 字节）',
+      ],
       ['llm_name', 'TEXT', ['NN', 'IDX'], '—', '来自 SKILL.md frontmatter 的 slug，<b>这才是模型看到的名字</b>'],
       ['llm_description', 'TEXT', ['NN'], '—', '模型看到的说明，决定何时加载'],
       ['display_name', 'TEXT', ['NN'], '—', '设置界面里给人看的，可以是任何语言'],
@@ -1608,6 +1614,7 @@ const RAW_TABLES: RawTable[] = [
     rules: [
       '两套名字是刻意的：<code>display_*</code> 给人，<code>llm_*</code> 给模型，别混用。',
       '磁盘是内容的唯一真相；这张表可以整表重建。目录被删而行还在 = 悬空索引，由扫描清理。',
+      '<code>dir_name</code> 是路径：大小写不敏感的文件系统上 <code>pdf-tools</code> 与 <code>PDF-Tools</code> 是同一个目录。slug CHECK 让一条路径只有一种拼法，主键才能保证它只出现一次；与 <code>agent::skills::is_valid_slug</code> 由测试钉成同一条规则（m0002）。',
     ],
   },
   {
@@ -1616,7 +1623,7 @@ const RAW_TABLES: RawTable[] = [
     title: '技能绑定 · 全局',
     mig: 17,
     show: ['dir_name'],
-    cols: [['dir_name', 'TEXT', ['PK', 'FK'], '—', '→ <code>skills(dir_name)</code> ON DELETE CASCADE']],
+    cols: [['dir_name', 'TEXT', ['PK', 'NN', 'FK'], '—', '→ <code>skills(dir_name)</code> ON DELETE CASCADE']],
     rels: ['<code>skills</code>（CASCADE）。三层绑定<b>读时求并集</b>。'],
     rules: [
       '保持三个独立锚点而不是一个中心「技能集合」，是为了让某技能全局置顶的同时，用户改不动的助手依然能解析到它。',
