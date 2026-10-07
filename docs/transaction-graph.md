@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：133
-- Diesel ops 调用点（db/ops 之外）：787
-- Diesel API 引用：1201
+- 事务根（非测试）：135
+- Diesel ops 调用点（db/ops 之外）：780
+- Diesel API 引用：1178
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 22 个：acp_session acp_session_notice assistant audit cached_model conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 23 个：acp_session acp_session_notice assistant audit cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
 - 2 个：preference skill_binding
 - 1 个：custom_tool
 - 1 个：journal
@@ -46,7 +46,6 @@
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
 | `src-tauri/crates/core/src/db/ops/cached_model.rs` › `list_cached_for_provider` | diesel-deferred | cached_model |
 | `src-tauri/crates/core/src/db/ops/cached_model.rs` › `replace_models` | diesel-deferred | — |
-| `src-tauri/crates/core/src/db/ops/composer_draft.rs` › `save` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
@@ -118,6 +117,9 @@
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | diesel-deferred | audit, emoji, message, message_context_item, model_config, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
+| `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
+| `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/conversation.rs` › `mutate_conversation_unless_plan_barrier` | diesel-immediate | conversation, plan_review · 回调来自 3 处 |
 | `src-tauri/src/commands/conversation.rs` › `update_conversation_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review |
 | `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |

@@ -1,7 +1,7 @@
 //! Unsent composer drafts, from the window.
 //!
 //! The rules — one row per composer, empty means no row, a stale revision
-//! changes nothing — live in `meridian_core::db::ops::composer_draft`. What is
+//! changes nothing — live in `meridian_core::db::sea::ops::composer_draft`. What is
 //! here is the boundary: which attachments may be stored at all, and what a
 //! stored draft looks like once the things it points at have moved on.
 //!
@@ -14,11 +14,13 @@
 use crate::ServicesExt;
 use crate::commands::entity_response::EmojiInfoResponse;
 use crate::commands::model_config::RequiredNullable;
-use diesel::sqlite::SqliteConnection;
-use meridian_core::db::models::composer_draft::{ComposerDraftContent, DraftAttachment, DraftSlot};
-use meridian_core::db::ops::composer_draft as ops;
-use meridian_core::db::ops::composer_draft::DraftWriteOutcome;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::db::entity::composer_draft::DraftAttachment;
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::{Db, Snapshot};
+use meridian_core::db::sea::ops::composer_draft as ops;
+use meridian_core::db::sea::ops::composer_draft::{ComposerDraftContent, DraftSlot, DraftWriteOutcome};
+use meridian_core::db::sea::ops::{conversation, emoji};
+use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -136,53 +138,92 @@ fn stored_attachments(attachments: Vec<ComposerDraftAttachmentRequest>) -> Resul
         .collect()
 }
 
-fn read_draft(conn: &mut SqliteConnection, slot: &DraftSlot) -> Result<Option<ComposerDraftInfoResponse>, String> {
-    let Some(row) = ops::get(conn, slot).map_err(|e| e.to_string())? else {
+/// What the database says about a draft, read in one snapshot: the row, and
+/// today's state of each conversation and sticker it points at. Whether the
+/// attached files are still there is asked afterwards, outside the transaction.
+struct StoredDraft {
+    conversation_id: Option<String>,
+    revision: i64,
+    updated_at: i64,
+    content: ComposerDraftContent,
+    conversation_refs: Vec<ComposerDraftConversationRefInfoResponse>,
+    sticker: Option<EmojiInfoResponse>,
+}
+
+/// Several statements whose answers are put together, so a snapshot: on the
+/// pool, a conversation deleted between the draft read and its title lookup
+/// would be reported as present with no title.
+async fn read_stored(db: &impl Snapshot, slot: &DraftSlot) -> Result<Option<StoredDraft>, DbErr> {
+    let Some(row) = ops::get(db, slot).await? else {
         return Ok(None);
     };
-    let content = row.content()?;
-
-    let attachments = content
-        .attachments
-        .into_iter()
-        .map(|a| ComposerDraftAttachmentInfoResponse {
-            exists: std::path::Path::new(&a.path).is_file(),
-            path: a.path,
-            name: a.name,
-        })
-        .collect();
+    let (conversation_id, revision, updated_at) = (row.conversation_id.clone(), row.revision, row.updated_at);
+    let content = ComposerDraftContent::from(row);
 
     let mut conversation_refs = Vec::with_capacity(content.conversation_refs.len());
-    for id in content.conversation_refs {
-        let found = meridian_core::db::ops::conversation::get_conversation(conn, &id);
-        let (title, exists) = match found {
-            Ok(conv) => (conv.title, true),
-            Err(diesel::result::Error::NotFound) => (None, false),
-            Err(e) => return Err(e.to_string()),
-        };
-        conversation_refs.push(ComposerDraftConversationRefInfoResponse { id, title, exists });
+    for id in &content.conversation_refs {
+        let found = conversation::get_conversation(db, id).await?;
+        conversation_refs.push(ComposerDraftConversationRefInfoResponse {
+            id: id.clone(),
+            exists: found.is_some(),
+            title: found.and_then(|c| c.title),
+        });
     }
 
-    let sticker = match content.sticker_id {
+    let sticker = match &content.sticker_id {
         // The foreign key clears this when the sticker goes, so a dangling id
         // is not a state to tolerate.
-        Some(id) => Some(meridian_core::db::ops::emoji::get_emoji(conn, &id)?.into()),
+        Some(id) => Some(
+            emoji::get_emoji(db, id)
+                .await?
+                .ok_or_else(|| DbErr::RecordNotFound(format!("sticker `{id}` on a composer draft")))?
+                .into(),
+        ),
         None => None,
     };
 
-    Ok(Some(ComposerDraftInfoResponse {
-        conversation_id: row.conversation_id,
-        body: content.body,
-        attachments,
+    Ok(Some(StoredDraft {
+        conversation_id,
+        revision,
+        updated_at,
+        content,
         conversation_refs,
         sticker,
-        revision: row.revision,
-        updated_at: row.updated_at,
     }))
 }
 
-fn write_draft(
-    conn: &mut SqliteConnection,
+async fn read_draft(db: &Db, slot: &DraftSlot) -> Result<Option<ComposerDraftInfoResponse>, String> {
+    let Some(stored) = db
+        .read(async |tx| read_stored(tx, slot).await)
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+
+    let mut attachments = Vec::with_capacity(stored.content.attachments.len());
+    for a in stored.content.attachments {
+        let exists = tokio::fs::metadata(&a.path).await.is_ok_and(|m| m.is_file());
+        attachments.push(ComposerDraftAttachmentInfoResponse {
+            path: a.path,
+            name: a.name,
+            exists,
+        });
+    }
+
+    Ok(Some(ComposerDraftInfoResponse {
+        conversation_id: stored.conversation_id,
+        body: stored.content.body,
+        attachments,
+        conversation_refs: stored.conversation_refs,
+        sticker: stored.sticker,
+        revision: stored.revision,
+        updated_at: stored.updated_at,
+    }))
+}
+
+async fn write_draft(
+    db: &Db,
     request: ComposerDraftUpsertRequest,
     now: i64,
 ) -> Result<ComposerDraftWriteResponse, String> {
@@ -202,12 +243,15 @@ fn write_draft(
         conversation_refs,
         sticker_id,
     };
-    let outcome = ops::save(conn, &slot, &content, revision, now).map_err(|e| e.to_string())?;
+    let outcome = db
+        .write(async |tx| ops::save(tx, &slot, &content, revision, now).await)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(write_response(outcome, revision))
 }
 
-fn delete_draft(
-    conn: &mut SqliteConnection,
+async fn delete_draft(
+    db: &Db,
     request: ComposerDraftDeleteRequest,
     now: i64,
 ) -> Result<ComposerDraftWriteResponse, String> {
@@ -217,7 +261,10 @@ fn delete_draft(
     } = request;
     validate_revision(revision)?;
     let slot = DraftSlot::for_conversation(conversation_id);
-    let outcome = ops::clear(conn, &slot, revision, now).map_err(|e| e.to_string())?;
+    let outcome = db
+        .write(async |tx| ops::clear(tx, &slot, revision, now).await)
+        .await
+        .map_err(|e| e.to_string())?;
     Ok(write_response(outcome, revision))
 }
 
@@ -227,13 +274,8 @@ pub async fn get_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftReadRequest,
 ) -> Result<Option<ComposerDraftInfoResponse>, String> {
-    let pool = app.services().db.clone();
     let RequiredNullable(conversation_id) = request.conversation_id;
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        read_draft(&mut conn, &DraftSlot::for_conversation(conversation_id))
-    })
-    .await
+    read_draft(&app.services().sea, &DraftSlot::for_conversation(conversation_id)).await
 }
 
 /// Store what a composer holds. An empty draft removes the row.
@@ -242,12 +284,7 @@ pub async fn save_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftUpsertRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
-    let pool = app.services().db.clone();
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        write_draft(&mut conn, request, now_ms())
-    })
-    .await
+    write_draft(&app.services().sea, request, now_ms()).await
 }
 
 /// Forget a draft once what it held has been sent.
@@ -256,26 +293,13 @@ pub async fn clear_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftDeleteRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
-    let pool = app.services().db.clone();
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        delete_draft(&mut conn, request, now_ms())
-    })
-    .await
-}
-
-async fn blocking<T, F>(f: F) -> Result<T, String>
-where
-    T: Send + 'static,
-    F: FnOnce() -> Result<T, String> + Send + 'static,
-{
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
+    delete_draft(&app.services().sea, request, now_ms()).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use meridian_core::db::diesel_test_db;
+    use meridian_core::db::sea::{execute_for_tests, sea_test_db};
 
     fn upsert(conversation_id: Option<&str>, body: &str, revision: i64) -> ComposerDraftUpsertRequest {
         serde_json::from_value(serde_json::json!({
@@ -316,32 +340,32 @@ mod tests {
 
     /// An attachment that could not be opened again after a restart is refused
     /// at the boundary, not dropped on the way to the table.
-    #[test]
-    fn a_relative_or_uri_attachment_is_refused() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
+    #[tokio::test]
+    async fn a_relative_or_uri_attachment_is_refused() {
+        let db = sea_test_db().await;
         for path in ["notes.md", "content://media/external/images/1"] {
             let mut request = upsert(None, "x", 1);
             request.attachments = vec![ComposerDraftAttachmentRequest {
                 path: path.to_string(),
                 name: "a".to_string(),
             }];
-            assert!(write_draft(&mut conn, request, 1).is_err(), "{path} must be refused");
+            assert!(write_draft(&db, request, 1).await.is_err(), "{path} must be refused");
         }
-        assert!(read_draft(&mut conn, &DraftSlot::NewConversation).unwrap().is_none());
+        assert!(read_draft(&db, &DraftSlot::NewConversation).await.unwrap().is_none());
     }
 
     /// What a stored draft says about the things it points at is read now: a
     /// file that has gone is marked, a conversation that has gone is marked,
     /// and neither is dropped.
-    #[test]
-    fn a_read_marks_what_has_gone() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", Some("Draft"), None, None, 0)
-            .unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c2", Some("Cited"), None, None, 0)
-            .unwrap();
+    #[tokio::test]
+    async fn a_read_marks_what_has_gone() {
+        let db = sea_test_db().await;
+        execute_for_tests(
+            &db,
+            "INSERT INTO conversations (id, title, created_at, updated_at) VALUES ('c1', 'Draft', 0, 0), ('c2', 'Cited', 0, 0)",
+        )
+        .await
+        .unwrap();
 
         let present = std::env::temp_dir().join(format!("composer-draft-present-{}.txt", uuid::Uuid::new_v4()));
         std::fs::write(&present, "x").unwrap();
@@ -360,14 +384,15 @@ mod tests {
         ];
         request.conversation_refs = vec!["c2".to_string(), "gone".to_string()];
         assert_eq!(
-            write_draft(&mut conn, request, 10).unwrap(),
+            write_draft(&db, request, 10).await.unwrap(),
             ComposerDraftWriteResponse {
                 applied: true,
                 revision: 1
             }
         );
 
-        let draft = read_draft(&mut conn, &DraftSlot::Conversation("c1".to_string()))
+        let draft = read_draft(&db, &DraftSlot::Conversation("c1".to_string()))
+            .await
             .unwrap()
             .expect("stored");
         std::fs::remove_file(&present).ok();
@@ -395,13 +420,12 @@ mod tests {
 
     /// A stale write reports the revision that beat it, so the writer can
     /// continue above it.
-    #[test]
-    fn a_stale_write_reports_the_winning_revision() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        write_draft(&mut conn, upsert(None, "newest", 7), 1).unwrap();
+    #[tokio::test]
+    async fn a_stale_write_reports_the_winning_revision() {
+        let db = sea_test_db().await;
+        write_draft(&db, upsert(None, "newest", 7), 1).await.unwrap();
         assert_eq!(
-            write_draft(&mut conn, upsert(None, "older", 3), 2).unwrap(),
+            write_draft(&db, upsert(None, "older", 3), 2).await.unwrap(),
             ComposerDraftWriteResponse {
                 applied: false,
                 revision: 7
@@ -409,10 +433,10 @@ mod tests {
         );
         let clear: ComposerDraftDeleteRequest =
             serde_json::from_value(serde_json::json!({ "conversationId": null, "revision": 8 })).unwrap();
-        assert!(delete_draft(&mut conn, clear, 3).unwrap().applied);
-        assert!(read_draft(&mut conn, &DraftSlot::NewConversation).unwrap().is_none());
+        assert!(delete_draft(&db, clear, 3).await.unwrap().applied);
+        assert!(read_draft(&db, &DraftSlot::NewConversation).await.unwrap().is_none());
         assert!(
-            write_draft(&mut conn, upsert(None, "x", 0), 4).is_err(),
+            write_draft(&db, upsert(None, "x", 0), 4).await.is_err(),
             "revisions start at 1"
         );
     }
