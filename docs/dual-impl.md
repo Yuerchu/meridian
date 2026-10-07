@@ -16,6 +16,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
+| cached_model::list_by_provider | 1 |
 | conversation::get_conversation | 40 |
 | emoji::create_emoji | 1 |
 | emoji::list_confirmed_for_packs | 1 |
