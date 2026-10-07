@@ -530,6 +530,7 @@
   "settings.usage.byModel": "Cost by model",
   "settings.usage.tokensByModel": "Tokens by model",
   "settings.usage.noTokens": "No token usage in this range",
+  "settings.usage.tokensUnavailable": "The provider did not report token usage for this range",
   "settings.usage.composition": "Where the tokens went",
   "settings.usage.compositionCenter": "tokens",
   "settings.usage.activity": "When it was used",
