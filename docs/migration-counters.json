@@ -1,6 +1,6 @@
 {
-  "dieselOpsCalls": 861,
-  "dieselApiRefs": 1269,
+  "dieselOpsCalls": 831,
+  "dieselApiRefs": 1232,
   "pendingTables": [
     "acp_context_deliveries",
     "acp_session_notices",
@@ -30,10 +30,6 @@
     "plan_revisions",
     "queued_prompt_context_items",
     "queued_prompts",
-    "skill_bindings_assistant",
-    "skill_bindings_global",
-    "skill_bindings_project",
-    "skills",
     "todo_items",
     "todo_lists",
     "turns"

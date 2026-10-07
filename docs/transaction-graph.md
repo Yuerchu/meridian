@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：108
-- Diesel ops 调用点（db/ops 之外）：861
-- Diesel API 引用：1269
+- 事务根（非测试）：115
+- Diesel ops 调用点（db/ops 之外）：831
+- Diesel API 引用：1232
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -16,12 +16,13 @@
 ## ops 模块的事务连通分量
 
 - 21 个：acp_session acp_session_notice assistant audit cached_model conversation emoji memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 2 个：preference skill_binding
 - 1 个：custom_tool
 - 1 个：journal
 - 1 个：mcp_server
 - 1 个：notification
-- 1 个：preference
 - 1 个：redaction_rule
+- 1 个：skill
 - 1 个：tool_category
 - 1 个：tool_preset
 - 1 个：voice_corpus
@@ -37,6 +38,8 @@
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | diesel-deferred | audit, conversation, message, message_context_item, model_config, queue, queued_prompt_context_item, turn |
 | `src-tauri/crates/core/src/agent/queue.rs` › `steer` | diesel-immediate | queue |
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | diesel-immediate | audit, conversation, message, model_config, queue |
+| `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
+| `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
@@ -88,6 +91,7 @@
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
+| `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
@@ -129,6 +133,10 @@
 | `src-tauri/src/commands/provider.rs` › `update_provider_unless_plan_barrier` | diesel-immediate | cached_model, conversation, plan_review, provider |
 | `src-tauri/src/commands/queue.rs` › `enqueue_unless_plan_barrier` | diesel-immediate | plan_review, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/queue.rs` › `release_unless_plan_barrier` | diesel-immediate | plan_review, queue |
+| `src-tauri/src/commands/skill.rs` › `create_skill` | sea-write | skill |
+| `src-tauri/src/commands/skill.rs` › `delete_skill` | sea-write | skill |
+| `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |
+| `src-tauri/src/commands/skill.rs` › `update_skill` | sea-write | skill |
 | `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | diesel-deferred | audit, conversation, message, model_config, turn |
 | `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |

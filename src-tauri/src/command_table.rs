@@ -632,20 +632,20 @@ macro_rules! with_all_commands {
                 request: $crate::commands::voice_corpus::VoiceCorpusExportRequest,
             ),
 
-            sync commands::skill => list_skills(),
-            sync commands::skill => rescan_skills(),
+            async commands::skill => list_skills(),
+            async commands::skill => rescan_skills(),
             sync commands::skill => get_skill_body(dir_name: String),
-            sync commands::skill => create_skill(
+            async commands::skill => create_skill(
                 request: $crate::commands::skill::SkillCreateRequest,
             ),
-            sync commands::skill => update_skill(
+            async commands::skill => update_skill(
                 request: $crate::commands::skill::SkillUpdateRequest,
             ),
-            sync commands::skill => delete_skill(dir_name: String),
-            sync commands::skill => list_skill_bindings(
+            async commands::skill => delete_skill(dir_name: String),
+            async commands::skill => list_skill_bindings(
                 request: $crate::commands::skill::SkillBindingListRequest,
             ),
-            sync commands::skill => set_skill_binding(
+            async commands::skill => set_skill_binding(
                 request: $crate::commands::skill::SkillBindingUpdateRequest,
             ),
 

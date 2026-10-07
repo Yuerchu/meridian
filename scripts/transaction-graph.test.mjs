@@ -35,6 +35,7 @@ const BASE = {
         diesel::insert_into(queued_prompts::table).execute(conn).map(|_| ())
     }`,
   [`${CORE}/db/sea/ops.rs`]: `
+    use crate::db::sea::cap::Read;
     pub async fn sea_op(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }
     pub async fn sea_read(reader: &impl Read) -> Result<(), DbErr> { Ok(()) }`,
 }
@@ -554,4 +555,77 @@ test('a sea op under another name is not a pair, by design', () => {
       'pub async fn rename_conversation(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }',
   })
   assert.deepEqual(dualImplementations(graph), [])
+})
+
+test('a pool read before a write transaction in the same function is R5', () => {
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops;
+      async fn add(services: &Services) -> Result<(), DbErr> {
+          let full = ops::sea_read(&services.sea).await?;
+          services.sea.write(async |tx| ops::sea_op(tx).await).await
+      }`,
+  })
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^R5 .*x\.rs:4: sea_read\(services\.sea\)/)
+})
+
+test('the same read inside the write, a justified one, and test code are not R5', () => {
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops;
+      async fn inside(services: &Services) -> Result<(), DbErr> {
+          services.sea.write(async |tx| { ops::sea_read(tx).await?; ops::sea_op(tx).await }).await
+      }
+      async fn after(services: &Services) -> Result<(), DbErr> {
+          services.sea.write(async |tx| ops::sea_op(tx).await).await?;
+          ops::sea_read(&services.sea).await
+      }
+      async fn justified(db: &Db) -> Result<(), DbErr> {
+          // pool-read-before-write: startup, nothing else writes yet.
+          ops::sea_read(db).await?;
+          db.write(async |tx| ops::sea_op(tx).await).await
+      }
+      #[cfg(test)]
+      mod tests {
+          async fn seeded(db: &Db) {
+              ops::sea_read(db).await.unwrap();
+              db.write(async |tx| ops::sea_op(tx).await).await.unwrap();
+          }
+      }`,
+  })
+  assert.deepEqual(problems, [])
+})
+
+test('a chain rustfmt broke across lines is still the same receiver', () => {
+  const [root] = transactionRoots(
+    blank(`fn f() { services\n        .sea\n        .write(async |tx| ops::sea_op(tx).await) }`),
+  )
+  assert.equal(root.receiver, 'services.sea')
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops;
+      async fn add(services: &Services) -> Result<(), DbErr> {
+          ops::sea_read(&services.sea).await?;
+          services
+              .sea
+              .write(async |tx| ops::sea_op(tx).await)
+              .await
+      }`,
+  })
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^R5 /)
+})
+
+test('handing the pool to something that is not a read op is not R5', () => {
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops;
+      async fn reindex(db: &Db) -> Result<(), DbErr> { db.write(async |tx| ops::sea_op(tx).await).await }
+      async fn add(services: &Services) -> Result<(), DbErr> {
+          reindex(&services.sea).await?;
+          services.sea.write(async |tx| ops::sea_op(tx).await).await
+      }`,
+  })
+  assert.deepEqual(problems, [])
 })
