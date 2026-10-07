@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：162
-- Diesel ops 调用点（db/ops 之外）：692
-- Diesel API 引用：1086
+- Diesel ops 调用点（db/ops 之外）：687
+- Diesel API 引用：1077
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -48,8 +48,6 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
-| `src-tauri/crates/core/src/db/ops/cached_model.rs` › `list_cached_for_provider` | diesel-deferred | cached_model |
-| `src-tauri/crates/core/src/db/ops/cached_model.rs` › `replace_models` | diesel-deferred | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
@@ -175,7 +173,9 @@
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `delete_project_unless_plan_barrier` | diesel-immediate | conversation, memory, plan_review, project |
 | `src-tauri/src/commands/project.rs` › `update_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review, project |
+| `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
 | `src-tauri/src/commands/provider.rs` › `delete_provider_unless_plan_barrier` | diesel-immediate | conversation, plan_review, provider |
+| `src-tauri/src/commands/provider.rs` › `fetch_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `set_provider_key` | diesel-immediate | cached_model, conversation, plan_review |
 | `src-tauri/src/commands/provider.rs` › `update_provider_unless_plan_barrier` | diesel-immediate | cached_model, conversation, plan_review, provider |
 | `src-tauri/src/commands/queue.rs` › `enqueue_unless_plan_barrier` | diesel-immediate | plan_review, queue, queued_prompt_context_item |

@@ -847,27 +847,25 @@ pub async fn list_cached_provider_models(
     app: tauri::AppHandle,
     request: ProviderCachedModelListRequest,
 ) -> Result<ProviderModelListResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || cached_models_for(&pool, &request.provider_id))
-        .await
-        .map_err(|e| e.to_string())?
+    cached_models_for(&app.services().sea, &request.provider_id).await
 }
 
-fn cached_models_for(pool: &db::DbPool, provider_id: &str) -> Result<ProviderModelListResponse, String> {
-    let mut conn = pool.get().map_err(|e| e.to_string())?;
-    db::ops::cached_model::list_cached_for_provider(&mut conn, provider_id)
-        .map_err(|e| match e {
-            diesel::result::Error::NotFound => format!("provider `{provider_id}` does not exist"),
-            other => other.to_string(),
+async fn cached_models_for(
+    db: &meridian_core::db::sea::cap::Db,
+    provider_id: &str,
+) -> Result<ProviderModelListResponse, String> {
+    let rows = db
+        .read(async |tx| meridian_core::db::sea::ops::cached_model::list_cached_for_provider(tx, provider_id).await)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
+    Ok(rows
+        .into_iter()
+        .map(|row| ProviderModelInfoResponse {
+            id: row.model_id,
+            name: row.model_name,
         })
-        .map(|rows| {
-            rows.into_iter()
-                .map(|row| ProviderModelInfoResponse {
-                    id: row.model_id,
-                    name: row.model_name,
-                })
-                .collect()
-        })
+        .collect())
 }
 
 #[tauri::command]
@@ -881,15 +879,12 @@ pub async fn fetch_provider_models(
     let provider_id = request.provider_id;
     let force = request.force_refresh.0.unwrap_or(false);
 
+    // pool-read-before-write: the cache read only decides whether to go to the network,
+    // and a network call sits between it and the write, which replaces the list whole.
     if !force {
-        let pool2 = pool.clone();
-        let pid = provider_id.clone();
-        let cached = tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().map_err(|e| e.to_string())?;
-            db::ops::cached_model::list_by_provider(&mut conn, &pid).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let cached = meridian_core::db::sea::ops::cached_model::list_by_provider(&services.sea, &provider_id)
+            .await
+            .map_err(|e| e.to_string())?;
 
         if !cached.is_empty() {
             return Ok(cached
@@ -950,25 +945,17 @@ pub async fn fetch_provider_models(
     .await
     .map_err(|e| e.to_string())?;
 
-    {
-        let pool2 = pool.clone();
-        let pid = provider_id.clone();
-        let models_clone = models.clone();
-        let _ = tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().map_err(|e| e.to_string())?;
-            let now = now_ms();
-            let new_models: Vec<_> = models_clone
-                .iter()
-                .map(|m| db::models::cached_model::CachedModelInsert {
-                    provider_id: &pid,
-                    model_id: &m.id,
-                    model_name: &m.name,
-                    fetched_at: now,
-                })
-                .collect();
-            db::ops::cached_model::replace_models(&mut conn, &pid, &new_models).map_err(|e| e.to_string())
+    // The list is answered either way; a cache that could not be written only
+    // means the next open fetches again.
+    let listed: Vec<(String, String)> = models.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
+    let cached = services
+        .sea
+        .write(async |tx| {
+            meridian_core::db::sea::ops::cached_model::replace_models(tx, &provider_id, &listed, now_ms()).await
         })
         .await;
+    if let Err(error) = cached {
+        tracing::warn!(error = %error, "could not cache the fetched model list");
     }
 
     Ok(models.into_iter().map(Into::into).collect())
@@ -1284,66 +1271,44 @@ mod response_contract_tests {
 mod cached_model_tests {
     use super::*;
 
-    fn provider(pool: &db::DbPool, id: &str) {
-        let mut conn = pool.get().unwrap();
-        db::ops::provider::create_provider(
-            &mut conn,
-            &ProviderInsert {
-                id,
-                name: "P",
-                provider_type: "openai",
-                base_url: "https://example.invalid",
-                is_enabled: 1,
-                sort_order: 0,
-                created_at: 0,
-                updated_at: 0,
-                api_format: "chat_completions",
-                catalog_id: None,
-                credential_kind: "api_key",
-                transport_profile: "standard",
-                icon: None,
-                codex_request_shape: 0,
-            },
-        )
-        .unwrap();
-    }
-
     /// Opening the provider page must not be a fetch. With nothing cached the
     /// answer is an empty list — not an error, and not a request to the
     /// provider (this path has no key, no URL and no client to make one with).
-    #[test]
-    fn an_empty_cache_is_an_empty_list() {
-        let pool = db::diesel_test_db();
-        provider(&pool, "p1");
-        assert!(cached_models_for(&pool, "p1").unwrap().is_empty());
+    async fn sea_provider(id: &str) -> meridian_core::db::sea::cap::Db {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        meridian_core::db::sea::execute_for_tests(
+            &db,
+            &format!(
+                "INSERT INTO providers (id, name, base_url, created_at, updated_at) \
+                 VALUES ('{id}', 'P', 'https://example.invalid', 0, 0)"
+            ),
+        )
+        .await
+        .unwrap();
+        db
     }
 
-    #[test]
-    fn what_was_cached_comes_back_as_the_public_shape() {
-        let pool = db::diesel_test_db();
-        provider(&pool, "p1");
-        {
-            let mut conn = pool.get().unwrap();
-            db::ops::cached_model::replace_models(
-                &mut conn,
-                "p1",
-                &[db::models::cached_model::CachedModelInsert {
-                    provider_id: "p1",
-                    model_id: "gpt-5.6",
-                    model_name: "GPT 5.6",
-                    fetched_at: 1,
-                }],
-            )
+    #[tokio::test]
+    async fn an_empty_cache_is_an_empty_list() {
+        let db = sea_provider("p1").await;
+        assert!(cached_models_for(&db, "p1").await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn what_was_cached_comes_back_as_the_public_shape() {
+        let db = sea_provider("p1").await;
+        let models = [("gpt-5.6".to_string(), "GPT 5.6".to_string())];
+        db.write(async |tx| meridian_core::db::sea::ops::cached_model::replace_models(tx, "p1", &models, 1).await)
+            .await
             .unwrap();
-        }
-        let got = serde_json::to_value(cached_models_for(&pool, "p1").unwrap()).unwrap();
+        let got = serde_json::to_value(cached_models_for(&db, "p1").await.unwrap()).unwrap();
         assert_eq!(got, serde_json::json!([{ "id": "gpt-5.6", "name": "GPT 5.6" }]));
     }
 
-    #[test]
-    fn an_unknown_provider_is_named_in_the_error() {
-        let pool = db::diesel_test_db();
-        let error = cached_models_for(&pool, "missing").unwrap_err();
+    #[tokio::test]
+    async fn an_unknown_provider_is_named_in_the_error() {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        let error = cached_models_for(&db, "missing").await.unwrap_err();
         assert!(error.contains("missing"), "{error}");
     }
 
