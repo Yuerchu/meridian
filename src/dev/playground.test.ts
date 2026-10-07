@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { dirname, join, resolve, sep } from 'node:path'
 
 /**
  * The playground previews components; it must not be the only thing keeping one
@@ -17,6 +17,8 @@ import { dirname, join, resolve } from 'node:path'
 
 const SRC = resolve(process.cwd(), 'src')
 const PLAYGROUND = join(SRC, 'dev', 'playground.tsx')
+/** The gallery pages the router lazy-loads; each previews components too. */
+const GALLERY = join(SRC, 'dev', 'gallery')
 
 /**
  * Directories that are not the product.
@@ -34,17 +36,8 @@ const NOT_PRODUCT = [join(SRC, 'dev'), join(SRC, 'test')]
  * promise that something will use this, not a place to park things that turned
  * out to be unwanted. When the caller lands, delete the entry — the check will
  * then keep the component honest on its own.
- *
- * These are all slots of a compound component whose parent *is* in use, which
- * is why deleting them would be the wrong call: the playground assembles a full
- * `Turn` to show what the component supports, and `turn-item.tsx` currently
- * renders a subset of that.
  */
-const ALLOWED_WITHOUT_CALLER = new Map<string, string>([
-  ['TurnResult', 'Turn slot: the answer area, for when turn-item renders results separately from steps'],
-  ['TurnFooter', 'Turn slot: per-turn footer, staged for token counts and the branch pager'],
-  ['TurnActions', 'Turn slot: copy/regenerate row, not yet moved off message-item'],
-])
+const ALLOWED_WITHOUT_CALLER = new Map<string, string>([])
 
 /** `import { A, B as C }` / `import type { … }` / multi-line forms. */
 const IMPORT_RE = /import\s+(type\s+)?\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g
@@ -102,9 +95,13 @@ function moduleToFile(module: string, from: string): string | null {
 
 describe('playground', () => {
   it('only previews components the product still uses', () => {
-    const playground = readFileSync(PLAYGROUND, 'utf8')
-    const previewed = parseNamedImports(playground).filter((i) => i.module.startsWith('@/components/'))
-    expect(previewed.length, 'expected the playground to import some components').toBeGreaterThan(0)
+    const pages = [PLAYGROUND, ...walk(GALLERY).filter((f) => !/\.test\.tsx?$/.test(f))]
+    const previewed = pages.flatMap((page) =>
+      parseNamedImports(readFileSync(page, 'utf8'))
+        .filter((i) => i.module.startsWith('@/components/'))
+        .map((i) => ({ ...i, page })),
+    )
+    expect(previewed.length, 'expected the gallery to import some components').toBeGreaterThan(0)
 
     // Anything the product imports by name is in use. Import is the signal
     // rather than JSX usage, because a component can be handed to
@@ -124,30 +121,241 @@ describe('playground', () => {
     const importedByProduct = new Set<string>()
     for (const file of productFiles) {
       for (const { name, module } of parseNamedImports(readFileSync(file, 'utf8'))) {
+        // Through the barrel to the defining file, on both sides: the gallery
+        // imports `@/components/base`, a sibling component imports `./x`.
         const target = moduleToFile(module, file)
-        if (target) importedByProduct.add(`${target}::${name}`)
+        if (target) importedByProduct.add(`${definingFile(target, name) ?? target}::${name}`)
       }
     }
 
-    const orphans = previewed.filter(({ name, module }) => {
+    const orphans = previewed.filter(({ name, module, page }) => {
       if (ALLOWED_WITHOUT_CALLER.has(name)) return false
       // A component can also be used by a sibling inside its own file without
       // ever being imported anywhere — `TodoBar` renders `TodoBarView` that
       // way. Missing this is what makes a naive version of this check delete
       // live code.
-      const file = moduleToFile(module, PLAYGROUND)
-      if (!file) return true
+      const target = moduleToFile(module, page)
+      if (!target) return true
+      const file = definingFile(target, name) ?? target
       if (importedByProduct.has(`${file}::${name}`)) return false
       const source = readFileSync(file, 'utf8')
       return !new RegExp(`<${name}[\\s/>]`).test(source)
     })
 
     expect(
-      orphans.map((o) => `${o.name} (${o.module})`),
+      orphans.map((o) => `${o.name} (${o.module}, previewed in ${o.page.slice(SRC.length + 1)})`),
       'These are previewed in the playground but nothing in the product uses them. ' +
         'Delete the component and its playground section, or wire it up. If it is ' +
         'deliberately staged ahead of its caller, add it to ALLOWED_WITHOUT_CALLER ' +
         'with a reason.',
+    ).toEqual([])
+  })
+})
+
+/**
+ * The other direction: what the product renders from the design-system layers
+ * has to be on show in the playground.
+ *
+ * The playground replaced a standalone recreation of the components
+ * (docs/design, exported by Claude Design) because a second copy was wrong on
+ * the day it was made. The gallery only stays the one place to look if a
+ * component cannot reach the product without reaching it too — otherwise it
+ * drifts the same way, one unshown component at a time.
+ *
+ * Scope is the reusable layers: `base/`, `ui/`, `application/` and `foundations/`. Feature
+ * screens (`chat/`, `settings/`, `layout/`, …) are composites with stores and a
+ * backend behind them, and the visual suite photographs those in place.
+ *
+ * "Used" means a file *outside* those layers imports the component and renders
+ * it as JSX. A part another base component renders internally (a menu's item
+ * shell, a tooltip's arrow) is on show through its parent and is not counted;
+ * importing a constant (`BUBBLE_BLOCK`) or a type is not rendering anything.
+ * Barrels (`@/components/base`) are followed to the file that defines the
+ * name, so `Button` from the barrel and `Button` from `./buttons/button` are
+ * the same component and a same-named export elsewhere is not.
+ */
+
+const DS_DIRS = ['base', 'ui', 'application', 'foundations'].map((d) => join(SRC, 'components', d))
+const inDs = (file: string) => DS_DIRS.some((dir) => file.startsWith(dir + sep))
+
+/**
+ * Rendered by the product, deliberately not in the playground. A reason is
+ * required, and an entry that is no longer needed fails the check, so the list
+ * can only shrink by itself.
+ */
+const ALLOWED_UNPREVIEWED = new Map<string, string>([
+  ['CopyAnnouncement', 'an sr-only live region: there is nothing on screen to look at'],
+  ['FileInput', 'a hidden <input type="file"> opened imperatively; it draws nothing'],
+  [
+    'MessageScroller',
+    'on show at #playground/scroll inside ChatTranscript, the harness that drives it; a bare copy in the gallery ' +
+      'reads the platform through Tauri and only logs invoke errors in a browser',
+  ],
+])
+
+/**
+ * Parts the product imports on their own that are on show only with their root:
+ * member → { root, reason }, both exported from the same file. A member is
+ * shown when its root is previewed and excused when its root is excused — never
+ * by its name alone, which is how `NotificationViewport` and `ItemCardGroup`
+ * once passed as parts of `Notification` and `ItemCard`. Every entry needs a
+ * reason, and one that covers nothing fails the check.
+ */
+const SCROLLER_PART = 'composed by ChatTranscript, which #playground/scroll drives; a part on its own scrolls nothing'
+const COMPOUND_MEMBERS = new Map<string, { root: string; reason: string }>(
+  ['Provider', 'Viewport', 'Content', 'Item', 'Anchor', 'Button'].map((part) => [
+    `MessageScroller${part}`,
+    { root: 'MessageScroller', reason: SCROLLER_PART },
+  ]),
+)
+
+const REEXPORT_RE = /export\s+(type\s+)?\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g
+const STAR_RE = /export\s+\*\s+from\s*['"]([^'"]+)['"]/g
+const DEFAULT_IMPORT_RE = /import\s+([A-Z][\w$]*)\s*(?:,\s*\{[\s\S]*?\})?\s*from\s*['"]([^'"]+)['"]/g
+
+/** Names a file re-exports from elsewhere, mapped to [module, original name]. */
+function reexports(source: string): Map<string, [string, string]> {
+  const out = new Map<string, [string, string]>()
+  for (const [, typeOnly, names, module] of source.matchAll(REEXPORT_RE)) {
+    if (typeOnly) continue
+    for (const raw of names.split(',')) {
+      const entry = raw.trim()
+      if (!entry || entry.startsWith('type ')) continue
+      const [orig, alias] = entry.split(/\s+as\s+/).map((s) => s.trim())
+      out.set(alias ?? orig, [module, orig])
+    }
+  }
+  return out
+}
+
+/** The file that actually defines `name` as exported from `file`, through any
+ *  number of barrels; `null` when a star re-export chain does not have it. */
+function definingFile(file: string, name: string, seen = new Set<string>()): string | null {
+  if (seen.has(file)) return null
+  seen.add(file)
+  const source = readFileSync(file, 'utf8')
+  const named = reexports(source).get(name)
+  if (named) {
+    const target = moduleToFile(named[0], file)
+    // Passed through from a package (`Collection as TreeViewCollection`): this
+    // file is as far as it goes in the source tree.
+    return target ? definingFile(target, named[1], seen) : file
+  }
+  const local = new RegExp(
+    String.raw`export\s+(?:default\s+)?(?:async\s+)?(?:function|const|let|class)\s+${name}\b|export\s*\{[^}]*\b${name}\b[^}]*\}(?!\s*from)`,
+  )
+  if (local.test(source)) return file
+  for (const [, module] of source.matchAll(STAR_RE)) {
+    const target = moduleToFile(module, file)
+    const found = target && definingFile(target, name, seen)
+    if (found) return found
+  }
+  return null
+}
+
+/** Value imports of a file, named and default, resolved to `definingFile::name`. */
+function resolvedImports(file: string, unresolved?: string[]): { key: string; name: string; local: string }[] {
+  const source = readFileSync(file, 'utf8')
+  const out: { key: string; name: string; local: string }[] = []
+  const add = (name: string, local: string, module: string) => {
+    const target = moduleToFile(module, file)
+    if (!target) return
+    const def = name === 'default' ? target : definingFile(target, name)
+    if (def) out.push({ key: `${def}::${name}`, name, local })
+    // A name that cannot be followed would drop out of both sides of the
+    // comparison at once and pass unnoticed; say so instead.
+    else if (inDs(target)) unresolved?.push(`${name} from ${module} in ${file.slice(SRC.length + 1)}`)
+  }
+  for (const [, typeOnly, names, module] of source.matchAll(IMPORT_RE)) {
+    if (typeOnly) continue
+    for (const raw of names.split(',')) {
+      const entry = raw.trim()
+      if (!entry || entry.startsWith('type ')) continue
+      const [orig, alias] = entry.split(/\s+as\s+/).map((s) => s.trim())
+      add(orig, alias ?? orig, module)
+    }
+  }
+  for (const [, local, module] of source.matchAll(DEFAULT_IMPORT_RE)) add('default', local, module)
+  return out
+}
+
+describe('playground coverage', () => {
+  it('shows every design-system component the product renders', () => {
+    const product = walk(SRC).filter(
+      (f) => !NOT_PRODUCT.some((dir) => f.startsWith(dir)) && !/\.test\.tsx?$/.test(f) && !inDs(f),
+    )
+    const used = new Map<string, string>()
+    const unresolved: string[] = []
+    for (const file of product) {
+      const source = readFileSync(file, 'utf8')
+      for (const { key, name, local } of resolvedImports(file, unresolved)) {
+        const def = key.slice(0, key.lastIndexOf('::'))
+        if (!inDs(def) || !/^[A-Z]/.test(local)) continue
+        if (!new RegExp(String.raw`<${local}[\s/>.]`).test(source)) continue
+        if (!used.has(key))
+          used.set(key, `${name} (${def.slice(SRC.length + 1)}, rendered in ${file.slice(SRC.length + 1)})`)
+      }
+    }
+    expect(used.size, 'expected the product to render some design-system components').toBeGreaterThan(20)
+
+    // The gallery and the `#playground/<lab>` sub-pages: the scroll harness is
+    // where the transcript's scroller is on show, and it is a playground page.
+    const labs = readdirSync(join(SRC, 'dev'))
+      .filter((f) => /-lab\.tsx$/.test(f))
+      .map((f) => join(SRC, 'dev', f))
+    const pages = [PLAYGROUND, ...labs, ...walk(GALLERY).filter((f) => !/\.test\.tsx?$/.test(f))]
+    const previewed = new Set(pages.flatMap((page) => resolvedImports(page, unresolved).map((i) => i.key)))
+    expect(
+      unresolved,
+      'Imports from the design-system layers that could not be followed to the file defining them. ' +
+        'Teach definingFile the export form, or the comparison below silently skips them.',
+    ).toEqual([])
+
+    const label = (key: string) => key.slice(key.lastIndexOf('::') + 2)
+    const fileOf = (key: string) => key.slice(0, key.lastIndexOf('::'))
+    // A compound's parts are on show with their root only when they are reached
+    // through it (`<ItemCardGroup.Header>` imports `ItemCardGroup`, so there is
+    // nothing separate to show) or are listed in COMPOUND_MEMBERS. A part the
+    // product imports on its own — `NotificationViewport`, `ItemCardGroup` beside
+    // `ItemCard` — is a component in its own right and needs its own preview.
+    const rootOf = (key: string) => COMPOUND_MEMBERS.get(label(key))?.root
+    const shown = (key: string) => {
+      const root = rootOf(key)
+      return previewed.has(key) || (root !== undefined && previewed.has(`${fileOf(key)}::${root}`))
+    }
+    const allowedBy = (key: string) => {
+      const name = rootOf(key) ?? label(key)
+      return ALLOWED_UNPREVIEWED.has(name) ? name : undefined
+    }
+    const missing = [...used].filter(([key]) => !shown(key) && !allowedBy(key))
+    expect(
+      missing.map(([, where]) => where),
+      'These are rendered by the product but not shown in the playground. Add a ' +
+        'section for each to the matching src/dev/gallery page. If one genuinely ' +
+        'cannot be shown there, add it to ALLOWED_UNPREVIEWED with the reason.',
+    ).toEqual([])
+
+    // Stale: it excuses nothing that is rendered and not otherwise shown.
+    const stale = [...ALLOWED_UNPREVIEWED].filter(
+      ([name]) => ![...used.keys()].some((k) => allowedBy(k) === name && !shown(k)),
+    )
+    expect(
+      stale.map(([name]) => name),
+      'ALLOWED_UNPREVIEWED entries no longer needed — delete them',
+    ).toEqual([])
+    const idleMembers = [...COMPOUND_MEMBERS.keys()].filter(
+      (member) => ![...used.keys()].some((k) => label(k) === member && !previewed.has(k)),
+    )
+    expect(idleMembers, 'COMPOUND_MEMBERS entries the product no longer imports on their own — delete them').toEqual([])
+    const unexplainedMembers = [...COMPOUND_MEMBERS].filter(([, { reason }]) => !reason.trim())
+    expect(
+      unexplainedMembers.map(([name]) => name),
+      'every COMPOUND_MEMBERS entry needs a reason',
+    ).toEqual([])
+    const unexplained = [...ALLOWED_UNPREVIEWED].filter(([, reason]) => !reason.trim())
+    expect(
+      unexplained.map(([name]) => name),
+      'every ALLOWED_UNPREVIEWED entry needs a reason',
     ).toEqual([])
   })
 })
