@@ -16,7 +16,7 @@ import {
 import { EmptyState } from '@/components/base'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { KPI } from '@/components/base'
-import { AreaChart } from '@/components/base'
+import { ActivityHeatmap, BarChart, BarList, ChartCard, ChartLegend, DonutChart } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
@@ -28,6 +28,7 @@ import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
+import { HOUR_COUNT, rankByTokens, weekdayHourGrid } from '@/lib/usage-charts'
 
 /**
  * What the assistant has cost, out of the audit log.
@@ -215,6 +216,8 @@ interface Report {
   days: UsageBucketInfoResponse[]
   providers: UsageBucketInfoResponse[]
   models: UsageBucketInfoResponse[]
+  /** Replies per weekday × hour, Monday first. */
+  activity: number[][]
   rows: UsageBucketInfoResponse[]
   rowsDimension: Breakdown
 }
@@ -278,7 +281,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       origin,
       conversationId: null,
     })
-    // Five groupings in flight together. They are independent queries over the
+    // Six groupings in flight together. They are independent queries over the
     // same table, and running them in series would show the page filling in one
     // chart at a time.
     Promise.all([
@@ -286,11 +289,24 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       api.usageReport(request('day')),
       api.usageReport(request('provider')),
       api.usageReport(request('model')),
+      api.usageReport(request('hour')),
       api.usageReport(request(breakdown)),
     ])
-      .then(([total, days, providers, models, rows]) => {
+      .then(([total, days, providers, models, hours, rows]) => {
         if (cancelled) return
-        setReport({ total: total[0] ?? EMPTY_TOTAL, days, providers, models, rows, rowsDimension: breakdown })
+        // Projected here rather than during render: a malformed hour key is a
+        // broken contract, and thrown from here it becomes the page's error
+        // instead of taking the whole settings pane down with it.
+        const activity = weekdayHourGrid(hours)
+        setReport({
+          total: total[0] ?? EMPTY_TOTAL,
+          days,
+          providers,
+          models,
+          activity,
+          rows,
+          rowsDimension: breakdown,
+        })
       })
       .catch((reason) => {
         if (!cancelled) setError(String(reason))
@@ -434,18 +450,31 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
 
           <CostBreakdown bucket={total} />
 
-          <Section title={t('settings.usage.trend')}>
+          <ChartCard title={t('settings.usage.trend')}>
             <TokenTrend days={report?.days ?? []} />
-          </Section>
+          </ChartCard>
 
-          <div data-slot="usage-cost-charts" className="grid gap-6 @2xl/pane:grid-cols-2">
-            <Section title={t('settings.usage.byProvider')}>
+          <div data-slot="usage-cost-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+            <ChartCard title={t('settings.usage.byProvider')}>
               <CostBars buckets={report?.providers ?? []} />
-            </Section>
-            <Section title={t('settings.usage.byModel')}>
+            </ChartCard>
+            <ChartCard title={t('settings.usage.byModel')}>
               <CostBars buckets={report?.models ?? []} />
-            </Section>
+            </ChartCard>
           </div>
+
+          <div data-slot="usage-token-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+            <ChartCard title={t('settings.usage.tokensByModel')}>
+              <TokensByModel buckets={report?.models ?? []} />
+            </ChartCard>
+            <ChartCard title={t('settings.usage.composition')}>
+              <TokenComposition total={total} />
+            </ChartCard>
+          </div>
+
+          <ChartCard title={t('settings.usage.activity')}>
+            <Activity grid={report?.activity ?? []} />
+          </ChartCard>
 
           {/* The one place on this page where the tabs really do switch the
               content beneath them, so this one has panels. Only the selected
@@ -565,11 +594,19 @@ function UsageSkeleton() {
           <Skeleton key={i} className="h-26 w-full rounded-2xl" />
         ))}
       </div>
-      <Skeleton className="h-[200px] w-full rounded-lg" />
-      <div data-slot="usage-skeleton-charts" className="grid gap-6 @2xl/pane:grid-cols-2">
-        <Skeleton className="h-40 w-full rounded-lg" />
-        <Skeleton className="h-40 w-full rounded-lg" />
+      {/* One block per chart card below, at about its loaded height, so the
+          page does not grow by several hundred pixels when the numbers land:
+          the trend, the two cost cards, the two token cards, the activity. */}
+      <Skeleton data-slot="usage-skeleton-card" className="h-72 w-full rounded-2xl" />
+      <div data-slot="usage-skeleton-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
+        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
       </div>
+      <div data-slot="usage-skeleton-token-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
+        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
+        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
+      </div>
+      <Skeleton data-slot="usage-skeleton-card" className="h-60 w-full rounded-2xl" />
     </div>
   )
 }
@@ -673,19 +710,9 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section data-slot="usage-section" className="space-y-2">
-      <h3 data-slot="usage-section-title" className="text-body-medium">
-        {title}
-      </h3>
-      {children}
-    </section>
-  )
-}
-
 /**
- * Tokens per day, input stacked under output.
+ * Tokens per day, the prompt's three parts stacked under the reply, one column
+ * a day.
  *
  * Tokens rather than cost, because a model nobody has priced still produced
  * them — a cost chart would be flat and blank on a fresh install and read as
@@ -713,36 +740,138 @@ function TokenTrend({ days }: { days: UsageBucketInfoResponse[] }) {
   return (
     <>
       <Legend bands={bands} />
-      <AreaChart data={data} height={200}>
-        <defs>
-          {bands.map((band) => (
-            <linearGradient key={band.key} id={`usage-fill-${band.key}`} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor={band.color} stopOpacity={0.4} />
-              <stop offset="100%" stopColor={band.color} stopOpacity={0.1} />
-            </linearGradient>
-          ))}
-        </defs>
-        <AreaChart.Grid vertical={false} />
-        <AreaChart.XAxis dataKey="day" tickMargin={8} />
-        <AreaChart.YAxis width={44} tickFormatter={(v: number) => compact.format(v)} />
-        {bands.map((band) => (
-          <AreaChart.Area
+      <BarChart data={data} height={200}>
+        <BarChart.Grid vertical={false} />
+        <BarChart.XAxis dataKey="day" tickMargin={8} />
+        <BarChart.YAxis width={44} tickFormatter={(v: number) => compact.format(v)} />
+        {bands.map((band, i) => (
+          <BarChart.Bar
             key={band.key}
             dataKey={band.key}
-            dot={false}
-            fill={`url(#usage-fill-${band.key})`}
+            fill={band.color}
             name={t(band.labelKey)}
             stackId="tokens"
-            stroke={band.color}
-            strokeWidth={2}
-            type="monotone"
+            radius={i === bands.length - 1 ? [4, 4, 0, 0] : 0}
           />
         ))}
-        <AreaChart.Tooltip
-          content={<AreaChart.TooltipContent indicator="line" valueFormatter={(v) => compact.format(Number(v))} />}
+        <BarChart.Tooltip
+          content={<BarChart.TooltipContent indicator="dot" valueFormatter={(v) => compact.format(Number(v))} />}
         />
-      </AreaChart>
+      </BarChart>
     </>
+  )
+}
+
+/**
+ * Models ranked by the tokens they moved. The cost bars beside this one cannot
+ * show a model nobody priced — a local one, a subscription — and that model
+ * may well be where most of the work happened.
+ */
+function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const share = useMemo(() => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }), [locale])
+  const items = useMemo(() => rankByTokens(buckets, 6), [buckets])
+  if (items.length === 0) {
+    return (
+      <p data-slot="tokens-by-model-empty" className="text-body-regular text-text-secondary">
+        {t('settings.usage.noTokens')}
+      </p>
+    )
+  }
+  return (
+    <BarList
+      aria-label={t('settings.usage.tokensByModel')}
+      color="var(--color-chart-4)"
+      items={items.map((item) => ({
+        key: item.key,
+        label: item.label,
+        value: item.incomplete ? `≥ ${compact.format(item.tokens)}` : compact.format(item.tokens),
+        width: item.width,
+        share: item.share === null ? undefined : share.format(item.share),
+      }))}
+    />
+  )
+}
+
+/**
+ * The total's tokens in the four bands the daily chart stacks: what missed the
+ * cache, what was read from it, what was written into it, and the reply.
+ */
+function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const share = useMemo(() => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }), [locale])
+  const parts = split(total)
+  const bands = present([parts])
+  if (bands.length === 0) {
+    return (
+      <p data-slot="token-composition-empty" className="text-body-regular text-text-secondary">
+        {t('settings.usage.noTokens')}
+      </p>
+    )
+  }
+  const sum = bands.reduce((acc, band) => acc + parts[band.key], 0)
+  // A reply missing its input or its output leaves every band, and the whole,
+  // a lower bound — which band is short is not recorded. Same `≥` as the KPIs.
+  const incomplete = total.incomplete_token_usage_messages > 0
+  const format = (value: number) => (incomplete ? `≥ ${compact.format(value)}` : compact.format(value))
+  return (
+    <DonutChart
+      centerValue={format(sum)}
+      centerLabel={t('settings.usage.compositionCenter')}
+      format={format}
+      formatShare={incomplete ? null : (value) => share.format(value)}
+      items={bands.map((band) => ({
+        key: band.key,
+        label: t(band.labelKey),
+        value: parts[band.key],
+        color: band.color,
+      }))}
+    />
+  )
+}
+
+const hour = (h: number) => String(h).padStart(2, '0')
+
+/** Replies by weekday and hour of day, Monday first, in local time. */
+function Activity({ grid }: { grid: number[][] }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  // 2024-01-01 was a Monday; it and the six days after it name the rows in order.
+  const weekdays = useMemo(() => {
+    const format = new Intl.DateTimeFormat(locale, { weekday: 'short', timeZone: 'UTC' })
+    return Array.from({ length: 7 }, (_, i) => format.format(new Date(Date.UTC(2024, 0, 1 + i))))
+  }, [locale])
+  let busiest = { row: 0, column: 0, value: 0 }
+  grid.forEach((row, r) =>
+    row.forEach((value, c) => {
+      if (value > busiest.value) busiest = { row: r, column: c, value }
+    }),
+  )
+  if (busiest.value === 0) return null
+  return (
+    <ActivityHeatmap
+      data={grid}
+      rowLabels={weekdays}
+      columnLabel={(c) => (c % 6 === 0 && c < HOUR_COUNT ? hour(c) : '')}
+      caption={(r, c, value) => t('settings.usage.activityCell', { day: weekdays[r], hour: hour(c), count: value })}
+      aria-label={t('settings.usage.activitySummary', {
+        day: weekdays[busiest.row],
+        hour: hour(busiest.column),
+        count: busiest.value,
+      })}
+      less={t('settings.usage.activityLess')}
+      more={t('settings.usage.activityMore')}
+    />
   )
 }
 
@@ -811,7 +940,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
             </Hint>
             <div
               data-slot="cost-bar"
-              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-background-secondary-default"
+              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-background-tertiary-default"
               role="img"
               aria-label={`${row.name}: ${formatCostAmount(row.total, bucketCostQualifier(row.bucket), locale)}`}
             >
@@ -841,28 +970,12 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
 }
 
 /**
- * `AreaChart` ships no legend part and does not re-export recharts', so this is
- * a shape built by hand — and it has to be built from the same `bands`
- * the chart drew, or it starts naming a series that is not there.
+ * Built from the same `bands` the chart drew, or it starts naming a series
+ * that is not there.
  */
 function Legend({ bands }: { bands: readonly { key: string; color: string; labelKey: string }[] }) {
   const { t } = useTranslation()
-  return (
-    <div data-slot="usage-legend" className="flex flex-wrap items-center gap-x-4 gap-y-1">
-      {bands.map((band) => (
-        <span key={band.key} data-slot="usage-legend-item" className="flex items-center gap-1.5">
-          <span
-            data-slot="usage-legend-swatch"
-            className="size-2.5 rounded-full"
-            style={{ backgroundColor: band.color }}
-          />
-          <span data-slot="usage-legend-label" className="text-caption-1-regular text-text-secondary">
-            {t(band.labelKey)}
-          </span>
-        </span>
-      ))}
-    </div>
-  )
+  return <ChartLegend items={bands.map((band) => ({ key: band.key, color: band.color, label: t(band.labelKey) }))} />
 }
 
 interface UsageGridRow extends UsageBucketInfoResponse {

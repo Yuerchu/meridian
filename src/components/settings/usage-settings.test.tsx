@@ -48,6 +48,13 @@ function serve(by: Partial<Record<UsageDimension, UsageBucketInfoResponse[]>>) {
   mockApi.usageReport.mockImplementation((request: UsageReportRequest) => Promise.resolve(by[request.dimension] ?? []))
 }
 
+/** The card a chart sits in, found by its heading. */
+async function chartCard(title: string): Promise<HTMLElement> {
+  const card = (await screen.findByRole('heading', { name: title })).closest('section')
+  expect(card).not.toBeNull()
+  return card as HTMLElement
+}
+
 beforeEach(async () => {
   vi.clearAllMocks()
   await i18n.changeLanguage('en')
@@ -357,9 +364,10 @@ it('splits the prompt into what missed cache and what did not', async () => {
   serve({ total: [bucket()], day: [bucket({ key: '2026-08-13' })] })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
-  expect(await screen.findByText('Input · uncached')).toBeInTheDocument()
-  expect(screen.getByText('Input · cache hit')).toBeInTheDocument()
-  expect(screen.getAllByText('Output')).not.toHaveLength(0)
+  const trend = await chartCard('Tokens per day')
+  expect(within(trend).getByText('Input · uncached')).toBeInTheDocument()
+  expect(within(trend).getByText('Input · cache hit')).toBeInTheDocument()
+  expect(within(trend).getByText('Output')).toBeInTheDocument()
 })
 
 /**
@@ -370,8 +378,9 @@ it('leaves out a band that is zero everywhere', async () => {
   serve({ total: [bucket()], day: [bucket({ cache_write_tokens: 0 })] })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
-  await screen.findByText('Input · uncached')
-  expect(screen.queryByText('Input · cache write')).toBeNull()
+  const trend = await chartCard('Tokens per day')
+  expect(within(trend).getByText('Input · uncached')).toBeInTheDocument()
+  expect(within(trend).queryByText('Input · cache write')).toBeNull()
 })
 
 it('draws the cache write band once there is one', async () => {
@@ -381,7 +390,155 @@ it('draws the cache write band once there is one', async () => {
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
-  expect(await screen.findByText('Input · cache write')).toBeInTheDocument()
+  expect(within(await chartCard('Tokens per day')).getByText('Input · cache write')).toBeInTheDocument()
+})
+
+/**
+ * A model nobody priced moved tokens all the same. The cost bars cannot show
+ * it; the token ranking has to.
+ */
+it('ranks models by tokens, including one with no price', async () => {
+  serve({
+    total: [bucket()],
+    model: [
+      bucket({ key: 'priced', label: 'priced-model', input_tokens: 1_000, output_tokens: 0 }),
+      bucket({
+        key: 'local',
+        label: 'local-model',
+        input_tokens: 2_500,
+        output_tokens: 500,
+        cache_read_tokens: 0,
+        input_cost: decimal('0'),
+        output_cost: decimal('0'),
+        cache_cost: decimal('0'),
+        tool_cost: decimal('0'),
+        total_cost: decimal('0'),
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const list = within(await chartCard('Tokens by model')).getByRole('list', { name: 'Tokens by model' })
+  const rows = within(list).getAllByRole('listitem')
+  expect(rows.map((row) => row.textContent)).toEqual(['local-model3K75%', 'priced-model1K25%'])
+})
+
+it('shows the token composition of the whole range', async () => {
+  serve({ total: [bucket({ input_tokens: 1_000, cache_read_tokens: 250, output_tokens: 500 })] })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const card = await chartCard('Where the tokens went')
+  expect(within(card).getByText('1.5K')).toBeInTheDocument()
+  const rows = within(card).getAllByRole('listitem')
+  // 750 uncached, 250 read from cache, 500 out, of 1500.
+  expect(rows.map((row) => row.textContent)).toEqual([
+    'Input · uncached75050%',
+    'Input · cache hit25017%',
+    'Output50033%',
+  ])
+})
+
+it('draws replies by weekday and hour, and names the busiest slot', async () => {
+  serve({
+    total: [bucket()],
+    // 2026-10-06 is a Tuesday.
+    hour: [bucket({ key: '2026-10-06T14', messages: 9 }), bucket({ key: '2026-10-06T09', messages: 2 })],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const card = await chartCard('When it was used')
+  expect(within(card).getByRole('grid')).toHaveAccessibleName(
+    'Replies by weekday and hour of day. Busiest: Tue 14:00, 9 replies.',
+  )
+})
+
+/**
+ * Every figure a pointer can read has to be reachable from the keyboard too,
+ * and the grid must not cost 168 Tab presses to get past.
+ */
+it('walks the heatmap with the arrow keys from a single tab stop', async () => {
+  serve({
+    total: [bucket()],
+    hour: [bucket({ key: '2026-10-06T14', messages: 9 })],
+  })
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const card = await chartCard('When it was used')
+  const grid = within(card).getByRole('grid')
+  const cells = within(grid).getAllByRole('gridcell')
+  expect(cells).toHaveLength(7 * 24)
+  const tabbable = () => cells.filter((cell) => cell.tabIndex === 0)
+  expect(tabbable()).toEqual([cells[0]])
+  const caption = card.querySelector('[data-slot="activity-heatmap-caption"]')
+
+  await user.click(cells[0])
+  expect(cells[0]).toHaveFocus()
+  expect(caption).toHaveTextContent('Mon 00:00 · 0 replies')
+
+  await user.keyboard('{ArrowDown}{End}')
+  for (let i = 0; i < 9; i += 1) await user.keyboard('{ArrowLeft}')
+  expect(document.activeElement).toHaveAccessibleName('Tue 14:00 · 9 replies')
+  expect(caption).toHaveTextContent('Tue 14:00 · 9 replies')
+  expect(tabbable()).toEqual([document.activeElement])
+
+  await user.keyboard('{Control>}{Home}{/Control}')
+  expect(cells[0]).toHaveFocus()
+})
+
+/**
+ * A model whose replies lost their input or output counts moved at least what
+ * is recorded. The ranking says so, and no share is exact once any count in
+ * the whole is a lower bound.
+ */
+it('marks incomplete token counts as lower bounds in the ranking and the composition', async () => {
+  serve({
+    total: [
+      bucket({ input_tokens: 1_000, cache_read_tokens: 250, output_tokens: 500, incomplete_token_usage_messages: 1 }),
+    ],
+    model: [
+      bucket({ key: 'whole', label: 'whole-model', input_tokens: 2_000, output_tokens: 1_000 }),
+      bucket({
+        key: 'partial',
+        label: 'partial-model',
+        input_tokens: 1_000,
+        output_tokens: 0,
+        incomplete_token_usage_messages: 2,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const list = within(await chartCard('Tokens by model')).getByRole('list', { name: 'Tokens by model' })
+  expect(
+    within(list)
+      .getAllByRole('listitem')
+      .map((row) => row.textContent),
+  ).toEqual(['whole-model3K', 'partial-model≥ 1K'])
+
+  const composition = await chartCard('Where the tokens went')
+  expect(within(composition).getByText('≥ 1.5K')).toBeInTheDocument()
+  expect(
+    within(composition)
+      .getAllByRole('listitem')
+      .map((row) => row.textContent),
+  ).toEqual(['Input · uncached≥ 750', 'Input · cache hit≥ 250', 'Output≥ 500'])
+})
+
+it('holds a place for every chart card while the first report loads', async () => {
+  mockApi.usageReport.mockReturnValue(new Promise(() => {}))
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  const skeleton = await screen.findByRole('status', { name: 'Loading...' })
+  // Trend, two cost cards, two token cards, activity.
+  expect(skeleton.querySelectorAll('[data-slot="usage-skeleton-card"]')).toHaveLength(6)
+})
+
+it('treats a malformed hour bucket as a load failure rather than an empty chart', async () => {
+  serve({ total: [bucket()], hour: [bucket({ key: '2026-10-06 14' })] })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByRole('alert')).toHaveTextContent('Usage could not be loaded.')
 })
 
 /** A row whose subject has been deleted keeps its cost and loses its name. */

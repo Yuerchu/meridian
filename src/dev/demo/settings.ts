@@ -632,7 +632,7 @@ export function usageBuckets(dimension: UsageDimension, now: number): UsageBucke
         return bucket(
           dimension === 'day'
             ? dayKey(now - (13 - index) * 86_400_000)
-            : `${dayKey(now)} ${String(index + 8).padStart(2, '0')}`,
+            : `${dayKey(now)}T${String(index + 8).padStart(2, '0')}`,
           null,
           scale * 5,
           scale * 42_000,
