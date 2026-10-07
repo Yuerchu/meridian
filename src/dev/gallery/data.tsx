@@ -8,6 +8,7 @@ import {
   DisclosureGroup,
   EmptyState,
   ItemCard,
+  ItemCardGroup,
   ListBox,
   ScrollShadow,
   type DataGridColumn,
@@ -128,26 +129,31 @@ function Disclosures() {
 
 function ItemCards() {
   return (
-    <Stage className="gap-0 p-0">
-      {SERVERS.slice(0, 3).map((s) => (
-        <ItemCard key={s.id}>
-          <ItemCard.Icon>
-            <Plug />
-          </ItemCard.Icon>
-          <ItemCard.Content>
-            <ItemCard.Title>{s.name}</ItemCard.Title>
-            <ItemCard.Description>
-              {s.transport} · {s.tools} 个工具
-            </ItemCard.Description>
-          </ItemCard.Content>
-          <ItemCard.Action>
-            <Button size="small" variant="secondary">
-              编辑
-            </Button>
-          </ItemCard.Action>
-        </ItemCard>
-      ))}
-    </Stage>
+    <ItemCardGroup variant="transparent">
+      <ItemCardGroup.Header className="px-1.5">
+        <ItemCardGroup.Title>MCP 服务器</ItemCardGroup.Title>
+      </ItemCardGroup.Header>
+      <ItemCardGroup className="overflow-hidden">
+        {SERVERS.slice(0, 3).map((s) => (
+          <ItemCard key={s.id}>
+            <ItemCard.Icon>
+              <Plug />
+            </ItemCard.Icon>
+            <ItemCard.Content>
+              <ItemCard.Title>{s.name}</ItemCard.Title>
+              <ItemCard.Description>
+                {s.transport} · {s.tools} 个工具
+              </ItemCard.Description>
+            </ItemCard.Content>
+            <ItemCard.Action>
+              <Button size="small" variant="secondary">
+                编辑
+              </Button>
+            </ItemCard.Action>
+          </ItemCard>
+        ))}
+      </ItemCardGroup>
+    </ItemCardGroup>
   )
 }
 

@@ -4,6 +4,9 @@ import {
   ChatToolApproval,
   ChatToolContent,
   ChatToolError,
+  ChatToolPanelBody,
+  ChatToolPanelFooter,
+  ChatToolPanelHeader,
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
@@ -116,6 +119,25 @@ export default function ChatTools() {
             </ChatToolContent>
           </ChatTool>
         </div>
+      </Section>
+      <Section title="ChatTool / 面板三段">
+        <ChatTool state="output-available" defaultExpanded>
+          <ChatToolTrigger>
+            <ChatToolStatusIcon />
+            <span data-slot="chat-tool-name" className="text-caption-1-medium text-text-primary">
+              write_file
+            </span>
+          </ChatToolTrigger>
+          <ChatToolContent>
+            <ChatToolPanelHeader title="src/lib/plan-card.ts" description="新文件 · 142 行" end="已写入" />
+            <ChatToolPanelBody>
+              <ToolFields entries={[['mode', 'create']]} className="px-3 py-2" />
+            </ChatToolPanelBody>
+            <ChatToolPanelFooter>
+              <span className="text-caption-1-regular text-text-secondary">写入在项目目录内，已免批。</span>
+            </ChatToolPanelFooter>
+          </ChatToolContent>
+        </ChatTool>
       </Section>
       <Section title="ToolCallBlock / 业务状态">
         <div data-slot="gallery-tool-states">

@@ -193,6 +193,22 @@ const ALLOWED_UNPREVIEWED = new Map<string, string>([
   ],
 ])
 
+/**
+ * Parts the product imports on their own that are on show only with their root:
+ * member → { root, reason }, both exported from the same file. A member is
+ * shown when its root is previewed and excused when its root is excused — never
+ * by its name alone, which is how `NotificationViewport` and `ItemCardGroup`
+ * once passed as parts of `Notification` and `ItemCard`. Every entry needs a
+ * reason, and one that covers nothing fails the check.
+ */
+const SCROLLER_PART = 'composed by ChatTranscript, which #playground/scroll drives; a part on its own scrolls nothing'
+const COMPOUND_MEMBERS = new Map<string, { root: string; reason: string }>(
+  ['Provider', 'Viewport', 'Content', 'Item', 'Anchor', 'Button'].map((part) => [
+    `MessageScroller${part}`,
+    { root: 'MessageScroller', reason: SCROLLER_PART },
+  ]),
+)
+
 const REEXPORT_RE = /export\s+(type\s+)?\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g
 const STAR_RE = /export\s+\*\s+from\s*['"]([^'"]+)['"]/g
 const DEFAULT_IMPORT_RE = /import\s+([A-Z][\w$]*)\s*(?:,\s*\{[\s\S]*?\})?\s*from\s*['"]([^'"]+)['"]/g
@@ -297,15 +313,20 @@ describe('playground coverage', () => {
 
     const label = (key: string) => key.slice(key.lastIndexOf('::') + 2)
     const fileOf = (key: string) => key.slice(0, key.lastIndexOf('::'))
-    // A compound's parts are on show with their root: `TreeViewItem` beside a
-    // previewed `TreeView` from the same file, `MessageGroupHeader` beside
-    // `MessageGroup`. Same file and the root's name as a prefix, both.
-    const shown = (key: string) =>
-      previewed.has(key) ||
-      [...previewed].some((p) => fileOf(p) === fileOf(key) && label(key).startsWith(label(p)) && label(p) !== 'default')
-    // An entry covers a compound family the same way: `MessageScroller` covers
-    // `MessageScrollerItem`.
-    const allowedBy = (key: string) => [...ALLOWED_UNPREVIEWED.keys()].find((name) => label(key).startsWith(name))
+    // A compound's parts are on show with their root only when they are reached
+    // through it (`<ItemCardGroup.Header>` imports `ItemCardGroup`, so there is
+    // nothing separate to show) or are listed in COMPOUND_MEMBERS. A part the
+    // product imports on its own — `NotificationViewport`, `ItemCardGroup` beside
+    // `ItemCard` — is a component in its own right and needs its own preview.
+    const rootOf = (key: string) => COMPOUND_MEMBERS.get(label(key))?.root
+    const shown = (key: string) => {
+      const root = rootOf(key)
+      return previewed.has(key) || (root !== undefined && previewed.has(`${fileOf(key)}::${root}`))
+    }
+    const allowedBy = (key: string) => {
+      const name = rootOf(key) ?? label(key)
+      return ALLOWED_UNPREVIEWED.has(name) ? name : undefined
+    }
     const missing = [...used].filter(([key]) => !shown(key) && !allowedBy(key))
     expect(
       missing.map(([, where]) => where),
@@ -321,6 +342,15 @@ describe('playground coverage', () => {
     expect(
       stale.map(([name]) => name),
       'ALLOWED_UNPREVIEWED entries no longer needed — delete them',
+    ).toEqual([])
+    const idleMembers = [...COMPOUND_MEMBERS.keys()].filter(
+      (member) => ![...used.keys()].some((k) => label(k) === member && !previewed.has(k)),
+    )
+    expect(idleMembers, 'COMPOUND_MEMBERS entries the product no longer imports on their own — delete them').toEqual([])
+    const unexplainedMembers = [...COMPOUND_MEMBERS].filter(([, { reason }]) => !reason.trim())
+    expect(
+      unexplainedMembers.map(([name]) => name),
+      'every COMPOUND_MEMBERS entry needs a reason',
     ).toEqual([])
     const unexplained = [...ALLOWED_UNPREVIEWED].filter(([, reason]) => !reason.trim())
     expect(

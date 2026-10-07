@@ -14,6 +14,7 @@ import {
   Kbd,
   Modal,
   Notification,
+  NotificationViewport,
   Popover,
   Sheet,
   TextField,
@@ -221,8 +222,36 @@ function Dialogs() {
 }
 
 function Notifications() {
+  // The viewport is the fixed, portalled stack the approval toasts live in;
+  // shown on demand, since a resident one would sit over the whole gallery.
+  const [stacked, setStacked] = useState(false)
   return (
     <div className="flex flex-col items-center gap-3">
+      <Button variant="secondary" onPress={() => setStacked((v) => !v)}>
+        {stacked ? '收起通知栈' : '弹出通知栈（NotificationViewport）'}
+      </Button>
+      {stacked && (
+        <NotificationViewport position="top-center" aria-label="通知栈演示">
+          <Notification
+            status="neutral"
+            title="需要审批"
+            description="会话「重构鉴权模块」想运行 cargo test --all"
+            timestamp="刚刚"
+            actions={[
+              { label: '查看', onPress: noop, variant: 'secondary' },
+              { label: '允许', onPress: noop },
+            ]}
+          />
+          <Notification
+            status="success"
+            title="已删除对话"
+            timestamp="刚刚"
+            dismissible
+            closeLabel="收起"
+            onDismiss={() => setStacked(false)}
+          />
+        </NotificationViewport>
+      )}
       {(['neutral', 'information', 'success', 'error'] as const).map((status) => (
         <Notification
           key={status}

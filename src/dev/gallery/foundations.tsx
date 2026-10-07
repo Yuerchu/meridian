@@ -116,9 +116,11 @@ function ColorGroup({ title, pattern, note }: { title: string; pattern: RegExp; 
 const RAMP_STEPS = ['50', '100', '200', '300', '400', '500', '600', '700', '800', '900', '925', '950']
 
 function Ramp({ family }: { family: 'neutral' | 'accent' }) {
-  const names = RAMP_STEPS.map((step) => `--color-${family}-${step}`).filter(
-    (name) => family === 'neutral' || declared(name, 'light'),
-  )
+  const names: string[] = []
+  for (const step of RAMP_STEPS) {
+    const name = `--color-${family}-${step}`
+    if (family === 'neutral' || declared(name, 'light')) names.push(name)
+  }
   return (
     <div className="grid grid-cols-[repeat(auto-fill,minmax(5.5rem,1fr))] gap-2">
       {names.map((name) => (
@@ -149,9 +151,10 @@ function RampStep({ name }: { name: string }) {
   )
 }
 
+const TYPE_WEIGHTS = ['regular', 'medium', 'semibold', 'bold']
+
 function TypeScale() {
   const scales = tokenNames(/^--text-[a-z0-9-]+-regular$/).map((name) => name.replace(/^--text-|-regular$/g, ''))
-  const weights = ['regular', 'medium', 'semibold', 'bold']
   return (
     <div className="flex flex-col divide-y divide-separator-border">
       {scales.map((scale) => {
@@ -163,7 +166,7 @@ function TypeScale() {
               text-{scale}-* · {size} / {lineHeight}
             </span>
             <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 overflow-hidden">
-              {weights.map((weight) => {
+              {TYPE_WEIGHTS.map((weight) => {
                 const name = `--text-${scale}-${weight}`
                 if (!declared(name, 'light')) return null
                 return (
