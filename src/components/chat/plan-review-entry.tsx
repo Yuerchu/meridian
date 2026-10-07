@@ -9,11 +9,17 @@ import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { ChatToolPresentationContext } from '@/components/ui/chat-tool'
 import { errorMessage } from '@/lib/error-message'
-import { approveFromCard, planCardPreview, sendBackFromCard, type PlanCardPreview } from '@/lib/plan-card'
+import {
+  approveFromCard,
+  draftIsPristine,
+  planCardPreview,
+  sendBackFromCard,
+  type PlanCardPreview,
+} from '@/lib/plan-card'
 import { PlanDecisionAttempt, PlanDecisionInDoubtError } from '@/lib/plan-review-draft'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
-import type { ToolCallDisplay } from '@/types'
+import type { PlanReviewStatus, ToolCallDisplay } from '@/types'
 import { cx } from '@/utils/cx'
 
 /** See `FIELD_ON_CARD` in `tool-call-block.tsx`. */
@@ -26,11 +32,21 @@ const FIELD_ON_CARD = 'bg-background-secondary-default'
  * when the review page closes, so a card under a page that was just used is
  * not describing the plan as it was before. A failed read leaves the card
  * without a preview: it still opens the page, which reports the failure.
+ *
+ * Each read also says whether the draft is untouched, numbered so the card can
+ * tell a read taken after it found a draft in progress from one taken before.
  */
-type PreviewState = { status: 'loading' } | { status: 'ready'; preview: PlanCardPreview } | { status: 'unavailable' }
+interface CardRead {
+  preview: PlanCardPreview
+  pristine: boolean
+  seq: number
+}
 
-function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): PlanCardPreview | null {
-  const [state, setState] = useState<PreviewState>({ status: 'loading' })
+type CardReadState = { status: 'loading' } | { status: 'ready'; read: CardRead } | { status: 'unavailable' }
+
+function usePlanCardRead(reviewId: string, lockVersion: number | undefined): CardRead | null {
+  const [state, setState] = useState<CardReadState>({ status: 'loading' })
+  const seq = useRef(0)
   const pageOpen = usePlanReviewStore((state) => state.activeReviewId === reviewId)
   useEffect(() => {
     if (pageOpen) return
@@ -38,7 +54,12 @@ function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): 
     api
       .getPlanReview({ reviewId })
       .then((info) => {
-        if (!cancelled) setState({ status: 'ready', preview: planCardPreview(info) })
+        if (cancelled) return
+        seq.current += 1
+        setState({
+          status: 'ready',
+          read: { preview: planCardPreview(info), pristine: draftIsPristine(info), seq: seq.current },
+        })
       })
       .catch(() => {
         if (!cancelled) setState({ status: 'unavailable' })
@@ -47,10 +68,10 @@ function usePlanCardPreview(reviewId: string, lockVersion: number | undefined): 
       cancelled = true
     }
   }, [reviewId, lockVersion, pageOpen])
-  return state.status === 'ready' ? state.preview : null
+  return state.status === 'ready' ? state.read : null
 }
 
-type CardUi =
+export type CardUi =
   | { step: 'idle' }
   | { step: 'feedback' }
   | { step: 'deciding' }
@@ -79,23 +100,36 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
   const openReview = usePlanReviewStore((state) => state.openReview)
   const summary = usePlanReviewStore((state) => state.summaries[reviewId])
   const status = summary?.status ?? planReviewStatusOfTool(data.status)
-  const presentation = useContext(ChatToolPresentationContext)
-  const preview = usePlanCardPreview(reviewId, summary?.lock_version)
-  const pending = status === 'pending'
+  const read = usePlanCardRead(reviewId, summary?.lock_version)
+  const readSeq = read?.seq ?? 0
 
   const [ui, setUi] = useState<CardUi>({ step: 'idle' })
+  // Which read was current when a press found the draft in progress. A later
+  // read that finds the draft untouched again — the one taken when the review
+  // page closes, after the reviewer discarded or undid their work — lifts it;
+  // a held `draft` step would otherwise keep both decisions off this card for
+  // as long as the transcript stayed mounted.
+  const [draftSeenAt, setDraftSeenAt] = useState(0)
+  const shownUi: CardUi =
+    ui.step === 'draft' && read !== null && read.seq > draftSeenAt && read.pristine ? { step: 'idle' } : ui
   const [note, setNote] = useState('')
   // One per card, kept across presses: a reply lost on the way back is retried
   // under the same decision id, which the backend answers idempotently.
-  const attempt = useRef(new PlanDecisionAttempt())
+  const attemptRef = useRef<PlanDecisionAttempt | null>(null)
+  attemptRef.current ??= new PlanDecisionAttempt()
+  const attempt = attemptRef.current
 
   const decide = useCallback(
     (run: () => ReturnType<typeof approveFromCard>) => {
       setUi({ step: 'deciding' })
       run()
         .then((outcome) => {
-          if (outcome.kind === 'draft_in_progress') setUi({ step: 'draft' })
-          else setUi({ step: 'idle' })
+          // `decided` and `settled` were already taken into the stores by
+          // `lib/plan-card.ts`, so `status` moves without waiting on the event.
+          if (outcome.kind === 'draft_in_progress') {
+            setDraftSeenAt(readSeq)
+            setUi({ step: 'draft' })
+          } else setUi({ step: 'idle' })
         })
         .catch((error: unknown) => {
           setUi({
@@ -107,12 +141,57 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
           })
         })
     },
-    [t],
+    [t, readSeq],
   )
-  const approve = () => decide(() => approveFromCard(reviewId, attempt.current))
+  const approve = () => decide(() => approveFromCard(reviewId, attempt))
   const sendBack = () => {
-    if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt.current))
+    if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt))
   }
+
+  return (
+    <PlanReviewEntryView
+      status={status}
+      preview={read?.preview ?? null}
+      ui={shownUi}
+      note={note}
+      onNoteChange={setNote}
+      onUiChange={setUi}
+      onOpen={() => openReview(reviewId)}
+      onApprove={approve}
+      onSendBack={sendBack}
+    />
+  )
+}
+
+/**
+ * The card as drawn, from its state alone: no store, no backend. The
+ * container above owns the reads and the decisions; this is what the
+ * playground renders for every step a press can lead to.
+ */
+export function PlanReviewEntryView({
+  status,
+  preview,
+  ui,
+  note,
+  onNoteChange,
+  onUiChange,
+  onOpen,
+  onApprove,
+  onSendBack,
+}: {
+  status: PlanReviewStatus
+  preview: PlanCardPreview | null
+  ui: CardUi
+  note: string
+  onNoteChange: (note: string) => void
+  onUiChange: (ui: CardUi) => void
+  onOpen: () => void
+  onApprove: () => void
+  onSendBack: () => void
+}) {
+  const { t } = useTranslation()
+  const presentation = useContext(ChatToolPresentationContext)
+  const pending = status === 'pending'
 
   const revision = preview ? (
     <span data-slot="plan-review-entry-revision" className="shrink-0 text-text-secondary tabular-nums">
@@ -132,7 +211,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
       // which plan is the part that opens it.
       <AriaButton
         data-slot="plan-review-entry-excerpt"
-        onPress={() => openReview(reviewId)}
+        onPress={onOpen}
         className="block w-full min-w-0 cursor-pointer rounded-xl bg-background-primary-default px-3 py-2.5 text-left outline-none transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
       >
         {preview.excerpt.title && (
@@ -143,9 +222,9 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             {preview.excerpt.title}
           </span>
         )}
-        {preview.excerpt.lines.map((line, i) => (
+        {keyedLines(preview.excerpt.lines).map(({ line, key }) => (
           <span
-            key={i}
+            key={key}
             data-slot="plan-review-entry-excerpt-line"
             className="block truncate text-body-2-regular text-text-secondary"
           >
@@ -165,10 +244,10 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             autoComplete="off"
             aria-label={t('chat.plan.feedbackLabel')}
             value={note}
-            onChange={(e) => setNote(e.target.value)}
+            onChange={(e) => onNoteChange(e.target.value)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') sendBack()
+              if (e.key === 'Enter') onSendBack()
             }}
             placeholder={t('chat.plan.feedbackPlaceholder')}
             className="text-caption-1-regular"
@@ -176,10 +255,10 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             autoFocus
           />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="small" variant="secondary" onPress={() => setUi({ step: 'idle' })}>
+            <Button size="small" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
-            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={sendBack}>
+            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={onSendBack}>
               {t('chat.plan.sendBack')}
             </Button>
           </div>
@@ -200,19 +279,19 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="small" onPress={() => openReview(reviewId)}>
+            <Button size="small" onPress={onOpen}>
               {t('chat.plan.review')}
             </Button>
             {ui.step !== 'draft' && (
               <>
-                <Button size="small" variant="secondary" leadingIcon={Check} onPress={approve}>
+                <Button size="small" variant="secondary" leadingIcon={Check} onPress={onApprove}>
                   {t('chat.plan.approve')}
                 </Button>
                 <Button
                   size="small"
                   variant="secondary"
                   leadingIcon={ArrowUTurnLeft}
-                  onPress={() => setUi({ step: 'feedback' })}
+                  onPress={() => onUiChange({ step: 'feedback' })}
                 >
                   {t('chat.plan.revise')}
                 </Button>
@@ -228,12 +307,7 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
   // nothing left to decide: the review has a page of its own.
   if (presentation === 'bubble' && !pending) {
     return (
-      <BubbleBlockButton
-        data-slot="plan-review-entry"
-        data-status={status}
-        state="output-available"
-        onClick={() => openReview(reviewId)}
-      >
+      <BubbleBlockButton data-slot="plan-review-entry" data-status={status} state="output-available" onClick={onOpen}>
         <List aria-hidden className="size-3.5 shrink-0" />
         <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
           {t('chat.plan.title')}
@@ -299,11 +373,22 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
           >
             {t('chat.plan.reviewHistory')}
           </p>
-          <Button size="small" variant="secondary" onPress={() => openReview(reviewId)}>
+          <Button size="small" variant="secondary" onPress={onOpen}>
             {t('chat.plan.review')}
           </Button>
         </div>
       )}
     </div>
   )
+}
+
+/** Keys for the excerpt's lines: the text, and which occurrence of it this is,
+ *  since a plan can repeat a line ("- [ ] test") inside three of them. */
+function keyedLines(lines: string[]): { line: string; key: string }[] {
+  const seen = new Map<string, number>()
+  return lines.map((line) => {
+    const n = seen.get(line) ?? 0
+    seen.set(line, n + 1)
+    return { line, key: `${n}:${line}` }
+  })
 }

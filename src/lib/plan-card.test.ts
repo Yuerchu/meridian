@@ -3,6 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { api } from '@/api'
 import { approveFromCard, planExcerpt, sendBackFromCard } from './plan-card'
 import { PlanDecisionAttempt, PlanDecisionInDoubtError } from './plan-review-draft'
+import { planReviewProjection, receivePlanReview } from './plan-review-sync'
+import { useConversationStore } from '@/stores/conversation-store'
+import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { PlanReviewInfoResponse, PlanReviewStatus } from '@/types'
 
 vi.mock('@/api', () => ({
@@ -20,7 +23,7 @@ const decide = vi.mocked(api.decidePlanReview)
 const PLAN = '# Fix the scroller\n\n1. Track reader scroll\n2. Change the pin check\n'
 
 function info(
-  over: { state?: PlanReviewStatus; generation?: number; note?: string | null; draft?: string } = {},
+  over: { state?: PlanReviewStatus; generation?: number; note?: string | null; draft?: string; lock?: number } = {},
 ): PlanReviewInfoResponse {
   return {
     document: {
@@ -45,7 +48,7 @@ function info(
       assistant_message_id: 'message-1',
       provider_call_id: 'call-1',
       turn_id: 'turn-1',
-      lock_version: 0,
+      lock_version: over.lock ?? 0,
       created_at: 1,
       updated_at: 1,
     },
@@ -96,7 +99,7 @@ const DECIDED = {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks()
+  vi.resetAllMocks()
   decide.mockResolvedValue(DECIDED)
 })
 
@@ -196,4 +199,54 @@ describe('sendBackFromCard', () => {
     expect(saveDraft).not.toHaveBeenCalled()
     expect(decide).toHaveBeenCalledWith(expect.objectContaining({ expectedGeneration: 4, action: 'request_changes' }))
   })
+})
+
+/**
+ * The card used to rely on `plan-review-updated` alone to learn how its own
+ * decision went. That event is best-effort: when it was lost, the card kept
+ * offering Approve on a decided plan and the sidebar and inbox kept a
+ * question already answered. These run with no event at all.
+ */
+describe('taking the outcome in without the event', () => {
+  beforeEach(() => {
+    usePlanReviewStore.setState({ summaries: {}, activeReviewId: null })
+    useConversationStore.setState({ attention: {}, attentionOrder: [] })
+    // The review as submitted: pending, and so in the attention queue.
+    receivePlanReview(planReviewProjection(info()))
+    expect(useConversationStore.getState().attention['review-1']).toBeDefined()
+  })
+
+  it('a decision of its own settles the summary and retires the question', async () => {
+    getPlanReview.mockResolvedValueOnce(info()).mockResolvedValueOnce(info({ state: 'approved', lock: 1 }))
+    await approveFromCard('review-1', new PlanDecisionAttempt())
+    expect(usePlanReviewStore.getState().summaries['review-1']?.status).toBe('approved')
+    expect(useConversationStore.getState().attention['review-1']).toBeUndefined()
+  })
+
+  it('a review someone else settled is taken in from the read that found it', async () => {
+    getPlanReview.mockResolvedValue(info({ state: 'changes_requested', lock: 1 }))
+    expect(await approveFromCard('review-1', new PlanDecisionAttempt())).toEqual({ kind: 'settled' })
+    expect(usePlanReviewStore.getState().summaries['review-1']?.status).toBe('changes_requested')
+    expect(useConversationStore.getState().attention['review-1']).toBeUndefined()
+    expect(decide).not.toHaveBeenCalled()
+  })
+
+  it('a failed read-back is not a failed decision', async () => {
+    getPlanReview.mockResolvedValueOnce(info()).mockRejectedValueOnce(new Error('connection reset'))
+    expect(await approveFromCard('review-1', new PlanDecisionAttempt())).toEqual({ kind: 'decided', result: DECIDED })
+  })
+})
+
+/**
+ * A send-back that failed while saving its note had decided nothing, so it
+ * must not hold `request_changes` in doubt: an Approve after it used to be
+ * refused until the card was remounted.
+ */
+it('a send-back whose save failed leaves Approve free', async () => {
+  getPlanReview.mockResolvedValue(info())
+  saveDraft.mockRejectedValueOnce(new Error('generation conflict'))
+  const attempt = new PlanDecisionAttempt()
+  await expect(sendBackFromCard('review-1', 'Add verification.', attempt)).rejects.toThrow('generation conflict')
+  await expect(approveFromCard('review-1', attempt)).resolves.toMatchObject({ kind: 'decided' })
+  expect(decide).toHaveBeenCalledWith(expect.objectContaining({ action: 'approve' }))
 })

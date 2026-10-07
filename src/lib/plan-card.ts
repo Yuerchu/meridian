@@ -1,6 +1,7 @@
 import { api } from '@/api'
-import { PlanDecisionAttempt, planReviewActionRules } from './plan-review-draft'
+import { PlanDecisionAttempt, PlanDecisionInDoubtError, planReviewActionRules } from './plan-review-draft'
 import { planCommentRequests, planDraftPayload, projectPlanReviewDraft } from './plan-review-projection'
+import { planReviewProjection, receivePlanReview } from './plan-review-sync'
 import type { PlanReviewDecisionResponse, PlanReviewInfoResponse } from '@/types'
 
 /** What the transcript's plan card shows of the submitted plan. */
@@ -63,6 +64,11 @@ function pristine(info: PlanReviewInfoResponse, allowNote: string | null): boole
   }).canApprove
 }
 
+/** Whether the card may offer its two decisions on this read of the review. */
+export function draftIsPristine(info: PlanReviewInfoResponse): boolean {
+  return pristine(info, null)
+}
+
 export type PlanCardOutcome =
   | { kind: 'decided'; result: PlanReviewDecisionResponse }
   /** The review is no longer pending: decided elsewhere, or orphaned. */
@@ -79,7 +85,7 @@ export type PlanCardOutcome =
  */
 export async function approveFromCard(reviewId: string, attempt: PlanDecisionAttempt): Promise<PlanCardOutcome> {
   const info = await api.getPlanReview({ reviewId })
-  if (info.review.state !== 'pending') return { kind: 'settled' }
+  if (info.review.state !== 'pending') return settledBy(info)
   if (!pristine(info, null)) return { kind: 'draft_in_progress' }
   const { id } = attempt.forAction('approve')
   const result = await api.decidePlanReview({
@@ -90,7 +96,34 @@ export async function approveFromCard(reviewId: string, attempt: PlanDecisionAtt
     action: 'approve',
   })
   attempt.reset()
+  await takeInDecision(reviewId)
   return { kind: 'decided', result }
+}
+
+/**
+ * Someone else settled it — the review page, another window, a phone. What
+ * was just read is the authoritative state, so the card and the attention
+ * queue take it in now rather than waiting on an event that may never come.
+ */
+function settledBy(info: PlanReviewInfoResponse): PlanCardOutcome {
+  receivePlanReview(planReviewProjection(info))
+  return { kind: 'settled' }
+}
+
+/**
+ * After a decision of our own: read the review back and take it in, the same
+ * way the `plan-review-updated` event would. That event is best-effort; left
+ * to it alone, a lost one kept the card offering Approve on a decided plan and
+ * the sidebar holding a question already answered. A failed read-back is not
+ * a failed decision — the decision landed — so it is swallowed, and the event
+ * remains the other way the state can arrive.
+ */
+async function takeInDecision(reviewId: string): Promise<void> {
+  try {
+    receivePlanReview(planReviewProjection(await api.getPlanReview({ reviewId })))
+  } catch {
+    // The decision itself succeeded; see above.
+  }
 }
 
 /**
@@ -106,9 +139,15 @@ export async function sendBackFromCard(
   attempt: PlanDecisionAttempt,
 ): Promise<PlanCardOutcome> {
   const info = await api.getPlanReview({ reviewId })
-  if (info.review.state !== 'pending') return { kind: 'settled' }
+  if (info.review.state !== 'pending') return settledBy(info)
   if (!pristine(info, note)) return { kind: 'draft_in_progress' }
-  const { id } = attempt.forAction('request_changes')
+  // Refuse up front if a different decision is still in doubt, before the
+  // note is written into the draft — but reserve this one's id only once the
+  // save has succeeded. Reserved before it, a failed save (a conflict, a lost
+  // reply) left `request_changes` pending although nothing had been decided,
+  // and every later Approve was refused as in doubt.
+  const held = attempt.current()
+  if (held && held.action !== 'request_changes') throw new PlanDecisionInDoubtError(held.action)
   let generation = info.draft.generation
   let draftHash = info.draft.draft_sha256
   if ((info.draft.global_note ?? '').trim() !== note.trim()) {
@@ -117,6 +156,7 @@ export async function sendBackFromCard(
     generation = saved.generation
     draftHash = saved.draft_sha256
   }
+  const { id } = attempt.forAction('request_changes')
   const result = await api.decidePlanReview({
     reviewId,
     decisionId: id,
@@ -125,6 +165,7 @@ export async function sendBackFromCard(
     action: 'request_changes',
   })
   attempt.reset()
+  await takeInDecision(reviewId)
   return { kind: 'decided', result }
 }
 
