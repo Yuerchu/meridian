@@ -166,11 +166,7 @@ fn read_draft(conn: &mut SqliteConnection, slot: &DraftSlot) -> Result<Option<Co
     let sticker = match content.sticker_id {
         // The foreign key clears this when the sticker goes, so a dangling id
         // is not a state to tolerate.
-        Some(id) => Some(
-            meridian_core::db::ops::emoji::get_emoji(conn, &id)
-                .map_err(|e| e.to_string())?
-                .try_into()?,
-        ),
+        Some(id) => Some(meridian_core::db::ops::emoji::get_emoji(conn, &id)?.into()),
         None => None,
     };
 

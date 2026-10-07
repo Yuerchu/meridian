@@ -4,13 +4,15 @@
 //! lists explicit: adding a column to a Diesel row must not silently expand the
 //! desktop or remote API.
 
+use meridian_core::db::entity::emoji::{EmojiSemanticStatus, EmojiSource};
+use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::skill::SkillSource;
-use meridian_core::db::entity::{custom_tool, journal_version, mcp_server, skill, tool_category, tool_preset};
+use meridian_core::db::entity::{
+    custom_tool, emoji, emoji_pack, journal_version, mcp_server, skill, tool_category, tool_preset,
+};
 use meridian_core::db::models::{
     assistant::AssistantRow,
     conversation::ConversationRow,
-    emoji::EmojiRow,
-    emoji_pack::EmojiPackRow,
     memory::{MemoryRow, MemorySubjectRow},
     model_config::ModelConfigRow,
     model_profile::ModelProfileRow,
@@ -107,63 +109,6 @@ impl ConversationAgentKind {
             "plan_review" => Ok(Self::PlanReview),
             "impl_review" => Ok(Self::ImplReview),
             _ => Err(format!("unknown conversation agent kind `{value}`")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EmojiPackKind {
-    Manual,
-    Onebot,
-}
-
-impl EmojiPackKind {
-    fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "manual" => Ok(Self::Manual),
-            "onebot" => Ok(Self::Onebot),
-            _ => Err(format!("unknown emoji pack kind `{value}`")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EmojiSource {
-    Local,
-    OnebotFace,
-    OnebotMface,
-    OnebotImage,
-}
-
-impl EmojiSource {
-    fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "local" => Ok(Self::Local),
-            "onebot_face" => Ok(Self::OnebotFace),
-            "onebot_mface" => Ok(Self::OnebotMface),
-            "onebot_image" => Ok(Self::OnebotImage),
-            _ => Err(format!("unknown emoji source `{value}`")),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EmojiSemanticStatus {
-    Pending,
-    Suggested,
-    Confirmed,
-}
-
-impl EmojiSemanticStatus {
-    fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "pending" => Ok(Self::Pending),
-            "suggested" => Ok(Self::Suggested),
-            "confirmed" => Ok(Self::Confirmed),
-            _ => Err(format!("unknown emoji semantic status `{value}`")),
         }
     }
 }
@@ -518,13 +463,9 @@ pub struct EmojiPackInfoResponse {
     pub is_builtin: bool,
 }
 
-impl TryFrom<EmojiPackRow> for EmojiPackInfoResponse {
-    type Error = String;
-
-    fn try_from(row: EmojiPackRow) -> Result<Self, Self::Error> {
-        let kind = EmojiPackKind::parse(&row.kind)?;
-        let is_builtin = decode_sqlite_bool(row.is_builtin, "emoji_pack.is_builtin")?;
-        Ok(Self {
+impl From<emoji_pack::Model> for EmojiPackInfoResponse {
+    fn from(row: emoji_pack::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
             description: row.description,
@@ -532,10 +473,10 @@ impl TryFrom<EmojiPackRow> for EmojiPackInfoResponse {
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            kind,
+            kind: row.kind,
             source_account_id: row.source_account_id,
-            is_builtin,
-        })
+            is_builtin: row.is_builtin.get(),
+        }
     }
 }
 
@@ -561,13 +502,9 @@ pub struct EmojiInfoResponse {
     pub last_seen_at: Option<i64>,
 }
 
-impl TryFrom<EmojiRow> for EmojiInfoResponse {
-    type Error = String;
-
-    fn try_from(row: EmojiRow) -> Result<Self, Self::Error> {
-        let source = EmojiSource::parse(&row.source)?;
-        let semantic_status = EmojiSemanticStatus::parse(&row.semantic_status)?;
-        Ok(Self {
+impl From<emoji::Model> for EmojiInfoResponse {
+    fn from(row: emoji::Model) -> Self {
+        Self {
             id: row.id,
             pack_id: row.pack_id,
             name: row.name,
@@ -576,15 +513,15 @@ impl TryFrom<EmojiRow> for EmojiInfoResponse {
             file_format: row.file_format,
             sort_order: row.sort_order,
             created_at: row.created_at,
-            source,
+            source: row.source,
             source_key: row.source_key,
-            semantic_status,
+            semantic_status: row.semantic_status,
             suggested_name: row.suggested_name,
             suggested_tags: row.suggested_tags,
             file_size: row.file_size,
             seen_count: row.seen_count,
             last_seen_at: row.last_seen_at,
-        })
+        }
     }
 }
 
@@ -1268,18 +1205,6 @@ mod tests {
     #[test]
     fn command_owned_response_enums_reject_unknown_values() {
         assert_eq!(
-            serde_json::to_value(EmojiPackKind::parse("onebot").unwrap()).unwrap(),
-            "onebot"
-        );
-        assert_eq!(
-            serde_json::to_value(EmojiSource::parse("onebot_mface").unwrap()).unwrap(),
-            "onebot_mface"
-        );
-        assert_eq!(
-            serde_json::to_value(EmojiSemanticStatus::parse("confirmed").unwrap()).unwrap(),
-            "confirmed"
-        );
-        assert_eq!(
             serde_json::to_value(JournalOperation::from(journal_version::VersionOp::CommandObserved)).unwrap(),
             "command_observed"
         );
@@ -1296,9 +1221,6 @@ mod tests {
             "self"
         );
 
-        assert!(EmojiPackKind::parse("future").is_err());
-        assert!(EmojiSource::parse("future").is_err());
-        assert!(EmojiSemanticStatus::parse("future").is_err());
         assert!(SkillSource::parse("future").is_err());
     }
 

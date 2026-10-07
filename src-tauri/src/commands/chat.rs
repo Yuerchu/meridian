@@ -1586,10 +1586,11 @@ async fn chat_inner(
     )?;
     resolve_sticker_parts_in_messages(
         &mut chat_messages,
-        &pool,
+        Some(&services.sea),
         Some(services.paths.data_dir.as_path()),
         supports_images,
-    )?;
+    )
+    .await?;
     let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
     resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref())?;
     microcompact(&mut chat_messages, &budget, keep_recent);
