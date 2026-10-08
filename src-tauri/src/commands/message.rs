@@ -4,7 +4,7 @@ use crate::ServicesExt;
 use crate::commands::entity_response::ConversationInfoResponse;
 use meridian_core::agent::{parse_stored_tool_calls, sub_agents::SubAgentKind as CoreSubAgentKind};
 use meridian_core::db;
-use meridian_core::db::models::message::MessageRow;
+use meridian_core::db::entity::message as message_entity;
 use meridian_core::db::models::turn::{TurnPhase as CoreTurnPhase, TurnStatus as CoreTurnStatus};
 use meridian_core::events::{
     AutoReviewAuthorization as CoreAutoReviewAuthorization, AutoReviewEvidence as CoreAutoReviewEvidence,
@@ -446,10 +446,10 @@ impl From<meridian_core::events::ToolCallDiff> for ToolCallDiffInfoResponse {
     }
 }
 
-impl TryFrom<MessageRow> for MessageInfoResponse {
+impl TryFrom<message_entity::Model> for MessageInfoResponse {
     type Error = String;
 
-    fn try_from(row: MessageRow) -> Result<Self, Self::Error> {
+    fn try_from(row: message_entity::Model) -> Result<Self, Self::Error> {
         let role = db::models::message::MessageRole::parse(&row.role)?;
         match (role, row.tool_call_id.as_deref()) {
             (db::models::message::MessageRole::Tool, Some(call_id)) if !call_id.is_empty() => {}
@@ -475,16 +475,8 @@ impl TryFrom<MessageRow> for MessageInfoResponse {
         if row.rating.is_some() && role != db::models::message::MessageRole::Assistant {
             return Err(format!("non-assistant message {} has a rating", row.id));
         }
-        let is_compact_summary = match row.is_compact_summary {
-            0 => false,
-            1 => true,
-            value => {
-                return Err(format!(
-                    "message {} has invalid is_compact_summary {value}; expected 0 or 1",
-                    row.id
-                ));
-            }
-        };
+        // Held to 0/1 at the read, by whichever ORM made it.
+        let is_compact_summary = row.is_compact_summary.get();
         let stored_tool_calls = match role {
             db::models::message::MessageRole::Assistant => {
                 parse_stored_tool_calls(row.schema_version, row.tool_calls.as_deref())
@@ -1610,7 +1602,7 @@ pub async fn rate_message(app: tauri::AppHandle, request: MessageRatingUpdateReq
 /// said it. It has to come off before encoding so a memory block cannot become
 /// a training example carrying `<owner_notes>`, which exist on the
 /// understanding that they are never quoted back to the person they are about.
-fn exportable(path: Vec<MessageRow>) -> Result<Vec<MessageRow>, String> {
+fn exportable(path: Vec<message_entity::Model>) -> Result<Vec<message_entity::Model>, String> {
     path.into_iter()
         .filter_map(|message| match db::models::message::MessageRole::parse(&message.role) {
             Ok(db::models::message::MessageRole::Context) => None,
@@ -1653,7 +1645,7 @@ pub async fn export_conversation(
         // not: a summary is a token-budget device, and the rows it stands in for
         // are exactly the training data being exported.
         let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-        let messages: Vec<MessageRow> = exportable(ctx.path)?;
+        let messages: Vec<message_entity::Model> = exportable(ctx.path)?;
         let system_prompt = match conv.assistant_id.as_deref() {
             Some(assistant_id) => {
                 db::ops::assistant::get_assistant(&mut conn, assistant_id)
@@ -1663,7 +1655,7 @@ pub async fn export_conversation(
             None => String::new(),
         };
 
-        fn msg_to_openai(m: &MessageRow) -> Result<serde_json::Value, String> {
+        fn msg_to_openai(m: &message_entity::Model) -> Result<serde_json::Value, String> {
             let role = db::models::message::MessageRole::parse(&m.role)
                 .map_err(|error| format!("message {} cannot be exported: {error}", m.id))?;
             let mut obj = serde_json::json!({ "role": role });
@@ -2112,8 +2104,8 @@ mod tests {
         );
     }
 
-    fn exported_row(role: &str, content: &str) -> MessageRow {
-        MessageRow {
+    fn exported_row(role: &str, content: &str) -> message_entity::Model {
+        message_entity::Model {
             id: role.into(),
             conversation_id: "c1".into(),
             role: role.into(),
@@ -2130,7 +2122,7 @@ mod tests {
             reasoning_content: None,
             rating: None,
             schema_version: 2,
-            is_compact_summary: 0,
+            is_compact_summary: meridian_core::db::types::SqlBool::FALSE,
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
@@ -2222,13 +2214,6 @@ mod tests {
     }
 
     #[test]
-    fn message_dto_rejects_non_boolean_sqlite_values() {
-        let mut row = exported_row("assistant", "answer");
-        row.is_compact_summary = 2;
-        assert!(MessageInfoResponse::try_from(row).is_err());
-    }
-
-    #[test]
     fn message_response_normalizes_stored_tool_calls_and_rejects_extensions() {
         let mut row = exported_row("assistant", "");
         row.tool_calls =
@@ -2250,7 +2235,7 @@ mod tests {
     #[test]
     fn a_compaction_summary_at_negative_sort_order_is_readable() {
         let mut row = exported_row("assistant", "summary");
-        row.is_compact_summary = 1;
+        row.is_compact_summary = meridian_core::db::types::SqlBool::TRUE;
         row.sort_order = -1;
         let json = serde_json::to_value(MessageInfoResponse::try_from(row).unwrap()).unwrap();
         assert_eq!(json["sort_order"], -1);

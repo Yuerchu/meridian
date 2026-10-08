@@ -602,7 +602,7 @@ fn load_persona_and_todo(
     conn: &mut SqliteConnection,
     conversation_id: &str,
     assistant: Option<&AssistantRow>,
-    live: &[db::models::message::MessageRow],
+    live: &[db::entity::message::Model],
 ) -> Result<(String, String), String> {
     let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
     let todo = meridian_core::agent::plan_todo_injection(conn, conversation_id, live)?
@@ -617,7 +617,7 @@ fn load_persona_and_todo(
 async fn load_memory_estimate(
     db: &meridian_core::db::sea::cap::Db,
     project_id: Option<&str>,
-    live: &[db::models::message::MessageRow],
+    live: &[db::entity::message::Model],
 ) -> Result<String, String> {
     let req = meridian_core::agent::MemoryRequest::desktop(
         project_id.map(|s| s.to_string()),
@@ -657,7 +657,7 @@ async fn assemble_system_prompt(
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
-    active_path: &[db::models::message::MessageRow],
+    active_path: &[db::entity::message::Model],
     // `server_tools` is the turn's own, resolved by the caller. Counting the
     // local `web_search` that a provider-side one displaces would make the
     // estimate disagree with the prompt actually sent — the drift this function
@@ -692,7 +692,7 @@ async fn assemble_system_prompt(
         // Same function the chat loop calls, so the estimate covers the block.
         meridian_core::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
-    let live: Vec<db::models::message::MessageRow> = active_path.to_vec();
+    let live: Vec<db::entity::message::Model> = active_path.to_vec();
     let memory_block = load_memory_estimate(&app.services().sea, project_id, &live).await?;
     tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
         let mut conn = meridian_core::util::get_conn(&pool2)?;
@@ -1218,8 +1218,8 @@ mod tests {
         .unwrap()
     }
 
-    fn make_message(id: &str, role: &str, content: &str) -> db::models::message::MessageRow {
-        db::models::message::MessageRow {
+    fn make_message(id: &str, role: &str, content: &str) -> db::entity::message::Model {
+        db::entity::message::Model {
             id: id.into(),
             conversation_id: "c1".into(),
             role: role.into(),
@@ -1236,7 +1236,7 @@ mod tests {
             reasoning_content: None,
             rating: None,
             schema_version: 2,
-            is_compact_summary: 0,
+            is_compact_summary: meridian_core::db::types::SqlBool::FALSE,
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
