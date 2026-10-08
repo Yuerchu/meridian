@@ -15,6 +15,7 @@ export type ModelConfigListResponse = ModelConfigInfoResponse[]
 export type ProjectListResponse = ProjectInfoResponse[]
 export type ProviderListResponse = ProviderInfoResponse[]
 export type QueuedPromptListResponse = QueuedPromptInfoResponse[]
+export type BackgroundTaskListResponse = BackgroundTaskInfoResponse[]
 export type SkillListResponse = SkillInfoResponse[]
 export type SkillBindingNamesResponse = string[]
 export type TodoItemListResponse = TodoItemInfoResponse[]
@@ -1044,6 +1045,54 @@ export interface QueuedPromptInfoResponse {
   settled_message_id: string | null
   held_at: number | null
   reported_at: number | null
+}
+
+/** Whose background task it is: this app's own `run_command`, or a hosted
+ *  Claude Code session's. */
+export type BackgroundRunner = 'native' | 'claude_code'
+export type BackgroundKind = 'command' | 'agent'
+/** `lost` was running when the process watching it died; how it ended is
+ *  unknown. */
+export type BackgroundState = 'running' | 'completed' | 'failed' | 'stopped' | 'lost'
+
+/** A command that outlives the turn that started it. See
+ *  `meridian_core::background`. */
+export interface BackgroundTaskInfoResponse {
+  id: string
+  conversation_id: string
+  runner: BackgroundRunner
+  kind: BackgroundKind
+  command: string | null
+  description: string | null
+  state: BackgroundState
+  exit_code: number | null
+  ended_reason: string | null
+  output_bytes: number
+  output_truncated: boolean
+  started_at: number
+  ended_at: number | null
+  /** Whether the model has been told this task ended. */
+  notified: boolean
+}
+
+/** A slice of a background task's output, from `offset`. */
+export interface BackgroundTaskOutputInfoResponse {
+  task: BackgroundTaskInfoResponse
+  offset: number
+  content: string
+  next_offset: number
+  total_bytes: number
+}
+
+export interface BackgroundTaskStopRequest {
+  conversationId: string
+  id: string
+}
+
+export interface BackgroundTaskOutputReadRequest {
+  conversationId: string
+  id: string
+  offset: number
 }
 
 /** `conversationId: null` is the welcome composer, before a conversation exists. */

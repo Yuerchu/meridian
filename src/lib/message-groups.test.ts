@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { awaitingModel, bubbleCopyText, buildAssistantGroups, turnCopyText } from '@/lib/message-groups'
+import { awaitingModel, bubbleCopyText, buildAssistantGroups, foldKindOf, turnCopyText } from '@/lib/message-groups'
 import { buildTurns } from '@/lib/turns'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
@@ -474,5 +474,26 @@ describe('buildAssistantGroups — the stream and the sign of life', () => {
     )
     expect(turn.status).toBe('awaiting-input')
     expect(groups[0].bubbles.map((b) => b.kind)).toEqual(['text'])
+  })
+})
+
+describe('foldKindOf — a command still running in the background', () => {
+  const call = (name: string, args: Record<string, unknown>): ToolCallDisplay => ({
+    call_id: 'c1',
+    tool_name: name,
+    arguments: JSON.stringify(args),
+    status: 'completed',
+  })
+
+  it('folds a finished foreground command', () => {
+    expect(foldKindOf(call('run_command', { command: 'ls' }))).toBe('commands')
+    expect(foldKindOf(call('Bash', { command: 'ls' }))).toBe('commands')
+  })
+
+  // Its call finished; the command did not. Folded into "ran N commands" it
+  // reads as done, which is the one thing it is not.
+  it('does not fold one started in the background, ours or Claude Code’s', () => {
+    expect(foldKindOf(call('run_command', { command: 'npm run dev', run_in_background: true }))).toBeNull()
+    expect(foldKindOf(call('Bash', { command: 'npm run dev', run_in_background: true }))).toBeNull()
   })
 })

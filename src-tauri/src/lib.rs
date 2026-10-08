@@ -357,6 +357,17 @@ pub fn run() {
                 let code = code.unwrap_or(0);
                 tauri::async_runtime::spawn(async move {
                     let services = handle.state::<Services>();
+                    // First, and bounded: a background command left running
+                    // keeps writing to a project with nobody watching it, and
+                    // its row would never say how it ended. Each one kills its
+                    // own process tree and writes its ending.
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let stopped = services.background_tasks.stop_all();
+                        if stopped > 0 {
+                            services.background_tasks.drained(BACKGROUND_SHUTDOWN_BUDGET).await;
+                        }
+                    }
                     services.mcp.shutdown_all(MCP_SHUTDOWN_BUDGET).await;
                     // Bounded for the same reason the MCP budget is: an adapter
                     // that will not die must not hold the window open after the
@@ -395,6 +406,10 @@ pub fn run() {
 /// Tauri's own restart code. Preventing that exit would turn a restart into a
 /// hang.
 const RESTART_EXIT_CODE: i32 = tauri::RESTART_EXIT_CODE;
+
+/// How long background commands get to die and record it on the way out.
+#[cfg(not(target_os = "android"))]
+const BACKGROUND_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// How long the whole MCP shutdown gets. Each HTTP transport is allowed a five
 /// second DELETE of its own, so without a ceiling a handful of them would hold

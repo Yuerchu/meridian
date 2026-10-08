@@ -557,6 +557,27 @@ const chat: Record<string, DemoHandler> = {
     return { applied: true, revision: req.revision }
   },
   queue_list: (args, { state }) => state.queues[field<string>(args, 'conversationId')] ?? [],
+  list_background_tasks: (args, { state }) => state.backgroundTasks[field<string>(args, 'conversationId')] ?? [],
+  stop_background_task: (args, backend) => {
+    const req = request<{ conversationId: string; id: string }>(args)
+    const task = (backend.state.backgroundTasks[req.conversationId] ?? []).find((t) => t.id === req.id)
+    if (!task) throw `there is no background task ${req.id} in this conversation`
+    if (task.state === 'running') {
+      task.state = 'stopped'
+      task.ended_reason = 'stopped by the user'
+      task.ended_at = Date.now()
+      backend.later(0, () => backend.emit('background-tasks-updated', { conversation_id: req.conversationId }))
+    }
+    return task
+  },
+  read_background_task_output: (args, { state }) => {
+    const req = request<{ conversationId: string; id: string; offset: number }>(args)
+    const task = (state.backgroundTasks[req.conversationId] ?? []).find((t) => t.id === req.id)
+    if (!task) throw `there is no background task ${req.id} in this conversation`
+    const log = state.backgroundOutput[req.id] ?? ''
+    const offset = Math.min(req.offset, log.length)
+    return { task, offset, content: log.slice(offset), next_offset: log.length, total_bytes: log.length }
+  },
   queue_enqueue: (args, backend) => {
     const req = request<QueuedPromptCreateRequest>(args)
     const queue = (backend.state.queues[req.conversationId] ??= [])

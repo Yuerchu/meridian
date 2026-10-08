@@ -88,6 +88,9 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   },
   clear_composer_draft: { args: { request: { conversationId: CONV.rich, revision: 2 } } },
   queue_list: { args: { conversationId: CONV.rich } },
+  list_background_tasks: { args: { conversationId: CONV.rich } },
+  stop_background_task: { args: { request: { conversationId: CONV.rich, id: 'b1a2c3d4' } } },
+  read_background_task_output: { args: { request: { conversationId: CONV.rich, id: 'b1a2c3d4', offset: 0 } } },
   queue_enqueue: {
     args: {
       request: {

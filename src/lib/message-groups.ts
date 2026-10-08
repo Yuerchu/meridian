@@ -155,7 +155,21 @@ const FOLD_ORDER: FoldKind[] = ['commands', 'files', 'searches']
  *  those is something the reader may need to see or act on. */
 export function foldKindOf(tool: ToolCallDisplay): FoldKind | null {
   if (tool.status !== 'completed') return null
+  // Finished as a call, not as a command: what came back is a task id, and
+  // the command is still running. Folded into "ran N commands" it would read
+  // as done — the one thing it is not.
+  if (startsInBackground(tool)) return null
   return toolUi(tool.tool_name)?.fold ?? null
+}
+
+/** A command started with `run_in_background`, ours or Claude Code's. */
+export function startsInBackground(tool: ToolCallDisplay): boolean {
+  try {
+    const args: unknown = JSON.parse(tool.arguments)
+    return typeof args === 'object' && args !== null && (args as Record<string, unknown>).run_in_background === true
+  } catch {
+    return false
+  }
 }
 
 /**

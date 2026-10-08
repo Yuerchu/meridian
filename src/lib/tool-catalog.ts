@@ -461,6 +461,11 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   list_redaction_rules: plain('native'),
   remove_redaction_rule: plain('native'),
   read_app_logs: plain('native'),
+  // A background command's log, its stop and the list: lines the backend
+  // writes, a status line then the output.
+  read_background_output: plain('native', { ident: text('task_id') }),
+  stop_background_task: plain('native', { ident: text('task_id') }),
+  list_background_tasks: plain('native'),
   conversation_usage: plain('native'),
   read_conversation: plain('native'),
 

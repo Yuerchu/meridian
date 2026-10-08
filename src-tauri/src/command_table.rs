@@ -474,6 +474,20 @@ macro_rules! with_all_commands {
             ),
             async commands::queue => queue_release(conversation_id: String),
 
+            // Not `local`, for the queue's reason: a conversation's own
+            // background commands, which the caller can already read and
+            // drive. Stopping one from a phone is the point.
+            #[cfg(not(target_os = "android"))]
+            async commands::background => list_background_tasks(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::background => stop_background_task(
+                request: $crate::commands::background::BackgroundTaskStopRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::background => read_background_task_output(
+                request: $crate::commands::background::BackgroundTaskOutputReadRequest,
+            ),
+
             // Not `local`, for the reason the queue is not: a draft is text
             // for a conversation the caller can already read and write, kept
             // on the host that owns that conversation. A phone is the client

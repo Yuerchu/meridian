@@ -178,6 +178,11 @@ import type {
   QueuedPromptDeliveryUpdateRequest,
   QueuedPromptInfoResponse,
   QueuedPromptListResponse,
+  BackgroundTaskInfoResponse,
+  BackgroundTaskListResponse,
+  BackgroundTaskOutputInfoResponse,
+  BackgroundTaskOutputReadRequest,
+  BackgroundTaskStopRequest,
   QueuedPromptRemoveRequest,
   QueuedPromptReorderRequest,
   SafRootListResponse,
@@ -445,6 +450,17 @@ export const api = {
   /** Let a queue held by a failed turn go again. Pumps, because a person just
    *  said to. */
   queueRelease: (conversationId: string) => invoke<void>('queue_release', { conversationId }),
+
+  // Commands that outlive their turn. Stopping one is owed to the model like
+  // any ending, but wakes no turn — see `meridian_core::background`.
+  listBackgroundTasks: (conversationId: string) =>
+    invoke<BackgroundTaskListResponse>('list_background_tasks', { conversationId }),
+
+  stopBackgroundTask: (request: BackgroundTaskStopRequest) =>
+    invoke<BackgroundTaskInfoResponse>('stop_background_task', { request }),
+
+  readBackgroundTaskOutput: (request: BackgroundTaskOutputReadRequest) =>
+    invoke<BackgroundTaskOutputInfoResponse>('read_background_task_output', { request }),
 
   // Unsent composer drafts, kept on the host so a crash or a switch of
   // conversation does not take them. Writes are revision-guarded: see

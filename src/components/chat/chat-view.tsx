@@ -19,6 +19,7 @@ import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 import { PromptQueue } from './prompt-queue'
 import { usePromptQueue } from '@/hooks/use-prompt-queue'
+import { useBackgroundTasks } from '@/hooks/use-background-tasks'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
@@ -378,6 +379,8 @@ function ChatViewInner({
   // stacked up for after it.
   const queueable = !steerable
   const queue = usePromptQueue(conversationId, queueable)
+  const background = useBackgroundTasks(conversationId)
+  const runningTasks = background.tasks.filter((task) => task.state === 'running')
   const queueing = queueable && streaming
 
   const executeSlashCommand = useCallback(
@@ -1082,6 +1085,16 @@ function ChatViewInner({
         {/* Above the composer, where the queue it describes is drawn. Not
             inside `PromptQueue`, which draws nothing when the list is empty —
             and an empty list is exactly what a failed first read looks like. */}
+        {background.error && (
+          <div data-slot="background-tasks-error" className="shrink-0 px-4 pt-2">
+            <ErrorAlert
+              title={t(background.error.kind === 'load' ? 'chat.background.loadFailed' : 'chat.background.stopFailed')}
+              message={background.error.message}
+              onDismiss={background.dismissError}
+            />
+          </div>
+        )}
+
         {queue.error && (
           <div data-slot="prompt-queue-error" className="shrink-0 px-4 pt-2">
             <ErrorAlert
@@ -1117,6 +1130,8 @@ function ChatViewInner({
           steerable={shellTurnId ? false : steerable}
           queueing={queueing}
           todos={activeTodos}
+          backgroundTasks={runningTasks}
+          onStopBackgroundTask={(id) => void background.stop(id)}
           queue={
             <PromptQueue
               items={queue.items}

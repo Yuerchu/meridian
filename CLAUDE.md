@@ -87,6 +87,7 @@ A new decision about one subsystem goes into that subsystem's file.
 | [`approvals.md`](.claude/rules/approvals.md) | `agent/auto_review/`, `crate::approval`, `agent::denied`, `agent::call_identity` | automatic approval review, how long a question stands and who may end it |
 | [`acp.md`](.claude/rules/acp.md) | `acp/` | hosting Claude Code, elicitation, sessions and resume, import, the tool bridge |
 | [`prompt-queue.md`](.claude/rules/prompt-queue.md) | `queued_prompts`, `agent::queue`, steering | follow-up vs interject, claims, holds, in-doubt delivery |
+| [`background-tasks.md`](.claude/rules/background-tasks.md) | `crate::background`, `run_in_background`, `background_tasks` | the same sandbox path, the notice as a debt, wake vs no wake, the claim |
 | [`plan-documents.md`](.claude/rules/plan-documents.md) | plan mode, `plan_documents`, the review page | durable plan documents |
 | [`hook-gates.md`](.claude/rules/hook-gates.md) | `hooks/`, the `meridian-plan-gate` plugin | the loopback review gates |
 | [`container.md`](.claude/rules/container.md) | `crate::container`, sandbox settings, a hosted agent in Docker | container execution, cancellation, no host fallback |

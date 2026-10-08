@@ -183,6 +183,9 @@ vi.mock('./input-bar', () => ({
   },
 }))
 vi.mock('./prompt-queue', () => ({ PromptQueue: () => <div /> }))
+vi.mock('@/hooks/use-background-tasks', () => ({
+  useBackgroundTasks: () => ({ tasks: [], error: null, stop: () => Promise.resolve(), dismissError: () => {} }),
+}))
 vi.mock('./empty-state', () => ({
   StarterPrompts: (props: unknown) => {
     mocks.starterProps(props)
