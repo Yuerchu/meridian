@@ -1,12 +1,20 @@
+use std::collections::HashMap;
+
 use crate::ServicesExt;
 use crate::commands::entity_response::{
     ModelConfigInfoResponse, ModelConfigListResponse, ModelProfileInfoResponse, ModelProfileListResponse,
     ProviderCapabilityOverrides, validate_model_server_tools,
 };
-use meridian_core::db;
-use meridian_core::db::models::model_config::ModelConfigInsert;
-use meridian_core::db::models::model_profile::{ModelProfileChangeset, ModelProfileInsert, ModelProfileRow};
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::db::entity::model_profile::ModelProfileChangeset;
+use meridian_core::db::entity::{model_config, model_profile};
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::{Db, Snapshot, WriteTx};
+use meridian_core::db::sea::ops::{
+    conversation as conversation_ops, model_config as config_ops, model_profile as profile_ops,
+    plan_review as plan_review_ops,
+};
+use meridian_core::db::types::SqlBool;
+use meridian_core::util::now_ms;
 
 const PLAN_REVIEW_MODEL_CONFIG_BARRIER: &str = "This model configuration is frozen into a plan review or its continuation. Finish that review before changing or deleting it.";
 
@@ -18,48 +26,69 @@ enum GuardedModelConfigMutation<T> {
     ModelChanged,
 }
 
+/// What stops a model configuration mutation before it writes anything: the
+/// conversation set having changed since the caller took its leases, or a
+/// plan review whose blocked continuation was resolved against this exact
+/// provider and model. Run first in the mutation's own write, so the answer
+/// still holds when the write lands.
+async fn model_config_barrier<T>(
+    tx: &WriteTx,
+    provider_id: &str,
+    model_id: &str,
+    expected_conversation_ids: &[String],
+) -> Result<Option<GuardedModelConfigMutation<T>>, DbErr> {
+    let mut current = conversation_ops::all_ids(tx).await?;
+    current.sort();
+    if current != expected_conversation_ids {
+        return Ok(Some(GuardedModelConfigMutation::ConversationsChanged));
+    }
+    if !plan_review_ops::barrier_conversations_for_model(tx, provider_id, model_id)
+        .await?
+        .is_empty()
+    {
+        return Ok(Some(GuardedModelConfigMutation::PlanReviewBarrier));
+    }
+    Ok(None)
+}
+
+/// A saved config, its profile, and how many providers reach that profile.
+type SavedModelConfig = (model_config::Model, model_profile::Model, i64);
+
 /// The profile and the config are written in one transaction, and the profile
 /// goes first: the config's `profile_id` is a foreign key, so a half-applied
 /// save would either point at nothing or leave a profile nothing describes.
-type SavedModelConfig = (db::models::model_config::ModelConfigRow, ModelProfileRow);
-
-fn upsert_model_config_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+async fn upsert_model_config_unless_plan_barrier(
+    tx: &WriteTx,
     expected_conversation_ids: &[String],
-    profile_id: &str,
     profile_is_new: bool,
-    profile: &ProfileWrite<'_>,
-    new: &ModelConfigInsert<'_>,
-) -> diesel::QueryResult<GuardedModelConfigMutation<SavedModelConfig>> {
-    conn.immediate_transaction(|conn| {
-        let mut current = db::ops::conversation::all_ids(conn)?;
-        current.sort();
-        if current != expected_conversation_ids {
-            return Ok(GuardedModelConfigMutation::ConversationsChanged);
+    profile: ProfileWrite,
+    new: model_config::Model,
+) -> Result<GuardedModelConfigMutation<SavedModelConfig>, DbErr> {
+    if let Some(refused) = model_config_barrier(tx, &new.provider_id, &new.model_id, expected_conversation_ids).await? {
+        return Ok(refused);
+    }
+    let profile_id = new.profile_id.clone();
+    let saved_profile = if profile_is_new {
+        profile_ops::insert(tx, profile.into_model(profile_id)).await?
+    } else {
+        if profile_ops::get(tx, &profile_id).await?.is_none() {
+            return Ok(GuardedModelConfigMutation::ModelChanged);
         }
-        if !db::ops::plan_review::barrier_conversations_for_model(conn, new.provider_id, new.model_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-            .is_empty()
-        {
-            return Ok(GuardedModelConfigMutation::PlanReviewBarrier);
-        }
-        let saved_profile = if profile_is_new {
-            db::ops::model_profile::insert(conn, &profile.insert(profile_id))?
-        } else {
-            if db::ops::model_profile::get(conn, profile_id)?.is_none() {
-                return Ok(GuardedModelConfigMutation::ModelChanged);
-            }
-            db::ops::model_profile::update(conn, profile_id, &profile.changeset())?
-        };
-        let row = db::ops::model_config::upsert(conn, new)?;
-        Ok(GuardedModelConfigMutation::Applied((row, saved_profile)))
-    })
+        profile_ops::update(tx, &profile_id, profile.into_changeset()).await?
+    };
+    let row = config_ops::upsert(tx, new).await?;
+    let count = profile_model_counts(tx)
+        .await?
+        .get(&saved_profile.id)
+        .copied()
+        .unwrap_or_default();
+    Ok(GuardedModelConfigMutation::Applied((row, saved_profile, count)))
 }
 
 /// The profile half of a save, already encoded, so the transaction above can
-/// both insert and update it without re-deciding anything.
-struct ProfileWrite<'a> {
-    name: &'a str,
+/// either insert or update it without re-deciding anything.
+struct ProfileWrite {
+    name: String,
     context_window: i32,
     compact_threshold: i32,
     max_output_tokens: Option<i32>,
@@ -67,23 +96,23 @@ struct ProfileWrite<'a> {
     output_price: Option<meridian_core::decimal::Decimal>,
     cache_read_price: Option<meridian_core::decimal::Decimal>,
     cache_write_price: Option<meridian_core::decimal::Decimal>,
-    pricing_tiers: Option<&'a str>,
-    capability_overrides: Option<&'a str>,
+    pricing_tiers: Option<String>,
+    capability_overrides: Option<String>,
     now: i64,
 }
 
-impl<'a> ProfileWrite<'a> {
-    fn insert(&self, id: &'a str) -> ModelProfileInsert<'a> {
-        ModelProfileInsert {
+impl ProfileWrite {
+    fn into_model(self, id: String) -> model_profile::Model {
+        model_profile::Model {
             id,
             name: self.name,
             context_window: self.context_window,
             compact_threshold: self.compact_threshold,
             max_output_tokens: self.max_output_tokens,
-            input_price: self.input_price.clone(),
-            output_price: self.output_price.clone(),
-            cache_read_price: self.cache_read_price.clone(),
-            cache_write_price: self.cache_write_price.clone(),
+            input_price: self.input_price,
+            output_price: self.output_price,
+            cache_read_price: self.cache_read_price,
+            cache_write_price: self.cache_write_price,
             pricing_tiers: self.pricing_tiers,
             capability_overrides: self.capability_overrides,
             created_at: self.now,
@@ -91,16 +120,16 @@ impl<'a> ProfileWrite<'a> {
         }
     }
 
-    fn changeset(&self) -> ModelProfileChangeset<'a> {
+    fn into_changeset(self) -> ModelProfileChangeset {
         ModelProfileChangeset {
             name: self.name,
             context_window: self.context_window,
             compact_threshold: self.compact_threshold,
             max_output_tokens: self.max_output_tokens,
-            input_price: self.input_price.clone(),
-            output_price: self.output_price.clone(),
-            cache_read_price: self.cache_read_price.clone(),
-            cache_write_price: self.cache_write_price.clone(),
+            input_price: self.input_price,
+            output_price: self.output_price,
+            cache_read_price: self.cache_read_price,
+            cache_write_price: self.cache_write_price,
             pricing_tiers: self.pricing_tiers,
             capability_overrides: self.capability_overrides,
             updated_at: self.now,
@@ -108,33 +137,27 @@ impl<'a> ProfileWrite<'a> {
     }
 }
 
-fn delete_model_config_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+async fn delete_model_config_unless_plan_barrier(
+    tx: &WriteTx,
     id: &str,
     expected_provider_id: &str,
     expected_model_id: &str,
     expected_conversation_ids: &[String],
-) -> diesel::QueryResult<GuardedModelConfigMutation<()>> {
-    conn.immediate_transaction(|conn| {
-        let mut current = db::ops::conversation::all_ids(conn)?;
-        current.sort();
-        if current != expected_conversation_ids {
-            return Ok(GuardedModelConfigMutation::ConversationsChanged);
-        }
-        let Some(row) = db::ops::model_config::get(conn, id)? else {
-            return Ok(GuardedModelConfigMutation::ModelChanged);
-        };
-        if row.provider_id != expected_provider_id || row.model_id != expected_model_id {
-            return Ok(GuardedModelConfigMutation::ModelChanged);
-        }
-        if !db::ops::plan_review::barrier_conversations_for_model(conn, &row.provider_id, &row.model_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-            .is_empty()
-        {
-            return Ok(GuardedModelConfigMutation::PlanReviewBarrier);
-        }
-        db::ops::model_config::delete(conn, id).map(|_| GuardedModelConfigMutation::Applied(()))
-    })
+) -> Result<GuardedModelConfigMutation<()>, DbErr> {
+    if let Some(refused) =
+        model_config_barrier(tx, expected_provider_id, expected_model_id, expected_conversation_ids).await?
+    {
+        return Ok(refused);
+    }
+    let Some(row) = config_ops::get(tx, id).await? else {
+        return Ok(GuardedModelConfigMutation::ModelChanged);
+    };
+    if row.provider_id != expected_provider_id || row.model_id != expected_model_id {
+        return Ok(GuardedModelConfigMutation::ModelChanged);
+    }
+    config_ops::delete(tx, id)
+        .await
+        .map(|_| GuardedModelConfigMutation::Applied(()))
 }
 
 fn finish_guarded_model_config_mutation<T>(result: GuardedModelConfigMutation<T>) -> Result<T, String> {
@@ -148,6 +171,23 @@ fn finish_guarded_model_config_mutation<T>(result: GuardedModelConfigMutation<T>
             Err("The model configuration changed while the mutation was being prepared. Try again.".into())
         }
     }
+}
+
+/// How many providers reach each profile, for the responses that carry it.
+async fn profile_model_counts(db: &impl Snapshot) -> Result<HashMap<String, i64>, DbErr> {
+    Ok(profile_ops::list_with_model_counts(db)
+        .await?
+        .into_iter()
+        .map(|(profile, count)| (profile.id, count))
+        .collect())
+}
+
+/// Every conversation's id, sorted: which turn leases a model configuration
+/// mutation takes before it opens its write.
+async fn sorted_conversation_ids(db: &Db) -> Result<Vec<String>, String> {
+    let mut ids = conversation_ops::all_ids(db).await.map_err(|e| e.to_string())?;
+    ids.sort();
+    Ok(ids)
 }
 
 /// A nullable field that must still be present in the request object.
@@ -341,33 +381,21 @@ impl ModelConfigUpsertRequest {
 /// it and how many providers share that profile.
 #[tauri::command]
 pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<ModelConfigListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let rows = db::ops::model_config::list_by_provider_with_profiles(&mut conn, &provider_id)
-            .map_err(|error| error.to_string())?;
-        let counts = profile_model_counts(&mut conn)?;
-        rows.into_iter()
-            .map(|(row, profile)| {
-                let count = counts.get(&profile.id).copied().unwrap_or(0);
-                ModelConfigInfoResponse::from_rows(row, profile, count)
-            })
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// How many providers reach each profile, for the responses that carry it.
-fn profile_model_counts(
-    conn: &mut diesel::sqlite::SqliteConnection,
-) -> Result<std::collections::HashMap<String, i64>, String> {
-    Ok(db::ops::model_profile::list_with_model_counts(conn)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|(profile, count)| (profile.id, count))
-        .collect())
+    let (rows, counts) = app
+        .services()
+        .sea
+        .read(async |tx| {
+            let rows = config_ops::list_by_provider_with_profiles(tx, &provider_id).await?;
+            Ok::<_, DbErr>((rows, profile_model_counts(tx).await?))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    rows.into_iter()
+        .map(|(row, profile)| {
+            let count = counts.get(&profile.id).copied().unwrap_or_default();
+            ModelConfigInfoResponse::from_rows(row, profile, count)
+        })
+        .collect()
 }
 
 /// The profiles a model page offers to point at.
@@ -377,18 +405,14 @@ fn profile_model_counts(
 /// reason the two tables are separate.
 #[tauri::command]
 pub async fn list_model_profiles(app: tauri::AppHandle) -> Result<ModelProfileListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        db::ops::model_profile::list_with_model_counts(&mut conn)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(|(profile, count)| ModelProfileInfoResponse::from_row(profile, count))
-            .collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .read(async |tx| profile_ops::list_with_model_counts(tx).await)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|(profile, count)| ModelProfileInfoResponse::from_row(profile, count))
+        .collect()
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -403,21 +427,27 @@ pub async fn get_model_config(
     app: tauri::AppHandle,
     request: ModelConfigReadRequest,
 ) -> Result<Option<ModelConfigInfoResponse>, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let found = db::ops::model_config::get_with_profile(&mut conn, &request.provider_id, &request.model_id)
-            .map_err(|error| error.to_string())?;
-        let Some((row, profile)) = found else {
-            return Ok(None);
-        };
-        let counts = profile_model_counts(&mut conn)?;
-        let count = counts.get(&profile.id).copied().unwrap_or(0);
-        ModelConfigInfoResponse::from_rows(row, profile, count).map(Some)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let found = app
+        .services()
+        .sea
+        .read(async |tx| {
+            let Some((row, profile)) =
+                config_ops::get_with_profile(tx, &request.provider_id, &request.model_id).await?
+            else {
+                return Ok::<_, DbErr>(None);
+            };
+            let count = profile_model_counts(tx)
+                .await?
+                .get(&profile.id)
+                .copied()
+                .unwrap_or_default();
+            Ok(Some((row, profile, count)))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    found
+        .map(|(row, profile, count)| ModelConfigInfoResponse::from_rows(row, profile, count))
+        .transpose()
 }
 
 #[tauri::command]
@@ -427,185 +457,128 @@ pub async fn save_model_config(
 ) -> Result<ModelConfigInfoResponse, String> {
     let request = request.validate()?;
     let services = app.services();
-    let pool = services.db.clone();
-    let mut conversation_ids = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::conversation::all_ids(&mut conn).map_err(|error| error.to_string())
-        })
-        .await
-        .map_err(|error| error.to_string())??
-    };
-    conversation_ids.sort();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the save on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a model configuration save")
         .map_err(|busy| busy.to_string())?;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let id = uuid::Uuid::new_v4().to_string();
-        let now = now_ms();
-        // A profile the request did not name is a new one. The id is minted
-        // here rather than by the client so a retried save cannot create two.
-        let profile_is_new = request.profile.id.0.is_none();
-        let profile_id = request
-            .profile
-            .id
-            .0
-            .clone()
-            .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-        let profile_tiers = (!request.profile.pricing_tiers.is_empty())
-            .then(|| serde_json::to_string(&request.profile.pricing_tiers).expect("PriceTier always serializes"));
-        let capability_overrides = request
-            .profile
-            .capability_overrides
-            .0
-            .as_ref()
-            .map(ProviderCapabilityOverrides::storage_json)
-            .transpose()?;
-        let profile = ProfileWrite {
-            name: request.profile.name.trim(),
-            context_window: request.profile.context_window,
-            compact_threshold: request.profile.compact_threshold,
-            max_output_tokens: request.profile.max_output_tokens.0,
-            input_price: request.profile.input_price.0.clone(),
-            output_price: request.profile.output_price.0.clone(),
-            cache_read_price: request.profile.cache_read_price.0.clone(),
-            cache_write_price: request.profile.cache_write_price.0.clone(),
-            pricing_tiers: profile_tiers.as_deref(),
-            capability_overrides: capability_overrides.as_deref(),
-            now,
-        };
+    let now = now_ms();
+    // A profile the request did not name is a new one. The id is minted here
+    // rather than by the client so a retried save cannot create two.
+    let profile_is_new = request.profile.id.0.is_none();
+    let profile_id = request
+        .profile
+        .id
+        .0
+        .clone()
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let profile_tiers = (!request.profile.pricing_tiers.is_empty())
+        .then(|| serde_json::to_string(&request.profile.pricing_tiers).expect("PriceTier always serializes"));
+    let capability_overrides = request
+        .profile
+        .capability_overrides
+        .0
+        .as_ref()
+        .map(ProviderCapabilityOverrides::storage_json)
+        .transpose()?;
+    let profile = ProfileWrite {
+        name: request.profile.name.trim().to_owned(),
+        context_window: request.profile.context_window,
+        compact_threshold: request.profile.compact_threshold,
+        max_output_tokens: request.profile.max_output_tokens.0,
+        input_price: request.profile.input_price.0,
+        output_price: request.profile.output_price.0,
+        cache_read_price: request.profile.cache_read_price.0,
+        cache_write_price: request.profile.cache_write_price.0,
+        pricing_tiers: profile_tiers,
+        capability_overrides,
+        now,
+    };
 
-        let pricing_tiers = (!request.pricing_tiers.is_empty())
-            .then(|| serde_json::to_string(&request.pricing_tiers).expect("PriceTier always serializes"));
-        let server_tools = request
-            .server_tools
-            .0
-            .as_ref()
-            .map(serde_json::to_string)
-            .transpose()
-            .map_err(|error| format!("cannot encode model_config.server_tools: {error}"))?;
-        let new = ModelConfigInsert {
-            id: &id,
-            provider_id: &request.provider_id,
-            model_id: &request.model_id,
-            profile_id: &profile_id,
-            overrides_pricing: request.overrides_pricing,
-            input_price: request.input_price.0.clone(),
-            output_price: request.output_price.0.clone(),
-            cache_read_price: request.cache_read_price.0.clone(),
-            cache_write_price: request.cache_write_price.0.clone(),
-            pricing_tiers: pricing_tiers.as_deref(),
-            server_tools: server_tools.as_deref(),
-            server_tool_price: request.server_tool_price.0.clone(),
-            created_at: now,
-            updated_at: now,
-        };
-        let (row, saved_profile) = finish_guarded_model_config_mutation(
-            upsert_model_config_unless_plan_barrier(
-                &mut conn,
-                &conversation_ids,
-                &profile_id,
-                profile_is_new,
-                &profile,
-                &new,
-            )
-            .map_err(|error| error.to_string())?,
-        )?;
-        let counts = profile_model_counts(&mut conn)?;
-        let count = counts.get(&saved_profile.id).copied().unwrap_or(0);
-        ModelConfigInfoResponse::from_rows(row, saved_profile, count)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let pricing_tiers = (!request.pricing_tiers.is_empty())
+        .then(|| serde_json::to_string(&request.pricing_tiers).expect("PriceTier always serializes"));
+    let server_tools = request
+        .server_tools
+        .0
+        .as_ref()
+        .map(serde_json::to_string)
+        .transpose()
+        .map_err(|error| format!("cannot encode model_config.server_tools: {error}"))?;
+    let new = model_config::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        provider_id: request.provider_id,
+        model_id: request.model_id,
+        profile_id,
+        overrides_pricing: SqlBool::from(request.overrides_pricing),
+        input_price: request.input_price.0,
+        output_price: request.output_price.0,
+        cache_read_price: request.cache_read_price.0,
+        cache_write_price: request.cache_write_price.0,
+        pricing_tiers,
+        server_tools,
+        server_tool_price: request.server_tool_price.0,
+        created_at: now,
+        updated_at: now,
+    };
+    let guarded = services
+        .sea
+        .write(async |tx| {
+            upsert_model_config_unless_plan_barrier(tx, &conversation_ids, profile_is_new, profile, new).await
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    let (row, saved_profile, count) = finish_guarded_model_config_mutation(guarded)?;
+    ModelConfigInfoResponse::from_rows(row, saved_profile, count)
 }
 
 #[tauri::command]
 pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let (provider_id, model_id, mut conversation_ids) = {
-        let pool = pool.clone();
-        let id = id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let row = db::ops::model_config::get(&mut conn, &id)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| "model configuration was not found".to_string())?;
-            let ids = db::ops::conversation::all_ids(&mut conn).map_err(|error| error.to_string())?;
-            Ok::<_, String>((row.provider_id, row.model_id, ids))
-        })
+    // pool-read-before-write: the row only names the model whose barrier the
+    // write checks; the write re-reads it and refuses on any difference.
+    let row = config_ops::get(&services.sea, &id)
         .await
-        .map_err(|error| error.to_string())??
-    };
-    conversation_ids.sort();
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| "model configuration was not found".to_string())?;
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the delete on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a model configuration delete")
         .map_err(|busy| busy.to_string())?;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        finish_guarded_model_config_mutation(
-            delete_model_config_unless_plan_barrier(&mut conn, &id, &provider_id, &model_id, &conversation_ids)
-                .map_err(|error| error.to_string())?,
-        )
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let guarded = services
+        .sea
+        .write(async |tx| {
+            delete_model_config_unless_plan_barrier(tx, &id, &row.provider_id, &row.model_id, &conversation_ids).await
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    finish_guarded_model_config_mutation(guarded)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use meridian_core::db;
 
-    fn seed_provider(conn: &mut diesel::sqlite::SqliteConnection) {
-        db::ops::provider::create_provider(
-            conn,
-            &db::models::provider::ProviderInsert {
-                id: "provider",
-                name: "Provider",
-                provider_type: "openai",
-                base_url: "https://example.invalid",
-                is_enabled: 1,
-                sort_order: 0,
-                created_at: 1,
-                updated_at: 1,
-                api_format: "responses",
-                catalog_id: None,
-                credential_kind: "api_key",
-                transport_profile: "standard",
-                icon: None,
-                codex_request_shape: 0,
-            },
+    async fn seed_provider(sea: &Db) {
+        db::sea::execute_for_tests(
+            sea,
+            "INSERT INTO providers (id, name, base_url, created_at, updated_at)
+                 VALUES ('provider', 'Provider', 'https://example.invalid', 1, 1)",
         )
+        .await
         .unwrap();
     }
 
+    /// The review is seeded through the Diesel plan-review ops, which have not
+    /// moved, on a file both pools open; the guarded mutations run on SeaORM.
     fn seed_pending_model_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        db::ops::provider::create_provider(
-            conn,
-            &db::models::provider::ProviderInsert {
-                id: "provider",
-                name: "Provider",
-                provider_type: "openai",
-                base_url: "https://example.invalid",
-                is_enabled: 1,
-                sort_order: 0,
-                created_at: 1,
-                updated_at: 1,
-                api_format: "responses",
-                catalog_id: None,
-                credential_kind: "api_key",
-                transport_profile: "standard",
-                icon: None,
-                codex_request_shape: 0,
-            },
-        )
-        .unwrap();
         db::ops::conversation::create_conversation(conn, "conversation-1", None, None, None, 1).unwrap();
         let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
             provider_id: "provider".into(),
@@ -651,13 +624,13 @@ mod tests {
         .unwrap();
     }
 
-    fn model_insert<'a>() -> ModelConfigInsert<'a> {
-        ModelConfigInsert {
-            id: "model-config-1",
-            provider_id: "provider",
-            model_id: "model",
-            profile_id: "profile-1",
-            overrides_pricing: false,
+    fn model_row() -> model_config::Model {
+        model_config::Model {
+            id: "model-config-1".into(),
+            provider_id: "provider".into(),
+            model_id: "model".into(),
+            profile_id: "profile-1".into(),
+            overrides_pricing: SqlBool::FALSE,
             input_price: None,
             output_price: None,
             cache_read_price: None,
@@ -670,9 +643,9 @@ mod tests {
         }
     }
 
-    fn profile_write<'a>() -> ProfileWrite<'a> {
+    fn profile_write() -> ProfileWrite {
         ProfileWrite {
-            name: "Model",
+            name: "Model".into(),
             context_window: 128_000,
             compact_threshold: 100_000,
             max_output_tokens: None,
@@ -744,41 +717,37 @@ mod tests {
     }
 
     /// Both halves of a save land, and they land together.
-    #[test]
-    fn a_save_writes_the_profile_and_the_row_in_one_transaction() {
-        let pool = db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        seed_provider(&mut conn);
+    #[tokio::test]
+    async fn a_save_writes_the_profile_and_the_row_in_one_transaction() {
+        let sea = db::sea::sea_test_db().await;
+        seed_provider(&sea).await;
 
-        let applied = upsert_model_config_unless_plan_barrier(
-            &mut conn,
-            &[],
-            "profile-1",
-            true,
-            &profile_write(),
-            &model_insert(),
-        )
-        .unwrap();
-        assert!(matches!(applied, GuardedModelConfigMutation::Applied(_)));
+        let applied = sea
+            .write(async |tx| {
+                upsert_model_config_unless_plan_barrier(tx, &[], true, profile_write(), model_row()).await
+            })
+            .await
+            .unwrap();
+        let GuardedModelConfigMutation::Applied((row, profile, count)) = applied else {
+            panic!("nothing blocks this save: {applied:?}");
+        };
         assert_eq!(
-            db::ops::model_profile::get(&mut conn, "profile-1")
-                .unwrap()
-                .unwrap()
-                .name,
-            "Model"
+            (row.profile_id.as_str(), profile.name.as_str(), count),
+            ("profile-1", "Model", 1)
         );
 
         // Naming a profile that is not there is a stale form, not a new profile:
         // minting one under an id the client chose would let a retry create two.
-        let stale = upsert_model_config_unless_plan_barrier(
-            &mut conn,
-            &[],
-            "profile-gone",
-            false,
-            &profile_write(),
-            &model_insert(),
-        )
-        .unwrap();
+        let stale = sea
+            .write(async |tx| {
+                let gone = model_config::Model {
+                    profile_id: "profile-gone".into(),
+                    ..model_row()
+                };
+                upsert_model_config_unless_plan_barrier(tx, &[], false, profile_write(), gone).await
+            })
+            .await
+            .unwrap();
         assert!(matches!(stale, GuardedModelConfigMutation::ModelChanged));
     }
 
@@ -792,35 +761,70 @@ mod tests {
         assert!(parsed.input_price.0.is_none());
     }
 
-    #[test]
-    fn active_review_runtime_blocks_exact_model_config_save_and_delete() {
-        let pool = db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        seed_pending_model_review(&mut conn);
+    #[tokio::test]
+    async fn active_review_runtime_blocks_exact_model_config_save_and_delete() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        seed_provider(&sea).await;
+        seed_pending_model_review(&mut pool.get().unwrap());
         let conversations = vec!["conversation-1".to_string()];
 
-        let save = upsert_model_config_unless_plan_barrier(
-            &mut conn,
-            &conversations,
-            "profile-1",
-            true,
-            &profile_write(),
-            &model_insert(),
-        )
-        .unwrap();
+        let save = sea
+            .write(async |tx| {
+                upsert_model_config_unless_plan_barrier(tx, &conversations, true, profile_write(), model_row()).await
+            })
+            .await
+            .unwrap();
         assert!(matches!(save, GuardedModelConfigMutation::PlanReviewBarrier));
-
-        db::ops::model_profile::insert(&mut conn, &profile_write().insert("profile-1")).unwrap();
-        db::ops::model_config::upsert(&mut conn, &model_insert()).unwrap();
-        let delete =
-            delete_model_config_unless_plan_barrier(&mut conn, "model-config-1", "provider", "model", &conversations)
-                .unwrap();
-        assert!(matches!(delete, GuardedModelConfigMutation::PlanReviewBarrier));
-        assert!(
-            db::ops::model_config::get(&mut conn, "model-config-1")
-                .unwrap()
-                .is_some()
+        assert_eq!(
+            profile_ops::get(&sea, "profile-1").await.unwrap(),
+            None,
+            "nothing was written"
         );
+
+        // Another model on the same provider is not what the review froze.
+        let elsewhere = sea
+            .write(async |tx| {
+                let other = model_config::Model {
+                    model_id: "other-model".into(),
+                    ..model_row()
+                };
+                upsert_model_config_unless_plan_barrier(tx, &conversations, true, profile_write(), other).await
+            })
+            .await
+            .unwrap();
+        assert!(matches!(elsewhere, GuardedModelConfigMutation::Applied(_)));
+
+        sea.write(async |tx| {
+            profile_ops::insert(tx, profile_write().into_model("profile-2".into())).await?;
+            config_ops::upsert(
+                tx,
+                model_config::Model {
+                    id: "model-config-2".into(),
+                    profile_id: "profile-2".into(),
+                    ..model_row()
+                },
+            )
+            .await
+        })
+        .await
+        .unwrap();
+        let delete = sea
+            .write(async |tx| {
+                delete_model_config_unless_plan_barrier(tx, "model-config-2", "provider", "model", &conversations).await
+            })
+            .await
+            .unwrap();
+        assert!(matches!(delete, GuardedModelConfigMutation::PlanReviewBarrier));
+        assert!(config_ops::get(&sea, "model-config-2").await.unwrap().is_some());
+
+        let stale = sea
+            .write(async |tx| {
+                delete_model_config_unless_plan_barrier(tx, "model-config-2", "provider", "model", &[]).await
+            })
+            .await
+            .unwrap();
+        assert!(matches!(stale, GuardedModelConfigMutation::ConversationsChanged));
     }
 
     #[test]

@@ -9,13 +9,11 @@ use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, provider, skill,
-    tool_category, tool_preset,
+    assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, model_config,
+    model_profile, provider, skill, tool_category, tool_preset,
 };
 use meridian_core::db::models::{
     conversation::ConversationRow,
-    model_config::ModelConfigRow,
-    model_profile::ModelProfileRow,
     project::ProjectRow,
     queue::QueuedPromptRow,
     todo::{TodoItemRow, TodoListRow, TodoListView},
@@ -666,7 +664,7 @@ pub struct ModelProfileInfoResponse {
 }
 
 impl ModelProfileInfoResponse {
-    pub fn from_row(row: ModelProfileRow, model_count: i64) -> Result<Self, String> {
+    pub fn from_row(row: model_profile::Model, model_count: i64) -> Result<Self, String> {
         let pricing_tiers = meridian_core::agent::pricing::parse_tiers(row.pricing_tiers.as_deref())
             .map_err(|error| error.to_string())?;
         let capability_overrides = row
@@ -734,7 +732,11 @@ pub struct ModelConfigInfoResponse {
 }
 
 impl ModelConfigInfoResponse {
-    pub fn from_rows(row: ModelConfigRow, profile: ModelProfileRow, model_count: i64) -> Result<Self, String> {
+    pub fn from_rows(
+        row: model_config::Model,
+        profile: model_profile::Model,
+        model_count: i64,
+    ) -> Result<Self, String> {
         let resolved = meridian_core::agent::model_config::effective(&row, &profile);
         let effective_pricing = ModelPricingInfoResponse {
             input_price: resolved.input_price,
@@ -753,7 +755,7 @@ impl ModelConfigInfoResponse {
             provider_id: row.provider_id,
             model_id: row.model_id,
             profile: ModelProfileInfoResponse::from_row(profile, model_count)?,
-            overrides_pricing: row.overrides_pricing,
+            overrides_pricing: row.overrides_pricing.get(),
             input_price: row.input_price,
             output_price: row.output_price,
             cache_read_price: row.cache_read_price,
@@ -1210,13 +1212,13 @@ mod tests {
         assert_eq!(value["is_enabled"], true);
     }
 
-    fn model_config_row() -> ModelConfigRow {
-        ModelConfigRow {
+    fn model_config_row() -> model_config::Model {
+        model_config::Model {
             id: "config".into(),
             provider_id: "provider".into(),
             model_id: "model".into(),
             profile_id: "profile".into(),
-            overrides_pricing: false,
+            overrides_pricing: meridian_core::db::types::SqlBool::FALSE,
             input_price: None,
             output_price: None,
             cache_read_price: None,
@@ -1229,8 +1231,8 @@ mod tests {
         }
     }
 
-    fn model_profile_row() -> ModelProfileRow {
-        ModelProfileRow {
+    fn model_profile_row() -> model_profile::Model {
+        model_profile::Model {
             id: "profile".into(),
             name: "Model".into(),
             context_window: 128_000,
@@ -1249,7 +1251,7 @@ mod tests {
         }
     }
 
-    fn model_config_response(row: ModelConfigRow) -> Result<ModelConfigInfoResponse, String> {
+    fn model_config_response(row: model_config::Model) -> Result<ModelConfigInfoResponse, String> {
         ModelConfigInfoResponse::from_rows(row, model_profile_row(), 1)
     }
 

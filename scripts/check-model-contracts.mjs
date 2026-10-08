@@ -1828,11 +1828,13 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
   for (const declaration of rustStructDeclarations(productionSource)) {
     const type = rustStructFields(productionSource, declaration.name)?.get('server_tools')
     if (type == null || /\bServerToolKind\b/.test(type)) continue
-    // The storage representations: the row itself, the resolved view the turn
-    // loop reads, and the flat shape tests seed through. All three hold the
-    // JSON array as text and none of them crosses the command boundary.
+    // The storage representations: the Diesel row and the SeaORM entity, the
+    // resolved view the turn loop reads, and the flat shape tests seed through.
+    // All four hold the JSON array as text and none of them crosses the command
+    // boundary (the entity rules below keep a Model out of every command).
     const storageFiles = [
       'src-tauri/crates/core/src/db/models/model_config.rs',
+      'src-tauri/crates/core/src/db/entity/model_config.rs',
       'src-tauri/crates/core/src/agent/model_config.rs',
       'src-tauri/crates/core/src/db/ops/model_config.rs',
     ]
