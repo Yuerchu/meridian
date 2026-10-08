@@ -395,9 +395,9 @@ impl TurnGuard<'_> {
     ///
     /// `Err` means the id is already on record, and the caller must not go on
     /// to close that turn out.
-    async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
+    async fn open_record(&self, db: &meridian_core::db::sea::cap::Db) -> Result<(), String> {
         turn_record::begin_triggered(
-            pool,
+            db,
             &self.turn_id,
             self.conversation_id,
             self.origin,
@@ -858,7 +858,7 @@ pub async fn run_turn(
     if let Err(ref e) = result
         && recorded.load(Ordering::Relaxed)
     {
-        turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
+        turn_record::finish(&services.sea, &turn_id, TurnStatus::Failed, Some(e)).await;
     }
 
     // After the record is closed, and reading it back rather than being told:
@@ -1018,7 +1018,7 @@ async fn chat_inner(
     // Refused, not logged, if the id is already on record: these are minted by
     // the front end, and a replayed one would rewrite the finished turn it
     // names and file this turn's messages under it.
-    stop_guard.open_record(&pool).await?;
+    stop_guard.open_record(&services.sea).await?;
     recorded.store(true, Ordering::Relaxed);
 
     // Whatever background tasks ended since the model last heard, told before
@@ -1034,7 +1034,7 @@ async fn chat_inner(
     if origin == TurnOrigin::Desktop && replaces.is_none() {
         let told = meridian_core::background::claim(&services.sea, &conversation_id, &turn_id).await?;
         if wake && told.is_empty() {
-            turn_record::finish(&pool, &turn_id, TurnStatus::Done, None).await;
+            turn_record::finish(&services.sea, &turn_id, TurnStatus::Done, None).await;
             stop_guard.disarm();
             return Ok(());
         }
@@ -1165,7 +1165,8 @@ async fn chat_inner(
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
     let interrupted =
-        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await?;
+        meridian_core::agent::interrupted::load_block(&services.sea, &services.turns, &conversation_id, &turn_id)
+            .await?;
     // Everything the assistant may do this turn, and everything it is told.
     // Shared with the OneBot loop and the token estimator so the three cannot
     // drift apart again. The memory block is deliberately not part of it: that
@@ -1566,7 +1567,7 @@ async fn chat_inner(
             // that follows reported as a compaction that never finished, and
             // tell the model its history might be half-rewritten when it is not.
             let compaction = engine::in_phase(
-                &pool,
+                &services.sea,
                 &turn_id,
                 TurnPhase::Compacting,
                 None,
@@ -1991,7 +1992,7 @@ async fn chat_inner(
     let steering = engine::Chain(vec![&interjections]);
     let outcome = engine::run_turn(
         &engine::TurnServices {
-            pool: &pool,
+            db: &services.sea,
             tools: tool_registry,
             mcp: &mcp,
             redaction: &services.redaction,
@@ -2090,7 +2091,7 @@ async fn chat_inner(
         (TurnStatus::Done, None)
     };
     if waiting_review.is_none() {
-        turn_record::finish(&pool, &turn_id, status, error).await;
+        turn_record::finish(&services.sea, &turn_id, status, error).await;
     }
 
     let stop_reason = if turn_aborted {

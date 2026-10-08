@@ -866,7 +866,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     // reported to it. Reading costs nothing — only a request that reaches a
     // provider marks anything as told, and an estimate sends none.
     let interrupted_block =
-        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, "").await?;
+        meridian_core::agent::interrupted::load_block(&services.sea, &services.turns, &conversation_id, "").await?;
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.

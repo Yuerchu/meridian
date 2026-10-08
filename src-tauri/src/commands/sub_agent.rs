@@ -204,7 +204,7 @@ impl DesktopSubAgents {
             SubAgentStatus::Aborted => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED.to_string())),
             SubAgentStatus::Failed => (TurnStatus::Failed, outcome.reply.as_ref().err().cloned()),
         };
-        turn_record::finish(&self.pool, &turn_id, stored, error.as_deref()).await;
+        turn_record::finish(&self.services.sea, &turn_id, stored, error.as_deref()).await;
 
         // Whatever was typed at the run and never reached it. Closing the inbox
         // is what makes this the last word: nothing can be added after it, so
@@ -255,7 +255,7 @@ impl DesktopSubAgents {
         let mut cursor = final_cursor.map(str::to_string);
         for item in leftover {
             match engine::write_steering(
-                &self.pool,
+                &self.services.sea,
                 sub_conversation_id,
                 turn_id,
                 &item.text,
@@ -561,7 +561,7 @@ impl DesktopSubAgents {
 
         engine::run_turn(
             &engine::TurnServices {
-                pool: &self.pool,
+                db: &self.services.sea,
                 tools: &self.registry,
                 mcp: &self.mcp,
                 redaction: &self.services.redaction,
