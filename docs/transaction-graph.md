@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：162
-- Diesel ops 调用点（db/ops 之外）：687
-- Diesel API 引用：1077
+- 事务根（非测试）：163
+- Diesel ops 调用点（db/ops 之外）：667
+- Diesel API 引用：1061
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -174,10 +174,11 @@
 | `src-tauri/src/commands/project.rs` › `delete_project_unless_plan_barrier` | diesel-immediate | conversation, memory, plan_review, project |
 | `src-tauri/src/commands/project.rs` › `update_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review, project |
 | `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
-| `src-tauri/src/commands/provider.rs` › `delete_provider_unless_plan_barrier` | diesel-immediate | conversation, plan_review, provider |
+| `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |
+| `src-tauri/src/commands/provider.rs` › `delete_provider` | sea-write | conversation, plan_review, provider |
 | `src-tauri/src/commands/provider.rs` › `fetch_provider_models` | sea-write | cached_model |
-| `src-tauri/src/commands/provider.rs` › `set_provider_key` | diesel-immediate | cached_model, conversation, plan_review |
-| `src-tauri/src/commands/provider.rs` › `update_provider_unless_plan_barrier` | diesel-immediate | cached_model, conversation, plan_review, provider |
+| `src-tauri/src/commands/provider.rs` › `set_provider_key` | sea-write | cached_model, conversation, plan_review |
+| `src-tauri/src/commands/provider.rs` › `update_provider` | sea-write | cached_model, conversation, plan_review, provider |
 | `src-tauri/src/commands/queue.rs` › `enqueue_unless_plan_barrier` | diesel-immediate | plan_review, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/queue.rs` › `release_unless_plan_barrier` | diesel-immediate | plan_review, queue |
 | `src-tauri/src/commands/skill.rs` › `create_skill` | sea-write | skill |

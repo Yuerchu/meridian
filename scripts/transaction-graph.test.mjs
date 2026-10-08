@@ -597,6 +597,26 @@ test('the same read inside the write, a justified one, and test code are not R5'
   assert.deepEqual(problems, [])
 })
 
+test('a justification covers the read right after it, not every read in the function', () => {
+  // 2026-10-08: a marker written for the conversation-id read in
+  // update_provider also excused a provider read added later in the same
+  // function, three lines above its write; the checker stayed green.
+  const problems = problemsFor({
+    [`${SHELL}/commands/x.rs`]: `
+      use meridian_core::db::sea::ops;
+      async fn update(services: &Services) -> Result<(), DbErr> {
+          // pool-read-before-write: these ids only pick the leases; the write re-reads them.
+          let ids = ops::sea_read(&services.sea).await?;
+          take_leases(&ids);
+
+          let current = ops::sea_read(&services.sea).await?;
+          services.sea.write(async |tx| ops::sea_op(tx).await).await
+      }`,
+  })
+  assert.equal(problems.length, 1, problems.join('\n'))
+  assert.match(problems[0], /^R5 .*x\.rs:8: sea_read\(services\.sea\)/)
+})
+
 test('a chain rustfmt broke across lines is still the same receiver', () => {
   const [root] = transactionRoots(
     blank(`fn f() { services\n        .sea\n        .write(async |tx| ops::sea_op(tx).await) }`),

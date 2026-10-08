@@ -9,8 +9,8 @@ use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, skill, tool_category,
-    tool_preset,
+    custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, provider, skill,
+    tool_category, tool_preset,
 };
 use meridian_core::db::models::{
     assistant::AssistantRow,
@@ -18,7 +18,6 @@ use meridian_core::db::models::{
     model_config::ModelConfigRow,
     model_profile::ModelProfileRow,
     project::ProjectRow,
-    provider::ProviderRow,
     queue::QueuedPromptRow,
     todo::{TodoItemRow, TodoListRow, TodoListView},
 };
@@ -849,32 +848,33 @@ pub struct ProviderInfoResponse {
     pub codex_request_shape: bool,
 }
 
-impl TryFrom<ProviderRow> for ProviderInfoResponse {
+impl TryFrom<provider::Model> for ProviderInfoResponse {
     type Error = String;
 
-    fn try_from(row: ProviderRow) -> Result<Self, Self::Error> {
+    /// Each selector decoded at the read; what is left to check is that the
+    /// four make a combination the registry serves.
+    fn try_from(row: provider::Model) -> Result<Self, Self::Error> {
         meridian_core::provider::registry::validate_stored_contract(
-            &row.provider_type,
-            &row.api_format,
-            &row.transport_profile,
-            &row.credential_kind,
+            row.provider_type.as_str(),
+            row.api_format.as_str(),
+            row.transport_profile.as_str(),
+            row.credential_kind.as_str(),
         )?;
-        let is_enabled = decode_sqlite_bool(row.is_enabled, "provider.is_enabled")?;
         Ok(Self {
             id: row.id,
             name: row.name,
-            provider_type: meridian_core::provider::registry::ProviderType::parse(&row.provider_type)?,
+            provider_type: row.provider_type,
             base_url: row.base_url,
-            is_enabled,
+            is_enabled: row.is_enabled.get(),
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
-            api_format: meridian_core::provider::registry::ApiFormat::parse(&row.api_format)?,
+            api_format: row.api_format,
             catalog_id: row.catalog_id,
-            credential_kind: meridian_core::provider::registry::CredentialKind::parse(&row.credential_kind)?,
-            transport_profile: meridian_core::provider::registry::TransportProfile::parse(&row.transport_profile)?,
+            credential_kind: row.credential_kind,
+            transport_profile: row.transport_profile,
             icon: row.icon,
-            codex_request_shape: decode_sqlite_bool(row.codex_request_shape, "provider.codex_request_shape")?,
+            codex_request_shape: row.codex_request_shape.get(),
         })
     }
 }

@@ -230,13 +230,13 @@ pub async fn confirm_sticker_semantics(
 
 #[tauri::command]
 pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Result<EmojiInfoResponse, String> {
-    // pool-read-before-write: a model call sits between the read and the write,
-    // which must not hold the write lock; the write only fills the suggestion
-    // fields and leaves what a person confirmed alone.
     let services = app.services();
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
     let data_dir = services.paths.data_dir.clone();
+    // pool-read-before-write: a model call sits between the read and the write,
+    // which must not hold the write lock; the write only fills the suggestion
+    // fields and leaves what a person confirmed alone.
     let sticker = emoji_ops::get_emoji(&services.sea, &id)
         .await
         .map_err(|e| e.to_string())?

@@ -3,7 +3,15 @@ use crate::commands::entity_response::{ProviderInfoResponse, ProviderListRespons
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::agent::{get_provider_api_key, provider_secret_name};
 use meridian_core::db;
-use meridian_core::db::models::provider::{ProviderChangeset, ProviderInsert};
+use meridian_core::db::entity::provider;
+use meridian_core::db::entity::provider::ProviderChangeset;
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::WriteTx;
+use meridian_core::db::sea::ops::{
+    cached_model as cached_ops, conversation as conversation_ops, plan_review as plan_review_ops,
+    provider as provider_ops,
+};
+use meridian_core::db::types::SqlBool;
 use meridian_core::decimal::Decimal;
 use meridian_core::provider::registry::{ApiFormat, CredentialKind, ProviderType, TransportProfile};
 use meridian_core::provider::{ServerToolKind, ThinkingStyle};
@@ -20,51 +28,66 @@ enum GuardedProviderMutation<T> {
     ConversationsChanged,
 }
 
-fn update_provider_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+/// What stops a provider mutation before it writes anything: the conversation
+/// set having changed since the caller took its leases, or a plan review
+/// whose blocked continuation is frozen on this provider. Run first in the
+/// mutation's own write, so the answer still holds when the write lands.
+async fn provider_barrier<T>(
+    tx: &WriteTx,
     provider_id: &str,
     expected_conversation_ids: &[String],
-    changeset: &ProviderChangeset,
-    clear_cached_models: bool,
-) -> diesel::QueryResult<GuardedProviderMutation<db::models::provider::ProviderRow>> {
-    conn.immediate_transaction(|conn| {
-        let mut current = db::ops::conversation::all_ids(conn)?;
-        current.sort();
-        if current != expected_conversation_ids {
-            return Ok(GuardedProviderMutation::ConversationsChanged);
-        }
-        if !db::ops::plan_review::barrier_conversations_for_provider(conn, provider_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-            .is_empty()
-        {
-            return Ok(GuardedProviderMutation::PlanReviewBarrier);
-        }
-        if clear_cached_models {
-            db::ops::cached_model::delete_by_provider(conn, provider_id)?;
-        }
-        db::ops::provider::update_provider(conn, provider_id, changeset).map(GuardedProviderMutation::Applied)
-    })
+) -> Result<Option<GuardedProviderMutation<T>>, DbErr> {
+    let mut current = conversation_ops::all_ids(tx).await?;
+    current.sort();
+    if current != expected_conversation_ids {
+        return Ok(Some(GuardedProviderMutation::ConversationsChanged));
+    }
+    if !plan_review_ops::barrier_conversations_for_provider(tx, provider_id)
+        .await?
+        .is_empty()
+    {
+        return Ok(Some(GuardedProviderMutation::PlanReviewBarrier));
+    }
+    Ok(None)
 }
 
-fn delete_provider_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+async fn update_provider_unless_plan_barrier(
+    tx: &WriteTx,
     provider_id: &str,
     expected_conversation_ids: &[String],
-) -> diesel::QueryResult<GuardedProviderMutation<()>> {
-    conn.immediate_transaction(|conn| {
-        let mut current = db::ops::conversation::all_ids(conn)?;
-        current.sort();
-        if current != expected_conversation_ids {
-            return Ok(GuardedProviderMutation::ConversationsChanged);
-        }
-        if !db::ops::plan_review::barrier_conversations_for_provider(conn, provider_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-            .is_empty()
-        {
-            return Ok(GuardedProviderMutation::PlanReviewBarrier);
-        }
-        db::ops::provider::delete_provider(conn, provider_id).map(GuardedProviderMutation::Applied)
-    })
+    changeset: ProviderChangeset,
+    clear_cached_models: bool,
+) -> Result<GuardedProviderMutation<provider::Model>, DbErr> {
+    if let Some(refused) = provider_barrier(tx, provider_id, expected_conversation_ids).await? {
+        return Ok(refused);
+    }
+    if clear_cached_models {
+        cached_ops::delete_by_provider(tx, provider_id).await?;
+    }
+    provider_ops::update_provider(tx, provider_id, changeset)
+        .await
+        .map(GuardedProviderMutation::Applied)
+}
+
+async fn delete_provider_unless_plan_barrier(
+    tx: &WriteTx,
+    provider_id: &str,
+    expected_conversation_ids: &[String],
+) -> Result<GuardedProviderMutation<()>, DbErr> {
+    if let Some(refused) = provider_barrier(tx, provider_id, expected_conversation_ids).await? {
+        return Ok(refused);
+    }
+    provider_ops::delete_provider(tx, provider_id)
+        .await
+        .map(|_| GuardedProviderMutation::Applied(()))
+}
+
+/// Every conversation's id, sorted: which turn leases a provider mutation
+/// takes before it opens its write.
+async fn sorted_conversation_ids(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<String>, String> {
+    let mut ids = conversation_ops::all_ids(db).await.map_err(|e| e.to_string())?;
+    ids.sort();
+    Ok(ids)
 }
 
 fn finish_guarded_provider_mutation<T>(result: GuardedProviderMutation<T>) -> Result<T, String> {
@@ -465,15 +488,10 @@ pub async fn codex_auth_status(_app: tauri::AppHandle) -> Result<CodexAuthStatus
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<ProviderListResponse, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows = db::ops::provider::list_providers(&mut conn).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = provider_ops::list_providers(&app.services().sea)
+        .await
+        .map_err(|e| e.to_string())?;
+    rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[tauri::command]
@@ -482,7 +500,6 @@ pub async fn create_provider(
     request: ProviderCreateRequest,
 ) -> Result<ProviderInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let ProviderCreateRequest {
         name,
         provider_type,
@@ -495,8 +512,7 @@ pub async fn create_provider(
     let api_format = api_format.0.map(|format| format.as_str().to_owned());
     let catalog_id = catalog_id.0;
     let auth_option = auth_option.0;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
+    let row = {
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         // What the caller picked out of the catalog wins over anything inferred
@@ -562,34 +578,33 @@ pub async fn create_provider(
             transport_profile,
             credential_kind,
         )?;
-        let row = db::ops::provider::create_provider(
-            &mut conn,
-            &ProviderInsert {
-                id: &id,
-                name: &name,
-                provider_type: &provider_type,
-                base_url: &base_url,
-                is_enabled: 1,
-                sort_order: 0,
-                created_at: now,
-                updated_at: now,
-                api_format: format,
-                catalog_id: catalog.map(|entry| entry.id.as_str()),
-                credential_kind,
-                transport_profile,
-                // A new row follows its vendor's mark. Choosing another one is
-                // an edit on the provider page, not part of creating it.
-                icon: None,
-                // Likewise: a new row is an ordinary one until somebody says
-                // the address behind it is a relay for a Codex backend.
-                codex_request_shape: 0,
-            },
-        )
-        .map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        provider::Model {
+            id,
+            name,
+            provider_type: ProviderType::parse(&provider_type)?,
+            base_url,
+            is_enabled: SqlBool::TRUE,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+            api_format: ApiFormat::parse(format)?,
+            catalog_id: catalog.map(|entry| entry.id.clone()),
+            credential_kind: CredentialKind::parse(credential_kind)?,
+            transport_profile: TransportProfile::parse(transport_profile)?,
+            // A new row follows its vendor's mark. Choosing another one is
+            // an edit on the provider page, not part of creating it.
+            icon: None,
+            // Likewise: a new row is an ordinary one until somebody says
+            // the address behind it is a relay for a Codex backend.
+            codex_request_shape: SqlBool::FALSE,
+        }
+    };
+    services
+        .sea
+        .write(async |tx| provider_ops::create_provider(tx, row).await)
+        .await
+        .map_err(|e| e.to_string())?
+        .try_into()
 }
 
 #[tauri::command]
@@ -598,26 +613,18 @@ pub async fn update_provider(
     request: ProviderUpdateRequest,
 ) -> Result<ProviderInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let mut conversation_ids = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            db::ops::conversation::all_ids(&mut conn).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
-    conversation_ids.sort();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the mutation on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a provider update")
         .map_err(|busy| busy.to_string())?;
-    let provider_type = request.provider_type.map(|value| value.as_str().to_owned());
-    let api_format = request.api_format.map(|value| value.as_str().to_owned());
-    let credential_kind = request.credential_kind.map(|value| value.as_str().to_owned());
-    let transport_profile = request.transport_profile.map(|value| value.as_str().to_owned());
+    let provider_type = request.provider_type;
+    let api_format = request.api_format;
+    let credential_kind = request.credential_kind;
+    let transport_profile = request.transport_profile;
     // The transport decides which adapter answers and what the model may be
     // asked, so a change of login invalidates the cached model list the same
     // way a change of address does.
@@ -645,87 +652,80 @@ pub async fn update_provider(
         Some(RequiredNullable(None)) => Some(None),
         None => None,
     };
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let current = db::ops::provider::get_provider(&mut conn, &request.id).map_err(|e| e.to_string())?;
-        let final_api_format = api_format.as_deref().unwrap_or(&current.api_format);
-        let final_transport_profile = transport_profile.as_deref().unwrap_or(&current.transport_profile);
-        let final_credential_kind = credential_kind.as_deref().unwrap_or(&current.credential_kind);
-        meridian_core::provider::registry::validate_stored_contract(
-            provider_type.as_deref().unwrap_or(&current.provider_type),
-            final_api_format,
-            final_transport_profile,
-            final_credential_kind,
-        )?;
-        // A changed *type* re-decides the catalog identity; a changed address
-        // alone never does (a relay is still the vendor the user picked). The
-        // row starts as the catalog's default entry and is often re-typed into
-        // the vendor actually wanted — without this, that row kept the default
-        // vendor's logo and key page forever. Same conservative rule as
-        // creation and the migration backfill: exactly one entry fits or the
-        // answer is no identity, and `Some(None)` is how the changeset says so.
-        let catalog_id = match &provider_type {
-            Some(next_type) => {
-                let final_url = request.base_url.as_deref().unwrap_or(&current.base_url);
-                Some(meridian_core::provider::catalog::identify(next_type, final_url).map(str::to_string))
+    // The row the contract is checked against is read in the write that
+    // changes it: checked outside, a concurrent update could leave this one
+    // validated against values that are no longer there.
+    let guarded = services
+        .sea
+        .write(async |tx| {
+            let Some(current) = provider_ops::get_provider(tx, &request.id).await? else {
+                return Ok(Err(format!("provider `{}` does not exist", request.id)));
+            };
+            let checked = meridian_core::provider::registry::validate_stored_contract(
+                provider_type.unwrap_or(current.provider_type).as_str(),
+                api_format.unwrap_or(current.api_format).as_str(),
+                transport_profile.unwrap_or(current.transport_profile).as_str(),
+                credential_kind.unwrap_or(current.credential_kind).as_str(),
+            );
+            if let Err(refused) = checked {
+                return Ok(Err(refused));
             }
-            None => None,
-        };
-        let changeset = ProviderChangeset {
-            name: request.name,
-            provider_type,
-            base_url: request.base_url,
-            is_enabled: request.is_enabled.map(i32::from),
-            api_format,
-            updated_at: Some(now_ms()),
-            credential_kind,
-            transport_profile,
-            catalog_id,
-            icon,
-            codex_request_shape: request.codex_request_shape.map(i32::from),
-            ..Default::default()
-        };
-        let row = finish_guarded_provider_mutation(
-            update_provider_unless_plan_barrier(
-                &mut conn,
-                &request.id,
-                &conversation_ids,
-                &changeset,
-                should_clear_cache,
-            )
-            .map_err(|e| e.to_string())?,
-        )?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+            // A changed *type* re-decides the catalog identity; a changed address
+            // alone never does (a relay is still the vendor the user picked). The
+            // row starts as the catalog's default entry and is often re-typed into
+            // the vendor actually wanted — without this, that row kept the default
+            // vendor's logo and key page forever. Same conservative rule as
+            // creation and the migration backfill: exactly one entry fits or the
+            // answer is no identity, and `Some(None)` is how the changeset says so.
+            let catalog_id = match provider_type {
+                Some(next_type) => {
+                    let final_url = request.base_url.as_deref().unwrap_or(&current.base_url);
+                    Some(meridian_core::provider::catalog::identify(next_type.as_str(), final_url).map(str::to_string))
+                }
+                None => None,
+            };
+            let changeset = ProviderChangeset {
+                name: request.name.clone(),
+                provider_type,
+                base_url: request.base_url.clone(),
+                is_enabled: request.is_enabled.map(SqlBool::from),
+                api_format,
+                updated_at: Some(now_ms()),
+                credential_kind,
+                transport_profile,
+                catalog_id,
+                icon: icon.clone(),
+                codex_request_shape: request.codex_request_shape.map(SqlBool::from),
+                ..Default::default()
+            };
+            update_provider_unless_plan_barrier(tx, &request.id, &conversation_ids, changeset, should_clear_cache)
+                .await
+                .map(Ok)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    finish_guarded_provider_mutation(guarded)?.try_into()
 }
 
 #[tauri::command]
 pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
-    let mut conversation_ids = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            db::ops::conversation::all_ids(&mut conn).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
-    conversation_ids.sort();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the mutation on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a provider delete")
         .map_err(|busy| busy.to_string())?;
+    let guarded = services
+        .sea
+        .write(async |tx| delete_provider_unless_plan_barrier(tx, &id, &conversation_ids).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    finish_guarded_provider_mutation(guarded)?;
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        finish_guarded_provider_mutation(
-            delete_provider_unless_plan_barrier(&mut conn, &id, &conversation_ids).map_err(|e| e.to_string())?,
-        )?;
         let key_name = provider_secret_name(&id);
         let _ = secrets.delete(&SecretScope::Global, &SecretName::new(&key_name).unwrap());
         Ok(())
@@ -745,56 +745,49 @@ pub struct ProviderKeyUpdateRequest {
 pub async fn set_provider_key(app: tauri::AppHandle, request: ProviderKeyUpdateRequest) -> Result<(), String> {
     let services = app.services();
     let key_name = provider_secret_name(&request.provider_id);
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
-    let mut conversation_ids = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            db::ops::conversation::all_ids(&mut conn).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
-    conversation_ids.sort();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the mutation on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a provider credential update")
         .map_err(|busy| busy.to_string())?;
     let pid = request.provider_id;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|error| error.to_string())?;
-        let result = conn
-            .immediate_transaction::<_, diesel::result::Error, _>(|conn| {
-                let mut current = db::ops::conversation::all_ids(conn)?;
-                current.sort();
-                if current != conversation_ids {
-                    return Ok(GuardedProviderMutation::ConversationsChanged);
-                }
-                if !db::ops::plan_review::barrier_conversations_for_provider(conn, &pid)
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-                    .is_empty()
-                {
-                    return Ok(GuardedProviderMutation::PlanReviewBarrier);
-                }
+    let api_key = request.api_key;
+    // The key is written inside the write that checked the barrier, so a review
+    // cannot freeze this provider between the check and the new credential.
+    // The secret store is blocking I/O, so it runs off the runtime while the
+    // write waits for it.
+    let guarded = services
+        .sea
+        .write(async |tx| {
+            if let Some(refused) = provider_barrier(tx, &pid, &conversation_ids).await? {
+                return Ok(Ok(refused));
+            }
+            let (secrets, key_name, api_key) = (secrets.clone(), key_name.clone(), api_key.clone());
+            let stored = tokio::task::spawn_blocking(move || {
                 secrets
                     .set(
                         &SecretScope::Global,
                         &SecretName::new(&key_name).expect("provider secret name is valid"),
-                        &request.api_key,
+                        &api_key,
                     )
-                    .map_err(|error| {
-                        diesel::result::Error::QueryBuilderError(Box::new(std::io::Error::other(error.to_string())))
-                    })?;
-                db::ops::cached_model::delete_by_provider(conn, &pid)?;
-                Ok(GuardedProviderMutation::Applied(()))
+                    .map_err(|error| error.to_string())
             })
-            .map_err(|error| error.to_string())?;
-        finish_guarded_provider_mutation(result)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+            .await
+            .map_err(|error| error.to_string())
+            .and_then(|stored| stored);
+            if let Err(error) = stored {
+                return Ok(Err(error));
+            }
+            cached_ops::delete_by_provider(tx, &pid).await?;
+            Ok::<_, DbErr>(Ok(GuardedProviderMutation::Applied(())))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    finish_guarded_provider_mutation(guarded)
 }
 
 #[tauri::command]
@@ -874,7 +867,6 @@ pub async fn fetch_provider_models(
     request: ProviderModelListRequest,
 ) -> Result<ProviderModelListResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
     let provider_id = request.provider_id;
     let force = request.force_refresh.0.unwrap_or(false);
@@ -897,22 +889,20 @@ pub async fn fetch_provider_models(
         }
     }
 
+    // pool-read-before-write: the address is read for the network call; the write
+    // after it replaces the cached list whole and depends on nothing read here.
     let (provider_type, base_url, api_format, transport_profile, credential_kind) = {
-        let pool2 = pool.clone();
-        let pid = provider_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().map_err(|e| e.to_string())?;
-            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((
-                p.provider_type,
-                p.base_url,
-                p.api_format,
-                p.transport_profile,
-                p.credential_kind,
-            ))
-        })
-        .await
-        .map_err(|e| e.to_string())??
+        let p = provider_ops::get_provider(&services.sea, &provider_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
+        (
+            p.provider_type.as_str().to_owned(),
+            p.base_url,
+            p.api_format.as_str().to_owned(),
+            p.transport_profile.as_str().to_owned(),
+            p.credential_kind.as_str().to_owned(),
+        )
     };
 
     // Existing rows are part of the same closed first-party contract as create
@@ -973,18 +963,14 @@ pub async fn get_provider_balance(
     provider_id: String,
 ) -> Result<Option<ProviderBalanceInfoResponse>, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
 
     let (catalog_id, provider_type, base_url) = {
-        let pid = provider_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((p.catalog_id, p.provider_type, p.base_url))
-        })
-        .await
-        .map_err(|e| e.to_string())??
+        let p = provider_ops::get_provider(&services.sea, &provider_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
+        (p.catalog_id, p.provider_type.as_str().to_owned(), p.base_url)
     };
 
     // The vendor decides whose account endpoint this is, not the adapter
@@ -1062,6 +1048,7 @@ pub async fn get_provider_capabilities(
 #[cfg(test)]
 mod response_contract_tests {
     use super::*;
+    use meridian_core::db::models::provider::ProviderInsert;
 
     fn seed_provider_with_pending_review(conn: &mut diesel::sqlite::SqliteConnection) {
         db::ops::provider::create_provider(
@@ -1166,36 +1153,107 @@ mod response_contract_tests {
         );
     }
 
-    #[test]
-    fn provider_update_and_delete_are_blocked_by_its_active_review_runtime() {
-        let pool = db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        seed_provider_with_pending_review(&mut conn);
+    /// The review is seeded through the Diesel plan-review ops, which have not
+    /// moved, on a file both pools open; the guarded mutations run on SeaORM.
+    #[tokio::test]
+    async fn provider_update_and_delete_are_blocked_by_its_active_review_runtime() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        seed_provider_with_pending_review(&mut pool.get().unwrap());
         let conversations = vec!["conversation-1".to_string()];
 
-        let updated = update_provider_unless_plan_barrier(
-            &mut conn,
-            "provider-1",
-            &conversations,
-            &ProviderChangeset {
-                base_url: Some("https://new.invalid".into()),
-                updated_at: Some(4),
-                ..Default::default()
-            },
-            true,
-        )
-        .unwrap();
+        let updated = sea
+            .write(async |tx| {
+                update_provider_unless_plan_barrier(
+                    tx,
+                    "provider-1",
+                    &conversations,
+                    ProviderChangeset {
+                        base_url: Some("https://new.invalid".into()),
+                        updated_at: Some(4),
+                        ..Default::default()
+                    },
+                    true,
+                )
+                .await
+            })
+            .await
+            .unwrap();
         assert!(matches!(updated, GuardedProviderMutation::PlanReviewBarrier));
-        assert_eq!(
-            db::ops::provider::get_provider(&mut conn, "provider-1")
-                .unwrap()
-                .base_url,
-            "https://old.invalid"
-        );
+        let stored = provider_ops::get_provider(&sea, "provider-1").await.unwrap().unwrap();
+        assert_eq!(stored.base_url, "https://old.invalid");
 
-        let deleted = delete_provider_unless_plan_barrier(&mut conn, "provider-1", &conversations).unwrap();
+        let deleted = sea
+            .write(async |tx| delete_provider_unless_plan_barrier(tx, "provider-1", &conversations).await)
+            .await
+            .unwrap();
         assert!(matches!(deleted, GuardedProviderMutation::PlanReviewBarrier));
-        assert!(db::ops::provider::get_provider(&mut conn, "provider-1").is_ok());
+        assert!(provider_ops::get_provider(&sea, "provider-1").await.unwrap().is_some());
+
+        // A conversation set that moved since the leases were taken stops the
+        // write too, ahead of the review check.
+        let stale = sea
+            .write(async |tx| delete_provider_unless_plan_barrier(tx, "provider-1", &[]).await)
+            .await
+            .unwrap();
+        assert!(matches!(stale, GuardedProviderMutation::ConversationsChanged));
+    }
+
+    /// With no review in the way the same guarded write goes through, and an
+    /// address change takes the cached model list with it.
+    #[tokio::test]
+    async fn an_unblocked_provider_update_applies_and_clears_its_cache() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        sea.write(async |tx| {
+            let row = provider::Model {
+                id: "provider-1".into(),
+                name: "Provider".into(),
+                provider_type: ProviderType::Openai,
+                base_url: "https://old.invalid".into(),
+                is_enabled: SqlBool::TRUE,
+                sort_order: 0,
+                created_at: 1,
+                updated_at: 1,
+                api_format: ApiFormat::Responses,
+                catalog_id: None,
+                credential_kind: CredentialKind::ApiKey,
+                transport_profile: TransportProfile::Standard,
+                icon: None,
+                codex_request_shape: SqlBool::FALSE,
+            };
+            provider_ops::create_provider(tx, row).await?;
+            cached_ops::replace_models(tx, "provider-1", &[("m".into(), "M".into())], 1).await
+        })
+        .await
+        .unwrap();
+
+        let updated = sea
+            .write(async |tx| {
+                update_provider_unless_plan_barrier(
+                    tx,
+                    "provider-1",
+                    &[],
+                    ProviderChangeset {
+                        base_url: Some("https://new.invalid".into()),
+                        ..Default::default()
+                    },
+                    true,
+                )
+                .await
+            })
+            .await
+            .unwrap();
+        let GuardedProviderMutation::Applied(row) = updated else {
+            panic!("nothing blocks this provider: {updated:?}");
+        };
+        assert_eq!(row.base_url, "https://new.invalid");
+        assert!(
+            cached_ops::list_by_provider(&sea, "provider-1")
+                .await
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
