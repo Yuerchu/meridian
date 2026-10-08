@@ -580,7 +580,7 @@ impl meridian_core::services::StartTurn for DesktopTurns {
     async fn start(
         &self,
         conversation_id: &str,
-        queued: &meridian_core::db::models::queue::QueuedPromptRow,
+        queued: &meridian_core::db::entity::queued_prompt::Model,
     ) -> Result<(), String> {
         let pool = self.0.db.clone();
         let queue_id = queued.id.clone();

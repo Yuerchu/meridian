@@ -10,9 +10,9 @@ use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Orig
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
     assistant, conversation, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject,
-    model_config, model_profile, project, provider, skill, todo_item, todo_list, tool_category, tool_preset,
+    model_config, model_profile, project, provider, queued_prompt, skill, todo_item, todo_list, tool_category,
+    tool_preset,
 };
-use meridian_core::db::models::queue::QueuedPromptRow;
 use meridian_core::db::sea::ops::todo::TodoListView;
 use meridian_core::db::types::Json;
 use std::collections::BTreeMap;
@@ -867,16 +867,13 @@ pub struct QueuedPromptInfoResponse {
     pub reported_at: Option<i64>,
 }
 
-impl TryFrom<QueuedPromptRow> for QueuedPromptInfoResponse {
-    type Error = String;
-
-    fn try_from(row: QueuedPromptRow) -> Result<Self, Self::Error> {
-        let delivery = meridian_core::db::models::queue::Delivery::parse(&row.delivery)?;
-        Ok(Self {
+impl From<queued_prompt::Model> for QueuedPromptInfoResponse {
+    fn from(row: queued_prompt::Model) -> Self {
+        Self {
             id: row.id,
             conversation_id: row.conversation_id,
             content: row.content,
-            delivery,
+            delivery: row.delivery,
             position: row.position,
             created_at: row.created_at,
             dispatched_at: row.dispatched_at,
@@ -885,7 +882,7 @@ impl TryFrom<QueuedPromptRow> for QueuedPromptInfoResponse {
             settled_message_id: row.settled_message_id,
             held_at: row.held_at,
             reported_at: row.reported_at,
-        })
+        }
     }
 }
 

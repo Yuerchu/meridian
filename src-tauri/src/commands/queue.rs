@@ -73,7 +73,7 @@ fn enqueue_unless_plan_barrier(
     delivery: Delivery,
     context: &[meridian_core::workspace::reference::PreparedContextItem],
     now: i64,
-) -> diesel::QueryResult<Option<meridian_core::db::models::queue::QueuedPromptRow>> {
+) -> diesel::QueryResult<Option<meridian_core::db::entity::queued_prompt::Model>> {
     conn.immediate_transaction(|conn| {
         if plan_review_barrier(conn, conversation_id)? {
             return Ok(None);
@@ -104,7 +104,7 @@ pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Resul
     blocking(move || {
         let mut conn = get_conn(&pool)?;
         let rows = ops::list(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
+        Ok(rows.into_iter().map(Into::into).collect())
     })
     .await
 }
@@ -239,7 +239,7 @@ pub async fn queue_enqueue(
 
     runner::announce(&services, &conversation_id);
     runner::pump_later(&services, &conversation_id);
-    item.try_into()
+    Ok(item.into())
 }
 
 /// Drop one that has not gone anywhere.
@@ -425,7 +425,7 @@ mod tests {
                 .unwrap()
                 .expect("a conversation without a plan barrier accepts queued messages");
             assert_eq!(item.id, id);
-            assert_eq!(item.delivery().unwrap(), delivery);
+            assert_eq!(item.delivery, delivery);
             assert_eq!(item.position, position as i32);
             assert_eq!(item.state(), meridian_core::db::models::queue::QueueState::Queued);
         }
