@@ -184,6 +184,10 @@ export interface DemoOptions {
   /** No question is waiting on anybody: the turns that were stopped on one read
    *  as interrupted instead, so no approval toast covers a screenshot. */
   quiet?: boolean
+  /** Two commands running in the background in the rich conversation. Off
+   *  unless asked for: a running command marks its conversation in the
+   *  sidebar, and every other screenshot would change with it. */
+  background?: boolean
 }
 
 export function createDemoState(options: DemoOptions = {}, now = Date.now()): DemoState {
@@ -209,6 +213,7 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     // to answer with.
     backgroundTasks: {
       [CONV.rich]: [
+        ...(options.background ? runningDemoTasks(now) : []),
         {
           id: 'b1a2c3d4',
           conversation_id: CONV.rich,
@@ -259,4 +264,25 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     planReview: buildPlanReview(now),
     serial: 0,
   }
+}
+
+/** The commands `?demo=background` leaves running. */
+function runningDemoTasks(now: number): BackgroundTaskInfoResponse[] {
+  const running = (id: string, command: string, description: string | null, minutes: number) => ({
+    id,
+    conversation_id: CONV.rich,
+    runner: 'native' as const,
+    kind: 'command' as const,
+    command,
+    description,
+    state: 'running' as const,
+    exit_code: null,
+    ended_reason: null,
+    output_bytes: 0,
+    output_truncated: false,
+    started_at: ago(minutes, now),
+    ended_at: null,
+    notified: false,
+  })
+  return [running('b9e1f2a3', 'pnpm dev', '前端开发服务器', 12), running('b7c4d5e6', 'cargo test --workspace', null, 2)]
 }

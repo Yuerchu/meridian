@@ -10,9 +10,10 @@ import { ModelPanel } from '@/components/chat/model-panel'
 import { PromptQueue } from '@/components/chat/prompt-queue'
 import { StickerGrid } from '@/components/chat/sticker-grid'
 import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
+import { BackgroundTasksChip } from '@/components/chat/background-tasks-chip'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { cx } from '@/utils/cx'
-import type { ChatMode, ThinkingLevel } from '@/types'
+import type { BackgroundTaskInfoResponse, ChatMode, ThinkingLevel } from '@/types'
 import { PG_STICKERS, TODO_NO_CURRENT, TODO_RUNNING, TODO_SINGLE, caps, noop, queued } from './fixtures'
 import { Section } from './shell'
 import { BranchChipSection } from './agent-plan'
@@ -153,6 +154,35 @@ export default function ChatComposer() {
           ))}
         </div>
       </Section>
+      <Section title="BackgroundTasksChip / 后台命令">
+        {/* Commands the conversation left running, beside the checklist in
+              the same tab. The chip opens the list with stop and output; the
+              output sheet reads a real task and is in the demo instead. */}
+        <div data-slot="gallery-background-tasks" className="flex max-w-2xl flex-col gap-4">
+          <Composer
+            value=""
+            onChange={() => {}}
+            onSubmit={() => {}}
+            ariaLabel="background tasks probe"
+            placeholder="发送消息…"
+            status={
+              <ComposerStatusTab
+                progress={<TodoProgressChip todos={JSON.parse(TODO_RUNNING)} />}
+                tasks={
+                  <BackgroundTasksChip
+                    conversationId="gallery"
+                    onStop={() => {}}
+                    tasks={[
+                      backgroundTask('b1', 'pnpm dev', '前端开发服务器', 12 * 60_000),
+                      backgroundTask('b2', 'cargo test --workspace', null, 95_000),
+                    ]}
+                  />
+                }
+              />
+            }
+          />
+        </div>
+      </Section>
       <BranchChipSection />
       <Section title="PromptQueue / 插队与做完再说">
         {/* The queue is a child of PromptInput, which is the composer's
@@ -200,4 +230,29 @@ export default function ChatComposer() {
       </Section>
     </>
   )
+}
+
+/** A running background command, started `ago` milliseconds before now. */
+function backgroundTask(
+  id: string,
+  command: string,
+  description: string | null,
+  ago: number,
+): BackgroundTaskInfoResponse {
+  return {
+    id,
+    conversation_id: 'gallery',
+    runner: 'native',
+    kind: 'command',
+    command,
+    description,
+    state: 'running',
+    exit_code: null,
+    ended_reason: null,
+    output_bytes: 0,
+    output_truncated: false,
+    started_at: Date.now() - ago,
+    ended_at: null,
+    notified: false,
+  }
 }

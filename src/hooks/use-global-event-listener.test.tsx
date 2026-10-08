@@ -17,13 +17,20 @@ const mocks = vi.hoisted(() => {
       loadAllPending: vi.fn(),
       handlePlanReviewEvent: vi.fn(),
       handleToolApproval: vi.fn(),
+      handleStop: vi.fn(),
+      setBackgroundRunning: vi.fn(),
       activeId: null,
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' }],
       sessions: {},
     },
     notices: { load: vi.fn(() => Promise.resolve()), receive: vi.fn() },
+    runningCounts: vi.fn(() => Promise.resolve([{ conversation_id: 'conversation-1', running: 1 }])),
   }
 })
+
+vi.mock('@/api', () => ({
+  api: { backgroundTaskRunningCounts: mocks.runningCounts },
+}))
 
 vi.mock('@/lib/transport', () => ({
   listen: vi.fn((name: string, handler: (event: { payload: unknown }) => void) => {
@@ -123,6 +130,54 @@ describe('global user-command events', () => {
         },
       }),
     ).toThrow('tool_result event.outcome must be one of')
+  })
+
+  // The sidebar reads every conversation's running commands on mount and
+  // again whenever any task moves.
+  it('keeps the running background commands current', async () => {
+    mocks.runningCounts.mockClear()
+    mocks.store.setBackgroundRunning.mockClear()
+    renderHook(() => useGlobalEventListener())
+    await waitFor(() => expect(mocks.store.setBackgroundRunning).toHaveBeenCalledTimes(1))
+    act(() => mocks.listeners.get('background-tasks-updated')?.({ payload: { conversation_id: 'conversation-1' } }))
+    await waitFor(() => expect(mocks.store.setBackgroundRunning).toHaveBeenCalledTimes(2))
+    expect(mocks.store.setBackgroundRunning).toHaveBeenLastCalledWith([
+      { conversation_id: 'conversation-1', running: 1 },
+    ])
+  })
+
+  // Nobody was waiting on a turn a background task woke, so it is said however
+  // short it was; an ordinary short turn is not.
+  it('tells somebody elsewhere that a turn nobody asked for has ended', async () => {
+    vi.mocked(isPermissionGranted).mockResolvedValue(true)
+    vi.mocked(sendNotification).mockClear()
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
+    mocks.store.sessions = {
+      'conversation-1': { liveTriggers: { woken: 'task_completion', asked: 'user' } },
+    } as typeof mocks.store.sessions
+    renderHook(() => useGlobalEventListener())
+    const listener = mocks.listeners.get('chat-stream')
+    for (const turn_id of ['asked', 'woken']) {
+      act(() =>
+        listener?.({
+          payload: {
+            type: 'stop',
+            reason: 'end_turn',
+            message_id: 'message-1',
+            turn_id,
+            conversation_id: 'conversation-1',
+            input_tokens: null,
+            output_tokens: null,
+          },
+        }),
+      )
+    }
+    await waitFor(() => expect(sendNotification).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(sendNotification).mock.calls[0][0].body).toBe(
+      'A background command finished, and the assistant followed up',
+    )
+    mocks.store.sessions = {}
+    focus.mockRestore()
   })
 
   it('calls a question a question in the OS notification, under either name', async () => {

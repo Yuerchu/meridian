@@ -20,9 +20,11 @@ interface OpenOptions {
   theme: Theme
   /** `?demo=quiet`: nothing waiting on an answer, so no approval toasts. */
   quiet?: boolean
+  /** `?demo=background`: commands running in the rich conversation. */
+  background?: boolean
 }
 
-export async function openApp(page: Page, { theme, quiet = true }: OpenOptions): Promise<void> {
+export async function openApp(page: Page, { theme, quiet = true, background = false }: OpenOptions): Promise<void> {
   await page.clock.setFixedTime(FROZEN_NOW)
   await page.emulateMedia({ colorScheme: theme, reducedMotion: 'reduce' })
   await page.addInitScript(
@@ -38,7 +40,8 @@ export async function openApp(page: Page, { theme, quiet = true }: OpenOptions):
     },
     [theme, FREEZE_CSS] as const,
   )
-  await page.goto(quiet ? '/?demo=quiet' : '/')
+  const flags = [quiet && 'quiet', background && 'background'].filter(Boolean)
+  await page.goto(flags.length > 0 ? `/?demo=${flags.join(',')}` : '/')
   await expect(page.getByText('演示数据')).toBeVisible()
   await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/)
   await settle(page)

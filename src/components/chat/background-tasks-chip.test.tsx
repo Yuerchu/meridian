@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
-import { formatElapsed } from '@/lib/elapsed'
+import { elapsedLabel } from '@/lib/elapsed'
 import type { BackgroundTaskInfoResponse } from '@/types'
 import { BackgroundTasksChip } from './background-tasks-chip'
 import { ComposerStatusTab } from './composer-status-tab'
@@ -43,6 +43,8 @@ describe('BackgroundTasksChip', () => {
       />,
     )
     const chip = screen.getByRole('button', { name: '2 background commands running' })
+    expect(chip).toHaveTextContent('2 background commands')
+    expect(screen.queryAllByText(/^\d+ s$/)).toHaveLength(0)
     await userEvent.click(chip)
     const dialog = await screen.findByRole('dialog', { name: '2 background commands running' })
     const rows = dialog.querySelectorAll('[data-slot="background-task-row"]')
@@ -64,11 +66,15 @@ describe('ComposerStatusTab', () => {
   })
 })
 
-describe('formatElapsed', () => {
-  it('reads like a clock', () => {
-    expect(formatElapsed(0)).toBe('0:00')
-    expect(formatElapsed(65_000)).toBe('1:05')
-    expect(formatElapsed(3_725_000)).toBe('1:02:05')
-    expect(formatElapsed(-5)).toBe('0:00')
+describe('elapsedLabel', () => {
+  // A running time drawn as `12:00` reads as noon; each range gets its unit.
+  it('says how long in the largest unit that reads well', () => {
+    expect(elapsedLabel(-5)).toEqual({ key: 'chat.background.elapsedSeconds', values: { count: 0 } })
+    expect(elapsedLabel(45_000)).toEqual({ key: 'chat.background.elapsedSeconds', values: { count: 45 } })
+    expect(elapsedLabel(12 * 60_000)).toEqual({ key: 'chat.background.elapsedMinutes', values: { count: 12 } })
+    expect(elapsedLabel(65 * 60_000)).toEqual({
+      key: 'chat.background.elapsedHours',
+      values: { hours: 1, minutes: 5 },
+    })
   })
 })

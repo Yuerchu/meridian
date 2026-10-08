@@ -25,6 +25,8 @@ interface Scene {
   narrow?: boolean
   /** `false` keeps the approvals and the plan review waiting. */
   quiet?: boolean
+  /** Commands running in the background in the rich conversation. */
+  background?: boolean
   arrange: (page: Page) => Promise<void>
 }
 
@@ -48,6 +50,17 @@ const scenes: Scene[] = [
     arrange: async (page) => {
       await openConversation(page, '流式输出时回答写在屏幕外')
       await scrollTranscriptToTop(page)
+    },
+  },
+  {
+    // Two commands left running: the chip in the composer's status tab, and
+    // the list it opens.
+    name: 'composer-background-tasks',
+    background: true,
+    arrange: async (page) => {
+      await openConversation(page, '流式输出时回答写在屏幕外')
+      await page.locator('[data-slot="background-tasks-chip"]').click()
+      await expect(page.getByRole('dialog', { name: '2 个后台命令在运行' })).toBeVisible()
     },
   },
   {
@@ -218,7 +231,7 @@ for (const scene of scenes) {
 }
 
 async function photograph(page: Page, scene: Scene, theme: Theme) {
-  await openApp(page, { theme, quiet: scene.quiet ?? true })
+  await openApp(page, { theme, quiet: scene.quiet ?? true, background: scene.background ?? false })
   await scene.arrange(page)
   await parkPointer(page)
   await settle(page)

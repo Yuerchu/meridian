@@ -52,6 +52,15 @@ impl From<background_task::Model> for BackgroundTaskInfoResponse {
     }
 }
 
+/// How many commands a conversation has running.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BackgroundTaskCountInfoResponse {
+    pub conversation_id: String,
+    pub running: i64,
+}
+
+pub type BackgroundTaskCountListResponse = Vec<BackgroundTaskCountInfoResponse>;
+
 /// A slice of a task's output.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BackgroundTaskOutputInfoResponse {
@@ -87,6 +96,20 @@ pub async fn list_background_tasks(
         .await?
         .into_iter()
         .map(Into::into)
+        .collect())
+}
+
+/// Every conversation with a command running, and how many — what the sidebar
+/// marks. Conversations with none are left out rather than listed at zero.
+#[tauri::command]
+pub async fn background_task_running_counts(app: tauri::AppHandle) -> Result<BackgroundTaskCountListResponse, String> {
+    Ok(background::running_counts(&app.services().sea)
+        .await?
+        .into_iter()
+        .map(|(conversation_id, running)| BackgroundTaskCountInfoResponse {
+            conversation_id,
+            running,
+        })
         .collect())
 }
 

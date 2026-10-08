@@ -480,6 +480,8 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::background => list_background_tasks(conversation_id: String),
             #[cfg(not(target_os = "android"))]
+            async commands::background => background_task_running_counts(),
+            #[cfg(not(target_os = "android"))]
             async commands::background => stop_background_task(
                 request: $crate::commands::background::BackgroundTaskStopRequest,
             ),

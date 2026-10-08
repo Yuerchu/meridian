@@ -1199,6 +1199,14 @@ export interface ConversationStore {
    *  cannot fill up with every turn in the app. */
   subAgentSteps: Record<string, number>
 
+  /** How many background commands each conversation has running, for the
+   *  ones that have any. Beside `attention` rather than on a session for the
+   *  same reason: the sidebar marks conversations nobody has opened, and a
+   *  session exists only for one that has been. Replaced whole from
+   *  `backgroundTaskRunningCounts` whenever a task moves. */
+  backgroundRunning: Record<string, number>
+  setBackgroundRunning: (rows: { conversation_id: string; running: number }[]) => void
+
   /** Every question waiting on a person, keyed by `approval_id`. See
    *  `AttentionItem` for why this is not on the session. */
   attention: Record<string, AttentionItem>
@@ -1415,6 +1423,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   activeId: null,
   projects: [],
   subAgentSteps: {},
+  backgroundRunning: {},
+  setBackgroundRunning: (rows) =>
+    set({ backgroundRunning: Object.fromEntries(rows.map((row) => [row.conversation_id, row.running])) }),
   attention: {},
   attentionOrder: [],
   stackIgnored: {},
