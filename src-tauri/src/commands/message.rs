@@ -1,11 +1,12 @@
-use diesel::Connection;
-
 use crate::ServicesExt;
 use crate::commands::entity_response::ConversationInfoResponse;
 use meridian_core::agent::{parse_stored_tool_calls, sub_agents::SubAgentKind as CoreSubAgentKind};
 use meridian_core::db;
 use meridian_core::db::entity::message as message_entity;
 use meridian_core::db::models::turn::{TurnPhase as CoreTurnPhase, TurnStatus as CoreTurnStatus};
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::{Db, Snapshot, WriteTx};
+use meridian_core::db::sea::ops::{conversation as conversation_ops, message as message_ops};
 use meridian_core::events::{
     AutoReviewAuthorization as CoreAutoReviewAuthorization, AutoReviewEvidence as CoreAutoReviewEvidence,
     AutoReviewOutcome as CoreAutoReviewOutcome, AutoReviewRisk as CoreAutoReviewRisk,
@@ -190,10 +191,10 @@ pub struct MessageContextInfoResponse {
     pub truncated: bool,
 }
 
-impl TryFrom<db::models::message_context_item::MessageContextItemRow> for MessageContextInfoResponse {
+impl TryFrom<db::entity::message_context_item::Model> for MessageContextInfoResponse {
     type Error = String;
 
-    fn try_from(row: db::models::message_context_item::MessageContextItemRow) -> Result<Self, Self::Error> {
+    fn try_from(row: db::entity::message_context_item::Model) -> Result<Self, Self::Error> {
         if row.id.is_empty() {
             return Err("message context item id must not be empty".to_string());
         }
@@ -206,17 +207,10 @@ impl TryFrom<db::models::message_context_item::MessageContextItemRow> for Messag
         {
             return Err(format!("message context item {} has an invalid line range", row.id));
         }
-        let truncated = match row.truncated {
-            0 => false,
-            1 => true,
-            value => {
-                return Err(format!(
-                    "message context item {} has invalid truncated value {value}; expected 0 or 1",
-                    row.id
-                ));
-            }
-        };
-        let core_kind = CoreMessageContextKind::parse(&row.kind)?;
+        // Both typed at the read: a flag outside 0/1 or an unknown kind failed
+        // it there.
+        let truncated = row.truncated.get();
+        let core_kind = row.kind;
         match core_kind {
             CoreMessageContextKind::ProjectFile => {
                 if row.display_path.as_deref().is_none_or(str::is_empty) {
@@ -600,10 +594,7 @@ impl TryFrom<message_entity::Model> for MessageInfoResponse {
 }
 
 impl MessageInfoResponse {
-    fn with_context_items(
-        mut self,
-        items: Vec<db::models::message_context_item::MessageContextItemRow>,
-    ) -> Result<Self, String> {
+    fn with_context_items(mut self, items: Vec<db::entity::message_context_item::Model>) -> Result<Self, String> {
         if !items.is_empty() && self.role != MessageRole::User {
             return Err(format!("non-user message {} has context items", self.id));
         }
@@ -751,52 +742,80 @@ pub async fn read_message_context_item(
         conversation_id,
         item_id,
     } = request;
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        conn.transaction::<_, diesel::result::Error, _>(|conn| {
-            let conv = db::ops::conversation::get_conversation(conn, &conversation_id)?;
-            let history = db::ops::message::list_messages(conn, &conversation_id)?;
-            let active = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+    // One snapshot: the item has to be on the path the head names at the
+    // moment it is read.
+    app.services()
+        .sea
+        .read(async |tx| {
+            const OFF_BRANCH: &str = "context item is not on the active conversation branch";
+            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+                .await?
+                .ok_or_else(|| ReadError::Contract(OFF_BRANCH.into()))?;
+            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            let active = message_ops::active_context(&history, conv.head_message_id.as_deref());
             let active_ids = active.path.into_iter().map(|row| row.id).collect::<Vec<_>>();
-            let mut rows = db::ops::message_context_item::list_for_messages(conn, &active_ids)?
+            let item = db::sea::ops::message_context_item::list_for_messages(tx, &active_ids)
+                .await?
                 .into_values()
                 .flatten()
-                .filter(|item| item.id == item_id);
-            let item = rows.next().ok_or(diesel::result::Error::NotFound)?;
-            let descriptor = MessageContextInfoResponse::try_from(item.clone())
-                .map_err(|error| diesel::result::Error::SerializationError(Box::new(std::io::Error::other(error))))?;
-            Ok(MessageContextContentResponse {
+                .find(|item| item.id == item_id)
+                .ok_or_else(|| ReadError::Contract(OFF_BRANCH.into()))?;
+            let descriptor = MessageContextInfoResponse::try_from(item.clone())?;
+            Ok::<_, ReadError>(MessageContextContentResponse {
                 descriptor,
                 content: item.content,
             })
         })
-        .map_err(|e| {
-            if matches!(e, diesel::result::Error::NotFound) {
-                "context item is not on the active conversation branch".to_string()
-            } else {
-                e.to_string()
-            }
-        })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        .await
+        .map_err(String::from)
 }
 
-fn read_tree_with_conversation(
-    conn: &mut db::PooledConn,
+/// What a snapshot read fails on: the database, or a stored value that breaks
+/// its contract. Kept apart so a person reads the contract's own words rather
+/// than a wrapped database error.
+#[derive(Debug)]
+enum ReadError {
+    Db(DbErr),
+    Contract(String),
+}
+
+impl From<DbErr> for ReadError {
+    fn from(error: DbErr) -> Self {
+        Self::Db(error)
+    }
+}
+
+impl From<String> for ReadError {
+    fn from(message: String) -> Self {
+        Self::Contract(message)
+    }
+}
+
+impl From<ReadError> for String {
+    fn from(error: ReadError) -> Self {
+        match error {
+            ReadError::Db(error) => error.to_string(),
+            ReadError::Contract(message) => message,
+        }
+    }
+}
+
+async fn read_tree_with_conversation(
+    db: &impl Snapshot,
     conversation_id: &str,
-) -> Result<(db::entity::conversation::Model, MessageTreeResponse), String> {
-    let conv = db::ops::conversation::get_conversation(conn, conversation_id).map_err(|e| e.to_string())?;
-    let history = db::ops::message::list_messages(conn, conversation_id).map_err(|e| e.to_string())?;
-    let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-    let branches = db::ops::message::branch_points(&history, &ctx.path)
+) -> Result<(db::entity::conversation::Model, MessageTreeResponse), ReadError> {
+    let conv = conversation_ops::get_conversation(db, conversation_id)
+        .await?
+        .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
+    let history = message_ops::list_messages(db, conversation_id).await?;
+    let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
+    let branches = message_ops::branch_points(&history, &ctx.path)
         .into_iter()
         .map(Into::into)
         .collect();
     let head_message_id = ctx.head_id.clone();
     let ids = ctx.path.iter().map(|row| row.id.clone()).collect::<Vec<_>>();
-    let mut context_items = db::ops::message_context_item::list_for_messages(conn, &ids).map_err(|e| e.to_string())?;
+    let mut context_items = db::sea::ops::message_context_item::list_for_messages(db, &ids).await?;
     let mut messages = ctx
         .path
         .into_iter()
@@ -928,14 +947,14 @@ pub struct AcpSessionNoticeInfoResponse {
     pub updated_at: i64,
 }
 
-impl TryFrom<db::models::acp_session_notice::AcpSessionNoticeRow> for AcpSessionNoticeInfoResponse {
+impl TryFrom<db::entity::acp_session_notice::Model> for AcpSessionNoticeInfoResponse {
     type Error = String;
 
     /// Through the core's own projection, which is where the stored action
     /// list is decoded strictly. A row that cannot be read is an error: an
     /// incident with its recommendations silently dropped would be drawn as
     /// one that recommends nothing.
-    fn try_from(row: db::models::acp_session_notice::AcpSessionNoticeRow) -> Result<Self, String> {
+    fn try_from(row: db::entity::acp_session_notice::Model) -> Result<Self, String> {
         let event = meridian_core::events::AcpSessionNoticeEvent::try_from(row)?;
         Ok(Self {
             id: event.id,
@@ -1002,15 +1021,15 @@ pub enum TurnPricingStatus {
     Unavailable,
 }
 
-impl From<db::ops::usage::TurnPricingStatus> for TurnPricingStatus {
-    fn from(status: db::ops::usage::TurnPricingStatus) -> Self {
+impl From<db::sea::ops::usage::TurnPricingStatus> for TurnPricingStatus {
+    fn from(status: db::sea::ops::usage::TurnPricingStatus) -> Self {
         match status {
-            db::ops::usage::TurnPricingStatus::Exact => Self::Exact,
-            db::ops::usage::TurnPricingStatus::Estimated => Self::Estimated,
-            db::ops::usage::TurnPricingStatus::LowerBound => Self::LowerBound,
-            db::ops::usage::TurnPricingStatus::Subscription => Self::Subscription,
-            db::ops::usage::TurnPricingStatus::External => Self::External,
-            db::ops::usage::TurnPricingStatus::Unavailable => Self::Unavailable,
+            db::sea::ops::usage::TurnPricingStatus::Exact => Self::Exact,
+            db::sea::ops::usage::TurnPricingStatus::Estimated => Self::Estimated,
+            db::sea::ops::usage::TurnPricingStatus::LowerBound => Self::LowerBound,
+            db::sea::ops::usage::TurnPricingStatus::Subscription => Self::Subscription,
+            db::sea::ops::usage::TurnPricingStatus::External => Self::External,
+            db::sea::ops::usage::TurnPricingStatus::Unavailable => Self::Unavailable,
         }
     }
 }
@@ -1045,8 +1064,8 @@ pub struct TurnUsageInfoResponse {
     pub pricing_status: TurnPricingStatus,
 }
 
-impl From<db::ops::usage::TurnUsageSummary> for TurnUsageInfoResponse {
-    fn from(usage: db::ops::usage::TurnUsageSummary) -> Self {
+impl From<db::sea::ops::usage::TurnUsageSummary> for TurnUsageInfoResponse {
+    fn from(usage: db::sea::ops::usage::TurnUsageSummary) -> Self {
         Self {
             messages: usage.messages,
             missing_token_usage_messages: usage.missing_token_usage_messages,
@@ -1210,7 +1229,7 @@ pub async fn conversation_snapshot(
     let ConversationSnapshotRequest { conversation_id } = request;
     let services = app.services();
     let coordinator = services.turns.clone();
-    let pool = services.db.clone();
+    let db = &services.sea;
 
     let mut settled = None;
     for attempt in 0..SNAPSHOT_ATTEMPTS {
@@ -1218,12 +1237,14 @@ pub async fn conversation_snapshot(
         // each of them is a separate entry in it. Reading them after would leave
         // a sub-agent spawned in the gap judged against a reading that never
         // looked at its conversation.
-        let children = children_off_thread(&pool, &conversation_id).await?;
+        let children = conversation_ops::sub_agent_conversation_ids(db, &conversation_id)
+            .await
+            .map_err(|e| e.to_string())?;
         let mut seen = Vec::with_capacity(children.len() + 1);
         seen.push(coordinator.observe(&conversation_id));
         seen.extend(children.iter().map(|c| coordinator.observe(c)));
 
-        let read = read_off_thread(&pool, &conversation_id, Live::Holding(&seen)).await?;
+        let read = read_once(db, &conversation_id, Live::Holding(&seen)).await?;
 
         // Two ways this pass can be unusable: something started or stopped in
         // one of the conversations, or the set of conversations itself changed —
@@ -1257,7 +1278,7 @@ pub async fn conversation_snapshot(
                 conversation_id = %conversation_id,
                 "could not read this conversation and its turns as one state",
             );
-            read_off_thread(&pool, &conversation_id, Live::Unsettled).await?
+            read_once(db, &conversation_id, Live::Unsettled).await?
         }
     };
 
@@ -1291,27 +1312,11 @@ type SnapshotRead = (
     AcpSessionNoticeListResponse,
 );
 
-async fn children_off_thread(pool: &db::DbPool, conversation_id: &str) -> Result<Vec<String>, String> {
-    let pool = pool.clone();
-    let conv_id = conversation_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::sub_agent_conversation_ids(&mut conn, &conv_id).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-async fn read_off_thread(pool: &db::DbPool, conversation_id: &str, live: Live<'_>) -> Result<SnapshotRead, String> {
-    let pool = pool.clone();
-    let conv_id = conversation_id.to_string();
+async fn read_once(db: &Db, conversation_id: &str, live: Live<'_>) -> Result<SnapshotRead, String> {
     let live = live.owned();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        read_snapshot(&mut conn, &conv_id, &live)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    db.read(async |tx| read_snapshot(tx, conversation_id, &live).await)
+        .await
+        .map_err(String::from)
 }
 
 /// What the coordinator had to say about the conversations being read, or that
@@ -1327,7 +1332,7 @@ enum Live<'a> {
     Unsettled,
 }
 
-/// The same thing, minus the borrow, for crossing into `spawn_blocking`.
+/// The same thing, minus the borrow, for carrying into the read.
 #[derive(Clone)]
 enum OwnedLive {
     Holding(std::collections::HashMap<String, Option<String>>),
@@ -1364,89 +1369,74 @@ impl OwnedLive {
     }
 }
 
-/// The database half, in one transaction.
+/// The database half, in one snapshot.
 ///
-/// The transaction is the point. WAL gives a deferred one a consistent view
+/// The snapshot is the point. WAL gives a read transaction a consistent view
 /// from its first read, so the head this returns, the rows it selected and the
 /// turns it judged all describe the same instant. Read without it, a turn
 /// appending a tool result between two of these queries yields a conversation
 /// that was never true: a turn recorded as finished sitting above a transcript
 /// that stops mid-tool, or a message belonging to a turn the caller has no
 /// record of.
-fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedLive) -> Result<SnapshotRead, String> {
-    conn.transaction::<_, diesel::result::Error, _>(|conn| {
-        let (conversation, tree) = read_tree_with_conversation(conn, conversation_id)
-            .map_err(|e| diesel::result::Error::QueryBuilderError(e.into()))?;
-        let mut usage_by_turn = db::ops::usage::turn_summaries(conn, conversation_id)?;
-        let turns = db::ops::turn::list_for_conversation(conn, conversation_id)?
-            .into_iter()
-            .map(|t| {
-                let status = effective_status(&t, live)
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-                let phase = t.phase;
-                let trigger = t.trigger;
-                Ok(TurnInfoResponse {
-                    trigger,
-                    status: status.into(),
-                    usage: usage_by_turn.remove(&t.id).map(Into::into),
-                    id: t.id,
-                    phase: phase.map(Into::into),
-                    phase_tool: t.phase_tool,
-                    error: t.error,
-                    started_at: t.started_at,
-                    ended_at: t.ended_at,
-                })
+async fn read_snapshot(db: &impl Snapshot, conversation_id: &str, live: &OwnedLive) -> Result<SnapshotRead, ReadError> {
+    let (conversation, tree) = read_tree_with_conversation(db, conversation_id).await?;
+    let mut usage_by_turn = db::sea::ops::usage::turn_summaries(db, conversation_id).await?;
+    let turns = db::sea::ops::turn::list_for_conversation(db, conversation_id)
+        .await?
+        .into_iter()
+        .map(|t| {
+            let status = effective_status(&t, live)?;
+            Ok(TurnInfoResponse {
+                trigger: t.trigger,
+                status: status.into(),
+                usage: usage_by_turn.remove(&t.id).map(Into::into),
+                id: t.id,
+                phase: t.phase.map(Into::into),
+                phase_tool: t.phase_tool,
+                error: t.error,
+                started_at: t.started_at,
+                ended_at: t.ended_at,
             })
-            .collect::<Result<Vec<_>, diesel::result::Error>>()?;
-        let sub_agent_runs = db::ops::conversation::sub_agent_runs(conn, conversation_id)?
-            .into_iter()
-            .map(|r| {
-                let agent_kind = parse_sub_agent_kind(r.agent_kind.as_deref(), &r.conversation_id)
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-                let status = r
-                    .turn
-                    .as_ref()
-                    .map(|turn| effective_status(turn, live))
-                    .transpose()
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-                Ok(SubAgentRunInfoResponse {
-                    status: status.map(Into::into),
-                    conversation_id: r.conversation_id,
-                    spawned_by_message_id: r.spawned_by_message_id,
-                    spawned_by_call_id: r.spawned_by_call_id,
-                    spawned_turn_id: r.spawned_turn_id,
-                    agent_kind,
-                    title: r.title,
-                    steps: r.steps,
-                })
+        })
+        .collect::<Result<Vec<_>, ReadError>>()?;
+    let sub_agent_runs = conversation_ops::sub_agent_runs(db, conversation_id)
+        .await?
+        .into_iter()
+        .map(|r| {
+            let agent_kind = parse_sub_agent_kind(r.agent_kind.as_deref(), &r.conversation_id)?;
+            let status = r.turn.as_ref().map(|turn| effective_status(turn, live)).transpose()?;
+            Ok(SubAgentRunInfoResponse {
+                status: status.map(Into::into),
+                conversation_id: r.conversation_id,
+                spawned_by_message_id: r.spawned_by_message_id,
+                spawned_by_call_id: r.spawned_by_call_id,
+                spawned_turn_id: r.spawned_turn_id,
+                agent_kind,
+                title: r.title,
+                steps: r.steps,
             })
-            .collect::<Result<Vec<_>, diesel::result::Error>>()?;
-        let visible_message_ids = tree.messages.iter().map(|message| message.id.as_str()).collect();
-        let plan_reviews =
-            crate::commands::plan_review::summaries_for_conversation(conn, conversation_id, &visible_message_ids)
-                .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-        let plan_review_barrier = db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-        // Inside the same transaction as the turns, so an incident filed
-        // against a turn is never read beside a turn list that lacks it.
-        let acp_notices = db::ops::acp_session_notice::list_for_conversation(conn, conversation_id)?
-            .into_iter()
-            .map(|row| {
-                AcpSessionNoticeInfoResponse::try_from(row)
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))
-            })
-            .collect::<Result<Vec<_>, diesel::result::Error>>()?;
-        Ok((
-            conversation,
-            tree,
-            turns,
-            sub_agent_runs,
-            plan_reviews,
-            plan_review_barrier,
-            acp_notices,
-        ))
-    })
-    .map_err(|e| e.to_string())
+        })
+        .collect::<Result<Vec<_>, ReadError>>()?;
+    let visible_message_ids = tree.messages.iter().map(|message| message.id.as_str()).collect();
+    let plan_reviews =
+        crate::commands::plan_review::summaries_for_conversation(db, conversation_id, &visible_message_ids).await?;
+    let plan_review_barrier = db::sea::ops::plan_review::has_conversation_barrier(db, conversation_id).await?;
+    // In the same snapshot as the turns, so an incident filed against a turn
+    // is never read beside a turn list that lacks it.
+    let acp_notices = db::sea::ops::acp_session_notice::list_for_conversation(db, conversation_id)
+        .await?
+        .into_iter()
+        .map(AcpSessionNoticeInfoResponse::try_from)
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok((
+        conversation,
+        tree,
+        turns,
+        sub_agent_runs,
+        plan_reviews,
+        plan_review_barrier,
+        acp_notices,
+    ))
 }
 
 /// What the row says, unless the coordinator says otherwise.
@@ -1465,34 +1455,32 @@ fn effective_status(turn: &db::entity::turn::Model, live: &OwnedLive) -> Result<
 // all three together. `conversation_snapshot` is the only way in now, and a
 // second entrance that answers a third of the question is how the two drift.
 
-fn switch_branch_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+/// The barrier check and the switch in the caller's one IMMEDIATE write.
+async fn switch_branch_unless_plan_barrier(
+    tx: &WriteTx,
     conversation_id: &str,
     message_id: &str,
-) -> diesel::QueryResult<bool> {
-    conn.immediate_transaction(|conn| {
-        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-        {
-            return Ok(false);
-        }
-        db::ops::message::switch_branch(conn, conversation_id, message_id).map(|_| true)
-    })
+) -> Result<bool, DbErr> {
+    if db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
+        return Ok(false);
+    }
+    message_ops::switch_branch(tx, conversation_id, message_id)
+        .await
+        .map(|_| true)
 }
 
-fn delete_message_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+/// The barrier check and the delete in the caller's one IMMEDIATE write.
+async fn delete_message_unless_plan_barrier(
+    tx: &WriteTx,
     conversation_id: &str,
     message_id: &str,
-) -> diesel::QueryResult<bool> {
-    conn.immediate_transaction(|conn| {
-        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-        {
-            return Ok(false);
-        }
-        db::ops::message::delete_subtree(conn, conversation_id, message_id).map(|_| true)
-    })
+) -> Result<bool, DbErr> {
+    if db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
+        return Ok(false);
+    }
+    message_ops::delete_subtree(tx, conversation_id, message_id)
+        .await
+        .map(|_| true)
 }
 
 const PLAN_REVIEW_MUTATION_BARRIER: &str =
@@ -1520,17 +1508,14 @@ pub async fn switch_branch(app: tauri::AppHandle, request: MessageBranchSwitchRe
         .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let changed =
-            switch_branch_unless_plan_barrier(&mut conn, &conversation_id, &message_id).map_err(|e| e.to_string())?;
-        changed
-            .then_some(())
-            .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let changed = services
+        .sea
+        .write(async |tx| switch_branch_unless_plan_barrier(tx, &conversation_id, &message_id).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    changed
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
 }
 
 // `update_message_content` was here. It took only a message id, so it could not
@@ -1565,31 +1550,25 @@ pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest
         .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let changed =
-            delete_message_unless_plan_barrier(&mut conn, &conversation_id, &id).map_err(|e| e.to_string())?;
-        changed
-            .then_some(())
-            .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let changed = services
+        .sea
+        .write(async |tx| delete_message_unless_plan_barrier(tx, &conversation_id, &id).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    changed
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
 }
 
 #[tauri::command]
 pub async fn rate_message(app: tauri::AppHandle, request: MessageRatingUpdateRequest) -> Result<(), String> {
     let MessageRatingUpdateRequest { id, rating } = request;
     let rating = rating.map(Into::into);
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::update_rating(&mut conn, &id, rating).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| message_ops::update_rating(tx, &id, rating).await)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// What an export may contain: turns somebody took.
@@ -1627,30 +1606,37 @@ pub async fn export_conversation(
         output_path,
     } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let result: String = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        let history = db::ops::message::list_messages(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        // The active path only. Exporting every branch would interleave rival
-        // answers to the same question into one transcript, and the DPO pairing
-        // below walks backwards for a prompt — across a fork it would pick up a
-        // question that belongs to a different branch.
-        //
-        // Unlike the chat path this keeps everything from the root, compacted or
-        // not: a summary is a token-budget device, and the rows it stands in for
-        // are exactly the training data being exported.
-        let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-        let messages: Vec<message_entity::Model> = exportable(ctx.path)?;
-        let system_prompt = match conv.assistant_id.as_deref() {
-            Some(assistant_id) => {
-                db::ops::assistant::get_assistant(&mut conn, assistant_id)
-                    .map_err(|error| format!("cannot read export assistant {assistant_id}: {error}"))?
-                    .system_prompt
-            }
-            None => String::new(),
-        };
-
+    let (path, system_prompt) = services
+        .sea
+        .read(async |tx| {
+            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+                .await?
+                .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
+            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            // The active path only. Exporting every branch would interleave rival
+            // answers to the same question into one transcript, and the DPO pairing
+            // below walks backwards for a prompt — across a fork it would pick up a
+            // question that belongs to a different branch.
+            //
+            // Unlike the chat path this keeps everything from the root, compacted or
+            // not: a summary is a token-budget device, and the rows it stands in for
+            // are exactly the training data being exported.
+            let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
+            let system_prompt = match conv.assistant_id.as_deref() {
+                Some(assistant_id) => {
+                    db::sea::ops::assistant::get_assistant(tx, assistant_id)
+                        .await?
+                        .ok_or_else(|| format!("cannot read export assistant {assistant_id}: it no longer exists"))?
+                        .system_prompt
+                }
+                None => String::new(),
+            };
+            Ok::<_, ReadError>((ctx.path, system_prompt))
+        })
+        .await
+        .map_err(String::from)?;
+    let messages: Vec<message_entity::Model> = exportable(path)?;
+    let result: String = {
         fn msg_to_openai(m: &message_entity::Model) -> Result<serde_json::Value, String> {
             let role = db::models::message::MessageRole::parse(&m.role)
                 .map_err(|error| format!("message {} cannot be exported: {error}", m.id))?;
@@ -1742,9 +1728,7 @@ pub async fn export_conversation(
                 Ok(result.join("\n"))
             }
         }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    }?;
 
     if let Some(ref path) = output_path {
         std::fs::write(path, &result).map_err(|e| e.to_string())?;
@@ -1842,14 +1826,15 @@ pub async fn upload_file_bytes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::turn::{TurnPhase as CoreTurnPhase, TurnStatus as CoreTurnStatus};
-    use meridian_core::db::ops::turn;
+    use meridian_core::db::sea::ops::turn;
+    use meridian_core::db::sea::{execute_for_tests, sea_test_db};
     use meridian_core::turn::TurnOrigin;
 
-    fn seed(pool: &meridian_core::db::DbPool) {
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
+    async fn seed(db: &Db) {
+        db.write(async |tx| conversation_ops::create_conversation(tx, "c1", Some("t"), None, None, 1).await)
+            .await
+            .unwrap();
     }
 
     fn native_plan_runtime() -> db::models::plan_review::NativePlanReviewRuntimeConfig {
@@ -1865,40 +1850,52 @@ mod tests {
         }
     }
 
-    fn seed_pending_plan_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        let document = db::ops::plan_review::create_or_resume_document(conn, "c1", 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("m1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
+    async fn seed_pending_plan_review(db: &Db) {
+        use db::sea::ops::plan_review as plan_ops;
+        db.write(async |tx| {
+            let document = plan_ops::create_or_resume_document(tx, "c1", 2).await?;
+            let appended = plan_ops::append_assistant_revision(
+                tx,
+                &plan_ops::PlanRevisionAppend {
+                    document_id: &document.id,
+                    expected_generation: 0,
+                    expected_head_sha256: None,
+                    content_markdown: "# Plan\n",
+                    patch: "first patch",
+                    source_message_id: Some("m1"),
+                    source_call_id: Some("update-1"),
+                    responding_to_suggestion_revision_id: None,
+                    now: 3,
+                },
+            )
+            .await?;
+            plan_ops::mark_materialization_applied(tx, &appended.materialization.id, 4).await?;
+            turn::begin(tx, "turn-1", "c1", TurnOrigin::Desktop, None, 5).await?;
+            plan_ops::submit_native_head_for_review(
+                tx,
+                &plan_ops::PlanReviewSubmit {
+                    document_id: &document.id,
+                    expected_generation: appended.document.working_generation,
+                    expected_head_sha256: &appended.revision.content_sha256,
+                    turn_id: Some("turn-1"),
+                    assistant_message_id: Some("m1"),
+                    provider_call_id: Some("exit-1"),
+                    provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
+                    now: 6,
+                },
+                &native_plan_runtime(),
+            )
+            .await
+        })
+        .await
         .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::turn::begin(conn, "turn-1", "c1", TurnOrigin::Desktop, None, 5).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: Some("turn-1"),
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 6,
-            },
-            &native_plan_runtime(),
-        )
-        .unwrap();
+    }
+
+    /// The snapshot, read as the command reads it.
+    async fn read(db: &Db, live: &OwnedLive) -> Result<SnapshotRead, String> {
+        db.read(async |tx| read_snapshot(tx, "c1", live).await)
+            .await
+            .map_err(String::from)
     }
 
     #[test]
@@ -1949,27 +1946,34 @@ mod tests {
         );
     }
 
-    #[test]
-    fn snapshot_and_transcript_mutations_use_the_conversation_wide_plan_barrier() {
-        let pool = diesel_test_db();
-        seed(&pool);
-        let mut conn = pool.get().unwrap();
-        seed_pending_plan_review(&mut conn);
+    #[tokio::test]
+    async fn snapshot_and_transcript_mutations_use_the_conversation_wide_plan_barrier() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        seed_pending_plan_review(&db).await;
 
-        let snapshot = read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap();
+        let snapshot = read(&db, &OwnedLive::Unsettled).await.unwrap();
         assert_eq!(
             snapshot.4.len(),
             1,
             "an active review remains recoverable even when its tool card is off the visible branch"
         );
         assert!(snapshot.5, "the snapshot still exposes the conversation-wide barrier");
-        assert!(!switch_branch_unless_plan_barrier(&mut conn, "c1", "missing-message").unwrap());
-        assert!(!delete_message_unless_plan_barrier(&mut conn, "c1", "missing-message").unwrap());
+        let refused = db
+            .write(async |tx| {
+                Ok::<_, DbErr>((
+                    switch_branch_unless_plan_barrier(tx, "c1", "missing-message").await?,
+                    delete_message_unless_plan_barrier(tx, "c1", "missing-message").await?,
+                ))
+            })
+            .await
+            .unwrap();
+        assert_eq!(refused, (false, false));
     }
 
     #[test]
     fn turn_usage_is_explicitly_mapped_and_serializes_decimal_strings() {
-        let response = TurnUsageInfoResponse::from(db::ops::usage::TurnUsageSummary {
+        let response = TurnUsageInfoResponse::from(db::sea::ops::usage::TurnUsageSummary {
             messages: 1,
             missing_token_usage_messages: 2,
             incomplete_token_usage_messages: 3,
@@ -1995,7 +1999,7 @@ mod tests {
             metered_messages: 18,
             subscription_messages: 19,
             external_messages: 20,
-            pricing_status: db::ops::usage::TurnPricingStatus::LowerBound,
+            pricing_status: db::sea::ops::usage::TurnPricingStatus::LowerBound,
         });
         let value = serde_json::to_value(response).unwrap();
         assert_eq!(value["total_cost"], "1");
@@ -2008,22 +2012,25 @@ mod tests {
     /// enums spelled the way the TypeScript union expects.
     #[test]
     fn acp_session_notice_is_explicitly_mapped() {
-        let row = |actions: &str| db::models::acp_session_notice::AcpSessionNoticeRow {
+        use meridian_core::events::{
+            AcpNoticeAction as CoreAction, AcpNoticeCategory as CoreCategory, AcpNoticeSeverity as CoreSeverity,
+        };
+        let row = |revision: i32| db::entity::acp_session_notice::Model {
             id: "n1".into(),
             conversation_id: "c1".into(),
             turn_id: None,
             notice_id: "sess:notice:1:1".into(),
-            revision: 2,
-            category: "limit".into(),
-            severity: "warning".into(),
+            revision,
+            category: CoreCategory::Limit,
+            severity: CoreSeverity::Warning,
             title: "Retrying Claude, attempt 1 of 5.".into(),
             details: None,
             reason: None,
-            actions: actions.into(),
+            actions: db::types::Json(vec![CoreAction::Retry, CoreAction::NewSession]),
             created_at: 5,
             updated_at: 6,
         };
-        let response = AcpSessionNoticeInfoResponse::try_from(row(r#"["retry","new_session"]"#)).unwrap();
+        let response = AcpSessionNoticeInfoResponse::try_from(row(2)).unwrap();
         assert_eq!(
             serde_json::to_value(response).unwrap(),
             serde_json::json!({
@@ -2043,10 +2050,9 @@ mod tests {
             })
         );
 
-        // A stored action list this build cannot read fails the row rather
-        // than becoming an incident that recommends nothing.
-        assert!(AcpSessionNoticeInfoResponse::try_from(row(r#"["teleport"]"#)).is_err());
-        assert!(AcpSessionNoticeInfoResponse::try_from(row("not json")).is_err());
+        // A stored action list this build cannot read already failed the read
+        // (the entity's strict JSON column); a negative revision fails here.
+        assert!(AcpSessionNoticeInfoResponse::try_from(row(-1)).is_err());
     }
 
     #[test]
@@ -2301,11 +2307,11 @@ mod tests {
 
     #[test]
     fn context_descriptor_does_not_expose_content_or_metadata() {
-        let row = db::models::message_context_item::MessageContextItemRow {
+        let row = db::entity::message_context_item::Model {
             id: "context-1".into(),
             message_id: "user".into(),
             position: 0,
-            kind: "shell_output".into(),
+            kind: CoreMessageContextKind::ShellOutput,
             content: "secret output".into(),
             display_path: None,
             line_start: None,
@@ -2314,7 +2320,7 @@ mod tests {
             byte_count: 13,
             line_count: 1,
             token_count: 3,
-            truncated: 0,
+            truncated: db::types::SqlBool::FALSE,
             metadata: Some(r#"{"command":"secret"}"#.into()),
             created_at: 1,
         };
@@ -2359,56 +2365,56 @@ mod tests {
         )
     }
 
-    fn snapshot(pool: &meridian_core::db::DbPool, held: Option<&str>) -> Vec<TurnInfoResponse> {
-        let mut conn = pool.get().unwrap();
-        read_snapshot(&mut conn, "c1", &holding("c1", held)).unwrap().2
+    async fn snapshot(db: &Db, held: Option<&str>) -> Vec<TurnInfoResponse> {
+        read(db, &holding("c1", held)).await.unwrap().2
     }
 
     /// When the coordinator will not hold still, nothing is called interrupted.
     /// A crash that really happened is still on record at the next open; a live
     /// turn labelled as crashed is a lie the user reads now.
-    fn unsettled(pool: &meridian_core::db::DbPool) -> Vec<TurnInfoResponse> {
-        let mut conn = pool.get().unwrap();
-        read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().2
+    async fn unsettled(db: &Db) -> Vec<TurnInfoResponse> {
+        read(db, &OwnedLive::Unsettled).await.unwrap().2
     }
 
     /// The whole reason the status is decided here rather than in the front
     /// end. A killed turn leaves `running` behind, and reconciliation only
     /// rewrites those at startup — so the column alone would have a turn that
     /// died an hour ago read as one still in progress.
-    #[test]
-    fn a_running_turn_nobody_holds_is_reported_as_interrupted() {
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            turn::set_phase(&mut conn, "t1", CoreTurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
-        }
+    #[tokio::test]
+    async fn a_running_turn_nobody_holds_is_reported_as_interrupted() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
+            turn::begin(tx, "t1", "c1", TurnOrigin::Desktop, None, 1000).await?;
+            turn::set_phase(tx, "t1", CoreTurnPhase::RunningTool, Some("edit_file"), 1001).await
+        })
+        .await
+        .unwrap();
 
-        let dead = snapshot(&pool, None);
+        let dead = snapshot(&db, None).await;
         assert_eq!(dead[0].status, TurnStatus::Interrupted);
         assert_eq!(dead[0].phase, Some(TurnPhase::RunningTool));
         assert_eq!(dead[0].phase_tool.as_deref(), Some("edit_file"));
 
         // And the same row, while it really is running, is not.
-        let live = snapshot(&pool, Some("t1"));
+        let live = snapshot(&db, Some("t1")).await;
         assert_eq!(live[0].status, TurnStatus::Running);
     }
 
     /// The coordinator is per conversation, so holding *a* turn is not holding
     /// *this* one — a new turn must not vouch for the dead one before it.
-    #[test]
-    fn a_newer_turn_does_not_vouch_for_an_older_one() {
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            turn::begin(&mut conn, "live", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
-        }
+    #[tokio::test]
+    async fn a_newer_turn_does_not_vouch_for_an_older_one() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
+            turn::begin(tx, "dead", "c1", TurnOrigin::Desktop, None, 1000).await?;
+            turn::begin(tx, "live", "c1", TurnOrigin::Desktop, None, 2000).await
+        })
+        .await
+        .unwrap();
 
-        let turns = snapshot(&pool, Some("live"));
+        let turns = snapshot(&db, Some("live")).await;
         assert_eq!(
             turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
             ["interrupted", "running"]
@@ -2418,23 +2424,25 @@ mod tests {
 
     /// A turn that reached an ending said so, and the coordinator has no
     /// opinion to add.
-    #[test]
-    fn a_finished_turn_keeps_the_ending_it_recorded() {
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
+    #[tokio::test]
+    async fn a_finished_turn_keeps_the_ending_it_recorded() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
             for (id, status, error) in [
                 ("done", CoreTurnStatus::Done, None),
                 ("stopped", CoreTurnStatus::Cancelled, None),
                 ("broke", CoreTurnStatus::Failed, Some("API Key not set")),
             ] {
-                turn::begin(&mut conn, id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-                turn::finish(&mut conn, id, status, error, 1500).unwrap();
+                turn::begin(tx, id, "c1", TurnOrigin::Desktop, None, 1000).await?;
+                turn::finish(tx, id, status, error, 1500).await?;
             }
-        }
+            Ok::<_, DbErr>(())
+        })
+        .await
+        .unwrap();
 
-        let turns = snapshot(&pool, None);
+        let turns = snapshot(&db, None).await;
         assert_eq!(
             turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
             ["done", "cancelled", "failed"]
@@ -2446,22 +2454,19 @@ mod tests {
     /// Stored first-party state is a closed contract. A later status cannot be
     /// interpreted by this build, so the snapshot fails rather than inventing
     /// an ending or treating the turn as live.
-    #[test]
-    fn a_status_this_build_does_not_know_is_rejected() {
-        use diesel::prelude::*;
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            diesel::update(meridian_core::db::schema::turns::table.find("t1"))
-                .set(meridian_core::db::schema::turns::status.eq("from_the_future"))
-                .execute(&mut conn)
-                .unwrap();
-        }
+    #[tokio::test]
+    async fn a_status_this_build_does_not_know_is_rejected() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| turn::begin(tx, "t1", "c1", TurnOrigin::Desktop, None, 1000).await)
+            .await
+            .unwrap();
+        execute_for_tests(&db, "UPDATE turns SET status = 'from_the_future' WHERE id = 't1'")
+            .await
+            .unwrap();
 
-        let mut conn = pool.get().unwrap();
-        let error = read_snapshot(&mut conn, "c1", &holding("c1", None))
+        let error = read(&db, &holding("c1", None))
+            .await
             .err()
             .expect("the unknown status must fail the snapshot");
         assert!(error.contains("unknown turn status 'from_the_future'"), "{error}");
@@ -2474,21 +2479,22 @@ mod tests {
     /// one that stopped without saying so. The revision check is what catches
     /// it; this is what the read looks like once it has been caught and cannot
     /// be settled.
-    #[test]
-    fn an_unsettled_read_calls_nothing_interrupted() {
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
-            turn::finish(&mut conn, "t2", CoreTurnStatus::Done, None, 2500).unwrap();
-        }
+    #[tokio::test]
+    async fn an_unsettled_read_calls_nothing_interrupted() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
+            turn::begin(tx, "t1", "c1", TurnOrigin::Desktop, None, 1000).await?;
+            turn::begin(tx, "t2", "c1", TurnOrigin::Desktop, None, 2000).await?;
+            turn::finish(tx, "t2", CoreTurnStatus::Done, None, 2500).await
+        })
+        .await
+        .unwrap();
 
         // Believed, `t1` reads as interrupted.
-        assert_eq!(snapshot(&pool, None)[0].status, TurnStatus::Interrupted);
+        assert_eq!(snapshot(&db, None).await[0].status, TurnStatus::Interrupted);
         // Unsettled, it reads as what the row says and nothing is invented.
-        let turns = unsettled(&pool);
+        let turns = unsettled(&db).await;
         assert_eq!(
             turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
             ["running", "done"]
@@ -2497,68 +2503,39 @@ mod tests {
 
     /// One read, one state: the turns are the turns of the tree that came back
     /// with them, and the head names a row that is in it.
-    #[test]
-    fn the_tree_and_the_turns_describe_the_same_conversation() {
-        use diesel::RunQueryDsl;
+    #[tokio::test]
+    async fn the_tree_and_the_turns_describe_the_same_conversation() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
+            turn::begin(tx, "t1", "c1", TurnOrigin::Desktop, None, 1000).await?;
+            let row = message_entity::Model {
+                turn_id: Some("t1".into()),
+                ..message_ops::new_row("m1", "c1", "user", "hi", 1)
+            };
+            message_ops::append_message(tx, row, None).await
+        })
+        .await
+        .unwrap();
+        execute_for_tests(
+            &db,
+            "INSERT INTO audit_messages
+                (id, recorded_at, message_id, conversation_id, turn_id, turn_origin,
+                 role, content, provider_id, model_id, input_tokens, output_tokens,
+                 created_at, input_price, output_price, billing_mode)
+             VALUES
+                ('a1', 2, 'reply-1', 'c1', 't1', 'desktop', 'assistant', '',
+                 'p1', 'm1', 1000000, 0, 2, '10', '20', 'metered')",
+        )
+        .await
+        .unwrap();
 
-        let pool = diesel_test_db();
-        seed(&pool);
-        {
-            let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            meridian_core::db::ops::message::append_message(
-                &mut conn,
-                &meridian_core::db::models::message::MessageInsert {
-                    id: "m1",
-                    conversation_id: "c1",
-                    role: "user",
-                    content: "hi",
-                    provider_id: None,
-                    model_id: None,
-                    input_tokens: None,
-                    output_tokens: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                    sort_order: 0,
-                    created_at: 1,
-                    reasoning_content: None,
-                    rating: None,
-                    schema_version: 2,
-                    is_compact_summary: 0,
-                    sender_id: None,
-                    parent_id: None,
-                    compact_anchor_id: None,
-                    source: None,
-                    turn_id: Some("t1"),
-                    tool_outcome: None,
-                    cache_read_tokens: None,
-                    cache_write_tokens: None,
-                    server_tool_calls: None,
-                    provider_name: None,
-                    response_model_id: None,
-                },
-                None,
-            )
-            .unwrap();
-            diesel::sql_query(
-                "INSERT INTO audit_messages
-                    (id, recorded_at, message_id, conversation_id, turn_id, turn_origin,
-                     role, content, provider_id, model_id, input_tokens, output_tokens,
-                     created_at, input_price, output_price, billing_mode)
-                 VALUES
-                    ('a1', 2, 'reply-1', 'c1', 't1', 'desktop', 'assistant', '',
-                     'p1', 'm1', 1000000, 0, 2, '10', '20', 'metered')",
-            )
-            .execute(&mut conn)
-            .unwrap();
-        }
-
-        let mut conn = pool.get().unwrap();
         let (conv, tree, turns, runs, plan_reviews, plan_review_barrier, acp_notices) =
-            read_snapshot(&mut conn, "c1", &holding("c1", Some("t1"))).unwrap();
+            read(&db, &holding("c1", Some("t1"))).await.unwrap();
         assert!(acp_notices.is_empty(), "a native conversation reports no incidents");
 
         assert_eq!(conv.id, "c1");
+        // The user row and its audit copy, both through the append.
         assert_eq!(tree.messages.len(), 1);
         assert_eq!(tree.messages[0].turn_id.as_deref(), Some("t1"));
         assert_eq!(tree.head_message_id.as_deref(), Some(tree.messages[0].id.as_str()));
@@ -2582,29 +2559,28 @@ mod tests {
     /// not move when its lease is taken or dropped. Judging the child's row
     /// against the parent's reading would leave a run that died in a panic
     /// spinning on the card for ever.
-    #[test]
-    fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
-        let pool = meridian_core::db::diesel_test_db();
-        seed(&pool);
-        let mut conn = pool.get().unwrap();
-
-        meridian_core::db::ops::conversation::insert(
-            &mut conn,
-            meridian_core::db::models::conversation::ConversationInsert {
-                id: "child",
-                title: Some("look it up"),
-                created_at: 10,
-                updated_at: 10,
-                parent_conversation_id: Some("c1"),
-                spawned_by_message_id: Some("m1"),
-                spawned_by_call_id: Some("0"),
-                spawned_turn_id: Some("t-child"),
-                agent_kind: Some("explore"),
-                ..Default::default()
-            },
-        )
+    #[tokio::test]
+    async fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
+        let db = sea_test_db().await;
+        seed(&db).await;
+        db.write(async |tx| {
+            conversation_ops::insert(
+                tx,
+                db::entity::conversation::Model {
+                    title: Some("look it up".into()),
+                    parent_conversation_id: Some("c1".into()),
+                    spawned_by_message_id: Some("m1".into()),
+                    spawned_by_call_id: Some("0".into()),
+                    spawned_turn_id: Some("t-child".into()),
+                    agent_kind: Some("explore".into()),
+                    ..conversation_ops::new_row("child", 10)
+                },
+            )
+            .await?;
+            turn::begin(tx, "t-child", "child", TurnOrigin::SubAgent, None, 10).await
+        })
+        .await
         .unwrap();
-        meridian_core::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
 
         // The parent is being read while it holds its own turn. Nobody holds the
         // child's, so the child's `running` row is a run that stopped.
@@ -2613,7 +2589,7 @@ mod tests {
                 .into_iter()
                 .collect(),
         );
-        let runs = read_snapshot(&mut conn, "c1", &live).unwrap().3;
+        let runs = read(&db, &live).await.unwrap().3;
         assert_eq!(runs[0].agent_kind, SubAgentKind::Explore);
         assert_eq!(runs[0].status, Some(TurnStatus::Interrupted));
 
@@ -2626,11 +2602,11 @@ mod tests {
             .into_iter()
             .collect(),
         );
-        let runs = read_snapshot(&mut conn, "c1", &live).unwrap().3;
+        let runs = read(&db, &live).await.unwrap().3;
         assert_eq!(runs[0].status, Some(TurnStatus::Running));
 
         // And when the coordinator would not hold still, no run is accused.
-        let runs = read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().3;
+        let runs = read(&db, &OwnedLive::Unsettled).await.unwrap().3;
         assert_eq!(runs[0].status, Some(TurnStatus::Running));
     }
 }

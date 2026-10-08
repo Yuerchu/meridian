@@ -20,7 +20,6 @@ use meridian_core::db::entity::turn::TurnStatus;
 use meridian_core::db::entity::{
     plan_comment, plan_document, plan_review_delivery, plan_review_draft, plan_review_session, plan_revision,
 };
-use meridian_core::db::ops::plan_review as diesel_ops;
 use meridian_core::db::sea::cap::{Db, Read, Snapshot, WriteTx};
 use meridian_core::db::sea::ops::plan_review as ops;
 use meridian_core::events::PlanReviewEvent;
@@ -576,15 +575,16 @@ async fn event_after(db: &impl Snapshot, delivery: &plan_review_delivery::Model)
 /// is on the snapshot's active branch. Legacy artifacts have no transcript
 /// identity and remain available through the migration tables, but cannot be
 /// attached to a particular tool card without inventing one.
-///
-/// Still on Diesel: the message snapshot that calls it is one Diesel read.
-pub fn summaries_for_conversation(
-    conn: &mut diesel::sqlite::SqliteConnection,
+pub async fn summaries_for_conversation(
+    db: &impl Snapshot,
     conversation_id: &str,
     visible_message_ids: &HashSet<&str>,
 ) -> Result<PlanReviewSummaryListResponse, String> {
     let mut summaries = Vec::new();
-    for row in diesel_ops::list_reviews_for_conversation(conn, conversation_id).map_err(|error| error.to_string())? {
+    for row in ops::list_reviews_for_conversation(db, conversation_id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
         let (Some(assistant_message_id), Some(provider_call_id), Some(turn_id)) = (
             row.assistant_message_id.clone(),
             row.provider_call_id.clone(),
@@ -595,14 +595,14 @@ pub fn summaries_for_conversation(
             // recover through this projection.
             continue;
         };
-        let status = row.state()?;
-        let delivery_state = diesel_ops::get_review_bundle(conn, &row.id)
+        let status = row.state;
+        let delivery_state = ops::get_review_bundle(db, &row.id)
+            .await
             .map_err(|error| error.to_string())?
             .deliveries
             .into_iter()
             .last()
-            .map(|delivery| delivery.state())
-            .transpose()?;
+            .map(|delivery| delivery.state);
         let active_barrier = status == PlanReviewState::Pending
             || delivery_state.is_some_and(|state| {
                 matches!(
@@ -1521,73 +1521,62 @@ mod tests {
 
     #[tokio::test]
     async fn native_continuation_is_refused_before_start_when_the_review_workspace_drifted() {
-        let pool = db::diesel_test_db();
-        let runtime = {
-            let mut conn = pool.get().unwrap();
-            for (id, path) in [("project-a", "A"), ("project-b", "B")] {
-                db::ops::project::create_project(
-                    &mut conn,
-                    &db::models::project::ProjectInsert {
-                        id,
-                        name: id,
-                        path: Some(path),
-                        source_type: "local",
-                        source_id: None,
-                        assistant_id: None,
-                        description: None,
-                        created_at: 1,
-                        updated_at: 1,
-                    },
-                )
-                .unwrap();
-            }
-            db::ops::conversation::create_conversation(&mut conn, "c1", None, None, Some("project-a"), 1).unwrap();
-            let document = diesel_ops::create_or_resume_document(&mut conn, "c1", 2).unwrap();
-            let appended = diesel_ops::append_assistant_revision(
-                &mut conn,
-                &diesel_ops::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: 0,
-                    expected_head_sha256: None,
-                    content_markdown: "# Plan\n",
-                    patch: "first patch",
-                    source_message_id: Some("m1"),
-                    source_call_id: Some("update-1"),
-                    responding_to_suggestion_revision_id: None,
-                    now: 3,
-                },
-            )
+        let db = db::sea::sea_test_db().await;
+        let runtime = db
+            .write(async |tx| {
+                for (id, path) in [("project-a", "A"), ("project-b", "B")] {
+                    db::sea::ops::project::create_project(
+                        tx,
+                        db::entity::project::Model {
+                            id: id.into(),
+                            name: id.into(),
+                            path: Some(path.into()),
+                            source_type: db::entity::project::ProjectSource::Local,
+                            source_id: None,
+                            assistant_id: None,
+                            description: None,
+                            created_at: 1,
+                            updated_at: 1,
+                        },
+                    )
+                    .await?;
+                }
+                db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-a"), 1).await?;
+                first_revision(tx, "c1").await;
+                // Bypass command guards to simulate external/old-code corruption;
+                // the continuation endpoint is the final defensive check.
+                db::sea::ops::conversation::update_project(tx, "c1", Some("project-b".into()), 7).await?;
+                Ok::<_, db::sea::DbErr>(NativePlanReviewRuntimeConfig {
+                    project_id: Some("project-a".into()),
+                    project_path: Some("A".into()),
+                    ..native_plan_runtime()
+                })
+            })
+            .await
             .unwrap();
-            diesel_ops::mark_materialization_applied(&mut conn, &appended.materialization.id, 4).unwrap();
-            let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-                project_id: Some("project-a".into()),
-                project_path: Some("A".into()),
-                ..native_plan_runtime()
-            };
-            // Bypass command guards to simulate external/old-code corruption;
-            // the continuation endpoint is the final defensive check.
-            db::ops::conversation::update_project(&mut conn, "c1", Some("project-b"), 7).unwrap();
-            runtime
-        };
 
-        let error = crate::commands::chat::verify_plan_review_workspace(&pool, "c1", &runtime)
+        let error = crate::commands::chat::verify_plan_review_workspace(&db, "c1", &runtime)
             .await
             .unwrap_err();
         assert!(error.contains("workspace changed"));
-        let mut conn = pool.get().unwrap();
         assert!(
-            db::ops::turn::list_for_conversation(&mut conn, "c1")
+            db::sea::ops::turn::list_for_conversation(&db, "c1")
+                .await
                 .unwrap()
                 .is_empty()
         );
     }
 
-    /// The summaries are still read by the Diesel snapshot, so the review is
-    /// built through SeaORM on a file both pools open.
     #[tokio::test]
     async fn snapshot_delivery_state_and_review_diff_span_the_whole_review_episode() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        let sea = db::sea::sea_test_db().await;
+        let summaries = async |visible: &HashSet<&str>| {
+            sea.read(async |tx| {
+                Ok::<_, ops::PlanReviewStoreError>(summaries_for_conversation(tx, "c1", visible).await?)
+            })
+            .await
+            .unwrap()
+        };
         let (first, delivery) = sea
             .write(async |tx| {
                 db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await?;
@@ -1617,7 +1606,7 @@ mod tests {
             .await
             .unwrap();
         let visible = HashSet::from(["m1"]);
-        let queued = summaries_for_conversation(&mut pool.get().unwrap(), "c1", &visible).unwrap();
+        let queued = summaries(&visible).await;
         assert_eq!(queued[0].delivery_state.as_deref(), Some("queued"));
         sea.write(async |tx| {
             ops::mark_delivery_dispatched(tx, &delivery.id, "attempt-1", 7).await?;
@@ -1625,7 +1614,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let acknowledged = summaries_for_conversation(&mut pool.get().unwrap(), "c1", &visible).unwrap();
+        let acknowledged = summaries(&visible).await;
         assert_eq!(acknowledged[0].delivery_state.as_deref(), Some("acknowledged"));
 
         let response = sea

@@ -83,7 +83,7 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/db/entity/mod.rs',
   'src-tauri/crates/core/src/db/ops/conversation.rs',
   'src-tauri/crates/core/src/db/ops/message.rs',
-  'src-tauri/crates/core/src/db/ops/usage.rs',
+  'src-tauri/crates/core/src/db/sea/ops/usage.rs',
   'src-tauri/crates/core/src/db/schema.rs',
   'src-tauri/crates/core/src/db/types.rs',
   'src-tauri/crates/core/src/decimal.rs',
@@ -2089,7 +2089,7 @@ if (prices) {
   }
 }
 
-const usageFile = 'src-tauri/crates/core/src/db/ops/usage.rs'
+const usageFile = 'src-tauri/crates/core/src/db/sea/ops/usage.rs'
 const usage = readAt(usageFile)
 const usageBucket = usage?.match(/pub struct UsageBucket\s*\{([\s\S]*?)\n\}/)?.[1]
 if (usageBucket) {
@@ -2097,6 +2097,9 @@ if (usageBucket) {
   if (!/^\s*pub\s+total_cost\s*:\s*Decimal\s*,/m.test(usageBucket)) {
     add(usageFile, 'UsageBucket.total_cost 必须存在且使用 Decimal')
   }
+} else if (usage != null) {
+  // 结构体搬走而检查器没跟上，就是这条规则静默失效。
+  add(usageFile, '这里没有 pub struct UsageBucket：它搬到哪里，这条金额规则就要跟到哪里')
 }
 
 requireRustFields('src-tauri/crates/core/src/provider/balance.rs', 'BalanceAccount', {

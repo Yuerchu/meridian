@@ -897,7 +897,7 @@ pub async fn run_plan_review_continuation(
     mode: &'static str,
     runtime: db::models::plan_review::NativePlanReviewRuntimeConfig,
 ) -> Result<(), String> {
-    verify_plan_review_workspace(&services.db, &conversation_id, &runtime).await?;
+    verify_plan_review_workspace(&services.sea, &conversation_id, &runtime).await?;
     let thinking_level = runtime.thinking_level.map(|level| level.as_str().to_string());
     run_turn(
         services,
@@ -924,35 +924,34 @@ pub async fn run_plan_review_continuation(
 }
 
 pub(crate) async fn verify_plan_review_workspace(
-    pool: &DbPool,
+    db: &db::sea::cap::Db,
     conversation_id: &str,
     runtime: &db::models::plan_review::NativePlanReviewRuntimeConfig,
 ) -> Result<(), String> {
-    let pool = pool.clone();
-    let conversation_id = conversation_id.to_string();
-    let expected_project_id = runtime.project_id.clone();
-    let expected_project_path = runtime.project_path.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let conversation =
-            db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        let current_project_id = conversation.project_id.clone();
-        let current_project_path = current_project_id
-            .as_deref()
-            .map(|project_id| db::ops::project::get_project(&mut conn, project_id))
-            .transpose()
-            .map_err(|e| e.to_string())?
-            .and_then(|project| project.path);
-        if current_project_id != expected_project_id || current_project_path != expected_project_path {
-            return Err(
-                "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
-                    .into(),
-            );
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    // The conversation and its project in one snapshot: a move between the
+    // two reads would compare one project's id with another's path.
+    let (current_project_id, current_project_path) = db
+        .read(async |tx| {
+            let conversation = db::sea::ops::conversation::get_conversation(tx, conversation_id)
+                .await?
+                .ok_or_else(|| db::sea::DbErr::RecordNotFound(format!("conversation {conversation_id}")))?;
+            let path = match conversation.project_id.as_deref() {
+                Some(project_id) => db::sea::ops::project::get_project(tx, project_id)
+                    .await?
+                    .and_then(|project| project.path),
+                None => None,
+            };
+            Ok::<_, db::sea::DbErr>((conversation.project_id, path))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    if current_project_id != runtime.project_id || current_project_path != runtime.project_path {
+        return Err(
+            "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

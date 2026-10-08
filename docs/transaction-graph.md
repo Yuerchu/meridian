@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：232
-- Diesel ops 调用点（db/ops 之外）：396
-- Diesel API 引用：739
+- 事务根（非测试）：233
+- Diesel ops 调用点（db/ops 之外）：345
+- Diesel API 引用：668
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -82,8 +82,6 @@
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
-| `src-tauri/crates/core/src/db/ops/message.rs` › `delete_subtree` | diesel-deferred | message |
-| `src-tauri/crates/core/src/db/ops/message.rs` › `switch_branch` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `approve` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `append_assistant_revision` | diesel-deferred | plan_review |
@@ -186,6 +184,7 @@
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review, turn |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
+| `src-tauri/src/commands/chat.rs` › `verify_plan_review_workspace` | sea-read | conversation, project |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
@@ -210,10 +209,12 @@
 | `src-tauri/src/commands/memory.rs` › `save_memory_scoped` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `set_memory_subject_flags` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `update_memory` | sea-write | memory |
-| `src-tauri/src/commands/message.rs` › `delete_message_unless_plan_barrier` | diesel-immediate | message, plan_review |
-| `src-tauri/src/commands/message.rs` › `read_message_context_item` | diesel-deferred | conversation, message, message_context_item |
-| `src-tauri/src/commands/message.rs` › `read_snapshot` | diesel-deferred | acp_session_notice, conversation, message, message_context_item, plan_review, turn, usage |
-| `src-tauri/src/commands/message.rs` › `switch_branch_unless_plan_barrier` | diesel-immediate | message, plan_review |
+| `src-tauri/src/commands/message.rs` › `delete_message` | sea-write | message, plan_review |
+| `src-tauri/src/commands/message.rs` › `export_conversation` | sea-read | assistant, conversation, message |
+| `src-tauri/src/commands/message.rs` › `rate_message` | sea-write | message |
+| `src-tauri/src/commands/message.rs` › `read_message_context_item` | sea-read | conversation, message, message_context_item |
+| `src-tauri/src/commands/message.rs` › `read_once` | sea-read | acp_session_notice, conversation, message, message_context_item, model_config, plan_review, turn, usage |
+| `src-tauri/src/commands/message.rs` › `switch_branch` | sea-write | message, plan_review |
 | `src-tauri/src/commands/model_config.rs` › `delete_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/model_config.rs` › `get_model_config` | sea-read | model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `list_model_configs` | sea-read | model_config, model_profile |
