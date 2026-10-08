@@ -13,6 +13,9 @@ use meridian_core::db;
 use meridian_core::db::DbPool;
 use meridian_core::db::models::assistant::AssistantRow;
 use meridian_core::db::models::message_context_item::MessageContextItemRow;
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::{Db, WriteTx};
+use meridian_core::db::sea::ops::{conversation as conversation_ops, plan_review as plan_review_ops};
 use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
 use meridian_core::util::now_ms;
@@ -177,18 +180,8 @@ pub async fn set_conversation_assistant(
         .clone()
         .try_acquire_mutation(&request.id, "an assistant change")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
-            db::ops::conversation::update_assistant(conn, &request.id, request.assistant_id.0.as_deref(), now_ms())
-        })
-        .map_err(|e| e.to_string())?
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let setting = ConversationSetting::Assistant(request.assistant_id.0);
+    set_unless_plan_barrier(&services.sea, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -211,24 +204,11 @@ pub async fn set_conversation_reasoning_prefs(
         .clone()
         .try_acquire_mutation(&request.id, "a reasoning preference change")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
-            db::ops::conversation::update_reasoning_prefs(
-                conn,
-                &request.id,
-                thinking_level.as_deref(),
-                request.fast_mode,
-                now_ms(),
-            )
-        })
-        .map_err(|e| e.to_string())?
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let setting = ConversationSetting::ReasoningPrefs {
+        thinking_level,
+        fast_mode: request.fast_mode,
+    };
+    set_unless_plan_barrier(&services.sea, &request.id, setting).await
 }
 
 /// Switch the conversation's collaboration mode. `None` is the canonical
@@ -284,18 +264,8 @@ pub async fn set_conversation_accept_edits(
         .clone()
         .try_acquire_mutation(&request.id, "an edit-approval change")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        mutate_conversation_unless_plan_barrier(&mut conn, &request.id, |conn| {
-            db::ops::conversation::update_accept_edits(conn, &request.id, request.accept_edits, now_ms())
-        })
-        .map_err(|e| e.to_string())?
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let setting = ConversationSetting::AcceptEdits(request.accept_edits);
+    set_unless_plan_barrier(&services.sea, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -332,38 +302,56 @@ pub struct ConversationProjectUpdateRequest {
 
 const PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER: &str = "This conversation is waiting for plan review or its continuation. Finish it before changing its transcript or project.";
 
-fn mutate_conversation_unless_plan_barrier<F>(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-    mutation: F,
-) -> diesel::QueryResult<bool>
-where
-    F: FnOnce(&mut SqliteConnection) -> diesel::QueryResult<()>,
-{
-    conn.immediate_transaction(|conn| {
-        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-        {
-            return Ok(false);
-        }
-        mutation(conn).map(|_| true)
-    })
+/// The per-conversation settings a turn reads, each written only while no
+/// plan review holds the conversation.
+#[derive(Debug)]
+enum ConversationSetting {
+    Assistant(Option<String>),
+    ReasoningPrefs {
+        thinking_level: Option<String>,
+        fast_mode: bool,
+    },
+    AcceptEdits(bool),
+    Project(Option<String>),
 }
 
-fn update_conversation_project_unless_plan_barrier(
-    conn: &mut SqliteConnection,
+/// Writes `setting` unless a plan review or its continuation holds the
+/// conversation; `false` when it does. The check and the write share one
+/// write, so a review that lands in between cannot be written past.
+async fn write_setting_unless_plan_barrier(
+    tx: &WriteTx,
     conversation_id: &str,
-    project_id: Option<&str>,
+    setting: ConversationSetting,
     now: i64,
-) -> diesel::QueryResult<bool> {
-    conn.immediate_transaction(|conn| {
-        if db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-            .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))?
-        {
-            return Ok(false);
+) -> Result<bool, DbErr> {
+    if plan_review_ops::has_conversation_barrier(tx, conversation_id).await? {
+        return Ok(false);
+    }
+    match setting {
+        ConversationSetting::Assistant(assistant_id) => {
+            conversation_ops::update_assistant(tx, conversation_id, assistant_id, now).await?
         }
-        db::ops::conversation::update_project(conn, conversation_id, project_id, now).map(|_| true)
-    })
+        ConversationSetting::ReasoningPrefs {
+            thinking_level,
+            fast_mode,
+        } => conversation_ops::update_reasoning_prefs(tx, conversation_id, thinking_level, fast_mode, now).await?,
+        ConversationSetting::AcceptEdits(accept_edits) => {
+            conversation_ops::update_accept_edits(tx, conversation_id, accept_edits, now).await?
+        }
+        ConversationSetting::Project(project_id) => {
+            conversation_ops::update_project(tx, conversation_id, project_id, now).await?
+        }
+    };
+    Ok(true)
+}
+
+/// The caller holds the conversation's turn lease.
+async fn set_unless_plan_barrier(db: &Db, conversation_id: &str, setting: ConversationSetting) -> Result<(), String> {
+    db.write(async |tx| write_setting_unless_plan_barrier(tx, conversation_id, setting, now_ms()).await)
+        .await
+        .map_err(|e| e.to_string())?
+        .then_some(())
+        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
 }
 
 #[tauri::command]
@@ -377,21 +365,8 @@ pub async fn set_conversation_project(
         .clone()
         .try_acquire_mutation(&request.id, "a project move")
         .map_err(|busy| busy.to_string())?;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        update_conversation_project_unless_plan_barrier(
-            &mut conn,
-            &request.id,
-            request.project_id.0.as_deref(),
-            now_ms(),
-        )
-        .map_err(|e| e.to_string())?
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let setting = ConversationSetting::Project(request.project_id.0);
+    set_unless_plan_barrier(&services.sea, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1032,26 +1007,65 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn a_pending_plan_review_prevents_moving_the_conversation_to_another_project() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        create_project(&mut conn, "project-a", "A");
-        create_project(&mut conn, "project-b", "B");
-        db::ops::conversation::create_conversation(&mut conn, "conversation-1", None, None, Some("project-a"), 1)
+    #[tokio::test]
+    async fn a_pending_plan_review_prevents_changing_the_conversations_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        {
+            let conn = &mut pool.get().unwrap();
+            create_project(conn, "project-a", "A");
+            create_project(conn, "project-b", "B");
+            db::ops::conversation::create_conversation(conn, "conversation-1", None, None, Some("project-a"), 1)
+                .unwrap();
+            db::ops::conversation::create_conversation(conn, "conversation-2", None, None, Some("project-a"), 1)
+                .unwrap();
+            seed_pending_review(conn, "conversation-1");
+        }
+        let settings = || {
+            [
+                ConversationSetting::Assistant(None),
+                ConversationSetting::ReasoningPrefs {
+                    thinking_level: Some("high".into()),
+                    fast_mode: true,
+                },
+                ConversationSetting::AcceptEdits(true),
+                ConversationSetting::Project(Some("project-b".into())),
+            ]
+        };
+        for setting in settings() {
+            let refused = set_unless_plan_barrier(&sea, "conversation-1", setting)
+                .await
+                .unwrap_err();
+            assert_eq!(refused, PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER);
+        }
+        let held = conversation_ops::get_conversation(&sea, "conversation-1")
+            .await
+            .unwrap()
             .unwrap();
-        seed_pending_review(&mut conn, "conversation-1");
-
-        assert!(
-            !update_conversation_project_unless_plan_barrier(&mut conn, "conversation-1", Some("project-b"), 6,)
-                .unwrap()
-        );
         assert_eq!(
-            db::ops::conversation::get_conversation(&mut conn, "conversation-1")
-                .unwrap()
-                .project_id
-                .as_deref(),
-            Some("project-a")
+            (
+                held.project_id.as_deref(),
+                held.accept_edits.get(),
+                held.fast_mode.get()
+            ),
+            (Some("project-a"), false, false)
+        );
+
+        // The conversation next to it has no review and takes every setting.
+        for setting in settings() {
+            set_unless_plan_barrier(&sea, "conversation-2", setting).await.unwrap();
+        }
+        let free = conversation_ops::get_conversation(&sea, "conversation-2")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            (
+                free.project_id.as_deref(),
+                free.accept_edits.get(),
+                free.thinking_level.as_deref()
+            ),
+            (Some("project-b"), true, Some("high"))
         );
     }
 

@@ -21,7 +21,8 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | assistant::update_assistant | 1 |
 | cached_model::list_by_provider | 1 |
 | conversation::all_ids | 1 |
-| conversation::get_conversation | 40 |
+| conversation::get_conversation | 39 |
+| conversation::update_project | 1 |
 | emoji::create_emoji | 1 |
 | emoji::list_confirmed_for_packs | 1 |
 | emoji_pack::assign_pack | 1 |
@@ -30,7 +31,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | memory::list_subjects | 1 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
-| plan_review::has_conversation_barrier | 8 |
+| plan_review::has_conversation_barrier | 6 |
 | plan_review::list_reviews_for_conversation | 1 |
 | preference::delete_preference | 1 |
 | preference::get_preference | 12 |

@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：171
-- Diesel ops 调用点（db/ops 之外）：622
-- Diesel API 引用：997
+- 事务根（非测试）：170
+- Diesel ops 调用点（db/ops 之外）：616
+- Diesel API 引用：983
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -142,8 +142,7 @@
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
-| `src-tauri/src/commands/conversation.rs` › `mutate_conversation_unless_plan_barrier` | diesel-immediate | conversation, plan_review · 回调来自 3 处 |
-| `src-tauri/src/commands/conversation.rs` › `update_conversation_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review |
+| `src-tauri/src/commands/conversation.rs` › `set_unless_plan_barrier` | sea-write | conversation, plan_review |
 | `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/emoji.rs` › `confirm_sticker_semantics` | sea-write | emoji |
 | `src-tauri/src/commands/emoji.rs` › `create_emoji_pack` | sea-write | emoji_pack |
