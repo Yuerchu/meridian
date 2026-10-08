@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：194
+- 事务根（非测试）：210
 - Diesel ops 调用点（db/ops 之外）：500
-- Diesel API 引用：850
+- Diesel API 引用：847
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -97,6 +97,22 @@
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `(顶层)` | sea-read | — |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `(顶层)` | sea-write | — |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `append_assistant_revision` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `backfill_legacy_artifacts` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `backfill_legacy_artifacts` | sea-nested | — |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `create_or_resume_document` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `decide_review` | sea-nested | conversation, plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `discard_review_draft` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `mark_delivery_acknowledged` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `mark_delivery_dispatched_for_turn` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `mark_delivery_in_doubt` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `reconcile_dispatched_deliveries` | sea-nested | plan_review, turn |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `retry_delivery_dispatched_for_turn` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `save_review_draft` | sea-nested | plan_review |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `submit_head_for_review_inner` | sea-nested | plan_review, turn |
+| `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `transition_delivery` | sea-nested | plan_review |
 | `src-tauri/crates/core/src/db/sea/ops/queue.rs` › `take_next` | sea-nested | audit, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
