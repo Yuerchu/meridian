@@ -30,10 +30,13 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | memory::list_subjects | 1 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
+| plan_review::has_conversation_barrier | 8 |
 | plan_review::list_reviews_for_conversation | 1 |
 | preference::delete_preference | 1 |
 | preference::get_preference | 12 |
 | preference::set_preference | 4 |
+| project::create_project | 3 |
+| project::get_project | 5 |
 | provider::create_provider | 7 |
 | provider::get_provider | 5 |
 | provider::list_providers | 5 |

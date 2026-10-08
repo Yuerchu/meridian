@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：171
-- Diesel ops 调用点（db/ops 之外）：637
-- Diesel API 引用：1013
+- Diesel ops 调用点（db/ops 之外）：622
+- Diesel API 引用：997
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -74,7 +74,6 @@
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `save_review_draft` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `submit_head_for_review_inner` | diesel-deferred | plan_review, turn |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `transition_delivery` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/project.rs` › `delete_project` | diesel-deferred | memory |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `reorder` | diesel-deferred | queue |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `set_delivery` | diesel-immediate | queue, queued_prompt_context_item |
@@ -179,8 +178,9 @@
 | `src-tauri/src/commands/notify.rs` › `update_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/plan_review.rs` › `decide_plan_review` | diesel-deferred | acp_session, audit, conversation, message, model_config, plan_review, turn |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
-| `src-tauri/src/commands/project.rs` › `delete_project_unless_plan_barrier` | diesel-immediate | conversation, memory, plan_review, project |
-| `src-tauri/src/commands/project.rs` › `update_project_unless_plan_barrier` | diesel-immediate | conversation, plan_review, project |
+| `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
+| `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | conversation, memory, plan_review, project |
+| `src-tauri/src/commands/project.rs` › `update_project` | sea-write | conversation, plan_review, project |
 | `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
 | `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |
 | `src-tauri/src/commands/provider.rs` › `delete_provider` | sea-write | conversation, plan_review, provider |

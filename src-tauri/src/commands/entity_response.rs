@@ -10,11 +10,10 @@ use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Orig
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
     assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, model_config,
-    model_profile, provider, skill, tool_category, tool_preset,
+    model_profile, project, provider, skill, tool_category, tool_preset,
 };
 use meridian_core::db::models::{
     conversation::ConversationRow,
-    project::ProjectRow,
     queue::QueuedPromptRow,
     todo::{TodoItemRow, TodoListRow, TodoListView},
 };
@@ -777,7 +776,7 @@ pub struct ProjectInfoResponse {
     pub id: String,
     pub name: String,
     pub path: Option<String>,
-    pub source_type: meridian_core::db::models::project::ProjectSource,
+    pub source_type: project::ProjectSource,
     pub source_id: Option<String>,
     pub assistant_id: Option<String>,
     pub description: Option<String>,
@@ -785,22 +784,19 @@ pub struct ProjectInfoResponse {
     pub updated_at: i64,
 }
 
-impl TryFrom<ProjectRow> for ProjectInfoResponse {
-    type Error = String;
-
-    fn try_from(row: ProjectRow) -> Result<Self, Self::Error> {
-        let source_type = meridian_core::db::models::project::ProjectSource::parse(&row.source_type)?;
-        Ok(Self {
+impl From<project::Model> for ProjectInfoResponse {
+    fn from(row: project::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
             path: row.path,
-            source_type,
+            source_type: row.source_type,
             source_id: row.source_id,
             assistant_id: row.assistant_id,
             description: row.description,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }
     }
 }
 
