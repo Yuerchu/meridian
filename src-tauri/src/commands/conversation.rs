@@ -3,14 +3,12 @@ use std::collections::HashMap;
 use crate::ServicesExt;
 use crate::commands::entity_response::{ConversationAgentKind, ConversationInfoResponse, ConversationListResponse};
 use crate::commands::model_config::RequiredNullable;
-use diesel::sqlite::SqliteConnection;
 
 use meridian_core::agent::{
     TokenBudget, TurnParamsResolveRequest, build_file_access, build_messages_with_context_items, do_compact,
     file_access_prompt, instruction_budget, load_project_instructions, resolve_provider_config, resolve_turn_params,
 };
 use meridian_core::db;
-use meridian_core::db::DbPool;
 use meridian_core::db::entity::assistant;
 use meridian_core::db::entity::message_context_item;
 use meridian_core::db::sea::DbErr;
@@ -598,14 +596,15 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
 ///
 /// The persona is the assistant's prompt exactly as written: there are no
 /// template variables to resolve.
-fn load_persona_and_todo(
-    conn: &mut SqliteConnection,
+async fn load_persona_and_todo(
+    db: &meridian_core::db::sea::cap::Db,
     conversation_id: &str,
     assistant: Option<&assistant::Model>,
     live: &[db::entity::message::Model],
 ) -> Result<(String, String), String> {
     let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
-    let todo = meridian_core::agent::plan_todo_injection(conn, conversation_id, live)?
+    let todo = meridian_core::agent::plan_todo_injection_async(db, conversation_id, live)
+        .await?
         .map(|t| t.text)
         .unwrap_or_default();
     Ok((persona, todo))
@@ -650,7 +649,6 @@ async fn load_memory_estimate(
 )]
 async fn assemble_system_prompt(
     app: &tauri::AppHandle,
-    pool: &DbPool,
     conversation_id: &str,
     mode: Option<&str>,
     assistant: Option<&assistant::Model>,
@@ -681,10 +679,7 @@ async fn assemble_system_prompt(
     // The very same resolver the chat loop runs. Counting anything else here is
     // how the estimate ended up short of what actually gets sent — the checklist
     // block used to be missing from this side entirely.
-    let pool2 = pool.clone();
-    let assistant = assistant.cloned();
-    let conv_id = conversation_id.to_string();
-    let pid = project_id.map(str::to_string);
+    let sea = &app.services().sea;
     let mode = meridian_core::agent::modes::resolve(mode)?;
     let context_blocks = vec![
         instruction_block.unwrap_or_default(),
@@ -692,50 +687,56 @@ async fn assemble_system_prompt(
         // Same function the chat loop calls, so the estimate covers the block.
         meridian_core::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
-    let live: Vec<db::entity::message::Model> = active_path.to_vec();
-    let memory_block = load_memory_estimate(&app.services().sea, project_id, &live).await?;
-    tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
-        let mut conn = meridian_core::util::get_conn(&pool2)?;
-        let (persona, todo_block) = load_persona_and_todo(&mut conn, &conv_id, assistant.as_ref(), &live)?;
-        let sub_agents = meridian_core::agent::sub_agents::catalog(&mut conn)?;
-        // The shell line the chat loop puts in the base prompt, decided from the
-        // settings alone — `CommandSettings::command_shell` says why that is the
-        // same answer the loop's resolved policy gives. Not on Android, where
-        // there is no `run_command` for the line to describe.
-        #[cfg(not(target_os = "android"))]
-        let command_shell = meridian_core::sandbox::CommandSettings::read_on(&mut conn)?.command_shell();
-        #[cfg(target_os = "android")]
-        let command_shell = None;
-        let turn = meridian_core::agent::turn_config::resolve(
-            &mut conn,
-            &registry,
-            meridian_core::agent::turn_config::TurnConfigResolveRequest {
-                assistant,
-                conversation_id: conv_id,
-                // The estimate has to count the prompt the chat loop will send,
-                // and a provider-side tool takes the local one out of it.
-                server_tools,
-                project_id: pid,
-                // The estimate has to count the prompt the chat loop will
-                // actually send, transitions included.
-                mode: meridian_core::agent::modes::Modes::Switchable(mode),
-                // And for the same reason it has to answer this the way the
-                // chat loop does. `run_agent` carries a roster of models in its
-                // description, which is not a small number of tokens to be
-                // wrong about.
-                sub_agents: Some(sub_agents),
-                mcp_defs,
-                exposure: meridian_core::agent::turn_config::ToolExposure::All,
-                persona,
-                context_blocks,
-                session_tools: None,
-                command_shell,
-            },
-        )?;
-        Ok((turn.system_prompt, memory_block, todo_block))
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    let memory_block = load_memory_estimate(sea, project_id, active_path).await?;
+    let (persona, todo_block) = load_persona_and_todo(sea, conversation_id, assistant, active_path).await?;
+    let turn = sea
+        .read(async |tx| {
+            let sub_agents = match meridian_core::agent::sub_agents::catalog(tx).await {
+                Ok(catalog) => catalog,
+                Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
+            };
+            // The shell line the chat loop puts in the base prompt, decided from
+            // the settings alone — `CommandSettings::command_shell` says why that
+            // is the same answer the loop's resolved policy gives. Not on
+            // Android, where there is no `run_command` for the line to describe.
+            #[cfg(not(target_os = "android"))]
+            let command_shell = match meridian_core::sandbox::CommandSettings::read_in(tx).await {
+                Ok(settings) => settings.command_shell(),
+                Err(error) => return Ok(Err(error)),
+            };
+            #[cfg(target_os = "android")]
+            let command_shell = None;
+            Ok(meridian_core::agent::turn_config::resolve(
+                tx,
+                &registry,
+                meridian_core::agent::turn_config::TurnConfigResolveRequest {
+                    assistant: assistant.cloned(),
+                    conversation_id: conversation_id.to_string(),
+                    // The estimate has to count the prompt the chat loop will
+                    // send, and a provider-side tool takes the local one out of it.
+                    server_tools,
+                    project_id: project_id.map(str::to_string),
+                    // The estimate has to count the prompt the chat loop will
+                    // actually send, transitions included.
+                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                    // And for the same reason it has to answer this the way the
+                    // chat loop does. `run_agent` carries a roster of models in
+                    // its description, which is not a small number of tokens to
+                    // be wrong about.
+                    sub_agents: Some(sub_agents),
+                    mcp_defs,
+                    exposure: meridian_core::agent::turn_config::ToolExposure::All,
+                    persona,
+                    context_blocks,
+                    session_tools: None,
+                    command_shell,
+                },
+            )
+            .await)
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    Ok((turn.system_prompt, memory_block, todo_block))
 }
 
 /// Build the exact message list whose tokens `get_context_info` reports. Kept
@@ -852,7 +853,6 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
 
     let (system_prompt, memory_block, todo_block) = assemble_system_prompt(
         &app,
-        &pool,
         &conversation_id,
         conv_mode.as_deref(),
         assistant.as_ref(),
@@ -943,6 +943,7 @@ pub async fn list_conversations_by_project(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use diesel::sqlite::SqliteConnection;
     use meridian_core::agent::{base_prompt, build_messages};
     use meridian_core::db::diesel_test_db;
     use meridian_core::db::models::assistant::AssistantInsert;
@@ -1314,7 +1315,9 @@ mod tests {
         );
         let memory_db = memory_db("Rust + Tauri").await;
 
-        let (persona, todo) = load_persona_and_todo(&mut conn, "c1", Some(&assistant), &[]).unwrap();
+        let (persona, todo) = load_persona_and_todo(&memory_db, "c1", Some(&assistant), &[])
+            .await
+            .unwrap();
         let memory = load_memory_estimate(&memory_db, Some("p1"), &[]).await.unwrap();
         assert_eq!(persona, "You are {{assistant_name}} helping {{user_name}}.");
         assert!(memory.contains("<project_memories>"), "got: {memory}");
@@ -1338,7 +1341,9 @@ mod tests {
         );
         let memory_db = memory_db("Rust backend, React frontend, SQLite storage").await;
 
-        let (persona, _) = load_persona_and_todo(&mut conn, "c1", Some(&assistant), &[]).unwrap();
+        let (persona, _) = load_persona_and_todo(&memory_db, "c1", Some(&assistant), &[])
+            .await
+            .unwrap();
         let memory = load_memory_estimate(&memory_db, Some("p1"), &[]).await.unwrap();
         let system_prompt = compose_system_prompt(base_prompt(&[], None).as_deref(), &persona, "", "");
 

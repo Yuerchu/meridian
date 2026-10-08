@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：235
-- Diesel ops 调用点（db/ops 之外）：338
-- Diesel API 引用：659
+- 事务根（非测试）：239
+- Diesel ops 调用点（db/ops 之外）：313
+- Diesel API 引用：598
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -15,8 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 25 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
-- 2 个：preference skill_binding
+- 28 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
 - 1 个：custom_tool
 - 1 个：journal
 - 1 个：mcp_server
@@ -24,7 +23,6 @@
 - 1 个：redaction_rule
 - 1 个：skill
 - 1 个：tool_category
-- 1 个：tool_preset
 - 1 个：voice_corpus
 
 ## 事务根
@@ -61,6 +59,7 @@
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
 | `src-tauri/crates/core/src/agent/todo_context.rs` › `plan_todo_injection_async` | sea-read | todo |
+| `src-tauri/crates/core/src/agent/turn_config.rs` › `resolve_on` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `begin_triggered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `finish` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `note_phase` | sea-write | turn |
@@ -84,7 +83,6 @@
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
-| `src-tauri/crates/core/src/db/ops/plan.rs` › `approve` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `append_assistant_revision` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `create_or_resume_document` | diesel-deferred | plan_review |
@@ -153,6 +151,7 @@
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_applied` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_conflict` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `reconcile_document_inner` | sea-write | plan_review |
+| `src-tauri/crates/core/src/sandbox.rs` › `load` | sea-read | — |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
@@ -179,9 +178,11 @@
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-read | plan_review |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-write | plan_review |
+| `src-tauri/src/commands/chat.rs` › `rebuild` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review, turn |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
@@ -190,6 +191,7 @@
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
+| `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/conversation.rs` › `set_unless_plan_barrier` | sea-write | conversation, plan_review |
 | `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/emoji.rs` › `confirm_sticker_semantics` | sea-write | emoji |

@@ -670,14 +670,7 @@ impl DesktopSubAgents {
             #[cfg(target_os = "android")]
             command_shell: None,
         };
-        let pool = self.pool.clone();
-        let registry = self.registry.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
-        })
-        .await
-        .map_err(|e| e.to_string())?
+        meridian_core::agent::turn_config::resolve_on(&self.services.sea, &self.registry, input).await
     }
 
     /// The provider instance, and the provider type the token counter needs.
@@ -862,8 +855,7 @@ impl Drop for ChildTurnGuard {
 mod tests {
     use super::*;
     use meridian_core::agent::modes::Modes;
-    use meridian_core::agent::turn_config::{TurnConfigResolveRequest, resolve};
-    use meridian_core::db::diesel_test_db;
+    use meridian_core::agent::turn_config::TurnConfigResolveRequest;
 
     #[test]
     fn conversation_steer_request_is_named_and_strict() {
@@ -919,12 +911,15 @@ mod tests {
         )
     }
 
-    fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
-        resolve(
-            &mut conn,
+    async fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        db.write(async |tx| {
+            meridian_core::db::sea::ops::conversation::create_conversation(tx, "sub-1", None, None, None, 1).await
+        })
+        .await
+        .unwrap();
+        meridian_core::agent::turn_config::resolve_on(
+            &db,
             &registry(),
             TurnConfigResolveRequest {
                 assistant: Some(child),
@@ -941,6 +936,7 @@ mod tests {
                 command_shell: None,
             },
         )
+        .await
         .unwrap()
     }
 
@@ -980,8 +976,8 @@ mod tests {
     /// overwritten. A preset wins over an explicit list, so a parent configured
     /// with one would hand its contents — writes included — to an agent whose
     /// whole definition is that it cannot change anything.
-    #[test]
-    fn a_read_only_agent_keeps_its_whitelist_even_when_the_parent_uses_a_preset() {
+    #[tokio::test]
+    async fn a_read_only_agent_keeps_its_whitelist_even_when_the_parent_uses_a_preset() {
         let child = effective_assistant(
             parent(Some("a-preset-with-writes"), None),
             SubAgentKind::Explore,
@@ -990,7 +986,7 @@ mod tests {
         );
         assert_eq!(child.tool_preset_id, None);
 
-        let offered = config_for(child).offered;
+        let offered = config_for(child).await.offered;
         assert!(offered.contains("read_file"), "an explorer that cannot read is useless");
         for writer in ["write_file", "edit_file", "apply_patch", "delete_file", "run_command"] {
             assert!(!offered.contains(writer), "{writer} reached a read-only agent");
@@ -1002,15 +998,15 @@ mod tests {
 
     /// A working agent is the assistant's own tool set, minus the two a
     /// sub-agent has no use for.
-    #[test]
-    fn a_working_agent_inherits_the_assistants_tools() {
+    #[tokio::test]
+    async fn a_working_agent_inherits_the_assistants_tools() {
         let child = effective_assistant(parent(None, None), SubAgentKind::Agent, None, None);
         assert!(
             child.enabled_tools.is_none(),
             "an unrestricted parent stays unrestricted"
         );
 
-        let offered = config_for(child).offered;
+        let offered = config_for(child).await.offered;
         assert!(offered.contains("write_file"), "it is the one that may change things");
         assert!(!offered.contains(meridian_core::agent::sub_agents::RUN_AGENT_TOOL));
         assert!(!offered.contains("enter_plan"));

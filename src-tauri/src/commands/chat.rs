@@ -12,7 +12,6 @@ use meridian_core::agent::{
     resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
-use meridian_core::db::DbPool;
 use meridian_core::db::entity::assistant;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
 use meridian_core::events::{
@@ -33,7 +32,6 @@ use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 /// values through the loop to reach one branch is what the port exists to avoid.
 struct PlanTransitions {
     services: Services,
-    pool: DbPool,
     registry: Arc<tools::ToolRegistry>,
     assistant: Option<assistant::Model>,
     conversation_id: String,
@@ -149,7 +147,6 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         // finished connecting since then belongs in the tool set the user just
         // agreed to.
         let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
-        let pool = self.pool.clone();
         let registry = self.registry.clone();
         let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
             assistant: self.assistant.clone(),
@@ -167,12 +164,13 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             session_tools: None,
             command_shell: self.command_shell,
         };
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
-        })
-        .await
-        .map_err(|e| e.to_string())
+        self.services
+            .sea
+            .read(async |tx| {
+                Ok::<_, db::sea::DbErr>(meridian_core::agent::turn_config::resolve(tx, &registry, input).await)
+            })
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn read_plan(&self) -> Result<meridian_core::agent::engine::PlanReadResult, String> {
@@ -1329,12 +1327,7 @@ async fn chat_inner(
     // Not on Android, where `run_command` and the sandbox module are compiled
     // out: there is no command for either setting to govern, so nothing is read.
     #[cfg(not(target_os = "android"))]
-    let command_settings = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
-            .await
-            .map_err(|e| e.to_string())??
-    };
+    let command_settings = meridian_core::sandbox::CommandSettings::load(&services.sea).await?;
     #[cfg(not(target_os = "android"))]
     let sandbox_policy = meridian_core::sandbox::resolve_command_sandbox(
         &command_settings,
@@ -1356,34 +1349,38 @@ async fn chat_inner(
     // resolved a different one would quietly change what the model may delegate
     // to — halfway through a turn, with nothing on screen to say so.
     let (turn, sub_agent_catalog) = {
-        let pool2 = pool.clone();
         let registry = tool_registry.clone();
         let assistant2 = assistant.clone();
         let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         let server_tools = turn_server_tools.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn)?;
-            let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
-                assistant: assistant2,
-                server_tools,
-                conversation_id: conv_id,
-                project_id: pid,
-                mode: meridian_core::agent::modes::Modes::Switchable(mode),
-                sub_agents: Some(catalog.clone()),
-                mcp_defs,
-                exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
-                persona: persona2,
-                context_blocks: blocks,
-                session_tools: None,
-                command_shell,
-            };
-            let turn = meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)?;
-            Ok::<_, String>((turn, catalog))
-        })
-        .await
-        .map_err(|e| e.to_string())??
+        services
+            .sea
+            .read(async |tx| {
+                let catalog = match meridian_core::agent::sub_agents::catalog(tx).await {
+                    Ok(catalog) => catalog,
+                    Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
+                };
+                let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
+                    assistant: assistant2,
+                    server_tools,
+                    conversation_id: conv_id,
+                    project_id: pid,
+                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                    sub_agents: Some(catalog.clone()),
+                    mcp_defs,
+                    exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
+                    persona: persona2,
+                    context_blocks: blocks,
+                    session_tools: None,
+                    command_shell,
+                };
+                Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input)
+                    .await
+                    .map(|turn| (turn, catalog)))
+            })
+            .await
+            .map_err(|e| e.to_string())??
     };
     let tool_defs = turn.tool_defs;
     let offered = turn.offered;
@@ -1837,7 +1834,6 @@ async fn chat_inner(
 
     let transitions = PlanTransitions {
         services: services.clone(),
-        pool: pool.clone(),
         registry: tool_registry.clone(),
         assistant: assistant.clone(),
         conversation_id: conversation_id.clone(),
