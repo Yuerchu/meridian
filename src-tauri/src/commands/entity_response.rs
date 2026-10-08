@@ -10,13 +10,10 @@ use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Orig
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
     assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, model_config,
-    model_profile, project, provider, skill, tool_category, tool_preset,
+    model_profile, project, provider, skill, todo_item, todo_list, tool_category, tool_preset,
 };
-use meridian_core::db::models::{
-    conversation::ConversationRow,
-    queue::QueuedPromptRow,
-    todo::{TodoItemRow, TodoListRow, TodoListView},
-};
+use meridian_core::db::models::{conversation::ConversationRow, queue::QueuedPromptRow};
+use meridian_core::db::sea::ops::todo::TodoListView;
 use meridian_core::db::types::Json;
 use std::collections::BTreeMap;
 
@@ -944,24 +941,21 @@ pub struct TodoListInfoResponse {
     pub id: String,
     pub conversation_id: String,
     pub title: String,
-    pub status: meridian_core::db::models::todo::ListStatus,
+    pub status: todo_list::ListStatus,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
-impl TryFrom<TodoListRow> for TodoListInfoResponse {
-    type Error = String;
-
-    fn try_from(row: TodoListRow) -> Result<Self, Self::Error> {
-        let status = meridian_core::db::models::todo::ListStatus::parse(&row.status)?;
-        Ok(Self {
+impl From<todo_list::Model> for TodoListInfoResponse {
+    fn from(row: todo_list::Model) -> Self {
+        Self {
             id: row.id,
             conversation_id: row.conversation_id,
             title: row.title,
-            status,
+            status: row.status,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }
     }
 }
 
@@ -971,25 +965,22 @@ pub struct TodoItemInfoResponse {
     pub list_id: String,
     pub content: String,
     pub active_form: String,
-    pub status: meridian_core::db::models::todo::ItemStatus,
+    pub status: todo_item::ItemStatus,
     pub sort_order: i32,
     pub created_at: i64,
 }
 
-impl TryFrom<TodoItemRow> for TodoItemInfoResponse {
-    type Error = String;
-
-    fn try_from(row: TodoItemRow) -> Result<Self, Self::Error> {
-        let status = meridian_core::db::models::todo::ItemStatus::parse(&row.status)?;
-        Ok(Self {
+impl From<todo_item::Model> for TodoItemInfoResponse {
+    fn from(row: todo_item::Model) -> Self {
+        Self {
             id: row.id,
             list_id: row.list_id,
             content: row.content,
             active_form: row.active_form,
-            status,
+            status: row.status,
             sort_order: row.sort_order,
             created_at: row.created_at,
-        })
+        }
     }
 }
 
@@ -1001,18 +992,12 @@ pub struct TodoInfoResponse {
     pub items: TodoItemListResponse,
 }
 
-impl TryFrom<TodoListView> for TodoInfoResponse {
-    type Error = String;
-
-    fn try_from(view: TodoListView) -> Result<Self, Self::Error> {
-        Ok(Self {
-            list: view.list.try_into()?,
-            items: view
-                .items
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        })
+impl From<TodoListView> for TodoInfoResponse {
+    fn from(view: TodoListView) -> Self {
+        Self {
+            list: view.list.into(),
+            items: view.items.into_iter().map(Into::into).collect(),
+        }
     }
 }
 

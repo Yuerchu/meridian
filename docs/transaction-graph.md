@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：170
-- Diesel ops 调用点（db/ops 之外）：616
-- Diesel API 引用：983
+- 事务根（非测试）：172
+- Diesel ops 调用点（db/ops 之外）：608
+- Diesel API 引用：979
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -121,6 +121,7 @@
 | `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/tools/todo.rs` › `execute` | sea-write | plan, todo |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
@@ -193,6 +194,7 @@
 | `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |
 | `src-tauri/src/commands/skill.rs` › `update_skill` | sea-write | skill |
 | `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | diesel-deferred | audit, conversation, message, model_config, turn |
+| `src-tauri/src/commands/todo.rs` › `get_active_todo_list` | sea-read | todo |
 | `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `delete_custom_tool` | sea-write | custom_tool |

@@ -353,5 +353,17 @@ export function callsIn(text, [from, to]) {
     if (/fn\s*$/.test(before)) continue
     calls.push({ path: m[1].replace(/::$/, ''), name, at: from + m.index })
   }
+  // A qualified function named without calling it is handed to someone who
+  // will: `.and_then(ops::todo::format_todo_block)`. Counted as a call, or a
+  // function used only that way looks unused and the dual-implementation rule
+  // asks for it to be deleted. A `use` inside the body names it for the calls
+  // that follow, which are counted on their own.
+  const value = /(?<![.\w:])((?:[A-Za-z_]\w*::)+)([a-z_]\w*)\b(?!\s*(?:\(|::|!|<|\{))/g
+  while ((m = value.exec(region))) {
+    if (keywords.has(m[2])) continue
+    const statement = region.slice(0, m.index).split(/[;{}]/).pop()
+    if (/\buse\b/.test(statement)) continue
+    calls.push({ path: m[1].replace(/::$/, ''), name: m[2], at: from + m.index })
+  }
   return calls
 }
