@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：168
-- Diesel ops 调用点（db/ops 之外）：660
-- Diesel API 引用：1049
+- 事务根（非测试）：171
+- Diesel ops 调用点（db/ops 之外）：637
+- Diesel API 引用：1013
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -169,8 +169,11 @@
 | `src-tauri/src/commands/message.rs` › `read_message_context_item` | diesel-deferred | conversation, message, message_context_item |
 | `src-tauri/src/commands/message.rs` › `read_snapshot` | diesel-deferred | acp_session_notice, conversation, message, message_context_item, plan_review, turn, usage |
 | `src-tauri/src/commands/message.rs` › `switch_branch_unless_plan_barrier` | diesel-immediate | message, plan_review |
-| `src-tauri/src/commands/model_config.rs` › `delete_model_config_unless_plan_barrier` | diesel-immediate | conversation, model_config, model_profile, plan_review |
-| `src-tauri/src/commands/model_config.rs` › `upsert_model_config_unless_plan_barrier` | diesel-immediate | conversation, model_config, model_profile, plan_review |
+| `src-tauri/src/commands/model_config.rs` › `delete_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
+| `src-tauri/src/commands/model_config.rs` › `get_model_config` | sea-read | model_config, model_profile |
+| `src-tauri/src/commands/model_config.rs` › `list_model_configs` | sea-read | model_config, model_profile |
+| `src-tauri/src/commands/model_config.rs` › `list_model_profiles` | sea-read | model_profile |
+| `src-tauri/src/commands/model_config.rs` › `save_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/notify.rs` › `create_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `delete_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `update_notification_webhook` | sea-write | notification |
