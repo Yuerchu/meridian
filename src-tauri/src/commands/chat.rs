@@ -1069,9 +1069,9 @@ async fn chat_inner(
             // request doesn't carry an explicit override.
             let conv_prefs = (
                 conv.thinking_level.clone(),
-                conv.fast_mode != 0,
+                conv.fast_mode.get(),
                 conv.mode.clone(),
-                conv.accept_edits != 0,
+                conv.accept_edits.get(),
             );
             // Where the new messages hang. Looked up from the message being
             // replaced rather than passed in, so replacing a root works without

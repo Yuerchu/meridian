@@ -365,21 +365,11 @@ if (entityResponses != null) {
     }
   }
 
-  // SQLite represents booleans as i32. A Diesel row reaches IPC through
-  // decode_sqlite_bool, the one strict 0/1 conversion, so neither Rust IPC DTOs
-  // nor generated TS types can inherit that persistence representation. (A
-  // SeaORM row carries SqlBool, which is strict at the read.)
-  for (const [pattern, message] of [
-    [
-      /fn decode_sqlite_bool\(value: i32, field: &str\) -> Result<bool, String>/,
-      '缺少 SQLite i32 到 IPC bool 的统一转换器',
-    ],
-    [/0\s*=>\s*Ok\(false\)/, 'SQLite bool 转换必须只把 0 解释为 false'],
-    [/1\s*=>\s*Ok\(true\)/, 'SQLite bool 转换必须只把 1 解释为 true'],
-    [/_\s*=>\s*Err\(/, 'SQLite bool 转换必须拒绝 0/1 以外的持久化值'],
-  ]) {
-    if (!pattern.test(entityResponses)) add(entityResponseFile, message)
-  }
+  // SQLite represents booleans as i32. Every row reaches IPC as a SeaORM model
+  // whose flags are SqlBool, strict at the read (db/types.rs, held there by the
+  // rule below) — the Diesel reads convert into the same model through the same
+  // check — so no response decodes an integer itself, and the field rule below
+  // keeps a public flag a bool.
 
   // Also cover explicit/macro field declarations so a future response cannot
   // move a SQLite flag back into an integer-typed field list.
@@ -2027,7 +2017,7 @@ for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.tom
   }
 }
 
-// SeaORM 侧与 decode_sqlite_bool 对应的那一道严格 0/1 转换，和 *_at 列的类型。
+// SeaORM 侧那一道严格 0/1 转换（行到 IPC 只经它），和 *_at 列的类型。
 const sqlBoolFile = 'src-tauri/crates/core/src/db/types.rs'
 const sqlBoolSource = readAt(sqlBoolFile)
 if (sqlBoolSource != null) for (const problem of sqlBoolProblems(sqlBoolSource)) add(sqlBoolFile, problem)

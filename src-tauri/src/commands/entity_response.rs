@@ -9,10 +9,10 @@ use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, model_config,
-    model_profile, project, provider, skill, todo_item, todo_list, tool_category, tool_preset,
+    assistant, conversation, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject,
+    model_config, model_profile, project, provider, skill, todo_item, todo_list, tool_category, tool_preset,
 };
-use meridian_core::db::models::{conversation::ConversationRow, queue::QueuedPromptRow};
+use meridian_core::db::models::queue::QueuedPromptRow;
 use meridian_core::db::sea::ops::todo::TodoListView;
 use meridian_core::db::types::Json;
 use std::collections::BTreeMap;
@@ -34,17 +34,6 @@ macro_rules! entity_response {
 
         pub type $list = Vec<$info>;
     };
-}
-
-/// SQLite stores booleans as integers, but the persistence representation must
-/// not leak through IPC. Reject corrupt rows instead of treating every non-zero
-/// value as `true`.
-fn decode_sqlite_bool(value: i32, field: &str) -> Result<bool, String> {
-    match value {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(format!("persisted boolean `{field}` must be 0 or 1, got {value}")),
-    }
 }
 
 /// The complete set of first-party conversation kinds exposed over IPC.
@@ -347,10 +336,10 @@ pub struct ConversationInfoResponse {
     pub agent_model_id: Option<String>,
 }
 
-impl TryFrom<ConversationRow> for ConversationInfoResponse {
+impl TryFrom<conversation::Model> for ConversationInfoResponse {
     type Error = String;
 
-    fn try_from(row: ConversationRow) -> Result<Self, Self::Error> {
+    fn try_from(row: conversation::Model) -> Result<Self, Self::Error> {
         let thinking_level = row
             .thinking_level
             .as_deref()
@@ -366,10 +355,11 @@ impl TryFrom<ConversationRow> for ConversationInfoResponse {
             .as_deref()
             .map(ConversationAgentKind::parse)
             .transpose()?;
-        let is_pinned = decode_sqlite_bool(row.is_pinned, "conversation.is_pinned")?;
-        let is_archived = decode_sqlite_bool(row.is_archived, "conversation.is_archived")?;
-        let fast_mode = decode_sqlite_bool(row.fast_mode, "conversation.fast_mode")?;
-        let accept_edits = decode_sqlite_bool(row.accept_edits, "conversation.accept_edits")?;
+        // The flags were held to 0/1 at the read.
+        let is_pinned = row.is_pinned.get();
+        let is_archived = row.is_archived.get();
+        let fast_mode = row.fast_mode.get();
+        let accept_edits = row.accept_edits.get();
         Ok(Self {
             id: row.id,
             title: row.title,
@@ -1086,30 +1076,22 @@ pub type ToolPresetListResponse = Vec<ToolPresetInfoResponse>;
 mod tests {
     use super::*;
 
-    #[test]
-    fn sqlite_booleans_are_closed_and_leave_ipc_as_booleans() {
-        assert!(!decode_sqlite_bool(0, "test.enabled").unwrap());
-        assert!(decode_sqlite_bool(1, "test.enabled").unwrap());
-        assert!(decode_sqlite_bool(-1, "test.enabled").is_err());
-        assert!(decode_sqlite_bool(2, "test.enabled").is_err());
-    }
-
-    fn conversation_row(agent_kind: Option<&str>) -> ConversationRow {
-        ConversationRow {
+    fn conversation_row(agent_kind: Option<&str>) -> conversation::Model {
+        conversation::Model {
             id: "conversation".into(),
             title: None,
             assistant_id: None,
-            is_pinned: 0,
-            is_archived: 0,
+            is_pinned: meridian_core::db::types::SqlBool::FALSE,
+            is_archived: meridian_core::db::types::SqlBool::FALSE,
             message_count: 0,
             created_at: 1,
             updated_at: 1,
             project_id: None,
             thinking_level: None,
-            fast_mode: 0,
+            fast_mode: meridian_core::db::types::SqlBool::FALSE,
             mode: None,
             head_message_id: None,
-            accept_edits: 0,
+            accept_edits: meridian_core::db::types::SqlBool::FALSE,
             parent_conversation_id: None,
             spawned_by_message_id: None,
             spawned_by_call_id: None,

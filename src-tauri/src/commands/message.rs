@@ -786,7 +786,7 @@ pub async fn read_message_context_item(
 fn read_tree_with_conversation(
     conn: &mut db::PooledConn,
     conversation_id: &str,
-) -> Result<(db::models::conversation::ConversationRow, MessageTreeResponse), String> {
+) -> Result<(db::entity::conversation::Model, MessageTreeResponse), String> {
     let conv = db::ops::conversation::get_conversation(conn, conversation_id).map_err(|e| e.to_string())?;
     let history = db::ops::message::list_messages(conn, conversation_id).map_err(|e| e.to_string())?;
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
@@ -1282,7 +1282,7 @@ pub async fn conversation_snapshot(
 const SNAPSHOT_ATTEMPTS: usize = 4;
 
 type SnapshotRead = (
-    db::models::conversation::ConversationRow,
+    db::entity::conversation::Model,
     MessageTreeResponse,
     Vec<TurnInfoResponse>,
     Vec<SubAgentRunInfoResponse>,
@@ -1353,7 +1353,7 @@ impl OwnedLive {
     /// A conversation nobody read is never judged: `Unsettled` means the whole
     /// pass is untrustworthy, and a missing entry means this reader never looked
     /// at that conversation, which is the same thing for the rows in it.
-    fn cut_off(&self, turn: &db::models::turn::TurnRow) -> Result<bool, String> {
+    fn cut_off(&self, turn: &db::entity::turn::Model) -> Result<bool, String> {
         match self {
             OwnedLive::Holding(held) => match held.get(&turn.conversation_id) {
                 Some(h) => meridian_core::agent::interrupted::was_cut_off(turn, h.as_deref()),
@@ -1383,12 +1383,8 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
             .map(|t| {
                 let status = effective_status(&t, live)
                     .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-                let phase = t
-                    .phase()
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
-                let trigger = t
-                    .trigger()
-                    .map_err(|error| diesel::result::Error::QueryBuilderError(error.into()))?;
+                let phase = t.phase;
+                let trigger = t.trigger;
                 Ok(TurnInfoResponse {
                     trigger,
                     status: status.into(),
@@ -1455,8 +1451,8 @@ fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedL
 
 /// What the row says, unless the coordinator says otherwise.
 ///
-fn effective_status(turn: &db::models::turn::TurnRow, live: &OwnedLive) -> Result<CoreTurnStatus, String> {
-    let status = turn.status()?;
+fn effective_status(turn: &db::entity::turn::Model, live: &OwnedLive) -> Result<CoreTurnStatus, String> {
+    let status = turn.status;
     if live.cut_off(turn)? {
         Ok(CoreTurnStatus::Interrupted)
     } else {

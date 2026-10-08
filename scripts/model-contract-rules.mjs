@@ -380,7 +380,7 @@ export function seaEntityProblems(source) {
 
 /**
  * `SqlBool::from_stored` 必须恰好是 `0 =>`、`1 =>`、`_ => None` 三个分支——这是 SeaORM 侧
- * 与 `decode_sqlite_bool` 对应的那一道严格 0/1 转换。
+ * 那一道严格 0/1 转换：每个持久化布尔经它到达 IPC。
  */
 export function sqlBoolProblems(source) {
   const problems = []
