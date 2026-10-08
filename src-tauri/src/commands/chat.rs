@@ -180,176 +180,202 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
     }
 
     async fn read_plan(&self) -> Result<meridian_core::agent::engine::PlanReadResult, String> {
-        use meridian_core::db::models::plan_review::PlanMaterializationState;
+        use meridian_core::db::entity::plan_materialization::PlanMaterializationState;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
 
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            let head =
-                db::ops::plan_review::get_head_revision(&mut conn, &document.id).map_err(|error| error.to_string())?;
-            let state = match report.conflict {
-                Some(_) => PlanMaterializationState::Conflict,
-                None => db::ops::plan_review::latest_materialization(&mut conn, &document.id)
-                    .map_err(|error| error.to_string())?
-                    .map(|row| row.state())
-                    .transpose()?
-                    .unwrap_or(PlanMaterializationState::Applied),
-            };
-            let (content, sha256) = match head {
-                Some(revision) => (revision.content_markdown, revision.content_sha256),
-                None => {
-                    let content = String::new();
-                    let sha256 = db::ops::plan_review::markdown_sha256(&content);
-                    (content, sha256)
-                }
-            };
-            Ok(meridian_core::agent::engine::PlanReadResult {
-                content,
-                generation: document.working_generation,
-                sha256,
-                file_sync_state: state,
+        let db = &self.services.sea;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
+            .map_err(|error| error.to_string())?;
+        let report = self
+            .services
+            .plan_files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        let (head, latest) = db
+            .read(async |tx| {
+                let head = plan_ops::get_head_revision(tx, &document.id).await?;
+                let latest = plan_ops::latest_materialization(tx, &document.id).await?;
+                Ok::<_, plan_ops::PlanReviewStoreError>((head, latest))
             })
+            .await
+            .map_err(|error| error.to_string())?;
+        let state = match report.conflict {
+            Some(_) => PlanMaterializationState::Conflict,
+            None => latest.map_or(PlanMaterializationState::Applied, |row| row.state),
+        };
+        let (content, sha256) = match head {
+            Some(revision) => (revision.content_markdown, revision.content_sha256),
+            None => {
+                let content = String::new();
+                let sha256 = plan_ops::markdown_sha256(&content);
+                (content, sha256)
+            }
+        };
+        Ok(meridian_core::agent::engine::PlanReadResult {
+            content,
+            generation: document.working_generation,
+            sha256,
+            file_sync_state: state,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 
     async fn update_plan(
         &self,
         request: meridian_core::agent::engine::UpdatePlanRequest,
     ) -> Result<meridian_core::agent::engine::PlanUpdateResult, String> {
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            if report.conflict.is_some() {
-                return Err("plan.md is in conflict; restore the database copy before updating it".into());
-            }
-            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?;
-            let current_sha = head
-                .as_ref()
-                .map(|revision| revision.content_sha256.clone())
-                .unwrap_or_else(|| db::ops::plan_review::markdown_sha256(""));
-            if document.working_generation != request.base_generation || current_sha != request.base_sha256 {
-                return Err(format!(
-                    "stale plan base: current generation is {} and current SHA-256 is {}; call read_plan and regenerate the patch",
-                    document.working_generation, current_sha
-                ));
-            }
-            let content = meridian_core::tools::apply_patch::apply_plan_patch(
-                head.as_ref().map(|revision| revision.content_markdown.as_str()),
-                &request.patch,
-            )?;
-            let responding_to_suggestion_revision_id = db::ops::plan_review::list_reviews(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .rev()
-                .find_map(|review| {
-                    (review.state
-                        == meridian_core::db::models::plan_review::PlanReviewState::ChangesRequested.as_str()
-                        && head
-                            .as_ref()
-                            .is_some_and(|current| current.id == review.submitted_revision_id))
-                        .then_some(review.suggestion_revision_id)
-                        .flatten()
-                });
-            let appended = db::ops::plan_review::append_assistant_revision(
-                &mut conn,
-                &db::ops::plan_review::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: request.base_generation,
-                    expected_head_sha256: head.as_ref().map(|revision| revision.content_sha256.as_str()),
-                    content_markdown: &content,
-                    patch: &request.patch,
-                    source_message_id: Some(&request.source_message_id),
-                    source_call_id: Some(&request.source_call_id),
-                    responding_to_suggestion_revision_id: responding_to_suggestion_revision_id.as_deref(),
-                    now,
-                },
-            )
+        use meridian_core::db::entity::plan_review_session::PlanReviewState;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
+
+        let db = &self.services.sea;
+        let files = &self.services.plan_files;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
             .map_err(|error| error.to_string())?;
-            let materialized = files
-                .reconcile_document(&mut conn, &document.id, now_ms())
-                .map_err(|error| error.to_string())?;
-            if let Some(conflict) = materialized.conflict {
-                return Err(conflict.error.unwrap_or_else(|| "plan.md materialization conflicted".into()));
-            }
-            Ok(meridian_core::agent::engine::PlanUpdateResult {
-                generation: appended.document.working_generation,
-                sha256: appended.revision.content_sha256,
-                applied_diff: request.patch,
+        let report = files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        if report.conflict.is_some() {
+            return Err("plan.md is in conflict; restore the database copy before updating it".into());
+        }
+        // The base check, the patch and the append in one write: the append's
+        // generation and head CAS would refuse a moved base anyway, but here
+        // the refusal says what moved.
+        let appended = db
+            .write(async |tx| {
+                let document = plan_ops::get_document(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let head = plan_ops::get_head_revision(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let current_sha = head
+                    .as_ref()
+                    .map(|revision| revision.content_sha256.clone())
+                    .unwrap_or_else(|| plan_ops::markdown_sha256(""));
+                if document.working_generation != request.base_generation || current_sha != request.base_sha256 {
+                    return Err(format!(
+                        "stale plan base: current generation is {} and current SHA-256 is {}; call read_plan and regenerate the patch",
+                        document.working_generation, current_sha
+                    )
+                    .into());
+                }
+                let content = meridian_core::tools::apply_patch::apply_plan_patch(
+                    head.as_ref().map(|revision| revision.content_markdown.as_str()),
+                    &request.patch,
+                )?;
+                let responding_to_suggestion_revision_id = plan_ops::list_reviews(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .rev()
+                    .find_map(|review| {
+                        (review.state == PlanReviewState::ChangesRequested
+                            && head
+                                .as_ref()
+                                .is_some_and(|current| current.id == review.submitted_revision_id))
+                            .then_some(review.suggestion_revision_id)
+                            .flatten()
+                    });
+                plan_ops::append_assistant_revision(
+                    tx,
+                    &plan_ops::PlanRevisionAppend {
+                        document_id: &document.id,
+                        expected_generation: request.base_generation,
+                        expected_head_sha256: head.as_ref().map(|revision| revision.content_sha256.as_str()),
+                        content_markdown: &content,
+                        patch: &request.patch,
+                        source_message_id: Some(&request.source_message_id),
+                        source_call_id: Some(&request.source_call_id),
+                        responding_to_suggestion_revision_id: responding_to_suggestion_revision_id.as_deref(),
+                        now,
+                    },
+                )
+                .await
             })
+            .await
+            .map_err(|error: plan_ops::PlanReviewStoreError| error.to_string())?;
+        let materialized = files
+            .reconcile_document(db, &document.id, now_ms())
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Some(conflict) = materialized.conflict {
+            return Err(conflict
+                .error
+                .unwrap_or_else(|| "plan.md materialization conflicted".into()));
+        }
+        Ok(meridian_core::agent::engine::PlanUpdateResult {
+            generation: appended.document.working_generation,
+            sha256: appended.revision.content_sha256,
+            applied_diff: request.patch,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 
     async fn submit_plan(
         &self,
         request: meridian_core::agent::engine::SubmitPlanRequest,
     ) -> Result<meridian_core::events::PlanReviewEvent, String> {
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        let native_runtime = self.native_runtime.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            if report.conflict.is_some() {
-                return Err("plan.md is in conflict and cannot be submitted".into());
-            }
-            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| "plan.md has no saved revision; create it with update_plan first".to_string())?;
-            let bundle = db::ops::plan_review::submit_native_head_for_review(
-                &mut conn,
-                &db::ops::plan_review::PlanReviewSubmit {
-                    document_id: &document.id,
-                    expected_generation: document.working_generation,
-                    expected_head_sha256: &head.content_sha256,
-                    turn_id: Some(&request.turn_id),
-                    assistant_message_id: Some(&request.assistant_message_id),
-                    provider_call_id: Some(&request.provider_call_id),
-                    provider_kind: meridian_core::db::models::plan_review::PlanReviewProviderKind::Native,
-                    now,
-                },
-                &native_runtime,
-            )
+        use meridian_core::db::entity::plan_review_session::PlanReviewProviderKind;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
+
+        let db = &self.services.sea;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
             .map_err(|error| error.to_string())?;
-            Ok(meridian_core::events::PlanReviewEvent {
-                review_id: bundle.review.id,
-                conversation_id,
-                document_id: bundle.document.id,
-                revision_id: bundle.submitted_revision.id,
-                turn_id: request.turn_id,
-                status: bundle.review.state,
-                lock_version: bundle.review.lock_version,
-                delivery_state: None,
+        let report = self
+            .services
+            .plan_files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        if report.conflict.is_some() {
+            return Err("plan.md is in conflict and cannot be submitted".into());
+        }
+        let bundle = db
+            .write(async |tx| {
+                let document = plan_ops::get_document(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let head = plan_ops::get_head_revision(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "plan.md has no saved revision; create it with update_plan first".to_string())?;
+                plan_ops::submit_native_head_for_review(
+                    tx,
+                    &plan_ops::PlanReviewSubmit {
+                        document_id: &document.id,
+                        expected_generation: document.working_generation,
+                        expected_head_sha256: &head.content_sha256,
+                        turn_id: Some(&request.turn_id),
+                        assistant_message_id: Some(&request.assistant_message_id),
+                        provider_call_id: Some(&request.provider_call_id),
+                        provider_kind: PlanReviewProviderKind::Native,
+                        now,
+                    },
+                    &self.native_runtime,
+                )
+                .await
             })
+            .await
+            .map_err(|error: plan_ops::PlanReviewStoreError| error.to_string())?;
+        Ok(meridian_core::events::PlanReviewEvent {
+            review_id: bundle.review.id,
+            conversation_id: self.conversation_id.clone(),
+            document_id: bundle.document.id,
+            revision_id: bundle.submitted_revision.id,
+            turn_id: request.turn_id,
+            status: bundle.review.state.as_str().to_string(),
+            lock_version: bundle.review.lock_version,
+            delivery_state: None,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 }
 
@@ -727,7 +753,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
             .to_string(),
         None => uuid::Uuid::new_v4().to_string(),
     };
-    crate::commands::plan_review::ensure_conversation_not_waiting_review(&app.services().db, &conversation_id).await?;
+    crate::commands::plan_review::ensure_conversation_not_waiting_review(&app.services().sea, &conversation_id).await?;
     run_turn(
         app.services(),
         conversation_id,
@@ -785,10 +811,8 @@ pub async fn run_turn(
     // ended. See `StartTurn::start_unprompted`.
     wake: bool,
 ) -> Result<(), String> {
-    let pool = services.db.clone();
-
     if origin != TurnOrigin::PlanReview {
-        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&services.sea, &conversation_id).await?;
     }
 
     // Nothing is awaited between taking this and handing it to the guard that
@@ -806,7 +830,7 @@ pub async fn run_turn(
     // durable read closes that gap. Plan-review continuations are the one
     // authorised path across their own barrier.
     if origin != TurnOrigin::PlanReview {
-        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&services.sea, &conversation_id).await?;
     }
 
     // Set once the turn's row exists, and read below to decide whether closing

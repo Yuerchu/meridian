@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：210
-- Diesel ops 调用点（db/ops 之外）：500
-- Diesel API 引用：847
+- 事务根（非测试）：227
+- Diesel ops 调用点（db/ops 之外）：402
+- Diesel API 引用：782
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -35,6 +35,8 @@
 | `src-tauri/crates/core/src/acp/import.rs` › `import` | diesel-deferred | acp_session, acp_session_notice, assistant, audit, conversation, message, model_config, plan, project, todo, turn |
 | `src-tauri/crates/core/src/acp/mod.rs` › `save` | sea-write | preference |
 | `src-tauri/crates/core/src/acp/mod.rs` › `write_conversation_row` | diesel-deferred | acp_session, assistant, conversation |
+| `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review |
+| `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review, turn |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_interjections` | sea-write | queue |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item, turn |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `append_tool_result` | sea-write | audit, memory, message, model_config, model_profile, provider |
@@ -63,6 +65,8 @@
 | `src-tauri/crates/core/src/background.rs` › `claim` | sea-write | background_task, conversation, message |
 | `src-tauri/crates/core/src/background.rs` › `run` | sea-write | background_task |
 | `src-tauri/crates/core/src/background.rs` › `start` | sea-write | background_task |
+| `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-read | plan_review |
+| `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-write | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_preset |
@@ -70,6 +74,8 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
+| `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review |
+| `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review, turn |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | queue, turn |
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
@@ -81,17 +87,9 @@
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `approve` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `append_assistant_revision` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `backfill_legacy_artifacts` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `backfill_legacy_artifacts` | diesel-deferred | — |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `create_or_resume_document` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `decide_review` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `discard_review_draft` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `mark_delivery_acknowledged` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `mark_delivery_dispatched_for_turn` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `mark_delivery_in_doubt` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `reconcile_dispatched_deliveries` | diesel-deferred | plan_review, turn |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `retry_delivery_dispatched_for_turn` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `save_review_draft` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `submit_head_for_review_inner` | diesel-deferred | plan_review, turn |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `transition_delivery` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
@@ -149,6 +147,9 @@
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `ensure_pack` | sea-write | emoji_pack |
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `evict_candidates` | sea-write | emoji |
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `record_new` | sea-write | emoji |
+| `src-tauri/crates/core/src/plan_files.rs` › `mark_applied` | sea-write | plan_review |
+| `src-tauri/crates/core/src/plan_files.rs` › `mark_conflict` | sea-write | plan_review |
+| `src-tauri/crates/core/src/plan_files.rs` › `reconcile_document_inner` | sea-write | plan_review |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
@@ -175,6 +176,12 @@
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/chat.rs` › `read_plan` | sea-read | plan_review |
+| `src-tauri/src/commands/chat.rs` › `read_plan` | sea-write | plan_review |
+| `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review |
+| `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review, turn |
+| `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
+| `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
@@ -211,7 +218,17 @@
 | `src-tauri/src/commands/notify.rs` › `create_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `delete_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `update_notification_webhook` | sea-write | notification |
-| `src-tauri/src/commands/plan_review.rs` › `decide_plan_review` | diesel-deferred | acp_session, audit, conversation, message, model_config, plan_review, turn |
+| `src-tauri/src/commands/plan_review.rs` › `decide_plan_review` | sea-write | acp_session, audit, conversation, memory, message, model_config, model_profile, plan_review, provider, turn |
+| `src-tauri/src/commands/plan_review.rs` › `discard_plan_review_draft` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `dispatch_acp_delivery` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `dispatch_native_delivery` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `ensure_conversation_not_waiting_review` | sea-read | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `get_plan_review_delivery` | sea-read | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `get_plan_review` | sea-read | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `resolve_plan_file_conflict` | sea-read | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `resolve_plan_file_conflict` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `save_plan_review_draft` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `settle_delivery` | sea-write | plan_review · 回调来自 2 处 |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
 | `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | conversation, memory, plan_review, project |
