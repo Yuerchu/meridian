@@ -176,6 +176,25 @@ A new decision about one subsystem goes into that subsystem's file.
   The opposite case is just as deliberate. OneBot, the hook reviewer and sub-agents each emit to a window that may not be looking, and for them a failed send costs nothing; their `Emit` implementations swallow it and return `Ok`. Handing those three `BusEmit` would quietly turn "the window is closed" into "the sub-agent's turn failed". If you add a runner, decide which of the two it is before wiring the bus in.
 - **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
+- **What was sent is never dropped or rewritten.** Every request's `system`, `tools`
+  and earlier messages must replay byte for byte, thinking blocks included — the
+  conversation only grows at the end. Removing past content to save room or to
+  dodge an error cost real answer quality when hosting Codex, so it is not a
+  remedy for anything. Anthropic enforces this: each thinking block is bound to
+  the prefix it was produced under, and a changed prefix is a 400 ("The block is
+  bound to a different conversation"). That error is the gate and stays one —
+  never send `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`,
+  never strip thinking to make a request pass. A rendering must therefore be a
+  pure function of what was stored when the row was written: nothing may depend
+  on which message is current, on a sticker's later label, on the machine's
+  zone, or on a file read again. When something already in the context changes
+  later, say so by appending a notice at the end (a frozen `role="context"` row,
+  as memory and the checklist do), never by editing the row that mentioned it.
+  Stickers are the worked example: `agent::freeze_sticker_parts` records what
+  each one was known as when its message entered the backend, and rendering
+  reads only that. Known violators, to be removed rather than copied:
+  `microcompact`, `trim_to_context_limit`, `cap_user_provided_context`, and
+  `<sent_at>` rendered in today's local zone.
 - **Memory is frozen into the history, then only what changed is sent.** The
   block used to be rebuilt every turn and injected *between* the history and the
   new message without ever being stored — so each turn's payload diverged from
