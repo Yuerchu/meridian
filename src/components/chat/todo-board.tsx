@@ -10,9 +10,9 @@ const COLUMNS: readonly TodoItemStatus[] = ['pending', 'in_progress', 'completed
 /**
  * The same checklist as three columns.
  *
- * Read-only, and not by suppressing anything: `Kanban.DragHandle` and
- * `Kanban.DropIndicator` are separate components, so a board without a way to
- * drag is what you get by not rendering them. There is nothing to write back to
+ * Read-only, and not by suppressing anything: a column's list only moves cards
+ * when it is given `dragAndDropHooks`, so a board without a way to drag is what
+ * you get by passing none. There is nothing to write back to
  * anyway — the list belongs to the model, and a status the user changed by hand
  * would be overwritten by the next `update_todos` without a trace.
  *
