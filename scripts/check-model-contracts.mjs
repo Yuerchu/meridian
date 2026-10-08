@@ -1826,7 +1826,7 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
       'src-tauri/crates/core/src/db/models/model_config.rs',
       'src-tauri/crates/core/src/db/entity/model_config.rs',
       'src-tauri/crates/core/src/agent/model_config.rs',
-      'src-tauri/crates/core/src/db/ops/model_config.rs',
+      'src-tauri/crates/core/src/db/sea/ops/model_config.rs',
     ]
     if (storageFiles.includes(file) && /\b(?:str|String)\b/.test(type)) continue
     add(file, `${declaration.name}.server_tools 必须使用 ServerToolKind，当前为 ${type}`)
@@ -2003,6 +2003,35 @@ for (const [file, source] of rustSources) {
   }
   for (const file of registered) {
     if (!using.has(file)) add(neutralityFile, `登记了 ${file} 用 Expr::cust，但它已经不用了：删掉这一行`)
+  }
+}
+
+// db/sql.rs 里每一条登记的原生语句（`ReadOnly` 常量）都必须是 docs/backend-neutrality.md
+// 「db/sql.rs：登记的原生 SQL」表里的一行，表里也不能有已经不存在的常量——那张表自称「就是全部」，
+// 这里让它真的是。
+{
+  const sqlFile = 'src-tauri/crates/core/src/db/sql.rs'
+  const neutralityFile = 'docs/backend-neutrality.md'
+  const sqlSource = readAt(sqlFile)
+  const neutrality = readAt(neutralityFile) ?? ''
+  if (sqlSource != null) {
+    const declared = new Set(
+      [
+        ...rustProductionText(sqlSource).matchAll(
+          /^\s*(?:pub(?:\([^)]*\))?\s+)?const\s+([A-Z][A-Z0-9_]*)\s*:\s*ReadOnly\b/gm,
+        ),
+      ].map((m) => m[1]),
+    )
+    const section = neutrality.split('## `db/sql.rs`：登记的原生 SQL')[1]?.split('\n## ')[0] ?? ''
+    const listed = new Set([...section.matchAll(/^\| `([A-Z][A-Z0-9_]*)` \|/gm)].map((m) => m[1]))
+    if (declared.size === 0) add(sqlFile, '没找到任何 ReadOnly 常量：登记表检查失去了对象，先修检查器')
+    for (const name of declared) {
+      if (!listed.has(name))
+        add(sqlFile, `登记的原生语句 ${name} 不在 ${neutralityFile} 的「db/sql.rs：登记的原生 SQL」表里`)
+    }
+    for (const name of listed) {
+      if (!declared.has(name)) add(neutralityFile, `表里登记了 ${name}，但 db/sql.rs 里已经没有这条语句：删掉这一行`)
+    }
   }
 }
 

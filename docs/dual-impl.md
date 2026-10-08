@@ -68,6 +68,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | message_context_item::list_for_messages | 7 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
+| model_config::seed_flat | 2 |
 | plan::format_plan_block | 1 |
 | plan::get_active | 1 |
 | plan_review::append_assistant_revision | 10 |
@@ -105,3 +106,4 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | turn::list_for_conversation | 3 |
 | turn::mark_reported | 1 |
 | turn::set_phase | 11 |
+| usage::turn_summaries | 1 |

@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：227
-- Diesel ops 调用点（db/ops 之外）：402
-- Diesel API 引用：782
+- 事务根（非测试）：232
+- Diesel ops 调用点（db/ops 之外）：396
+- Diesel API 引用：739
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -112,11 +112,14 @@
 | `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `submit_head_for_review_inner` | sea-nested | plan_review, turn |
 | `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `transition_delivery` | sea-nested | plan_review |
 | `src-tauri/crates/core/src/db/sea/ops/queue.rs` › `take_next` | sea-nested | audit, memory, message, model_config, model_profile, provider, queue |
+| `src-tauri/crates/core/src/db/sea/ops/usage.rs` › `(顶层)` | sea-read | — |
+| `src-tauri/crates/core/src/db/sea/ops/usage.rs` › `(顶层)` | sea-read | — |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
 | `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `record` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `settle_command_bracket` | sea-write | journal |
+| `src-tauri/crates/core/src/notify/mod.rs` › `check_usage` | sea-read | model_config, usage |
 | `src-tauri/crates/core/src/notify/mod.rs` › `clear` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
@@ -158,6 +161,7 @@
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/tools/todo.rs` › `execute` | sea-write | plan, todo |
+| `src-tauri/crates/core/src/tools/usage.rs` › `execute` | sea-read | model_config, usage |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
@@ -256,5 +260,6 @@
 | `src-tauri/src/commands/tool_system.rs` › `delete_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
+| `src-tauri/src/commands/usage.rs` › `usage_report` | sea-read | model_config, usage |
 | `src-tauri/src/platform.rs` › `save_saf_roots` | sea-write | preference |
 | `src-tauri/src/remote/mod.rs` › `save_config` | sea-write | preference |
