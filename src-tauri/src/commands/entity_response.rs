@@ -9,11 +9,10 @@ use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, provider, skill,
+    assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, provider, skill,
     tool_category, tool_preset,
 };
 use meridian_core::db::models::{
-    assistant::AssistantRow,
     conversation::ConversationRow,
     model_config::ModelConfigRow,
     model_profile::ModelProfileRow,
@@ -135,10 +134,6 @@ impl From<journal_version::VersionSource> for JournalSource {
             VersionSource::Rewind => Self::Rewind,
         }
     }
-}
-
-fn parse_string_list(raw: &str, field: &str) -> Result<Vec<String>, String> {
-    serde_json::from_str(raw).map_err(|error| format!("invalid persisted {field}: {error}"))
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -303,19 +298,9 @@ pub struct AssistantInfoResponse {
     pub auto_compact_enabled: bool,
 }
 
-impl TryFrom<AssistantRow> for AssistantInfoResponse {
-    type Error = String;
-
-    fn try_from(row: AssistantRow) -> Result<Self, Self::Error> {
-        let enabled_tools = row
-            .enabled_tools
-            .as_deref()
-            .map(|raw| parse_string_list(raw, "assistant.enabled_tools"))
-            .transpose()?;
-        let is_default = decode_sqlite_bool(row.is_default, "assistant.is_default")?;
-        let thinking_enabled = decode_sqlite_bool(row.thinking_enabled, "assistant.thinking_enabled")?;
-        let auto_compact_enabled = decode_sqlite_bool(row.auto_compact_enabled, "assistant.auto_compact_enabled")?;
-        Ok(Self {
+impl From<assistant::Model> for AssistantInfoResponse {
+    fn from(row: assistant::Model) -> Self {
+        Self {
             id: row.id,
             name: row.name,
             description: row.description,
@@ -326,18 +311,18 @@ impl TryFrom<AssistantRow> for AssistantInfoResponse {
             temperature: row.temperature,
             top_p: row.top_p,
             max_tokens: row.max_tokens,
-            is_default,
+            is_default: row.is_default.get(),
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
             context_limit: row.context_limit,
             compact_keep_recent: row.compact_keep_recent,
-            enabled_tools,
-            thinking_enabled,
+            enabled_tools: row.enabled_tools.map(Json::into_inner),
+            thinking_enabled: row.thinking_enabled.get(),
             thinking_budget: row.thinking_budget,
             tool_preset_id: row.tool_preset_id,
-            auto_compact_enabled,
-        })
+            auto_compact_enabled: row.auto_compact_enabled.get(),
+        }
     }
 }
 
