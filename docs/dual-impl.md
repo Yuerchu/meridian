@@ -88,10 +88,9 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | todo::replace_active_list | 10 |
 | tool_preset::create_preset | 1 |
 | tool_preset::get_preset | 1 |
-| turn::begin | 49 |
+| turn::begin | 48 |
 | turn::finish | 9 |
 | turn::finish_waiting_review | 3 |
 | turn::list_for_conversation | 3 |
 | turn::mark_reported | 1 |
-| turn::reconcile_interrupted | 2 |
-| turn::set_phase | 12 |
+| turn::set_phase | 11 |

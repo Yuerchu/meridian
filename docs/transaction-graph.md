@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：194
-- Diesel ops 调用点（db/ops 之外）：504
-- Diesel API 引用：854
+- Diesel ops 调用点（db/ops 之外）：500
+- Diesel API 引用：850
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -70,6 +70,7 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | memory |
+| `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | queue, turn |
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
@@ -95,7 +96,6 @@
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `transition_delivery` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
-| `src-tauri/crates/core/src/db/ops/turn.rs` › `reconcile_interrupted` | diesel-deferred | queue |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/db/sea/ops/queue.rs` › `take_next` | sea-nested | audit, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
