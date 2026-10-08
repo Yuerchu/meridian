@@ -13,7 +13,7 @@ use meridian_core::agent::{
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::AssistantRow;
+use meridian_core::db::entity::assistant;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
 use meridian_core::events::{
     ChatStopReason, ChatStreamEvent, CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger,
@@ -35,7 +35,7 @@ struct PlanTransitions {
     services: Services,
     pool: DbPool,
     registry: Arc<tools::ToolRegistry>,
-    assistant: Option<AssistantRow>,
+    assistant: Option<assistant::Model>,
     conversation_id: String,
     project_id: Option<String>,
     persona: String,
@@ -1389,7 +1389,10 @@ async fn chat_inner(
     let offered = turn.offered;
     let system_prompt = turn.system_prompt;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
-    let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
+    let auto_compact = assistant
+        .as_ref()
+        .map(|a| a.auto_compact_enabled.get())
+        .unwrap_or(false);
 
     let context_limit = turn_params.context_limit;
     let max_output = turn_params.max_output;

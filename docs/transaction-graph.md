@@ -5,7 +5,7 @@
 
 - 事务根（非测试）：235
 - Diesel ops 调用点（db/ops 之外）：338
-- Diesel API 引用：660
+- Diesel API 引用：659
 
 ## R2 无法检查的 SeaORM 事务根
 

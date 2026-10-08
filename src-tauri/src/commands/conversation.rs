@@ -11,8 +11,8 @@ use meridian_core::agent::{
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
+use meridian_core::db::entity::assistant;
 use meridian_core::db::entity::message_context_item;
-use meridian_core::db::models::assistant::AssistantRow;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
 use meridian_core::db::sea::ops::{conversation as conversation_ops, plan_review as plan_review_ops};
@@ -601,7 +601,7 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
 fn load_persona_and_todo(
     conn: &mut SqliteConnection,
     conversation_id: &str,
-    assistant: Option<&AssistantRow>,
+    assistant: Option<&assistant::Model>,
     live: &[db::entity::message::Model],
 ) -> Result<(String, String), String> {
     let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
@@ -653,7 +653,7 @@ async fn assemble_system_prompt(
     pool: &DbPool,
     conversation_id: &str,
     mode: Option<&str>,
-    assistant: Option<&AssistantRow>,
+    assistant: Option<&assistant::Model>,
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
@@ -794,7 +794,10 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         .map_err(|e| e.to_string())??
     };
 
-    let auto_compact_enabled = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
+    let auto_compact_enabled = assistant
+        .as_ref()
+        .map(|a| a.auto_compact_enabled.get())
+        .unwrap_or(false);
 
     // Both take a pooled connection, and the first also reads the OS credential
     // store. Run off the async thread: the UI polls this command every time the
@@ -1188,7 +1191,7 @@ mod tests {
         assert!(ConversationSearchHitInfoResponse::try_from(hit).is_err());
     }
 
-    fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> AssistantRow {
+    fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> assistant::Model {
         db::ops::assistant::create_assistant(
             conn,
             &AssistantInsert {

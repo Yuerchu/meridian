@@ -19,7 +19,7 @@ use meridian_core::agent::sub_agents::SubAgentKind;
 use meridian_core::agent::turn_record;
 use meridian_core::db;
 use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::AssistantRow;
+use meridian_core::db::entity::assistant;
 use meridian_core::db::models::conversation::ConversationInsert;
 use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
@@ -103,7 +103,7 @@ pub(crate) struct DesktopSubAgents {
     /// The turn that delegated. Its cancellation has to reach the child, so the
     /// child is entered under a token derived from this one.
     pub parent_cancel: CancellationToken,
-    pub assistant: Option<AssistantRow>,
+    pub assistant: Option<assistant::Model>,
     pub project_id: Option<String>,
     /// The parent's, cloned per run with the conversation and the cancellation
     /// swapped. Same derivation as `without_sandbox`, and for the same reason:
@@ -286,7 +286,7 @@ impl DesktopSubAgents {
     async fn resolve_model(
         &self,
         spec: &SubAgentSpec,
-    ) -> Result<(AssistantRow, meridian_core::agent::TurnParams), String> {
+    ) -> Result<(assistant::Model, meridian_core::agent::TurnParams), String> {
         let base = self
             .assistant
             .clone()
@@ -314,7 +314,7 @@ impl DesktopSubAgents {
         Ok((assistant, params))
     }
 
-    async fn resolve_params(&self, assistant: &AssistantRow) -> Result<meridian_core::agent::TurnParams, String> {
+    async fn resolve_params(&self, assistant: &assistant::Model) -> Result<meridian_core::agent::TurnParams, String> {
         let pool = self.pool.clone();
         let secrets = self.secrets.clone();
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
@@ -371,7 +371,7 @@ impl DesktopSubAgents {
         sub_conversation_id: &str,
         turn_id: &str,
         spec: &SubAgentSpec,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
     ) -> Result<(String, i64), String> {
         let pool = self.pool.clone();
         let (conv_id, turn_id) = (sub_conversation_id.to_string(), turn_id.to_string());
@@ -464,7 +464,7 @@ impl DesktopSubAgents {
     async fn run_loop(
         &self,
         spec: &SubAgentSpec,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
         turn_params: &meridian_core::agent::TurnParams,
         sub_conversation_id: &str,
         turn_id: &str,
@@ -631,7 +631,7 @@ impl DesktopSubAgents {
 
     async fn build_config(
         &self,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
         sub_conversation_id: &str,
         turn_params: &meridian_core::agent::TurnParams,
     ) -> Result<meridian_core::agent::turn_config::TurnConfig, String> {
@@ -683,7 +683,7 @@ impl DesktopSubAgents {
     /// The provider instance, and the provider type the token counter needs.
     async fn build_provider(
         &self,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
     ) -> Result<
         (
             Box<dyn meridian_core::provider::ChatProvider>,
@@ -724,12 +724,12 @@ impl DesktopSubAgents {
 ///   assistant uses a preset containing write tools would hand them to an agent
 ///   whose whole definition is that it cannot change anything.
 fn effective_assistant(
-    base: AssistantRow,
+    base: assistant::Model,
     kind: SubAgentKind,
     provider_id: Option<String>,
     model_id: Option<String>,
-) -> AssistantRow {
-    let mut a = AssistantRow {
+) -> assistant::Model {
+    let mut a = assistant::Model {
         provider_id,
         model_id,
         context_limit: 0,
@@ -738,7 +738,9 @@ fn effective_assistant(
     };
     if kind == SubAgentKind::Explore {
         a.tool_preset_id = None;
-        a.enabled_tools = serde_json::to_string(EXPLORE_TOOLS).ok();
+        a.enabled_tools = Some(meridian_core::db::types::Json(
+            EXPLORE_TOOLS.iter().map(|name| name.to_string()).collect(),
+        ));
     }
     a
 }
@@ -883,8 +885,8 @@ mod tests {
         );
     }
 
-    fn parent(preset: Option<&str>, enabled: Option<&str>) -> AssistantRow {
-        AssistantRow {
+    fn parent(preset: Option<&str>, enabled: Option<&str>) -> assistant::Model {
+        assistant::Model {
             id: "a1".into(),
             name: "A".into(),
             description: None,
@@ -895,17 +897,17 @@ mod tests {
             temperature: Some(0.7),
             top_p: None,
             max_tokens: Some(64_000),
-            is_default: 0,
+            is_default: meridian_core::db::types::SqlBool::FALSE,
             sort_order: 0,
             created_at: 0,
             updated_at: 0,
             context_limit: 200_000,
             compact_keep_recent: 10,
-            enabled_tools: enabled.map(str::to_string),
-            thinking_enabled: 0,
+            enabled_tools: enabled.map(|json| meridian_core::db::types::Json::decode(json).unwrap()),
+            thinking_enabled: meridian_core::db::types::SqlBool::FALSE,
             thinking_budget: None,
             tool_preset_id: preset.map(str::to_string),
-            auto_compact_enabled: 0,
+            auto_compact_enabled: meridian_core::db::types::SqlBool::FALSE,
         }
     }
 
@@ -917,7 +919,7 @@ mod tests {
         )
     }
 
-    fn config_for(child: AssistantRow) -> meridian_core::agent::turn_config::TurnConfig {
+    fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
         let pool = diesel_test_db();
         let mut conn = pool.get().unwrap();
         meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
