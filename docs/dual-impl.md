@@ -17,6 +17,13 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
+| acp_context_delivery::delivered | 1 |
+| acp_context_delivery::mark_delivered | 1 |
+| acp_session::get | 8 |
+| acp_session::owners | 3 |
+| acp_session::upsert | 6 |
+| acp_session_notice::list_for_conversation | 2 |
+| acp_session_notice::upsert_if_newer | 1 |
 | assistant::create_assistant | 2 |
 | assistant::get_assistant | 11 |
 | assistant::update_assistant | 1 |
@@ -24,8 +31,22 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | audit::record_side_request | 4 |
 | cached_model::list_by_provider | 1 |
 | conversation::all_ids | 1 |
+| conversation::archive_conversation | 1 |
+| conversation::create_conversation | 39 |
+| conversation::delete_conversation | 2 |
+| conversation::descendants | 1 |
 | conversation::get_conversation | 39 |
+| conversation::insert | 8 |
+| conversation::list_conversations | 1 |
+| conversation::list_conversations_by_project | 2 |
+| conversation::search_transcripts | 1 |
+| conversation::sub_agent_conversation_ids | 1 |
+| conversation::sub_agent_runs | 1 |
+| conversation::toggle_archive | 2 |
+| conversation::toggle_pin | 2 |
+| conversation::update_mode | 3 |
 | conversation::update_project | 1 |
+| conversation::update_title | 3 |
 | emoji::create_emoji | 1 |
 | emoji::list_confirmed_for_packs | 1 |
 | emoji_pack::assign_pack | 1 |
@@ -45,6 +66,9 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | message::switch_branch | 1 |
 | message::update_assistant_message | 2 |
 | message::update_rating | 1 |
+| message_context_item::insert_many | 4 |
+| message_context_item::list_for_message | 3 |
+| message_context_item::list_for_messages | 7 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
 | plan::format_plan_block | 1 |

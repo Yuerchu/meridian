@@ -49,6 +49,15 @@ PostgreSQL 服务端版本动工时按这份清单逐项给出对应实现。
 |---|---|---|---|
 | `core/src/db/sea/ops/turn.rs` | `rowid` | 同一毫秒开始的 turn 按写入顺序排（id 是 uuid，顺序无意义） | 加一列插入序号（`bigserial`）按它排 |
 
+## 依赖 SQLite 语义的构建器查询
+
+构建器能为任一后端渲染，但下面这些查询的**结果**依赖 SQLite 的语义，PostgreSQL 版本要逐条改写。
+代码里在函数上方带 `backend: sqlite-only` 注释。
+
+| 位置 | 依赖的语义 | PostgreSQL 时要做的事 |
+|---|---|---|
+| `core/src/db/sea/ops/conversation.rs` `search_transcripts` | `LIKE` 按 ASCII 折叠大小写，与 Rust 侧复核的折叠一致 | 改用 `ILIKE`（或对两边都做 `lower()`），并确认复核的折叠仍与之一致 |
+
 ## `db/sql.rs`：登记的原生 SQL
 
 SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly` 常量登记——构造器对模块私有，
