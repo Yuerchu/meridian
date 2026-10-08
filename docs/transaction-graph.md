@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：163
-- Diesel ops 调用点（db/ops 之外）：667
-- Diesel API 引用：1061
+- 事务根（非测试）：164
+- Diesel ops 调用点（db/ops 之外）：662
+- Diesel API 引用：1049
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -132,8 +132,9 @@
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
-| `src-tauri/src/commands/assistant.rs` › `delete_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
-| `src-tauri/src/commands/assistant.rs` › `update_assistant_unless_plan_barrier` | diesel-immediate | assistant, conversation, plan_review |
+| `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
+| `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | diesel-deferred | audit, emoji, message, message_context_item, model_config, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |

@@ -1,6 +1,6 @@
 {
-  "dieselOpsCalls": 667,
-  "dieselApiRefs": 1061,
+  "dieselOpsCalls": 662,
+  "dieselApiRefs": 1049,
   "pendingTables": [
     "acp_context_deliveries",
     "acp_session_notices",
