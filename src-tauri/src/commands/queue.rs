@@ -9,8 +9,11 @@ use crate::ServicesExt;
 use crate::commands::entity_response::{QueuedPromptInfoResponse, QueuedPromptListResponse};
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::agent::queue as runner;
+use meridian_core::db::entity::queued_prompt;
 use meridian_core::db::models::queue::Delivery;
-use meridian_core::db::ops::queue as ops;
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::cap::WriteTx;
+use meridian_core::db::sea::ops::queue as ops;
 use meridian_core::util::{get_conn, now_ms};
 
 #[derive(Debug, serde::Deserialize)]
@@ -47,14 +50,6 @@ pub struct QueuedPromptReorderRequest {
     ids: Vec<String>,
 }
 
-fn plan_review_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    conversation_id: &str,
-) -> diesel::QueryResult<bool> {
-    meridian_core::db::ops::plan_review::has_conversation_barrier(conn, conversation_id)
-        .map_err(|error| diesel::result::Error::QueryBuilderError(Box::new(error)))
-}
-
 /// An interjection is text: neither runner has anywhere mid-turn to put an
 /// image or a file. `ops::set_delivery` refuses the same for the steer button,
 /// which does not come through here.
@@ -65,33 +60,30 @@ fn refuse_attached_interjection(delivery: Delivery, content: &str) -> Result<(),
     Ok(())
 }
 
-fn enqueue_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
+/// The barrier check and the write in the caller's one IMMEDIATE transaction:
+/// checked outside it, a review submitted in between would be queued past.
+async fn enqueue_unless_plan_barrier(
+    tx: &WriteTx,
     id: &str,
     conversation_id: &str,
     content: &str,
     delivery: Delivery,
     context: &[meridian_core::workspace::reference::PreparedContextItem],
     now: i64,
-) -> diesel::QueryResult<Option<meridian_core::db::entity::queued_prompt::Model>> {
-    conn.immediate_transaction(|conn| {
-        if plan_review_barrier(conn, conversation_id)? {
-            return Ok(None);
-        }
-        ops::enqueue_with_context_in_transaction(conn, id, conversation_id, content, delivery, context, now).map(Some)
-    })
+) -> Result<Option<queued_prompt::Model>, DbErr> {
+    if meridian_core::db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
+        return Ok(None);
+    }
+    ops::enqueue_with_context(tx, id, conversation_id, content, delivery, context, now)
+        .await
+        .map(Some)
 }
 
-fn release_unless_plan_barrier(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    conversation_id: &str,
-) -> diesel::QueryResult<Option<usize>> {
-    conn.immediate_transaction(|conn| {
-        if plan_review_barrier(conn, conversation_id)? {
-            return Ok(None);
-        }
-        ops::release_all(conn, conversation_id).map(Some)
-    })
+async fn release_unless_plan_barrier(tx: &WriteTx, conversation_id: &str) -> Result<Option<u64>, DbErr> {
+    if meridian_core::db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
+        return Ok(None);
+    }
+    ops::release_all(tx, conversation_id).await.map(Some)
 }
 
 /// Everything queued for a conversation, in the order it will be delivered.
@@ -100,13 +92,10 @@ fn release_unless_plan_barrier(
 /// would make an item vanish a beat before the message it became appears.
 #[tauri::command]
 pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Result<QueuedPromptListResponse, String> {
-    let pool = app.services().db.clone();
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let rows = ops::list(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        Ok(rows.into_iter().map(Into::into).collect())
-    })
-    .await
+    let rows = ops::list(&app.services().sea, &conversation_id)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 /// Add one to the back, and see whether it can go straight away.
@@ -132,9 +121,7 @@ pub async fn queue_enqueue(
         return Err("a queued message needs something in it".into());
     }
     let services = app.services();
-    let pool = services.db.clone();
     let id = uuid::Uuid::new_v4().to_string();
-    let conversation = conversation_id.clone();
     let parsed = meridian_core::workspace::reference::parse_message_references(&content);
     let references =
         meridian_core::workspace::reference::reconcile_references(context_refs.unwrap_or_default(), parsed)?;
@@ -218,24 +205,17 @@ pub async fn queue_enqueue(
         prepared
     };
 
-    let item = blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let item = enqueue_unless_plan_barrier(
-            &mut conn,
-            &id,
-            &conversation,
-            &content,
-            delivery,
-            &prepared,
-            now_ms(),
-        )
-            .map_err(|error| error.to_string())?;
-        item.ok_or_else(|| {
-            "This conversation is waiting for plan review. Approve it or request changes before queueing another message."
-                .into()
+    let item = services
+        .sea
+        .write(async |tx| {
+            enqueue_unless_plan_barrier(tx, &id, &conversation_id, &content, delivery, &prepared, now_ms()).await
         })
-    })
-    .await?;
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
+            "This conversation is waiting for plan review. Approve it or request changes before queueing another message."
+                .to_string()
+        })?;
 
     runner::announce(&services, &conversation_id);
     runner::pump_later(&services, &conversation_id);
@@ -251,13 +231,11 @@ pub async fn queue_enqueue(
 pub async fn queue_remove(app: tauri::AppHandle, request: QueuedPromptRemoveRequest) -> Result<(), String> {
     let QueuedPromptRemoveRequest { conversation_id, id } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let conversation = conversation_id.clone();
-    let removed = blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        ops::remove(&mut conn, &conversation, &id).map_err(|e| e.to_string())
-    })
-    .await?;
+    let removed = services
+        .sea
+        .write(async |tx| ops::remove(tx, &conversation_id, &id).await)
+        .await
+        .map_err(|e| e.to_string())?;
 
     if removed == 0 {
         return Err("this message has already been sent".into());
@@ -271,13 +249,11 @@ pub async fn queue_remove(app: tauri::AppHandle, request: QueuedPromptRemoveRequ
 pub async fn queue_reorder(app: tauri::AppHandle, request: QueuedPromptReorderRequest) -> Result<(), String> {
     let QueuedPromptReorderRequest { conversation_id, ids } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let conversation = conversation_id.clone();
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        ops::reorder(&mut conn, &conversation, &ids).map_err(|e| e.to_string())
-    })
-    .await?;
+    services
+        .sea
+        .write(async |tx| ops::reorder(tx, &conversation_id, &ids).await)
+        .await
+        .map_err(|e| e.to_string())?;
 
     runner::announce(&services, &conversation_id);
     Ok(())
@@ -301,13 +277,11 @@ pub async fn queue_set_delivery(
         delivery,
     } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let conversation = conversation_id.clone();
-    let changed = blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        ops::set_delivery(&mut conn, &conversation, &id, delivery).map_err(|e| e.to_string())
-    })
-    .await?;
+    let changed = services
+        .sea
+        .write(async |tx| ops::set_delivery(tx, &conversation_id, &id, delivery).await)
+        .await
+        .map_err(|e| e.to_string())?;
 
     match changed {
         ops::DeliveryChange::Changed => {}
@@ -332,19 +306,16 @@ pub async fn queue_set_delivery(
 #[tauri::command]
 pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let conversation = conversation_id.clone();
-    blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let released = release_unless_plan_barrier(&mut conn, &conversation).map_err(|error| error.to_string())?;
-        released.ok_or_else(|| {
+    services
+        .sea
+        .write(async |tx| release_unless_plan_barrier(tx, &conversation_id).await)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or_else(|| {
             String::from(
                 "This conversation is waiting for its plan-review continuation; its queue cannot be released yet.",
             )
         })?;
-        Ok(())
-    })
-    .await?;
 
     runner::announce(&services, &conversation_id);
     runner::pump_later(&services, &conversation_id);
@@ -413,15 +384,24 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn enqueue_without_plan_barrier_accepts_both_delivery_modes_in_order() {
-        let pool = meridian_core::db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+    async fn conversation(db: &meridian_core::db::sea::cap::Db) {
+        db.write(async |tx| {
+            meridian_core::db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await
+        })
+        .await
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn enqueue_without_plan_barrier_accepts_both_delivery_modes_in_order() {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        conversation(&db).await;
 
         for (position, delivery) in [Delivery::FollowUp, Delivery::Interject].into_iter().enumerate() {
             let id = format!("q{position}");
-            let item = enqueue_unless_plan_barrier(&mut conn, &id, "c1", "continue", delivery, &[], 2)
+            let item = db
+                .write(async |tx| enqueue_unless_plan_barrier(tx, &id, "c1", "continue", delivery, &[], 2).await)
+                .await
                 .unwrap()
                 .expect("a conversation without a plan barrier accepts queued messages");
             assert_eq!(item.id, id);
@@ -430,25 +410,30 @@ mod tests {
             assert_eq!(item.state(), meridian_core::db::models::queue::QueueState::Queued);
         }
 
-        assert_eq!(ops::list(&mut conn, "c1").unwrap().len(), 2);
-        ops::hold_all(&mut conn, "c1", 3).unwrap();
-        assert_eq!(release_unless_plan_barrier(&mut conn, "c1").unwrap(), Some(2));
+        assert_eq!(ops::list(&db, "c1").await.unwrap().len(), 2);
+        db.write(async |tx| ops::hold_all(tx, "c1", 3).await).await.unwrap();
+        assert_eq!(
+            db.write(async |tx| release_unless_plan_barrier(tx, "c1").await)
+                .await
+                .unwrap(),
+            Some(2)
+        );
         assert!(
-            ops::list(&mut conn, "c1")
+            ops::list(&db, "c1")
+                .await
                 .unwrap()
                 .iter()
                 .all(|item| item.held_at.is_none())
         );
     }
 
-    #[test]
-    fn enqueue_without_plan_barrier_commits_context_and_rolls_back_failed_snapshots() {
-        use meridian_core::db::ops::queued_prompt_context_item::list_prepared;
+    #[tokio::test]
+    async fn enqueue_without_plan_barrier_commits_context_and_rolls_back_failed_snapshots() {
+        use meridian_core::db::sea::ops::queued_prompt_context_item::list_prepared;
         use meridian_core::workspace::reference::{MessageContextKind, PreparedContextItem};
 
-        let pool = meridian_core::db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        let db = meridian_core::db::sea::sea_test_db().await;
+        conversation(&db).await;
         let context = [PreparedContextItem {
             id: "ctx1".into(),
             kind: MessageContextKind::ProjectFile,
@@ -464,66 +449,61 @@ mod tests {
             metadata: None,
         }];
 
-        enqueue_unless_plan_barrier(
-            &mut conn,
-            "q1",
-            "c1",
-            "read @src/lib.rs",
-            Delivery::FollowUp,
-            &context,
-            2,
-        )
+        db.write(async |tx| {
+            enqueue_unless_plan_barrier(tx, "q1", "c1", "read @src/lib.rs", Delivery::FollowUp, &context, 2).await
+        })
+        .await
         .unwrap()
         .unwrap();
-        let frozen = list_prepared(&mut conn, "q1").unwrap();
+        let frozen = list_prepared(&db, "q1").await.unwrap();
         assert_eq!(frozen.len(), 1);
         assert_eq!(frozen[0].content, "frozen bytes");
 
         // The duplicate context id fails after the prompt row was inserted.
-        let error = enqueue_unless_plan_barrier(
-            &mut conn,
-            "q2",
-            "c1",
-            "another reference",
-            Delivery::FollowUp,
-            &context,
-            3,
-        )
-        .unwrap_err();
+        let error = db
+            .write(async |tx| {
+                enqueue_unless_plan_barrier(tx, "q2", "c1", "another reference", Delivery::FollowUp, &context, 3).await
+            })
+            .await
+            .unwrap_err();
         assert!(matches!(
-            error,
-            diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)
+            error.sql_err(),
+            Some(meridian_core::db::sea::SqlErr::UniqueConstraintViolation(_))
         ));
-        let rows = ops::list(&mut conn, "c1").unwrap();
+        let rows = ops::list(&db, "c1").await.unwrap();
         assert_eq!(rows.len(), 1, "a failed snapshot must roll back its prompt");
         assert_eq!(rows[0].id, "q1");
-        assert!(list_prepared(&mut conn, "q2").unwrap().is_empty());
+        assert!(list_prepared(&db, "q2").await.unwrap().is_empty());
     }
 
-    #[test]
-    fn enqueue_and_release_are_both_refused_by_the_durable_plan_barrier() {
-        let pool = meridian_core::db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        meridian_core::db::ops::queue::enqueue(
-            &mut conn,
-            "held-1",
-            "c1",
-            "existing held message",
-            Delivery::FollowUp,
-            2,
-        )
+    #[tokio::test]
+    async fn enqueue_and_release_are_both_refused_by_the_durable_plan_barrier() {
+        let dir = tempfile::tempdir().unwrap();
+        let (pool, db) = meridian_core::db::sea::shared_test_db(dir.path()).await;
+        conversation(&db).await;
+        db.write(async |tx| {
+            ops::enqueue(tx, "held-1", "c1", "existing held message", Delivery::FollowUp, 2).await?;
+            ops::hold_all(tx, "c1", 3).await
+        })
+        .await
         .unwrap();
-        meridian_core::db::ops::queue::hold_all(&mut conn, "c1", 3).unwrap();
-        seed_pending_plan_review(&mut conn, "c1");
+        seed_pending_plan_review(&mut pool.get().unwrap(), "c1");
 
         assert!(
-            enqueue_unless_plan_barrier(&mut conn, "new-1", "c1", "must not enqueue", Delivery::FollowUp, &[], 6,)
-                .unwrap()
-                .is_none()
+            db.write(async |tx| {
+                enqueue_unless_plan_barrier(tx, "new-1", "c1", "must not enqueue", Delivery::FollowUp, &[], 6).await
+            })
+            .await
+            .unwrap()
+            .is_none()
         );
-        assert_eq!(release_unless_plan_barrier(&mut conn, "c1").unwrap(), None);
-        let rows = meridian_core::db::ops::queue::list(&mut conn, "c1").unwrap();
+        assert_eq!(
+            db.write(async |tx| release_unless_plan_barrier(tx, "c1").await)
+                .await
+                .unwrap(),
+            None
+        );
+        let rows = ops::list(&db, "c1").await.unwrap();
         assert_eq!(rows.len(), 1, "the refused enqueue writes no row");
         assert_eq!(
             rows[0].state(),

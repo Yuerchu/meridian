@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：185
-- Diesel ops 调用点（db/ops 之外）：574
-- Diesel API 引用：925
+- 事务根（非测试）：190
+- Diesel ops 调用点（db/ops 之外）：528
+- Diesel API 引用：883
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -45,8 +45,13 @@
 | `src-tauri/crates/core/src/agent/interrupted.rs` › `confirm_delivered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/interrupted.rs` › `load_block` | sea-read | turn |
 | `src-tauri/crates/core/src/agent/memory_context.rs` › `plan_injection_async` | sea-read | memory |
-| `src-tauri/crates/core/src/agent/queue.rs` › `steer` | diesel-immediate | queue |
-| `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | diesel-immediate | audit, conversation, message, model_config, queue |
+| `src-tauri/crates/core/src/agent/queue.rs` › `confirm_reported` | sea-write | queue |
+| `src-tauri/crates/core/src/agent/queue.rs` › `has_plan_review_barrier` | sea-read | plan_review |
+| `src-tauri/crates/core/src/agent/queue.rs` › `hold` | sea-write | queue |
+| `src-tauri/crates/core/src/agent/queue.rs` › `steer` | sea-write | — |
+| `src-tauri/crates/core/src/agent/queue.rs` › `steer` | sea-write | — |
+| `src-tauri/crates/core/src/agent/queue.rs` › `steer` | sea-write | — |
+| `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `begin_triggered` | sea-write | turn |
@@ -86,9 +91,6 @@
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `submit_head_for_review_inner` | diesel-deferred | plan_review, turn |
 | `src-tauri/crates/core/src/db/ops/plan_review.rs` › `transition_delivery` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
-| `src-tauri/crates/core/src/db/ops/queue.rs` › `reorder` | diesel-deferred | queue |
-| `src-tauri/crates/core/src/db/ops/queue.rs` › `set_delivery` | diesel-immediate | queue, queued_prompt_context_item |
-| `src-tauri/crates/core/src/db/ops/queue.rs` › `take_next` | diesel-deferred | audit, message, model_config, queue |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/ops/turn.rs` › `reconcile_interrupted` | diesel-deferred | queue |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
@@ -200,8 +202,11 @@
 | `src-tauri/src/commands/provider.rs` › `fetch_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `set_provider_key` | sea-write | cached_model, conversation, plan_review |
 | `src-tauri/src/commands/provider.rs` › `update_provider` | sea-write | cached_model, conversation, plan_review, provider |
-| `src-tauri/src/commands/queue.rs` › `enqueue_unless_plan_barrier` | diesel-immediate | plan_review, queue, queued_prompt_context_item |
-| `src-tauri/src/commands/queue.rs` › `release_unless_plan_barrier` | diesel-immediate | plan_review, queue |
+| `src-tauri/src/commands/queue.rs` › `queue_enqueue` | sea-write | plan_review, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/queue.rs` › `queue_release` | sea-write | plan_review, queue |
+| `src-tauri/src/commands/queue.rs` › `queue_remove` | sea-write | queue |
+| `src-tauri/src/commands/queue.rs` › `queue_reorder` | sea-write | queue |
+| `src-tauri/src/commands/queue.rs` › `queue_set_delivery` | sea-write | queue, queued_prompt_context_item |
 | `src-tauri/src/commands/skill.rs` › `create_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `delete_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |

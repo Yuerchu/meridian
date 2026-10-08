@@ -1979,7 +1979,7 @@ async fn chat_inner(
     // the wrapper adds is the only thing that says so.
     let interjections = meridian_core::agent::queue::Announcing::wrap(
         services.events.clone(),
-        meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone()),
+        meridian_core::agent::queue::Interjections::new(services.sea.clone(), conversation_id.clone(), turn_id.clone()),
     );
     // And a background task that ends while this turn runs is told at the
     // next round, after whatever was typed in the same interval.
