@@ -16,6 +16,7 @@ export type ProjectListResponse = ProjectInfoResponse[]
 export type ProviderListResponse = ProviderInfoResponse[]
 export type QueuedPromptListResponse = QueuedPromptInfoResponse[]
 export type BackgroundTaskListResponse = BackgroundTaskInfoResponse[]
+export type BackgroundTaskCountListResponse = BackgroundTaskCountInfoResponse[]
 export type SkillListResponse = SkillInfoResponse[]
 export type SkillBindingNamesResponse = string[]
 export type TodoItemListResponse = TodoItemInfoResponse[]
@@ -1073,6 +1074,12 @@ export interface BackgroundTaskInfoResponse {
   ended_at: number | null
   /** Whether the model has been told this task ended. */
   notified: boolean
+}
+
+/** How many commands a conversation has running. */
+export interface BackgroundTaskCountInfoResponse {
+  conversation_id: string
+  running: number
 }
 
 /** A slice of a background task's output, from `offset`. */

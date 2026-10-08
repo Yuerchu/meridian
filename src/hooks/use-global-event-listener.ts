@@ -1,4 +1,6 @@
 import { useEffect } from 'react'
+import { api } from '@/api'
+import { isUnprompted } from '@/lib/turn-trigger'
 import { parseChatStreamEvent } from '@/lib/chat-stream-event'
 import { listen } from '@/lib/transport'
 import i18n from '@/i18n'
@@ -178,7 +180,16 @@ export function useGlobalEventListener() {
         const streamKey = p.turn_id
         const startTime = streamStartTimes.get(streamKey)
         streamStartTimes.delete(streamKey)
-        if (startTime && Date.now() - startTime > LONG_STREAM_THRESHOLD_MS && shouldNotify(convId)) {
+        // A turn nobody asked for is worth saying however short it was: the
+        // person was not waiting on it, so nothing else will tell them the
+        // background work they left behind has come back and been acted on.
+        const trigger = store.sessions[convId]?.liveTriggers[p.turn_id]
+        if (trigger && isUnprompted(trigger) && shouldNotify(convId)) {
+          trySendNotification(
+            getConversationTitle(convId),
+            i18n.t(trigger === 'task_completion' ? 'chat.background.notifyTask' : 'chat.background.notifyAgent'),
+          )
+        } else if (startTime && Date.now() - startTime > LONG_STREAM_THRESHOLD_MS && shouldNotify(convId)) {
           trySendNotification(getConversationTitle(convId), 'Response completed')
         }
         store.handleStop(convId, p.turn_id)
@@ -303,6 +314,20 @@ export function useGlobalEventListener() {
     // delivery is the same transaction that writes the row — so without this
     // the message is off the queue and not yet on screen, which is worse than
     // the stale row it replaces.
+    // What the sidebar marks: every conversation with a command running. Read
+    // once now and again whenever any task moves — the event names one
+    // conversation, but the answer is a short list and reading it whole keeps
+    // a missed event from leaving a mark behind for ever.
+    const readBackgroundRunning = () =>
+      api.backgroundTaskRunningCounts().then(
+        (rows) => useConversationStore.getState().setBackgroundRunning(rows),
+        (err: unknown) => console.warn('could not read the running background commands', err),
+      )
+    void readBackgroundRunning()
+    const backgroundTasksUnlisten = listen('background-tasks-updated', () => {
+      void readBackgroundRunning()
+    })
+
     const queueDeliveredUnlisten = listen('queue-updated', (event) => {
       if (!event.payload.delivered) return
       void useConversationStore.getState().loadMessages(event.payload.conversation_id)
@@ -328,6 +353,9 @@ export function useGlobalEventListener() {
       // Approvals are not in the transcript the resync above re-reads, and the
       // events that announced them went out while the socket was down.
       useConversationStore.getState().loadAllPending()
+      // Nor are the running background commands, whose events went out
+      // while the socket was down too.
+      void readBackgroundRunning()
     })
 
     // What was already waiting before this client existed. A window that
@@ -384,6 +412,7 @@ export function useGlobalEventListener() {
       chatStreamUnlisten.then((fn) => fn())
       convUpdatedUnlisten.then((fn) => fn())
       queueDeliveredUnlisten.then((fn) => fn())
+      backgroundTasksUnlisten.then((fn) => fn())
       userCommandUnlisten.then((fn) => fn())
       resyncUnlisten.then((fn) => fn())
       systemNoticeUnlisten.then((fn) => fn())

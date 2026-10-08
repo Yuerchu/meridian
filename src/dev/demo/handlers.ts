@@ -558,6 +558,13 @@ const chat: Record<string, DemoHandler> = {
   },
   queue_list: (args, { state }) => state.queues[field<string>(args, 'conversationId')] ?? [],
   list_background_tasks: (args, { state }) => state.backgroundTasks[field<string>(args, 'conversationId')] ?? [],
+  background_task_running_counts: (_args, { state }) =>
+    Object.entries(state.backgroundTasks)
+      .map(([conversation_id, tasks]) => ({
+        conversation_id,
+        running: tasks.filter((t) => t.state === 'running').length,
+      }))
+      .filter((row) => row.running > 0),
   stop_background_task: (args, backend) => {
     const req = request<{ conversationId: string; id: string }>(args)
     const task = (backend.state.backgroundTasks[req.conversationId] ?? []).find((t) => t.id === req.id)

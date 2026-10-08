@@ -180,6 +180,7 @@ import type {
   QueuedPromptListResponse,
   BackgroundTaskInfoResponse,
   BackgroundTaskListResponse,
+  BackgroundTaskCountListResponse,
   BackgroundTaskOutputInfoResponse,
   BackgroundTaskOutputReadRequest,
   BackgroundTaskStopRequest,
@@ -455,6 +456,9 @@ export const api = {
   // any ending, but wakes no turn — see `meridian_core::background`.
   listBackgroundTasks: (conversationId: string) =>
     invoke<BackgroundTaskListResponse>('list_background_tasks', { conversationId }),
+
+  /** Every conversation with a command running, for the sidebar. */
+  backgroundTaskRunningCounts: () => invoke<BackgroundTaskCountListResponse>('background_task_running_counts'),
 
   stopBackgroundTask: (request: BackgroundTaskStopRequest) =>
     invoke<BackgroundTaskInfoResponse>('stop_background_task', { request }),

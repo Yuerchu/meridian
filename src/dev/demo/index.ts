@@ -72,9 +72,12 @@ export function createDemoBackend(options: DemoOptions = {}): DemoBackend & {
 }
 
 /** `?demo=quiet` starts with nothing waiting on an answer — for screenshots
- *  that should not have approval toasts over them. */
+ *  that should not have approval toasts over them. `background` adds commands
+ *  running in the background, for the one scene that photographs them; the
+ *  flags combine with commas (`?demo=quiet,background`). */
 function optionsFromUrl(): DemoOptions {
-  return { quiet: new URLSearchParams(window.location.search).get('demo') === 'quiet' }
+  const flags = (new URLSearchParams(window.location.search).get('demo') ?? '').split(',')
+  return { quiet: flags.includes('quiet'), background: flags.includes('background') }
 }
 
 export function createDemoTransport(): Transport {

@@ -55,7 +55,18 @@ reads or stops what an approved command started.
 - **The window reads, it is not pushed.** `background-tasks-updated` is an invalidation key
   like `queue-updated`. The running tasks are a chip in the composer's status tab, beside
   the checklist's, with the list one press away; the output sheet polls the one task being
-  looked at.
+  looked at. The chip's icon is still, not a spinner — the checklist's ring beside it
+  already moves — and elapsed time is in units (`12 分钟`), never `12:00`, which reads
+  as a time of day.
+- **Other conversations are marked in the sidebar, not on a session.** The conversations a
+  running command matters for are mostly ones nobody has opened since, so the counts come
+  from `background_task_running_counts` into `backgroundRunning` beside `sessions`, re-read
+  on mount, on `background-tasks-updated` and on `remote-resync`. `ConversationIndicator`
+  draws them as a hollow ring, below a running turn and above "answered, unseen".
+- **A turn nobody asked for ends with an OS notification, not an in-app one.** The
+  notification viewport holds questions only, so an unprompted turn's stop goes through
+  `trySendNotification` under the same `shouldNotify` as a long answer, worded by its
+  trigger (a task completed, or Claude Code carried on by itself).
 
 Not built: the sandbox-escalation card for a background command a restricted token refused
 (it fails, and the model can rerun it in the foreground), the journal's command bracket

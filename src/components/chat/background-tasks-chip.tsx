@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { FileText, Stop } from '@keyline-icons/react/two-tone'
+import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
 import { Button, Popover, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
 import { ErrorAlert } from '@/components/ui/error-alert'
 
 import { api } from '@/api'
-import { formatElapsed } from '@/lib/elapsed'
+import { elapsedLabel } from '@/lib/elapsed'
 import { errorMessage } from '@/lib/error-message'
 import type { BackgroundTaskInfoResponse } from '@/types'
 
@@ -48,6 +48,9 @@ export function BackgroundTasksChip({
   const now = useNow(tasks.length > 0)
   const [reading, setReading] = useState<BackgroundTaskInfoResponse | null>(null)
   const label = t('chat.background.running', { count: tasks.length })
+  // Short on the tab, where it sits beside the checklist's chip and the
+  // branch; the full sentence is the name a screen reader hears.
+  const short = t('chat.background.chip', { count: tasks.length })
 
   return (
     <>
@@ -57,9 +60,11 @@ export function BackgroundTasksChip({
           aria-label={label}
           className="touch-hitbox h-7 min-w-0 gap-1.5 rounded-full px-1.5 text-body-2-medium text-text-secondary transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[pressed]:bg-background-primary-hover"
         >
-          <Spinner size="sm" className="shrink-0" />
-          <span data-slot="background-tasks-chip-label" className="min-w-0 max-w-40 truncate">
-            {label}
+          {/* Still, and not a spinner: the checklist's ring beside it is a
+              circle that moves, and two of them read as one thing twice. */}
+          <SquareTerminal className="size-4 shrink-0" aria-hidden />
+          <span data-slot="background-tasks-chip-label" className="shrink-0 tabular-nums">
+            {short}
           </span>
         </Popover.Trigger>
         <Popover.Content placement="top start" className="w-96 p-3">
@@ -91,7 +96,10 @@ export function BackgroundTasksChip({
                     data-slot="background-task-elapsed"
                     className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
                   >
-                    {formatElapsed(now - task.started_at)}
+                    {(() => {
+                      const elapsed = elapsedLabel(now - task.started_at)
+                      return t(elapsed.key, elapsed.values)
+                    })()}
                   </span>
                   <TooltipTrigger delay={0}>
                     <Button
