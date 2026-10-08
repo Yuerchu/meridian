@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：172
+- 事务根（非测试）：174
 - Diesel ops 调用点（db/ops 之外）：608
 - Diesel API 引用：979
 
@@ -80,6 +80,8 @@
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `take_next` | diesel-deferred | audit, message, model_config, queue |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/ops/turn.rs` › `reconcile_interrupted` | diesel-deferred | queue |
+| `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/db/sea/ops/queue.rs` › `take_next` | sea-nested | audit, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
 | `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |

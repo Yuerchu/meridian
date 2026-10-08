@@ -20,6 +20,8 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | assistant::create_assistant | 2 |
 | assistant::get_assistant | 11 |
 | assistant::update_assistant | 1 |
+| audit::record | 1 |
+| audit::record_side_request | 4 |
 | cached_model::list_by_provider | 1 |
 | conversation::all_ids | 1 |
 | conversation::get_conversation | 39 |
@@ -30,6 +32,19 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | emoji_pack::create_pack | 1 |
 | emoji_pack::list_assigned_pack_ids | 1 |
 | memory::list_subjects | 1 |
+| message::append_message | 17 |
+| message::delete_subtree | 1 |
+| message::delete_summaries_anchored_in | 1 |
+| message::get_message | 1 |
+| message::insert_message | 1 |
+| message::list_messages | 26 |
+| message::record_auto_review | 1 |
+| message::record_tool_diffs | 2 |
+| message::record_tool_diffs_for_call | 1 |
+| message::revise_tool_call | 1 |
+| message::switch_branch | 1 |
+| message::update_assistant_message | 2 |
+| message::update_rating | 1 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
 | plan::format_plan_block | 1 |
@@ -59,6 +74,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | queue::remove | 1 |
 | queue::reorder | 1 |
 | queue::set_delivery | 1 |
+| queue::take_next | 1 |
 | queue::undispatch | 1 |
 | queue::unreported_in_doubt | 1 |
 | queued_prompt_context_item::delete_for_queue | 2 |
