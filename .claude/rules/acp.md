@@ -237,6 +237,36 @@ the machines that want this already have node and a signed-in `claude`.
   refusal does not poison the process, and a plain `session/new` on the same one succeeds
   immediately after. `--help` and `--version` prove nothing here — commander answers both
   before it validates anything, which is exactly what made an unknown flag look harmless.
+
+  The same `_meta` carries a second thing, and that one is never dropped:
+  `emitRawSDKMessages`, asking for exactly two SDK messages (see the next entry). It is
+  read by the adapter rather than passed to the CLI, so nothing can refuse it, and the
+  retry keeps it.
+- **The agent runs turns nobody prompted, and they get turns here too.** A command run
+  with `run_in_background` outlives the prompt that started it; when it finishes, the CLI
+  hands the completion to the model, which answers it — text, tool calls, permission
+  requests — with no `session/prompt` open. That output used to fall on the floor for want
+  of a turn, and its permission requests were answered `cancelled`, which the adapter
+  treats as *aborting* the call: the follow-up work was cut off without anybody seeing it.
+
+  Now the first piece of output or the first question with nothing running opens an
+  *unprompted* turn (`Unprompted` in `acp/session.rs`): the lease, a `turns` row with
+  `trigger = task_completion` (naming the task) or `agent_autonomous`, a row hung off the
+  head, and `MessageStart` carrying the trigger — which is what the transcript splits a
+  turn of its own on. `session_state_changed: idle`, forwarded as `_claude/sdkMessage`,
+  closes it; `task_notification` just before it says what woke the agent. Measured in
+  `tests/acp_autonomous_probe.rs`, and two findings are load-bearing. A prompted turn's
+  own `idle` arrives *after* its reply, so `idle` closes only an unprompted turn and
+  leaves the rest to `finish`. And `running` opens nothing: after a stop the adapter
+  swallows a cycle's output until the next prompt while still reporting its states, so
+  opening on `running` would leave an empty bubble per background task.
+
+  While it runs, nothing can be steered into it (`current_turn_id` is `None`) and the
+  queue waits for its close, which pumps like any ending. A watchdog ends it if the
+  adapter dies or it goes quiet for ten minutes with nothing outstanding, because an open
+  one holds the conversation's lease. Stop ends it at once — there is no reply to wait for.
+  Not built yet: listing the background tasks themselves (the adapter's `asyncTasks`
+  extension), which waits for the shared `background_tasks` table the native side needs.
 - **`toolCallId` is unique per session here, and nowhere else in this app.** So the ACP
   layer is the only place that may dedupe by it — and must, because the adapter announces
   a call as soon as it knows one is coming and again once the input has streamed. The
