@@ -1991,6 +1991,31 @@ for (const [file, source] of rustSources) {
   }
 }
 
+// `Expr::cust` 是查询构建器里的原生 SQL 片段。迁移目录之外，用到它的文件必须带
+// `backend: sqlite-only` 标注，并且恰好是 docs/backend-neutrality.md「查询构建器里的 SQLite 片段」
+// 表里登记的那些——PostgreSQL 版本动工时，那张表就是要改写的全部清单。
+{
+  const neutralityFile = 'docs/backend-neutrality.md'
+  const neutrality = readAt(neutralityFile) ?? ''
+  const section = neutrality.split('## 查询构建器里的 SQLite 片段')[1]?.split('\n## ')[0] ?? ''
+  const registered = new Set(
+    [...section.matchAll(/^\| `core\/src\/([^`]+)` \|/gm)].map((m) => `src-tauri/crates/core/src/${m[1]}`),
+  )
+  const using = new Set()
+  for (const [file, source] of rustSources) {
+    if (source == null || file.startsWith(STATEMENT_ALLOWED_DIR) || !file.startsWith('src-tauri/crates/core/src/'))
+      continue
+    if (!/\bExpr::cust(?:_with_values)?\(/.test(rustProductionText(source))) continue
+    using.add(file)
+    if (!/backend: sqlite-only/.test(source)) add(file, 'Expr::cust 的文件必须带 `backend: sqlite-only` 标注')
+    if (!registered.has(file))
+      add(file, `用了 Expr::cust 却没登记在 ${neutralityFile} 的「查询构建器里的 SQLite 片段」表里`)
+  }
+  for (const file of registered) {
+    if (!using.has(file)) add(neutralityFile, `登记了 ${file} 用 Expr::cust，但它已经不用了：删掉这一行`)
+  }
+}
+
 // 两个 Cargo.toml 都不许开 sea-orm 的 with-bigdecimal。先去掉 `#` 注释：core 的那份正是在
 // 注释里解释为什么不开它。
 for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.toml']) {

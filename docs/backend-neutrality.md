@@ -38,6 +38,17 @@ PostgreSQL 服务端版本动工时按这份清单逐项给出对应实现。
   缺陷的对照行在两边都必须被接受。
 - 生成器：`render(读回放库)` 的文本必须与入库文件逐字相同。
 
+## 查询构建器里的 SQLite 片段
+
+`Expr::cust` 把一段 SQL 文本原样塞进构建器生成的语句，是 `db/sql.rs` 之外唯一能写出 SQLite
+专属 SQL 的口子。每个用到它的文件都要带 `backend: sqlite-only` 标注并登记在下表——模型契约
+检查器核对两边：用了没登记、登记了没用、文件里没有标注，都是红。迁移目录（`db/sea/migration/`）
+另有上一节的登记，不在此列。
+
+| 文件 | 片段 | 用途 | PostgreSQL 时要做的事 |
+|---|---|---|---|
+| `core/src/db/sea/ops/turn.rs` | `rowid` | 同一毫秒开始的 turn 按写入顺序排（id 是 uuid，顺序无意义） | 加一列插入序号（`bigserial`）按它排 |
+
 ## `db/sql.rs`：登记的原生 SQL
 
 SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly` 常量登记——构造器对模块私有，
