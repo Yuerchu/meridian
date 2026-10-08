@@ -11,8 +11,8 @@ use meridian_core::agent::{
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
+use meridian_core::db::entity::message_context_item;
 use meridian_core::db::models::assistant::AssistantRow;
-use meridian_core::db::models::message_context_item::MessageContextItemRow;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
 use meridian_core::db::sea::ops::{conversation as conversation_ops, plan_review as plan_review_ops};
@@ -745,7 +745,7 @@ fn context_info_messages(
     system_prompt: &str,
     context: &db::ops::message::ActiveContext,
     trailing: Vec<ChatMessage>,
-    context_items: &HashMap<String, Vec<MessageContextItemRow>>,
+    context_items: &HashMap<String, Vec<message_context_item::Model>>,
 ) -> Result<Vec<ChatMessage>, String> {
     build_messages_with_context_items(system_prompt, context, trailing, &Default::default(), context_items)
 }
@@ -1376,11 +1376,11 @@ mod tests {
             anchor_index: None,
             head_id: Some(user.id.clone()),
         };
-        let frozen = MessageContextItemRow {
+        let frozen = message_context_item::Model {
             id: "ctx1".into(),
             message_id: user.id.clone(),
             position: 0,
-            kind: "project_file".into(),
+            kind: meridian_core::workspace::reference::MessageContextKind::ProjectFile,
             content: "pub fn counted_snapshot() { /* frozen bytes */ }".into(),
             display_path: Some("src/lib.rs".into()),
             line_start: None,
@@ -1389,7 +1389,7 @@ mod tests {
             byte_count: 48,
             line_count: 1,
             token_count: 10,
-            truncated: 0,
+            truncated: meridian_core::db::types::SqlBool::FALSE,
             metadata: None,
             created_at: 1,
         };

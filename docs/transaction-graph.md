@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：233
-- Diesel ops 调用点（db/ops 之外）：345
-- Diesel API 引用：668
+- 事务根（非测试）：235
+- Diesel ops 调用点（db/ops 之外）：338
+- Diesel API 引用：660
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 24 个：acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
+- 25 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review project provider queue queued_prompt_context_item todo turn usage
 - 2 个：preference skill_binding
 - 1 个：custom_tool
 - 1 个：journal
@@ -37,6 +37,8 @@
 | `src-tauri/crates/core/src/acp/mod.rs` › `write_conversation_row` | diesel-deferred | acp_session, assistant, conversation |
 | `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review |
 | `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review, turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `pending_shell_context` | sea-read | acp_context_delivery, conversation, message, message_context_item |
+| `src-tauri/crates/core/src/acp/session.rs` › `settle` | sea-write | acp_context_delivery |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_interjections` | sea-write | queue |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item, turn |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `append_tool_result` | sea-write | audit, memory, message, model_config, model_profile, provider |

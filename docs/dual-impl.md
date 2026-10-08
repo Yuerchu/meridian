@@ -17,8 +17,6 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
-| acp_context_delivery::delivered | 1 |
-| acp_context_delivery::mark_delivered | 1 |
 | acp_session::get | 7 |
 | acp_session::owners | 3 |
 | acp_session::upsert | 6 |
@@ -34,7 +32,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | conversation::create_conversation | 24 |
 | conversation::delete_conversation | 2 |
 | conversation::descendants | 1 |
-| conversation::get_conversation | 29 |
+| conversation::get_conversation | 28 |
 | conversation::insert | 7 |
 | conversation::list_conversations | 1 |
 | conversation::list_conversations_by_project | 2 |
@@ -52,14 +50,14 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | message::append_message | 7 |
 | message::delete_summaries_anchored_in | 1 |
 | message::insert_message | 1 |
-| message::list_messages | 18 |
+| message::list_messages | 17 |
 | message::record_auto_review | 1 |
 | message::record_tool_diffs | 2 |
 | message::record_tool_diffs_for_call | 1 |
 | message::revise_tool_call | 1 |
 | message_context_item::insert_many | 2 |
-| message_context_item::list_for_message | 3 |
-| message_context_item::list_for_messages | 5 |
+| message_context_item::list_for_message | 2 |
+| message_context_item::list_for_messages | 3 |
 | model_config::get_with_profile | 1 |
 | model_config::list_by_provider_with_profiles | 1 |
 | model_config::seed_flat | 2 |

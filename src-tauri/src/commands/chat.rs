@@ -71,21 +71,17 @@ fn select_turn_setting<T>(origin: TurnOrigin, explicit: Option<T>, conversation_
 }
 
 async fn load_message_context_items(
-    pool: &DbPool,
+    db: &db::sea::cap::Db,
     context: &db::ops::message::ActiveContext,
-) -> Result<std::collections::HashMap<String, Vec<db::models::message_context_item::MessageContextItemRow>>, String> {
+) -> Result<std::collections::HashMap<String, Vec<db::entity::message_context_item::Model>>, String> {
     let ids = context
         .path
         .iter()
         .map(|message| message.id.clone())
         .collect::<Vec<_>>();
-    let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        db::ops::message_context_item::list_for_messages(&mut conn, &ids).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    db::sea::ops::message_context_item::list_for_messages(db, &ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// `trailing_with_memory` plus the `@` references and `!` results attached to
@@ -1133,7 +1129,7 @@ async fn chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
-    let mut stored_context_items = load_message_context_items(&pool, &ctx).await?;
+    let mut stored_context_items = load_message_context_items(&services.sea, &ctx).await?;
 
     // Resolve provider config (with optional overrides). Off the async thread:
     // it takes a pooled connection and reads the OS credential store, either of
@@ -1473,37 +1469,29 @@ async fn chat_inner(
                 // so the replay stays word-for-word; a re-freeze would show the
                 // thread as it is now, which is not what the edited question
                 // was asked about.
-                let pool2 = pool.clone();
-                let replaced = replaced.to_string();
-                let copied = tokio::task::spawn_blocking(move || {
-                    let mut conn = get_conn(&pool2)?;
-                    let rows = db::ops::message_context_item::list_for_message(&mut conn, &replaced)
-                        .map_err(|e| e.to_string())?;
-                    Ok::<_, String>(
-                        rows.into_iter()
-                            .filter(|row| {
-                                row.kind
-                                    == meridian_core::workspace::reference::MessageContextKind::Conversation.as_str()
-                            })
-                            .map(|row| meridian_core::workspace::reference::PreparedContextItem {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                kind: meridian_core::workspace::reference::MessageContextKind::Conversation,
-                                content: row.content,
-                                display_path: row.display_path,
-                                line_start: row.line_start,
-                                line_end: row.line_end,
-                                content_hash: row.content_hash,
-                                byte_count: row.byte_count,
-                                line_count: row.line_count,
-                                token_count: row.token_count,
-                                truncated: row.truncated,
-                                metadata: row.metadata,
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                // pool-read-before-write: the replaced message's frozen items never
+                // change once written; this turn's write only adds a sibling.
+                let rows = db::sea::ops::message_context_item::list_for_message(&services.sea, replaced)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let copied = rows
+                    .into_iter()
+                    .filter(|row| row.kind == meridian_core::workspace::reference::MessageContextKind::Conversation)
+                    .map(|row| meridian_core::workspace::reference::PreparedContextItem {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        kind: meridian_core::workspace::reference::MessageContextKind::Conversation,
+                        content: row.content,
+                        display_path: row.display_path,
+                        line_start: row.line_start,
+                        line_end: row.line_end,
+                        content_hash: row.content_hash,
+                        byte_count: row.byte_count,
+                        line_count: row.line_count,
+                        token_count: row.token_count,
+                        truncated: i32::from(row.truncated.get()),
+                        metadata: row.metadata,
+                    })
+                    .collect::<Vec<_>>();
                 items.extend(copied);
             }
             items
@@ -1654,7 +1642,7 @@ async fn chat_inner(
         ctx
     };
     if compacted {
-        stored_context_items = load_message_context_items(&pool, &ctx).await?;
+        stored_context_items = load_message_context_items(&services.sea, &ctx).await?;
     }
 
     // After compaction, never before it: compaction moves the summary anchor, and

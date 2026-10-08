@@ -8,8 +8,9 @@
 #![cfg(not(target_os = "android"))]
 
 use diesel::prelude::*;
+use meridian_core::db::entity::message_context_item;
 use meridian_core::db::models::message::MessageInsert;
-use meridian_core::db::models::message_context_item::{MessageContextItemInsert, MessageContextItemRow};
+use meridian_core::db::models::message_context_item::MessageContextItemInsert;
 use meridian_core::sandbox::{CommandSettings, ExecutionMode, SandboxBackend};
 use meridian_core::tools::run_command::{CommandExecution, CommandExecutionError};
 use meridian_core::tools::{FileAccess, ShellType, ToolContext};
@@ -219,7 +220,7 @@ struct Prepared {
     message_id: String,
     message_was_existing: bool,
     message_is_active_head: bool,
-    prior: Vec<MessageContextItemRow>,
+    prior: Vec<message_context_item::Model>,
     cwd: String,
     project_id: Option<String>,
     settings: CommandSettings,
@@ -756,8 +757,12 @@ async fn persist_result(
     .map_err(|e| e.to_string())?
 }
 
-fn parse_latest(items: &[MessageContextItemRow]) -> Result<Option<StoredResult>, String> {
-    let Some(item) = items.iter().rev().find(|item| item.kind == CONTEXT_KIND) else {
+fn parse_latest(items: &[message_context_item::Model]) -> Result<Option<StoredResult>, String> {
+    let Some(item) = items
+        .iter()
+        .rev()
+        .find(|item| item.kind == meridian_core::workspace::reference::MessageContextKind::ShellOutput)
+    else {
         return Ok(None);
     };
     let raw = item
@@ -775,7 +780,7 @@ fn parse_latest(items: &[MessageContextItemRow]) -> Result<Option<StoredResult>,
     Ok(Some(stored))
 }
 
-fn next_position(items: &[MessageContextItemRow]) -> i32 {
+fn next_position(items: &[message_context_item::Model]) -> i32 {
     items
         .iter()
         .map(|item| item.position)
@@ -1112,11 +1117,11 @@ mod tests {
 
     #[test]
     fn attempts_append_after_the_highest_position_not_the_row_count() {
-        let row = |position| MessageContextItemRow {
+        let row = |position| message_context_item::Model {
             id: format!("i-{position}"),
             message_id: "m".into(),
             position,
-            kind: CONTEXT_KIND.into(),
+            kind: meridian_core::workspace::reference::MessageContextKind::ShellOutput,
             content: String::new(),
             display_path: None,
             line_start: None,
@@ -1125,7 +1130,7 @@ mod tests {
             byte_count: 0,
             line_count: 0,
             token_count: 0,
-            truncated: 0,
+            truncated: meridian_core::db::types::SqlBool::FALSE,
             metadata: None,
             created_at: 0,
         };
