@@ -1511,6 +1511,13 @@ async fn chat_inner(
     // marker is applied to the payload only. Absent only when regenerating,
     // which re-answers a question that is already on record.
     let sent_at = now_ms();
+    // What its stickers were known as, recorded before the live message and the
+    // row are both built from it: a label given later must not change how this
+    // message replays (CLAUDE.md, "What was sent is never dropped or rewritten").
+    let message = match message {
+        Some(m) => Some(meridian_core::agent::freeze_sticker_parts(&services.sea, &m).await?),
+        None => None,
+    };
     let live_user = message
         .as_deref()
         .map(|m| persisted_user_message(m, (voice == Some(true)).then_some("voice"), None, sent_at));
@@ -2016,6 +2023,11 @@ async fn chat_inner(
             approval_rule: engine::ApprovalRule::ByReach { accept_edits },
             withheld: engine::WithheldWording::Explained,
             files_root,
+            stickers: Some(engine::StickerRendering {
+                db: services.sea.clone(),
+                data_dir: services.paths.data_dir.clone(),
+                supports_images,
+            }),
             interrupted,
             compaction: engine::CompactionPolicy::Desktop {
                 enabled: auto_compact,
