@@ -14,7 +14,6 @@ use meridian_core::agent::{
 use meridian_core::db;
 use meridian_core::db::DbPool;
 use meridian_core::db::models::assistant::AssistantRow;
-use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
 use meridian_core::events::{
     ChatStopReason, ChatStreamEvent, CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger,
@@ -582,14 +581,9 @@ impl meridian_core::services::StartTurn for DesktopTurns {
         conversation_id: &str,
         queued: &meridian_core::db::entity::queued_prompt::Model,
     ) -> Result<(), String> {
-        let pool = self.0.db.clone();
-        let queue_id = queued.id.clone();
-        let queued_context = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::queued_prompt_context_item::list_prepared(&mut conn, &queue_id).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let queued_context = db::sea::ops::queued_prompt_context_item::list_prepared(&self.0.sea, &queued.id)
+            .await
+            .map_err(|e| e.to_string())?;
         run_turn(
             self.0.clone(),
             conversation_id.to_string(),
@@ -1535,7 +1529,7 @@ async fn chat_inner(
             now_ms(),
         )
         .await?;
-        let todo_probe = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
+        let todo_probe = plan_todo_injection_async(&services.sea, &conversation_id, ctx.live()).await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
@@ -1651,7 +1645,7 @@ async fn chat_inner(
     let injected = injection.as_ref().and_then(|i| i.text.clone());
     // The checklist, frozen the same way and for the same reason; it goes right
     // after the memory block, which is the order the two rows are written in.
-    let todo = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
+    let todo = plan_todo_injection_async(&services.sea, &conversation_id, ctx.live()).await?;
 
     let mut chat_messages = build_messages_with_context_items(
         system_prompt.trim(),
@@ -1704,96 +1698,42 @@ async fn chat_inner(
     // Ahead of the message, because that is where it was sent and where the next
     // turn has to find it.
     if let Some(ref injection) = injection {
-        parent_cursor =
-            meridian_core::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now)
-                .await;
+        parent_cursor = meridian_core::agent::persist_injection(
+            &services.sea,
+            injection,
+            &conversation_id,
+            &turn_id,
+            parent_cursor,
+            now,
+        )
+        .await;
     }
     // After memory, before the message: the order `trailing` sent them in.
     if let Some(ref todo) = todo {
-        parent_cursor = persist_todo_injection(&pool, todo, &conversation_id, &turn_id, parent_cursor, now).await;
+        parent_cursor =
+            persist_todo_injection(&services.sea, todo, &conversation_id, &turn_id, parent_cursor, now).await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
     // on record.
     if let Some(ref text) = message {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        let msg = text.clone();
-        let msg_id = user_msg_id.clone();
-        let parent = parent_cursor.clone();
-        let turn = turn_id.clone();
-        // Read before the shadowing clone below carries it into the closure.
         let delivered_from_queue = queued.is_some();
-        let queued = queued.clone();
-        let context_items = prepared_context.clone();
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            use diesel::Connection;
-            let mut conn = get_conn(&pool)?;
-            // One transaction, because a queued message and the row it becomes
-            // must not come apart: killed in between, either the item is still
-            // queued and no row exists — deliver it again, safely — or the row
-            // is in the transcript and the item is spent.
-            conn.transaction::<_, diesel::result::Error, _>(|conn| {
-                db::ops::message::append_message(
-                    conn,
-                    &MessageInsert {
-                        id: &msg_id,
-                        conversation_id: &conv_id,
-                        role: "user",
-                        content: &msg,
-                        provider_id: None,
-                        model_id: None,
-                        input_tokens: None,
-                        output_tokens: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        sort_order: 0,
-                        created_at: now,
-                        reasoning_content: None,
-                        rating: None,
-                        schema_version: 2,
-                        is_compact_summary: 0,
-                        // Desktop chats have a single implicit speaker.
-                        sender_id: None,
-                        parent_id: None,
-                        compact_anchor_id: None,
-                        source: if voice == Some(true) { Some("voice") } else { None },
-                        turn_id: Some(&turn),
-                        tool_outcome: None,
-                        // What the user typed cost no tokens and came from no upstream.
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        server_tool_calls: None,
-                        provider_name: None,
-                        response_model_id: None,
-                    },
-                    parent.as_deref(),
-                )?;
-                db::ops::emoji::link_stickers_in_content(conn, &msg_id, &msg)?;
-                let rows = context_items
-                    .iter()
-                    .enumerate()
-                    .map(
-                        |(position, item)| db::models::message_context_item::MessageContextItemInsert {
-                            id: &item.id,
-                            message_id: &msg_id,
-                            position: position as i32,
-                            kind: item.kind.as_str(),
-                            content: &item.content,
-                            display_path: item.display_path.as_deref(),
-                            line_start: item.line_start,
-                            line_end: item.line_end,
-                            content_hash: &item.content_hash,
-                            byte_count: item.byte_count,
-                            line_count: item.line_count,
-                            token_count: item.token_count,
-                            truncated: item.truncated,
-                            metadata: item.metadata.as_deref(),
-                            created_at: now,
-                        },
-                    )
-                    .collect::<Vec<_>>();
-                db::ops::message_context_item::insert_many(conn, &rows)?;
+        let row = db::entity::message::Model {
+            // Desktop chats have a single implicit speaker.
+            source: (voice == Some(true)).then(|| "voice".to_string()),
+            turn_id: Some(turn_id.clone()),
+            ..db::sea::ops::message::new_row(&user_msg_id, &conversation_id, "user", text, now)
+        };
+        // One IMMEDIATE write, because a queued message and the row it becomes
+        // must not come apart: killed in between, either the item is still
+        // queued and no row exists — deliver it again, safely — or the row is
+        // in the transcript and the item is spent.
+        services
+            .sea
+            .write(async |tx| {
+                db::sea::ops::message::append_message(tx, row, parent_cursor.as_deref()).await?;
+                db::sea::ops::emoji::link_stickers_in_content(tx, &user_msg_id, text).await?;
+                db::sea::ops::message_context_item::insert_prepared(tx, &user_msg_id, &prepared_context, now).await?;
                 if let Some(queued) = &queued {
                     // Refuses an item somebody else already took, or that has
                     // been held or dragged out of first place since it was
@@ -1802,22 +1742,12 @@ async fn chat_inner(
                     // wrong guarantee for a message that might say "delete the
                     // old migration", and the lease says nothing at all about
                     // the other two.
-                    //
-                    // `None`: a turn of its own takes whatever mode is at the
-                    // front, because with nothing running there is nothing for
-                    // an `interject` to wait for.
-                    if db::ops::queue::mark_dispatched(conn, &conv_id, queued, None, &turn, now)? == 0 {
-                        return Err(diesel::result::Error::RollbackTransaction);
-                    }
-                    db::ops::queue::mark_settled(conn, queued, Some(&msg_id), now)?;
-                    db::ops::queued_prompt_context_item::delete_for_queue(conn, queued)?;
+                    db::sea::ops::queue::spend(tx, &conversation_id, queued, &turn_id, &user_msg_id, now).await?;
                 }
                 Ok(())
             })
-            .map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            .await
+            .map_err(|e: db::sea::DbErr| e.to_string())?;
         // The row exists and the item has been spent, both in the transaction
         // above. Nothing else will say so until the turn ends, which for a
         // queued message is the whole of the wait: without this the front end

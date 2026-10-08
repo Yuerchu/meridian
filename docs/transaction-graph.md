@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：190
-- Diesel ops 调用点（db/ops 之外）：528
-- Diesel API 引用：883
+- 事务根（非测试）：194
+- Diesel ops 调用点（db/ops 之外）：504
+- Diesel API 引用：854
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -35,7 +35,8 @@
 | `src-tauri/crates/core/src/acp/import.rs` › `import` | diesel-deferred | acp_session, acp_session_notice, assistant, audit, conversation, message, model_config, plan, project, todo, turn |
 | `src-tauri/crates/core/src/acp/mod.rs` › `save` | sea-write | preference |
 | `src-tauri/crates/core/src/acp/mod.rs` › `write_conversation_row` | diesel-deferred | acp_session, assistant, conversation |
-| `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | diesel-deferred | audit, conversation, message, message_context_item, model_config, queue, queued_prompt_context_item, turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `write_interjections` | sea-write | queue |
+| `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item, turn |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `append_tool_result` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `begin_assistant` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `complete_assistant` | sea-nested | audit, memory, model_config, model_profile, provider |
@@ -44,6 +45,7 @@
 | `src-tauri/crates/core/src/agent/engine/transitions.rs` › `store_mode` | sea-write | conversation |
 | `src-tauri/crates/core/src/agent/interrupted.rs` › `confirm_delivered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/interrupted.rs` › `load_block` | sea-read | turn |
+| `src-tauri/crates/core/src/agent/memory_context.rs` › `persist_context_row` | sea-write | message |
 | `src-tauri/crates/core/src/agent/memory_context.rs` › `plan_injection_async` | sea-read | memory |
 | `src-tauri/crates/core/src/agent/queue.rs` › `confirm_reported` | sea-write | queue |
 | `src-tauri/crates/core/src/agent/queue.rs` › `has_plan_review_barrier` | sea-read | plan_review |
@@ -54,6 +56,7 @@
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
+| `src-tauri/crates/core/src/agent/todo_context.rs` › `plan_todo_injection_async` | sea-read | todo |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `begin_triggered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `finish` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `note_phase` | sea-write | turn |
@@ -105,6 +108,7 @@
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `record_attempt` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `save_config` | sea-write | preference |
+| `src-tauri/crates/core/src/onebot/agent.rs` › `headless_chat_inner` | sea-write | audit, emoji, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `reject_proposal` | sea-write | memory |
@@ -154,7 +158,7 @@
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
-| `src-tauri/src/commands/chat.rs` › `chat_inner` | diesel-deferred | audit, emoji, message, message_context_item, model_config, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
