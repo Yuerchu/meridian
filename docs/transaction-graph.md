@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：254
-- Diesel ops 调用点（db/ops 之外）：196
-- Diesel API 引用：525
+- 事务根（非测试）：262
+- Diesel ops 调用点（db/ops 之外）：171
+- Diesel API 引用：513
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -135,12 +135,15 @@
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `record_attempt` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `save_config` | sea-write | preference |
+| `src-tauri/crates/core/src/onebot/agent.rs` › `headless_chat_inner` | sea-read | assistant, conversation, message |
 | `src-tauri/crates/core/src/onebot/agent.rs` › `headless_chat_inner` | sea-write | audit, emoji, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/onebot/agent.rs` › `oneshot_completion` | sea-read | assistant, conversation |
+| `src-tauri/crates/core/src/onebot/agent.rs` › `oneshot_completion` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `reject_proposal` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/extract.rs` › `run_extraction` | sea-write | memory |
+| `src-tauri/crates/core/src/onebot/handler.rs` › `conversation_and_assistant` | sea-read | assistant, conversation |
 | `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-read | memory |
 | `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
@@ -153,10 +156,15 @@
 | `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/handler.rs` › `run_agent_turn` | sea-write | memory |
 | `src-tauri/crates/core/src/onebot/handler.rs` › `run_extraction_pass` | sea-read | memory |
+| `src-tauri/crates/core/src/onebot/handler.rs` › `status_of` | sea-read | assistant, conversation, message |
 | `src-tauri/crates/core/src/onebot/media.rs` › `resolve_supports_images` | sea-read | assistant, conversation |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
 | `src-tauri/crates/core/src/onebot/qq_tools.rs` › `list_stickers` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/onebot/qq_tools.rs` › `send_sticker` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/onebot/session.rs` › `create_project` | sea-nested | conversation, preference |
+| `src-tauri/crates/core/src/onebot/session.rs` › `get_or_create` | sea-write | conversation, preference, project |
+| `src-tauri/crates/core/src/onebot/session.rs` › `reset_conversation` | sea-nested | conversation |
+| `src-tauri/crates/core/src/onebot/session.rs` › `reset_conversation` | sea-write | conversation, project |
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
 | `src-tauri/crates/core/src/onebot/stickers.rs` › `ensure_pack` | sea-write | emoji_pack |
