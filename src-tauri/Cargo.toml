@@ -65,7 +65,6 @@ async-trait = "0.1"
 base64 = "0.22"
 mime_guess = "2"
 uuid = { version = "1", features = ["v4"] }
-diesel = { version = "2", features = ["sqlite", "r2d2"] }
 url = "2"
 # Not used from Rust. `build.rs` stages the runtime libraries this crate's
 # build script unpacks, and cargo orders one build script after another only

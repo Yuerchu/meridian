@@ -42,11 +42,9 @@ reads or stops what an approved command started.
   model-written string (and the command's own output) carrying the user's authority.
 - **The claim is one SeaORM write.** `mark_notified`'s affected-row count, the head read and
   the row (`sea::ops::message::append_context`) share one `BEGIN IMMEDIATE`, so a wake and a
-  round boundary reaching the same task produce one notice. It cannot be split across the
-  two ORMs (R1 in `check-transaction-graph.mjs`), which is why the context row is written
-  through SeaORM rather than Diesel's `append_message` — and why that is a separate,
-  narrower function: the Diesel one also files a user row's audit copy, and
-  `audit_messages` has no entity yet.
+  round boundary reaching the same task produce one notice. The context row goes through
+  `append_context` rather than `append_message`: the latter also files a user row's audit
+  copy, which a notice is not.
 - **Only the desktop's own turns get a `Launcher`** (`ToolContext::background`). A
   sub-agent, a QQ session, the reviewers and the tool bridge get `None`, which is how the
   tool refuses there: a task that outlives its turn needs a conversation somebody returns

@@ -121,7 +121,7 @@ fn finish_guarded_project_mutation<T>(result: GuardedProjectMutation<T>) -> Resu
 
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<ProjectListResponse, String> {
-    let rows = project_ops::list_projects(&app.services().sea)
+    let rows = project_ops::list_projects(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -145,7 +145,7 @@ pub async fn create_project(
         updated_at: now,
     };
     app.services()
-        .sea
+        .db
         .write(async |tx| project_ops::create_project(tx, row).await)
         .await
         .map(Into::into)
@@ -167,7 +167,7 @@ pub async fn update_project(
     };
     // pool-read-before-write: decides only whether to take leases; the write
     // decides again on the row it locks and refuses on any difference.
-    let current = project_ops::get_project(&services.sea, &request.id)
+    let current = project_ops::get_project(&services.db, &request.id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("project `{}` was not found", request.id))?;
@@ -175,7 +175,7 @@ pub async fn update_project(
     let referenced = if path_changed {
         // pool-read-before-write: these ids only pick which turn leases to
         // take; the write re-reads them and refuses on any difference.
-        conversation_ops::ids_by_project(&services.sea, &request.id)
+        conversation_ops::ids_by_project(&services.db, &request.id)
             .await
             .map_err(|e| e.to_string())?
     } else {
@@ -191,7 +191,7 @@ pub async fn update_project(
         Vec::new()
     };
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             update_project_unless_plan_barrier(tx, &request.id, path_changed, &referenced, changeset).await
         })
@@ -205,7 +205,7 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the delete on any difference.
-    let referenced = conversation_ops::ids_by_project(&services.sea, &id)
+    let referenced = conversation_ops::ids_by_project(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?;
     let _leases = services
@@ -214,7 +214,7 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
         .try_acquire_mutations(&referenced, "a project delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| delete_project_unless_plan_barrier(tx, &id, &referenced).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -225,52 +225,6 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
 mod tests {
     use super::*;
     use meridian_core::db;
-
-    /// The review is seeded through the Diesel plan-review ops, which have not
-    /// moved, on a file both pools open.
-    fn seed_pending_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        let document = db::ops::plan_review::create_or_resume_document(conn, "conversation-1", 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("m1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &db::models::plan_review::NativePlanReviewRuntimeConfig {
-                provider_id: "provider-test".into(),
-                model: "model-test".into(),
-                assistant_id: None,
-                thinking_level: None,
-                fast: false,
-                project_id: Some("project-1".into()),
-                project_path: Some("A".into()),
-                accept_edits: false,
-            },
-        )
-        .unwrap();
-    }
 
     fn project_row() -> project::Model {
         project::Model {
@@ -300,17 +254,22 @@ mod tests {
 
     #[tokio::test]
     async fn project_path_update_and_delete_are_blocked_by_a_referenced_plan_review() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
-        sea.write(async |tx| project_ops::create_project(tx, project_row()).await)
+        let sea = db::sea::sea_test_db().await;
+        sea.write(async |tx| {
+            project_ops::create_project(tx, project_row()).await?;
+            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, Some("project-1"), 1)
+                .await?;
+            db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                "conversation-1",
+                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-1", "A"))),
+            )
             .await
-            .unwrap();
-        {
-            let conn = &mut pool.get().unwrap();
-            db::ops::conversation::create_conversation(conn, "conversation-1", None, None, Some("project-1"), 1)
-                .unwrap();
-            seed_pending_review(conn);
-        }
+            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
         let expected = vec!["conversation-1".to_string()];
 
         let updated = sea

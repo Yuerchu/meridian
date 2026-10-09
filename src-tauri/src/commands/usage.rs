@@ -1,5 +1,5 @@
 use crate::ServicesExt;
-use meridian_core::db::ops::usage::{
+use meridian_core::db::sea::ops::usage::{
     UsageBucket, UsageDimension as CoreUsageDimension, UsageFilter as CoreUsageFilter, report,
 };
 use meridian_core::decimal::Decimal;
@@ -171,16 +171,13 @@ pub async fn usage_report(
     request: UsageReportRequest,
 ) -> Result<UsageBucketListResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let (dimension, filter) = request.into_core();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        report(&mut conn, dimension, &filter)
-            .map(|buckets| buckets.into_iter().map(Into::into).collect())
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    services
+        .db
+        .read(async |tx| report(tx, dimension, &filter).await)
+        .await
+        .map(|buckets| buckets.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]

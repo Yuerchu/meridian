@@ -275,7 +275,7 @@ pub async fn get_composer_draft(
     request: ComposerDraftReadRequest,
 ) -> Result<Option<ComposerDraftInfoResponse>, String> {
     let RequiredNullable(conversation_id) = request.conversation_id;
-    read_draft(&app.services().sea, &DraftSlot::for_conversation(conversation_id)).await
+    read_draft(&app.services().db, &DraftSlot::for_conversation(conversation_id)).await
 }
 
 /// Store what a composer holds. An empty draft removes the row.
@@ -284,7 +284,7 @@ pub async fn save_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftUpsertRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
-    write_draft(&app.services().sea, request, now_ms()).await
+    write_draft(&app.services().db, request, now_ms()).await
 }
 
 /// Forget a draft once what it held has been sent.
@@ -293,7 +293,7 @@ pub async fn clear_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftDeleteRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
-    delete_draft(&app.services().sea, request, now_ms()).await
+    delete_draft(&app.services().db, request, now_ms()).await
 }
 
 #[cfg(test)]

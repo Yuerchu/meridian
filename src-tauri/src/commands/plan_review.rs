@@ -8,16 +8,22 @@
 
 use std::collections::HashSet;
 
-use diesel::Connection;
 use meridian_core::db;
-use meridian_core::db::models::message::MessageInsert;
-use meridian_core::db::models::plan_review::{
-    PlanCommentAnchorKind, PlanCommentState, PlanDeliveryState, PlanDeliveryTarget, PlanMaterializationState,
-    PlanReviewDraftMode, PlanReviewProviderKind, PlanReviewState,
+use meridian_core::db::entity::plan_comment::{PlanCommentAnchorKind, PlanCommentState};
+use meridian_core::db::entity::plan_materialization::PlanMaterializationState;
+use meridian_core::db::entity::plan_review_delivery::{PlanDeliveryState, PlanDeliveryTarget};
+use meridian_core::db::entity::plan_review_draft::PlanReviewDraftMode;
+use meridian_core::db::entity::plan_review_session::{
+    NativePlanReviewRuntimeConfig, PlanReviewProviderKind, PlanReviewState,
 };
-use meridian_core::db::ops::plan_review as ops;
+use meridian_core::db::entity::turn::TurnStatus;
+use meridian_core::db::entity::{
+    plan_comment, plan_document, plan_review_delivery, plan_review_draft, plan_review_session, plan_revision,
+};
+use meridian_core::db::sea::cap::{Db, Read, Snapshot, WriteTx};
+use meridian_core::db::sea::ops::plan_review as ops;
 use meridian_core::events::PlanReviewEvent;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -33,19 +39,16 @@ fn emit_review_update_best_effort(events: &meridian_core::events::EventBus, even
     }
 }
 
-pub async fn ensure_conversation_not_waiting_review(pool: &db::DbPool, conversation_id: &str) -> Result<(), String> {
-    let pool = pool.clone();
-    let conversation_id = conversation_id.to_string();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        if ops::has_conversation_barrier(&mut conn, &conversation_id).map_err(|error| error.to_string())? {
-            Err("This conversation is waiting for plan review. Approve it or request changes before sending another message.".into())
-        } else {
-            Ok(())
-        }
-    })
-    .await
-    .map_err(|error| error.to_string())?
+pub async fn ensure_conversation_not_waiting_review(db: &Db, conversation_id: &str) -> Result<(), String> {
+    let blocked = db
+        .read(async |tx| ops::has_conversation_barrier(tx, conversation_id).await)
+        .await
+        .map_err(|error| error.to_string())?;
+    if blocked {
+        Err("This conversation is waiting for plan review. Approve it or request changes before sending another message.".into())
+    } else {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -366,15 +369,14 @@ fn decode_anchor(value: Option<String>, field: &str) -> Result<Option<PlanCommen
         .transpose()
 }
 
-fn revision_response(row: db::models::plan_review::PlanRevisionRow) -> Result<PlanRevisionInfoResponse, String> {
-    let author_kind = row.author_kind()?.as_str().to_string();
+fn revision_response(row: plan_revision::Model) -> Result<PlanRevisionInfoResponse, String> {
     let editor_json = decode_json(row.editor_json, "plan revision editor_json")?;
     Ok(PlanRevisionInfoResponse {
         id: row.id,
         document_id: row.document_id,
         revision_no: row.revision_no,
         parent_revision_id: row.parent_revision_id,
-        author_kind,
+        author_kind: row.author_kind.as_str().to_string(),
         content_markdown: row.content_markdown,
         content_sha256: row.content_sha256,
         patch: row.patch,
@@ -386,22 +388,17 @@ fn revision_response(row: db::models::plan_review::PlanRevisionRow) -> Result<Pl
     })
 }
 
-fn document_response(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    row: db::models::plan_review::PlanDocumentRow,
-) -> Result<PlanDocumentInfoResponse, String> {
-    let state = row.state()?.as_str().to_string();
-    let sync = ops::latest_materialization(conn, &row.id)
+async fn document_response(db: &impl Read, row: plan_document::Model) -> Result<PlanDocumentInfoResponse, String> {
+    let sync = ops::latest_materialization(db, &row.id)
+        .await
         .map_err(|error| error.to_string())?
-        .map(|row| row.state())
-        .transpose()?
-        .unwrap_or(PlanMaterializationState::Applied)
+        .map_or(PlanMaterializationState::Applied, |row| row.state)
         .as_str()
         .to_string();
     Ok(PlanDocumentInfoResponse {
         id: row.id,
         conversation_id: row.conversation_id,
-        state,
+        state: row.state.as_str().to_string(),
         head_revision_id: row.head_revision_id,
         approved_revision_id: row.approved_revision_id,
         working_generation: row.working_generation,
@@ -412,10 +409,7 @@ fn document_response(
     })
 }
 
-fn review_session_response(
-    row: db::models::plan_review::PlanReviewSessionRow,
-) -> Result<PlanReviewSessionInfoResponse, String> {
-    let state = row.state()?.as_str().to_string();
+fn review_session_response(row: plan_review_session::Model) -> Result<PlanReviewSessionInfoResponse, String> {
     let assistant_message_id = row
         .assistant_message_id
         .ok_or_else(|| format!("plan review {} has no transcript assistant message", row.id))?;
@@ -429,7 +423,7 @@ fn review_session_response(
         id: row.id,
         document_id: row.document_id,
         submitted_revision_id: row.submitted_revision_id,
-        state,
+        state: row.state.as_str().to_string(),
         decision_id: row.decision_id,
         suggestion_revision_id: row.suggestion_revision_id,
         assistant_message_id,
@@ -441,8 +435,7 @@ fn review_session_response(
     })
 }
 
-fn draft_response(row: db::models::plan_review::PlanReviewDraftRow) -> Result<PlanReviewDraftInfoResponse, String> {
-    let mode = row.mode()?.as_str().to_string();
+fn draft_response(row: plan_review_draft::Model) -> Result<PlanReviewDraftInfoResponse, String> {
     let base_editor_json = decode_json(row.base_editor_json, "plan draft base_editor_json")?;
     let draft_editor_json = decode_json(row.draft_editor_json, "plan draft draft_editor_json")?;
     let selection = decode_anchor(row.selection_json, "plan draft selection")?;
@@ -450,7 +443,7 @@ fn draft_response(row: db::models::plan_review::PlanReviewDraftRow) -> Result<Pl
         review_id: row.review_id,
         base_revision_id: row.base_revision_id,
         generation: row.generation,
-        mode,
+        mode: row.mode.as_str().to_string(),
         base_editor_json,
         draft_editor_json,
         source_text: row.source_text,
@@ -466,12 +459,10 @@ fn draft_response(row: db::models::plan_review::PlanReviewDraftRow) -> Result<Pl
     })
 }
 
-fn comment_response(row: db::models::plan_review::PlanCommentRow) -> Result<PlanCommentInfoResponse, String> {
-    let state = row.state()?.as_str().to_string();
-    let stored_kind = row.anchor_kind()?;
+fn comment_response(row: plan_comment::Model) -> Result<PlanCommentInfoResponse, String> {
     let anchor: PlanCommentAnchor = serde_json::from_str(&row.anchor_json)
         .map_err(|error| format!("stored plan comment anchor is invalid: {error}"))?;
-    if anchor.stored_kind() != stored_kind {
+    if anchor.stored_kind() != row.anchor_kind {
         return Err(format!(
             "plan comment {} anchor kind disagrees with its payload",
             row.id
@@ -481,7 +472,7 @@ fn comment_response(row: db::models::plan_review::PlanCommentRow) -> Result<Plan
         id: row.id,
         review_id: row.review_id,
         position: row.position,
-        state,
+        state: row.state.as_str().to_string(),
         anchor,
         body: row.body,
         created_at: row.created_at,
@@ -489,18 +480,14 @@ fn comment_response(row: db::models::plan_review::PlanCommentRow) -> Result<Plan
     })
 }
 
-fn delivery_response(
-    row: db::models::plan_review::PlanReviewDeliveryRow,
-) -> Result<PlanReviewDeliveryInfoResponse, String> {
-    let target = row.target()?.as_str().to_string();
-    let state = row.state()?.as_str().to_string();
+fn delivery_response(row: plan_review_delivery::Model) -> Result<PlanReviewDeliveryInfoResponse, String> {
     let payload = serde_json::from_str(&row.payload_json)
         .map_err(|error| format!("stored plan review delivery payload is invalid: {error}"))?;
     Ok(PlanReviewDeliveryInfoResponse {
         id: row.id,
         review_id: row.review_id,
-        target,
-        state,
+        target: row.target.as_str().to_string(),
+        state: row.state.as_str().to_string(),
         payload,
         error: row.error,
         created_at: row.created_at,
@@ -508,23 +495,24 @@ fn delivery_response(
     })
 }
 
-fn bundle_response(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    bundle: ops::PlanReviewBundle,
-) -> Result<PlanReviewInfoResponse, String> {
+async fn bundle_response(db: &impl Snapshot, bundle: ops::PlanReviewBundle) -> Result<PlanReviewInfoResponse, String> {
     // A review may contain several update_plan patches.  Its useful baseline
     // is therefore the preceding submitted review, not the immediate parent
     // revision (which would expose only the last patch in the batch).
-    let previous_review = ops::list_reviews(conn, &bundle.document.id)
+    let previous_review = ops::list_reviews(db, &bundle.document.id)
+        .await
         .map_err(|error| error.to_string())?
         .into_iter()
         .take_while(|review| review.id != bundle.review.id)
         .last();
-    let parent_revision = previous_review
-        .as_ref()
-        .map(|review| ops::get_revision(conn, &review.submitted_revision_id))
-        .transpose()
-        .map_err(|error| error.to_string())?;
+    let parent_revision = match previous_review.as_ref() {
+        Some(review) => Some(
+            ops::get_revision(db, &review.submitted_revision_id)
+                .await
+                .map_err(|error| error.to_string())?,
+        ),
+        None => None,
+    };
     let full_review_patch = parent_revision
         .as_ref()
         .and_then(|parent| ops::markdown_diff(&parent.content_markdown, &bundle.submitted_revision.content_markdown));
@@ -540,7 +528,7 @@ fn bundle_response(
         .map(delivery_response)
         .transpose()?;
     Ok(PlanReviewInfoResponse {
-        document: document_response(conn, bundle.document)?,
+        document: document_response(db, bundle.document).await?,
         review: review_session_response(bundle.review)?,
         submitted_revision,
         parent_revision,
@@ -556,35 +544,47 @@ fn bundle_response(
 
 fn event_for(
     conversation_id: String,
-    review: &db::models::plan_review::PlanReviewSessionRow,
-    delivery: Option<&db::models::plan_review::PlanReviewDeliveryRow>,
-) -> Result<PlanReviewEvent, String> {
-    Ok(PlanReviewEvent {
+    review: &plan_review_session::Model,
+    delivery: Option<&plan_review_delivery::Model>,
+) -> PlanReviewEvent {
+    PlanReviewEvent {
         review_id: review.id.clone(),
         conversation_id,
         document_id: review.document_id.clone(),
         revision_id: review.submitted_revision_id.clone(),
         turn_id: review.turn_id.clone().unwrap_or_default(),
-        status: review.state()?.as_str().to_string(),
+        status: review.state.as_str().to_string(),
         lock_version: review.lock_version,
-        delivery_state: delivery
-            .map(|row| row.state())
-            .transpose()?
-            .map(|state| state.as_str().to_string()),
-    })
+        delivery_state: delivery.map(|row| row.state.as_str().to_string()),
+    }
+}
+
+/// The event for a review as it stands after `delivery` moved.
+async fn event_after(db: &impl Snapshot, delivery: &plan_review_delivery::Model) -> Result<PlanReviewEvent, String> {
+    let bundle = ops::get_review_bundle(db, &delivery.review_id)
+        .await
+        .map_err(|error| error.to_string())?;
+    Ok(event_for(
+        bundle.document.conversation_id,
+        &bundle.review,
+        Some(delivery),
+    ))
 }
 
 /// Build review/card links only for reviews whose submitting assistant message
 /// is on the snapshot's active branch. Legacy artifacts have no transcript
 /// identity and remain available through the migration tables, but cannot be
 /// attached to a particular tool card without inventing one.
-pub fn summaries_for_conversation(
-    conn: &mut diesel::sqlite::SqliteConnection,
+pub async fn summaries_for_conversation(
+    db: &impl Snapshot,
     conversation_id: &str,
     visible_message_ids: &HashSet<&str>,
 ) -> Result<PlanReviewSummaryListResponse, String> {
     let mut summaries = Vec::new();
-    for row in ops::list_reviews_for_conversation(conn, conversation_id).map_err(|error| error.to_string())? {
+    for row in ops::list_reviews_for_conversation(db, conversation_id)
+        .await
+        .map_err(|error| error.to_string())?
+    {
         let (Some(assistant_message_id), Some(provider_call_id), Some(turn_id)) = (
             row.assistant_message_id.clone(),
             row.provider_call_id.clone(),
@@ -595,14 +595,14 @@ pub fn summaries_for_conversation(
             // recover through this projection.
             continue;
         };
-        let status = row.state()?;
-        let delivery_state = ops::get_review_bundle(conn, &row.id)
+        let status = row.state;
+        let delivery_state = ops::get_review_bundle(db, &row.id)
+            .await
             .map_err(|error| error.to_string())?
             .deliveries
             .into_iter()
             .last()
-            .map(|delivery| delivery.state())
-            .transpose()?;
+            .map(|delivery| delivery.state);
         let active_barrier = status == PlanReviewState::Pending
             || delivery_state.is_some_and(|state| {
                 matches!(
@@ -637,14 +637,16 @@ pub async fn get_plan_review(
     app: tauri::AppHandle,
     request: PlanReviewReadRequest,
 ) -> Result<PlanReviewInfoResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let bundle = ops::get_review_bundle(&mut conn, &request.review_id).map_err(|error| error.to_string())?;
-        bundle_response(&mut conn, bundle)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    app.services()
+        .db
+        .read(async |tx| {
+            let bundle = ops::get_review_bundle(tx, &request.review_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok::<_, ops::PlanReviewStoreError>(bundle_response(tx, bundle).await?)
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -652,17 +654,12 @@ pub async fn list_plan_revisions(
     app: tauri::AppHandle,
     request: PlanRevisionListRequest,
 ) -> Result<PlanRevisionListResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        ops::list_revisions(&mut conn, &request.document_id)
-            .map_err(|error| error.to_string())?
-            .into_iter()
-            .map(revision_response)
-            .collect()
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    ops::list_revisions(&app.services().db, &request.document_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(revision_response)
+        .collect()
 }
 
 struct OwnedCommentSave {
@@ -680,143 +677,148 @@ pub async fn save_plan_review_draft(
     request: PlanReviewDraftSaveRequest,
 ) -> Result<PlanReviewDraftSaveResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let events = services.events.clone();
-    let (response, event) = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let current = ops::get_review_bundle(&mut conn, &request.review_id).map_err(|error| error.to_string())?;
-        let requested_mode: PlanReviewDraftMode = request.mode.into();
-        let schema_fallback = request.editor_schema_fallback.0;
-        if let Some(fallback) = schema_fallback.as_ref() {
-            if requested_mode != PlanReviewDraftMode::Source {
-                return Err("editorSchemaFallback requires source mode".into());
+    let requested_mode: PlanReviewDraftMode = request.mode.into();
+    let schema_fallback = request.editor_schema_fallback.0;
+    let base_editor_json = request
+        .base_editor_json
+        .0
+        .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        .transpose()?;
+    let editor_json = request
+        .editor_json
+        .0
+        .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        .transpose()?;
+    let selection_json = request
+        .selection
+        .0
+        .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
+        .transpose()?;
+    let owned_comments = request
+        .comments
+        .into_iter()
+        .enumerate()
+        .map(|(position, comment)| {
+            let position = i32::try_from(position).map_err(|_| "too many plan comments".to_string())?;
+            let anchor_kind = comment.anchor.stored_kind();
+            let anchor_json = serde_json::to_string(&comment.anchor).map_err(|error| error.to_string())?;
+            Ok(OwnedCommentSave {
+                id: comment.id,
+                position,
+                state: comment.state.into(),
+                anchor_kind,
+                anchor_json,
+                body: comment.body,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let comments = owned_comments
+        .iter()
+        .map(|comment| ops::PlanCommentSave {
+            id: &comment.id,
+            position: comment.position,
+            state: comment.state,
+            anchor_kind: comment.anchor_kind,
+            anchor_json: &comment.anchor_json,
+            body: &comment.body,
+        })
+        .collect::<Vec<_>>();
+    // The checks against the stored draft and the save are one write: read
+    // outside it, a save in between could change the schema being fallen
+    // back from.
+    let (response, event) = services
+        .db
+        .write(async |tx| {
+            let current = ops::get_review_bundle(tx, &request.review_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            if let Some(fallback) = schema_fallback.as_ref() {
+                if requested_mode != PlanReviewDraftMode::Source {
+                    return Err("editorSchemaFallback requires source mode".into());
+                }
+                if current.draft.mode != PlanReviewDraftMode::Rich
+                    || current.draft.editor_schema_version != Some(fallback.from_version)
+                    || current.draft.editor_schema_hash.as_deref() != fallback.from_hash.0.as_deref()
+                {
+                    return Err("editorSchemaFallback does not match the persisted rich schema".into());
+                }
+                if fallback.from_version == PLAN_EDITOR_SCHEMA_VERSION
+                    && fallback.from_hash.0.as_deref() == Some(PLAN_EDITOR_SCHEMA_HASH)
+                {
+                    return Err("the persisted editor schema is compatible; source fallback is not allowed".into());
+                }
             }
-            if current.draft.mode().map_err(|error| error.to_string())? != PlanReviewDraftMode::Rich
-                || current.draft.editor_schema_version != Some(fallback.from_version)
-                || current.draft.editor_schema_hash.as_deref() != fallback.from_hash.0.as_deref()
-            {
-                return Err("editorSchemaFallback does not match the persisted rich schema".into());
+            if requested_mode == PlanReviewDraftMode::Rich && request.source_text.0.is_some() {
+                return Err("rich plan drafts require sourceText to be null".into());
             }
-            if fallback.from_version == PLAN_EDITOR_SCHEMA_VERSION
-                && fallback.from_hash.0.as_deref() == Some(PLAN_EDITOR_SCHEMA_HASH)
-            {
-                return Err("the persisted editor schema is compatible; source fallback is not allowed".into());
+            if requested_mode == PlanReviewDraftMode::Source && request.source_text.0.is_none() {
+                return Err("source plan drafts require exact sourceText".into());
             }
-        }
-        let base_editor_json = request
-            .base_editor_json
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
-            .transpose()?;
-        let editor_json = request
-            .editor_json
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
-            .transpose()?;
-        let selection_json = request
-            .selection
-            .0
-            .map(|value| serde_json::to_string(&value).map_err(|error| error.to_string()))
-            .transpose()?;
-        if requested_mode == PlanReviewDraftMode::Rich && request.source_text.0.is_some() {
-            return Err("rich plan drafts require sourceText to be null".into());
-        }
-        if requested_mode == PlanReviewDraftMode::Source && request.source_text.0.is_none() {
-            return Err("source plan drafts require exact sourceText".into());
-        }
 
-        if requested_mode == PlanReviewDraftMode::Rich && base_editor_json.is_none() {
-            return Err("rich plan drafts require baseEditorJson".into());
-        }
-        if requested_mode == PlanReviewDraftMode::Rich
-            && (editor_json.is_none()
-                || request.editor_schema_version.0.is_none()
-                || request.editor_schema_hash.0.is_none())
-        {
-            return Err("rich plan drafts require editorJson and editor schema identity".into());
-        }
-        if requested_mode == PlanReviewDraftMode::Source
-            && (base_editor_json.is_some()
-                || editor_json.is_some()
-                || request.editor_schema_version.0.is_some()
-                || request.editor_schema_hash.0.is_some())
-        {
-            return Err("source plan drafts cannot carry editor JSON or editor schema identity".into());
-        }
-        if requested_mode == PlanReviewDraftMode::Source
-            && request.base_normalized_markdown != current.submitted_revision.content_markdown
-        {
-            return Err("source plan drafts must use the submitted raw markdown as their baseline".into());
-        }
-        let owned_comments = request
-            .comments
-            .into_iter()
-            .enumerate()
-            .map(|(position, comment)| {
-                let position = i32::try_from(position).map_err(|_| "too many plan comments".to_string())?;
-                let anchor_kind = comment.anchor.stored_kind();
-                let anchor_json = serde_json::to_string(&comment.anchor).map_err(|error| error.to_string())?;
-                Ok(OwnedCommentSave {
-                    id: comment.id,
-                    position,
-                    state: comment.state.into(),
-                    anchor_kind,
-                    anchor_json,
-                    body: comment.body,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-        let comments = owned_comments
-            .iter()
-            .map(|comment| ops::PlanCommentSave {
-                id: &comment.id,
-                position: comment.position,
-                state: comment.state,
-                anchor_kind: comment.anchor_kind,
-                anchor_json: &comment.anchor_json,
-                body: &comment.body,
-            })
-            .collect::<Vec<_>>();
-        let bundle = ops::save_review_draft(
-            &mut conn,
-            &ops::PlanReviewDraftSave {
-                review_id: &request.review_id,
-                expected_generation: request.expected_generation,
-                mode: requested_mode,
-                base_editor_json: base_editor_json.as_deref(),
-                draft_editor_json: editor_json.as_deref(),
-                base_normalized_markdown: &request.base_normalized_markdown,
-                draft_normalized_markdown: &request.normalized_markdown,
-                source_text: request.source_text.0.as_deref(),
-                editor_schema_version: request.editor_schema_version.0,
-                editor_schema_hash: request.editor_schema_hash.0.as_deref(),
-                schema_fallback_from_version: schema_fallback.as_ref().map(|fallback| fallback.from_version),
-                schema_fallback_from_hash: schema_fallback
-                    .as_ref()
-                    .and_then(|fallback| fallback.from_hash.0.as_deref()),
-                global_note: request.global_note.0.as_deref(),
-                selection_json: selection_json.as_deref(),
-                comments: &comments,
-                now: now_ms(),
-            },
-        )
+            if requested_mode == PlanReviewDraftMode::Rich && base_editor_json.is_none() {
+                return Err("rich plan drafts require baseEditorJson".into());
+            }
+            if requested_mode == PlanReviewDraftMode::Rich
+                && (editor_json.is_none()
+                    || request.editor_schema_version.0.is_none()
+                    || request.editor_schema_hash.0.is_none())
+            {
+                return Err("rich plan drafts require editorJson and editor schema identity".into());
+            }
+            if requested_mode == PlanReviewDraftMode::Source
+                && (base_editor_json.is_some()
+                    || editor_json.is_some()
+                    || request.editor_schema_version.0.is_some()
+                    || request.editor_schema_hash.0.is_some())
+            {
+                return Err("source plan drafts cannot carry editor JSON or editor schema identity".into());
+            }
+            if requested_mode == PlanReviewDraftMode::Source
+                && request.base_normalized_markdown != current.submitted_revision.content_markdown
+            {
+                return Err("source plan drafts must use the submitted raw markdown as their baseline".into());
+            }
+            let bundle = ops::save_review_draft(
+                tx,
+                &ops::PlanReviewDraftSave {
+                    review_id: &request.review_id,
+                    expected_generation: request.expected_generation,
+                    mode: requested_mode,
+                    base_editor_json: base_editor_json.as_deref(),
+                    draft_editor_json: editor_json.as_deref(),
+                    base_normalized_markdown: &request.base_normalized_markdown,
+                    draft_normalized_markdown: &request.normalized_markdown,
+                    source_text: request.source_text.0.as_deref(),
+                    editor_schema_version: request.editor_schema_version.0,
+                    editor_schema_hash: request.editor_schema_hash.0.as_deref(),
+                    schema_fallback_from_version: schema_fallback.as_ref().map(|fallback| fallback.from_version),
+                    schema_fallback_from_hash: schema_fallback
+                        .as_ref()
+                        .and_then(|fallback| fallback.from_hash.0.as_deref()),
+                    global_note: request.global_note.0.as_deref(),
+                    selection_json: selection_json.as_deref(),
+                    comments: &comments,
+                    now: now_ms(),
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            let response = PlanReviewDraftSaveResponse {
+                review_id: bundle.draft.review_id.clone(),
+                generation: bundle.draft.generation,
+                draft_sha256: bundle.draft.draft_sha256.clone(),
+                updated_at: bundle.draft.updated_at,
+            };
+            let event = event_for(
+                bundle.document.conversation_id,
+                &bundle.review,
+                bundle.deliveries.last(),
+            );
+            Ok::<_, ops::PlanReviewStoreError>((response, event))
+        })
+        .await
         .map_err(|error| error.to_string())?;
-        let response = PlanReviewDraftSaveResponse {
-            review_id: bundle.draft.review_id.clone(),
-            generation: bundle.draft.generation,
-            draft_sha256: bundle.draft.draft_sha256.clone(),
-            updated_at: bundle.draft.updated_at,
-        };
-        let event = event_for(
-            bundle.document.conversation_id,
-            &bundle.review,
-            bundle.deliveries.last(),
-        )?;
-        Ok::<_, String>((response, event))
-    })
-    .await
-    .map_err(|error| error.to_string())??;
-    emit_review_update_best_effort(&events, &event);
+    emit_review_update_best_effort(&services.events, &event);
     Ok(response)
 }
 
@@ -826,23 +828,23 @@ pub async fn discard_plan_review_draft(
     request: PlanReviewDraftDiscardRequest,
 ) -> Result<PlanReviewInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let events = services.events.clone();
-    let (response, event) = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let bundle = ops::discard_review_draft(&mut conn, &request.review_id, request.expected_generation, now_ms())
-            .map_err(|error| error.to_string())?;
-        let event = event_for(
-            bundle.document.conversation_id.clone(),
-            &bundle.review,
-            bundle.deliveries.last(),
-        )?;
-        let response = bundle_response(&mut conn, bundle)?;
-        Ok::<_, String>((response, event))
-    })
-    .await
-    .map_err(|error| error.to_string())??;
-    emit_review_update_best_effort(&events, &event);
+    let (response, event) = services
+        .db
+        .write(async |tx| {
+            let bundle = ops::discard_review_draft(tx, &request.review_id, request.expected_generation, now_ms())
+                .await
+                .map_err(|error| error.to_string())?;
+            let event = event_for(
+                bundle.document.conversation_id.clone(),
+                &bundle.review,
+                bundle.deliveries.last(),
+            );
+            let response = bundle_response(tx, bundle).await?;
+            Ok::<_, ops::PlanReviewStoreError>((response, event))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    emit_review_update_best_effort(&services.events, &event);
     Ok(response)
 }
 
@@ -851,14 +853,13 @@ pub async fn get_plan_review_delivery(
     app: tauri::AppHandle,
     request: PlanReviewDeliveryReadRequest,
 ) -> Result<Option<PlanReviewDeliveryInfoResponse>, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let bundle = ops::get_review_bundle(&mut conn, &request.review_id).map_err(|error| error.to_string())?;
-        bundle.deliveries.into_iter().last().map(delivery_response).transpose()
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    let bundle = app
+        .services()
+        .db
+        .read(async |tx| ops::get_review_bundle(tx, &request.review_id).await)
+        .await
+        .map_err(|error| error.to_string())?;
+    bundle.deliveries.into_iter().last().map(delivery_response).transpose()
 }
 
 #[tauri::command]
@@ -870,24 +871,30 @@ pub async fn resolve_plan_file_conflict(
         return Err("unsupported plan file conflict action".into());
     }
     let services = app.services();
-    let pool = services.db.clone();
-    let files = services.plan_files.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let now = now_ms();
-        ops::retry_materialization_from_database(&mut conn, &request.document_id, now)
-            .map_err(|error| error.to_string())?;
-        let report = files
-            .reconcile_document(&mut conn, &request.document_id, now)
-            .map_err(|error| error.to_string())?;
-        if report.conflict.is_some() {
-            return Err("plan.md is still in conflict after restoring the database revision".into());
-        }
-        let document = ops::get_document(&mut conn, &request.document_id).map_err(|error| error.to_string())?;
-        document_response(&mut conn, document)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    let now = now_ms();
+    services
+        .db
+        .write(async |tx| ops::retry_materialization_from_database(tx, &request.document_id, now).await)
+        .await
+        .map_err(|error| error.to_string())?;
+    let report = services
+        .plan_files
+        .reconcile_document(&services.db, &request.document_id, now)
+        .await
+        .map_err(|error| error.to_string())?;
+    if report.conflict.is_some() {
+        return Err("plan.md is still in conflict after restoring the database revision".into());
+    }
+    services
+        .db
+        .read(async |tx| {
+            let document = ops::get_document(tx, &request.document_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            Ok::<_, ops::PlanReviewStoreError>(document_response(tx, document).await?)
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
 struct DecisionCommit {
@@ -897,10 +904,10 @@ struct DecisionCommit {
     delivery_target: Option<PlanDeliveryTarget>,
 }
 
-fn append_native_review_result(
-    conn: &mut diesel::sqlite::SqliteConnection,
+async fn append_native_review_result(
+    tx: &WriteTx,
     conversation_id: &str,
-    review: &db::models::plan_review::PlanReviewSessionRow,
+    review: &plan_review_session::Model,
     payload: &str,
     outcome: &'static str,
     now: i64,
@@ -918,40 +925,14 @@ fn append_native_review_result(
         .as_deref()
         .ok_or_else(|| ops::PlanReviewStoreError::Contract("native review has no submitting turn id".into()))?;
     let message_id = uuid::Uuid::new_v4().to_string();
-    db::ops::message::append_message(
-        conn,
-        &MessageInsert {
-            id: &message_id,
-            conversation_id,
-            role: "tool",
-            content: payload,
-            provider_id: None,
-            model_id: None,
-            input_tokens: None,
-            output_tokens: None,
-            tool_calls: None,
-            tool_call_id: Some(call_id),
-            sort_order: 0,
-            created_at: now,
-            reasoning_content: None,
-            rating: None,
-            schema_version: 2,
-            is_compact_summary: 0,
-            sender_id: None,
-            parent_id: None,
-            compact_anchor_id: None,
-            source: None,
-            turn_id: Some(turn_id),
-            tool_outcome: Some(outcome),
-            cache_read_tokens: None,
-            cache_write_tokens: None,
-            server_tool_calls: None,
-            provider_name: None,
-            response_model_id: None,
-        },
-        Some(assistant_message_id),
-    )?;
-    let changed = db::ops::turn::finish_waiting_review(conn, turn_id, db::models::turn::TurnStatus::Done, None, now)?;
+    let row = db::entity::message::Model {
+        tool_call_id: Some(call_id.to_owned()),
+        turn_id: Some(turn_id.to_owned()),
+        tool_outcome: Some(outcome.to_owned()),
+        ..db::sea::ops::message::new_row(&message_id, conversation_id, "tool", payload, now)
+    };
+    db::sea::ops::message::append_message(tx, row, Some(assistant_message_id)).await?;
+    let changed = db::sea::ops::turn::finish_waiting_review(tx, turn_id, TurnStatus::Done, None, now).await?;
     if changed != 1 {
         return Err(ops::PlanReviewStoreError::InvalidState(
             "the native submitting turn is not waiting for review".into(),
@@ -966,115 +947,110 @@ pub async fn decide_plan_review(
     request: PlanReviewDecisionRequest,
 ) -> Result<PlanReviewDecisionResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let continuation_turn_id = uuid::Uuid::new_v4().to_string();
-    let commit = tokio::task::spawn_blocking({
-        let continuation_turn_id = continuation_turn_id.clone();
-        move || {
-            let mut conn = get_conn(&pool)?;
-            conn.transaction::<DecisionCommit, ops::PlanReviewStoreError, _>(|conn| {
-                let before = ops::get_review_bundle(conn, &request.review_id)?;
-                let was_pending = before.review.state()? == PlanReviewState::Pending;
-                let provider_kind = before.review.provider_kind()?;
-                let conversation_id = before.document.conversation_id.clone();
-                let action = match request.action {
-                    PlanReviewDecisionActionRequest::Approve => ops::PlanReviewDecisionAction::Approve,
-                    PlanReviewDecisionActionRequest::RequestChanges => ops::PlanReviewDecisionAction::RequestChanges,
-                };
-                let delivery_target = match provider_kind {
-                    PlanReviewProviderKind::Native => Some(PlanDeliveryTarget::Native),
-                    PlanReviewProviderKind::Acp => Some(PlanDeliveryTarget::Acp),
-                    PlanReviewProviderKind::Legacy if action == ops::PlanReviewDecisionAction::RequestChanges => {
-                        Some(PlanDeliveryTarget::Native)
-                    }
-                    PlanReviewProviderKind::Legacy => None,
-                };
-                let acp_session_id = if provider_kind == PlanReviewProviderKind::Acp {
-                    db::ops::acp_session::get(conn, &conversation_id)?.and_then(|row| row.acp_session_id)
-                } else {
-                    None
-                };
-                let target_turn_id = match provider_kind {
-                    PlanReviewProviderKind::Native => Some(continuation_turn_id.as_str()),
-                    PlanReviewProviderKind::Acp | PlanReviewProviderKind::Legacy => before.review.turn_id.as_deref(),
-                };
-                let result = ops::decide_review(
-                    conn,
-                    &ops::PlanReviewDecision {
-                        review_id: &request.review_id,
-                        decision_id: &request.decision_id,
-                        expected_lock_version: before.review.lock_version,
-                        expected_draft_generation: request.expected_generation,
-                        expected_draft_sha256: &request.expected_draft_hash,
-                        action,
-                        decision_summary: None,
-                        delivery_target,
-                        target_session_id: acp_session_id.as_deref(),
-                        target_turn_id,
-                        now: now_ms(),
-                    },
-                )?;
-
-                // A retry of the same decision is storage-idempotent.  The
-                // transcript result and terminal turn transition must be just
-                // as idempotent, so only the pending->settled edge writes them.
-                if provider_kind == PlanReviewProviderKind::Native && was_pending {
-                    let delivery = result.delivery.as_ref().ok_or_else(|| {
-                        ops::PlanReviewStoreError::InvalidState(
-                            "native plan decisions require a durable continuation delivery".into(),
-                        )
-                    })?;
-                    let outcome = if action == ops::PlanReviewDecisionAction::Approve {
-                        "success"
-                    } else {
-                        "denied"
-                    };
-                    append_native_review_result(
-                        conn,
-                        &conversation_id,
-                        &result.review,
-                        &delivery.payload_json,
-                        outcome,
-                        now_ms(),
-                    )?;
-                    let mode = if action == ops::PlanReviewDecisionAction::Approve {
-                        None
-                    } else {
-                        Some(meridian_core::agent::modes::PLAN_MODE)
-                    };
-                    db::ops::conversation::update_mode(conn, &conversation_id, mode, now_ms())?;
+    let commit = services
+        .db
+        .write(async |tx| {
+            let before = ops::get_review_bundle(tx, &request.review_id).await?;
+            let was_pending = before.review.state == PlanReviewState::Pending;
+            let provider_kind = before.review.provider_kind;
+            let conversation_id = before.document.conversation_id.clone();
+            let action = match request.action {
+                PlanReviewDecisionActionRequest::Approve => ops::PlanReviewDecisionAction::Approve,
+                PlanReviewDecisionActionRequest::RequestChanges => ops::PlanReviewDecisionAction::RequestChanges,
+            };
+            let delivery_target = match provider_kind {
+                PlanReviewProviderKind::Native => Some(PlanDeliveryTarget::Native),
+                PlanReviewProviderKind::Acp => Some(PlanDeliveryTarget::Acp),
+                PlanReviewProviderKind::Legacy if action == ops::PlanReviewDecisionAction::RequestChanges => {
+                    Some(PlanDeliveryTarget::Native)
                 }
-
-                let event = event_for(conversation_id, &result.review, result.delivery.as_ref())?;
-                let delivery_state = result
-                    .delivery
-                    .as_ref()
-                    .map(|delivery| delivery.state())
-                    .transpose()?
-                    .map(|state| state.as_str().to_string());
-                let persisted_continuation = result
-                    .delivery
-                    .as_ref()
-                    .and_then(|delivery| delivery.target_turn_id.clone())
-                    .filter(|_| provider_kind == PlanReviewProviderKind::Native);
-                let state = result.review.state()?.as_str().to_string();
-                Ok(DecisionCommit {
-                    response: PlanReviewDecisionResponse {
-                        review_id: result.review.id,
-                        state,
-                        delivery_state,
-                        continuation_turn_id: persisted_continuation,
-                    },
-                    event,
-                    delivery_id: result.delivery.map(|delivery| delivery.id),
+                PlanReviewProviderKind::Legacy => None,
+            };
+            let acp_session_id = if provider_kind == PlanReviewProviderKind::Acp {
+                db::sea::ops::acp_session::get(tx, &conversation_id)
+                    .await?
+                    .and_then(|row| row.acp_session_id)
+            } else {
+                None
+            };
+            let target_turn_id = match provider_kind {
+                PlanReviewProviderKind::Native => Some(continuation_turn_id.as_str()),
+                PlanReviewProviderKind::Acp | PlanReviewProviderKind::Legacy => before.review.turn_id.as_deref(),
+            };
+            let result = ops::decide_review(
+                tx,
+                &ops::PlanReviewDecision {
+                    review_id: &request.review_id,
+                    decision_id: &request.decision_id,
+                    expected_lock_version: before.review.lock_version,
+                    expected_draft_generation: request.expected_generation,
+                    expected_draft_sha256: &request.expected_draft_hash,
+                    action,
+                    decision_summary: None,
                     delivery_target,
-                })
+                    target_session_id: acp_session_id.as_deref(),
+                    target_turn_id,
+                    now: now_ms(),
+                },
+            )
+            .await?;
+
+            // A retry of the same decision is storage-idempotent.  The
+            // transcript result and terminal turn transition must be just
+            // as idempotent, so only the pending->settled edge writes them.
+            if provider_kind == PlanReviewProviderKind::Native && was_pending {
+                let delivery = result.delivery.as_ref().ok_or_else(|| {
+                    ops::PlanReviewStoreError::InvalidState(
+                        "native plan decisions require a durable continuation delivery".into(),
+                    )
+                })?;
+                let outcome = if action == ops::PlanReviewDecisionAction::Approve {
+                    "success"
+                } else {
+                    "denied"
+                };
+                append_native_review_result(
+                    tx,
+                    &conversation_id,
+                    &result.review,
+                    &delivery.payload_json,
+                    outcome,
+                    now_ms(),
+                )
+                .await?;
+                let mode = if action == ops::PlanReviewDecisionAction::Approve {
+                    None
+                } else {
+                    Some(meridian_core::agent::modes::PLAN_MODE)
+                };
+                db::sea::ops::conversation::update_mode(tx, &conversation_id, mode, now_ms()).await?;
+            }
+
+            let event = event_for(conversation_id, &result.review, result.delivery.as_ref());
+            let delivery_state = result
+                .delivery
+                .as_ref()
+                .map(|delivery| delivery.state.as_str().to_string());
+            let persisted_continuation = result
+                .delivery
+                .as_ref()
+                .and_then(|delivery| delivery.target_turn_id.clone())
+                .filter(|_| provider_kind == PlanReviewProviderKind::Native);
+            Ok::<_, ops::PlanReviewStoreError>(DecisionCommit {
+                response: PlanReviewDecisionResponse {
+                    review_id: result.review.id,
+                    state: result.review.state.as_str().to_string(),
+                    delivery_state,
+                    continuation_turn_id: persisted_continuation,
+                },
+                event,
+                delivery_id: result.delivery.map(|delivery| delivery.id),
+                delivery_target,
             })
-            .map_err(|error| error.to_string())
-        }
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+        })
+        .await
+        .map_err(|error| error.to_string())?;
 
     emit_review_update_best_effort(&services.events, &commit.event);
     if let (Some(delivery_id), Some(target)) = (commit.delivery_id.clone(), commit.delivery_target) {
@@ -1101,13 +1077,38 @@ fn dispatch_delivery_later(
 }
 
 struct DeliveryDispatch {
-    row: db::models::plan_review::PlanReviewDeliveryRow,
+    row: plan_review_delivery::Model,
     event: PlanReviewEvent,
     conversation_id: String,
     mode: &'static str,
     continuation_turn_id: String,
     attempt_token: String,
-    native_runtime: Option<db::models::plan_review::NativePlanReviewRuntimeConfig>,
+    native_runtime: Option<NativePlanReviewRuntimeConfig>,
+}
+
+/// The mode a continuation runs in, from how the review was settled.
+fn continuation_mode(review: &plan_review_session::Model) -> &'static str {
+    if review.state == PlanReviewState::Approved {
+        meridian_core::agent::modes::WORK_MODE
+    } else {
+        meridian_core::agent::modes::PLAN_MODE
+    }
+}
+
+/// Record how a delivery attempt ended, and the event that says so.
+async fn settle_delivery(
+    services: &meridian_core::services::Services,
+    settle: impl AsyncFnOnce(&WriteTx) -> Result<plan_review_delivery::Model, ops::PlanReviewStoreError>,
+) -> Result<(plan_review_delivery::Model, PlanReviewEvent), String> {
+    services
+        .db
+        .write(async |tx| {
+            let row = settle(tx).await.map_err(|error| error.to_string())?;
+            let event = event_after(tx, &row).await?;
+            Ok::<_, ops::PlanReviewStoreError>((row, event))
+        })
+        .await
+        .map_err(|error| error.to_string())
 }
 
 async fn dispatch_native_delivery(
@@ -1115,101 +1116,110 @@ async fn dispatch_native_delivery(
     delivery_id: &str,
     retry_in_doubt: bool,
 ) -> Result<PlanReviewDeliveryInfoResponse, String> {
-    let pool = services.db.clone();
-    let id = delivery_id.to_string();
-    let dispatch = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let row = ops::get_delivery(&mut conn, &id).map_err(|error| error.to_string())?;
-        if row.target()? != PlanDeliveryTarget::Native {
-            return Err("the delivery does not target the native runtime".into());
-        }
-        let initial_bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        if row.state()? == PlanDeliveryState::Acknowledged {
-            let native_runtime = initial_bundle.review.native_runtime_config()?;
-            let event = event_for(
-                initial_bundle.document.conversation_id.clone(),
-                &initial_bundle.review,
-                Some(&row),
-            )?;
-            return Ok::<_, String>(DeliveryDispatch {
-                continuation_turn_id: row.target_turn_id.clone().unwrap_or_default(),
-                attempt_token: row.attempt_token.clone().unwrap_or_default(),
-                mode: if initial_bundle.review.state()? == PlanReviewState::Approved {
-                    meridian_core::agent::modes::WORK_MODE
-                } else {
-                    meridian_core::agent::modes::PLAN_MODE
-                },
-                conversation_id: initial_bundle.document.conversation_id,
-                row,
-                event,
-                native_runtime,
-            });
-        }
-        if row.state()? == PlanDeliveryState::Dispatched {
-            return Err("the native continuation is already dispatched".into());
-        }
-        if initial_bundle.review.native_runtime_config()?.is_none() {
-            if row.state()? != PlanDeliveryState::Queued {
-                return Err("native plan review has no persisted runtime config".into());
+    // Read, decide and claim in one IMMEDIATE write: two dispatchers reading
+    // the same queued row would otherwise both go on to the claim.
+    let dispatch = services
+        .db
+        .write(async |tx| {
+            let row = ops::get_delivery(tx, delivery_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            if row.target != PlanDeliveryTarget::Native {
+                return Err("the delivery does not target the native runtime".into());
             }
-            let row = ops::mark_delivery_held(
-                &mut conn,
-                &id,
-                Some("native plan review has no persisted runtime config"),
-                now_ms(),
-            )
+            let initial_bundle = ops::get_review_bundle(tx, &row.review_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            let native_runtime = initial_bundle
+                .review
+                .native_runtime_config_json
+                .clone()
+                .map(|json| json.0);
+            if row.state == PlanDeliveryState::Acknowledged {
+                let event = event_for(
+                    initial_bundle.document.conversation_id.clone(),
+                    &initial_bundle.review,
+                    Some(&row),
+                );
+                return Ok::<_, ops::PlanReviewStoreError>(DeliveryDispatch {
+                    continuation_turn_id: row.target_turn_id.clone().unwrap_or_default(),
+                    attempt_token: row.attempt_token.clone().unwrap_or_default(),
+                    mode: continuation_mode(&initial_bundle.review),
+                    conversation_id: initial_bundle.document.conversation_id,
+                    row,
+                    event,
+                    native_runtime,
+                });
+            }
+            if row.state == PlanDeliveryState::Dispatched {
+                return Err("the native continuation is already dispatched".into());
+            }
+            if native_runtime.is_none() {
+                if row.state != PlanDeliveryState::Queued {
+                    return Err("native plan review has no persisted runtime config".into());
+                }
+                let row = ops::mark_delivery_held(
+                    tx,
+                    delivery_id,
+                    Some("native plan review has no persisted runtime config"),
+                    now_ms(),
+                )
+                .await
+                .map_err(|error| error.to_string())?;
+                let event = event_after(tx, &row).await?;
+                return Ok(DeliveryDispatch {
+                    row,
+                    conversation_id: event.conversation_id.clone(),
+                    event,
+                    mode: meridian_core::agent::modes::PLAN_MODE,
+                    continuation_turn_id: String::new(),
+                    attempt_token: String::new(),
+                    native_runtime: None,
+                });
+            }
+            let attempt_token = uuid::Uuid::new_v4().to_string();
+            let continuation_turn_id = if matches!(row.state, PlanDeliveryState::InDoubt | PlanDeliveryState::Held) {
+                if !retry_in_doubt {
+                    return Err("the native continuation requires an explicit retry".into());
+                }
+                uuid::Uuid::new_v4().to_string()
+            } else {
+                row.target_turn_id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
+            };
+            let row = if row.state == PlanDeliveryState::InDoubt {
+                ops::retry_delivery_dispatched_for_turn(
+                    tx,
+                    delivery_id,
+                    &attempt_token,
+                    &continuation_turn_id,
+                    now_ms(),
+                )
+                .await
+            } else {
+                ops::mark_delivery_dispatched_for_turn(tx, delivery_id, &attempt_token, &continuation_turn_id, now_ms())
+                    .await
+            }
             .map_err(|error| error.to_string())?;
-            let bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-            let event = event_for(bundle.document.conversation_id.clone(), &bundle.review, Some(&row))?;
-            return Ok(DeliveryDispatch {
+            let bundle = ops::get_review_bundle(tx, &row.review_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            let event = event_for(bundle.document.conversation_id.clone(), &bundle.review, Some(&row));
+            Ok(DeliveryDispatch {
                 row,
                 event,
                 conversation_id: bundle.document.conversation_id,
-                mode: meridian_core::agent::modes::PLAN_MODE,
-                continuation_turn_id: String::new(),
-                attempt_token: String::new(),
-                native_runtime: None,
-            });
-        }
-        let attempt_token = uuid::Uuid::new_v4().to_string();
-        let continuation_turn_id = if matches!(row.state()?, PlanDeliveryState::InDoubt | PlanDeliveryState::Held) {
-            if !retry_in_doubt {
-                return Err("the native continuation requires an explicit retry".into());
-            }
-            uuid::Uuid::new_v4().to_string()
-        } else {
-            row.target_turn_id
-                .clone()
-                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string())
-        };
-        let row = if row.state()? == PlanDeliveryState::InDoubt {
-            ops::retry_delivery_dispatched_for_turn(&mut conn, &id, &attempt_token, &continuation_turn_id, now_ms())
-        } else {
-            ops::mark_delivery_dispatched_for_turn(&mut conn, &id, &attempt_token, &continuation_turn_id, now_ms())
-        }
-        .map_err(|error| error.to_string())?;
-        let bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        let native_runtime = bundle.review.native_runtime_config()?;
-        let mode = if bundle.review.state()? == PlanReviewState::Approved {
-            meridian_core::agent::modes::WORK_MODE
-        } else {
-            meridian_core::agent::modes::PLAN_MODE
-        };
-        let event = event_for(bundle.document.conversation_id.clone(), &bundle.review, Some(&row))?;
-        Ok(DeliveryDispatch {
-            row,
-            event,
-            conversation_id: bundle.document.conversation_id,
-            mode,
-            continuation_turn_id,
-            attempt_token,
-            native_runtime,
+                mode: continuation_mode(&bundle.review),
+                continuation_turn_id,
+                attempt_token,
+                native_runtime: bundle.review.native_runtime_config_json.map(|json| json.0),
+            })
         })
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+        .await
+        .map_err(|error| error.to_string())?;
 
-    if dispatch.row.state()? == PlanDeliveryState::Acknowledged {
+    if dispatch.row.state == PlanDeliveryState::Acknowledged {
         return delivery_response(dispatch.row);
     }
     emit_review_update_best_effort(&services.events, &dispatch.event);
@@ -1225,24 +1235,14 @@ async fn dispatch_native_delivery(
         native_runtime,
     )
     .await;
-    let pool = services.db.clone();
-    let id = delivery_id.to_string();
     let attempt = dispatch.attempt_token;
-    let (row, event) = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let row = match outcome {
-            Ok(()) => ops::mark_delivery_acknowledged(&mut conn, &id, &attempt, now_ms()),
-            Err(ref error) => ops::mark_delivery_held(&mut conn, &id, Some(error), now_ms()),
-        }
-        .map_err(|error| error.to_string())?;
-        let bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        let event = event_for(bundle.document.conversation_id, &bundle.review, Some(&row))?;
-        Ok::<_, String>((row, event))
+    let (row, event) = settle_delivery(services, async |tx| match outcome {
+        Ok(()) => ops::mark_delivery_acknowledged(tx, delivery_id, &attempt, now_ms()).await,
+        Err(ref error) => ops::mark_delivery_held(tx, delivery_id, Some(error), now_ms()).await,
     })
-    .await
-    .map_err(|error| error.to_string())??;
+    .await?;
     emit_review_update_best_effort(&services.events, &event);
-    let acknowledged = row.state()? == PlanDeliveryState::Acknowledged;
+    let acknowledged = row.state == PlanDeliveryState::Acknowledged;
     let response = delivery_response(row)?;
     if acknowledged {
         meridian_core::agent::queue::pump_later(services, &dispatch.conversation_id);
@@ -1257,90 +1257,89 @@ async fn dispatch_acp_delivery(
     retry_in_doubt: bool,
 ) -> Result<PlanReviewDeliveryInfoResponse, String> {
     struct AcpDispatch {
-        row: db::models::plan_review::PlanReviewDeliveryRow,
+        row: plan_review_delivery::Model,
         event: PlanReviewEvent,
         conversation_id: String,
         attempt_token: String,
         delivery: meridian_core::acp::AcpPlanReviewDelivery,
     }
 
-    let pool = services.db.clone();
-    let id = delivery_id.to_string();
-    let dispatch = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let row = ops::get_delivery(&mut conn, &id).map_err(|error| error.to_string())?;
-        if row.target()? != PlanDeliveryTarget::Acp {
-            return Err("the delivery does not target the ACP runtime".into());
+    fn handoff(
+        row: &plan_review_delivery::Model,
+        provider_call_id: String,
+        submitting_turn_id: String,
+    ) -> meridian_core::acp::AcpPlanReviewDelivery {
+        meridian_core::acp::AcpPlanReviewDelivery {
+            delivery_id: row.id.clone(),
+            review_id: row.review_id.clone(),
+            provider_call_id,
+            target_session_id: row.target_session_id.clone(),
+            submitting_turn_id,
+            payload_json: row.payload_json.clone(),
         }
-        let bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        let provider_call_id = bundle
-            .review
-            .provider_call_id
-            .clone()
-            .ok_or("ACP plan review has no provider call id")?;
-        let submitting_turn_id = bundle
-            .review
-            .turn_id
-            .clone()
-            .ok_or("ACP plan review has no submitting turn id")?;
-        if row.state()? == PlanDeliveryState::Acknowledged {
-            let event = event_for(bundle.document.conversation_id.clone(), &bundle.review, Some(&row))?;
-            return Ok::<_, String>(AcpDispatch {
-                attempt_token: row.attempt_token.clone().unwrap_or_default(),
-                delivery: meridian_core::acp::AcpPlanReviewDelivery {
-                    delivery_id: row.id.clone(),
-                    review_id: row.review_id.clone(),
-                    provider_call_id,
-                    target_session_id: row.target_session_id.clone(),
-                    submitting_turn_id,
-                    payload_json: row.payload_json.clone(),
-                },
-                conversation_id: bundle.document.conversation_id,
-                row,
-                event,
-            });
-        }
-        if row.state()? == PlanDeliveryState::Dispatched {
-            return Err("the ACP plan delivery is already dispatched".into());
-        }
-        let attempt_token = uuid::Uuid::new_v4().to_string();
-        let row = if row.state()? == PlanDeliveryState::InDoubt {
-            if !retry_in_doubt {
-                return Err("the ACP plan delivery is in doubt and requires explicit retry".into());
-            }
-            ops::retry_delivery_dispatched(&mut conn, &id, &attempt_token, now_ms())
-        } else {
-            ops::mark_delivery_dispatched(&mut conn, &id, &attempt_token, now_ms())
-        }
-        .map_err(|error| error.to_string())?;
-        // The delivery transition bumps the review version in the same
-        // transaction. Reload it before publishing or the dispatched event is
-        // stale the instant it is emitted.
-        let transitioned = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        let event = event_for(
-            transitioned.document.conversation_id.clone(),
-            &transitioned.review,
-            Some(&row),
-        )?;
-        Ok(AcpDispatch {
-            delivery: meridian_core::acp::AcpPlanReviewDelivery {
-                delivery_id: row.id.clone(),
-                review_id: row.review_id.clone(),
-                provider_call_id,
-                target_session_id: row.target_session_id.clone(),
-                submitting_turn_id,
-                payload_json: row.payload_json.clone(),
-            },
-            row,
-            event,
-            conversation_id: transitioned.document.conversation_id,
-            attempt_token,
-        })
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+    }
 
-    if dispatch.row.state()? == PlanDeliveryState::Acknowledged {
+    let dispatch = services
+        .db
+        .write(async |tx| {
+            let row = ops::get_delivery(tx, delivery_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            if row.target != PlanDeliveryTarget::Acp {
+                return Err("the delivery does not target the ACP runtime".into());
+            }
+            let bundle = ops::get_review_bundle(tx, &row.review_id)
+                .await
+                .map_err(|error| error.to_string())?;
+            let provider_call_id = bundle
+                .review
+                .provider_call_id
+                .clone()
+                .ok_or("ACP plan review has no provider call id")?;
+            let submitting_turn_id = bundle
+                .review
+                .turn_id
+                .clone()
+                .ok_or("ACP plan review has no submitting turn id")?;
+            if row.state == PlanDeliveryState::Acknowledged {
+                let event = event_for(bundle.document.conversation_id.clone(), &bundle.review, Some(&row));
+                return Ok::<_, ops::PlanReviewStoreError>(AcpDispatch {
+                    attempt_token: row.attempt_token.clone().unwrap_or_default(),
+                    delivery: handoff(&row, provider_call_id, submitting_turn_id),
+                    conversation_id: bundle.document.conversation_id,
+                    row,
+                    event,
+                });
+            }
+            if row.state == PlanDeliveryState::Dispatched {
+                return Err("the ACP plan delivery is already dispatched".into());
+            }
+            let attempt_token = uuid::Uuid::new_v4().to_string();
+            let row = if row.state == PlanDeliveryState::InDoubt {
+                if !retry_in_doubt {
+                    return Err("the ACP plan delivery is in doubt and requires explicit retry".into());
+                }
+                ops::retry_delivery_dispatched(tx, delivery_id, &attempt_token, now_ms()).await
+            } else {
+                ops::mark_delivery_dispatched(tx, delivery_id, &attempt_token, now_ms()).await
+            }
+            .map_err(|error| error.to_string())?;
+            // The delivery transition bumps the review version in the same
+            // transaction. Reload it before publishing or the dispatched event is
+            // stale the instant it is emitted.
+            let event = event_after(tx, &row).await?;
+            Ok(AcpDispatch {
+                delivery: handoff(&row, provider_call_id, submitting_turn_id),
+                row,
+                conversation_id: event.conversation_id.clone(),
+                event,
+                attempt_token,
+            })
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+
+    if dispatch.row.state == PlanDeliveryState::Acknowledged {
         return delivery_response(dispatch.row);
     }
     emit_review_update_best_effort(&services.events, &dispatch.event);
@@ -1348,31 +1347,21 @@ async fn dispatch_acp_delivery(
         Ok(session) => session.deliver_plan_review(services, dispatch.delivery).await,
         Err(error) => meridian_core::acp::AcpPlanReviewDeliveryOutcome::Held(error),
     };
-    let pool = services.db.clone();
-    let id = delivery_id.to_string();
     let attempt = dispatch.attempt_token;
-    let (row, event) = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let row = match outcome {
-            meridian_core::acp::AcpPlanReviewDeliveryOutcome::Acknowledged => {
-                ops::mark_delivery_acknowledged(&mut conn, &id, &attempt, now_ms())
-            }
-            meridian_core::acp::AcpPlanReviewDeliveryOutcome::Held(error) => {
-                ops::mark_delivery_held(&mut conn, &id, Some(&error), now_ms())
-            }
-            meridian_core::acp::AcpPlanReviewDeliveryOutcome::InDoubt(error) => {
-                ops::mark_delivery_in_doubt(&mut conn, &id, &attempt, &error, now_ms())
-            }
+    let (row, event) = settle_delivery(services, async |tx| match outcome {
+        meridian_core::acp::AcpPlanReviewDeliveryOutcome::Acknowledged => {
+            ops::mark_delivery_acknowledged(tx, delivery_id, &attempt, now_ms()).await
         }
-        .map_err(|error| error.to_string())?;
-        let bundle = ops::get_review_bundle(&mut conn, &row.review_id).map_err(|error| error.to_string())?;
-        let event = event_for(bundle.document.conversation_id, &bundle.review, Some(&row))?;
-        Ok::<_, String>((row, event))
+        meridian_core::acp::AcpPlanReviewDeliveryOutcome::Held(ref error) => {
+            ops::mark_delivery_held(tx, delivery_id, Some(error), now_ms()).await
+        }
+        meridian_core::acp::AcpPlanReviewDeliveryOutcome::InDoubt(ref error) => {
+            ops::mark_delivery_in_doubt(tx, delivery_id, &attempt, error, now_ms()).await
+        }
     })
-    .await
-    .map_err(|error| error.to_string())??;
+    .await?;
     emit_review_update_best_effort(&services.events, &event);
-    let acknowledged = row.state()? == PlanDeliveryState::Acknowledged;
+    let acknowledged = row.state == PlanDeliveryState::Acknowledged;
     let response = delivery_response(row)?;
     if acknowledged {
         meridian_core::agent::queue::pump_later(services, &dispatch.conversation_id);
@@ -1395,16 +1384,10 @@ pub async fn continue_plan_review_delivery(
     request: PlanReviewDeliveryContinueRequest,
 ) -> Result<PlanReviewDeliveryInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    let delivery_id = request.delivery_id.clone();
-    let target = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        ops::get_delivery(&mut conn, &delivery_id)
-            .map_err(|error| error.to_string())?
-            .target()
-    })
-    .await
-    .map_err(|error| error.to_string())??;
+    let target = ops::get_delivery(&services.db, &request.delivery_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .target;
     match target {
         PlanDeliveryTarget::Native => dispatch_native_delivery(&services, &request.delivery_id, true).await,
         PlanDeliveryTarget::Acp => dispatch_acp_delivery(&services, &request.delivery_id, true).await,
@@ -1468,121 +1451,11 @@ mod tests {
         assert!(serde_json::from_value::<PlanReviewDraftSaveRequest>(missing_baseline).is_err());
     }
 
-    #[tokio::test]
-    async fn direct_native_send_is_refused_by_a_durable_pending_review() {
-        let pool = db::diesel_test_db();
-        {
-            let mut conn = pool.get().unwrap();
-            db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-            let document = ops::create_or_resume_document(&mut conn, "c1", 2).unwrap();
-            let appended = ops::append_assistant_revision(
-                &mut conn,
-                &ops::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: 0,
-                    expected_head_sha256: None,
-                    content_markdown: "# Plan\n",
-                    patch: "first patch",
-                    source_message_id: Some("m1"),
-                    source_call_id: Some("update-1"),
-                    responding_to_suggestion_revision_id: None,
-                    now: 3,
-                },
-            )
-            .unwrap();
-            ops::mark_materialization_applied(&mut conn, &appended.materialization.id, 4).unwrap();
-            ops::submit_native_head_for_review(
-                &mut conn,
-                &ops::PlanReviewSubmit {
-                    document_id: &document.id,
-                    expected_generation: appended.document.working_generation,
-                    expected_head_sha256: &appended.revision.content_sha256,
-                    turn_id: None,
-                    assistant_message_id: Some("m1"),
-                    provider_call_id: Some("exit-1"),
-                    provider_kind: PlanReviewProviderKind::Native,
-                    now: 5,
-                },
-                &native_plan_runtime(),
-            )
-            .unwrap();
-        }
-
-        let error = ensure_conversation_not_waiting_review(&pool, "c1").await.unwrap_err();
-        assert!(error.contains("waiting for plan review"));
-    }
-
-    #[tokio::test]
-    async fn native_continuation_is_refused_before_start_when_the_review_workspace_drifted() {
-        let pool = db::diesel_test_db();
-        let runtime = {
-            let mut conn = pool.get().unwrap();
-            for (id, path) in [("project-a", "A"), ("project-b", "B")] {
-                db::ops::project::create_project(
-                    &mut conn,
-                    &db::models::project::ProjectInsert {
-                        id,
-                        name: id,
-                        path: Some(path),
-                        source_type: "local",
-                        source_id: None,
-                        assistant_id: None,
-                        description: None,
-                        created_at: 1,
-                        updated_at: 1,
-                    },
-                )
-                .unwrap();
-            }
-            db::ops::conversation::create_conversation(&mut conn, "c1", None, None, Some("project-a"), 1).unwrap();
-            let document = ops::create_or_resume_document(&mut conn, "c1", 2).unwrap();
-            let appended = ops::append_assistant_revision(
-                &mut conn,
-                &ops::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: 0,
-                    expected_head_sha256: None,
-                    content_markdown: "# Plan\n",
-                    patch: "first patch",
-                    source_message_id: Some("m1"),
-                    source_call_id: Some("update-1"),
-                    responding_to_suggestion_revision_id: None,
-                    now: 3,
-                },
-            )
-            .unwrap();
-            ops::mark_materialization_applied(&mut conn, &appended.materialization.id, 4).unwrap();
-            let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-                project_id: Some("project-a".into()),
-                project_path: Some("A".into()),
-                ..native_plan_runtime()
-            };
-            // Bypass command guards to simulate external/old-code corruption;
-            // the continuation endpoint is the final defensive check.
-            db::ops::conversation::update_project(&mut conn, "c1", Some("project-b"), 7).unwrap();
-            runtime
-        };
-
-        let error = crate::commands::chat::verify_plan_review_workspace(&pool, "c1", &runtime)
-            .await
-            .unwrap_err();
-        assert!(error.contains("workspace changed"));
-        let mut conn = pool.get().unwrap();
-        assert!(
-            db::ops::turn::list_for_conversation(&mut conn, "c1")
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn snapshot_delivery_state_and_review_diff_span_the_whole_review_episode() {
-        let pool = db::diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        db::ops::conversation::create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        let document = ops::create_or_resume_document(&mut conn, "c1", 2).unwrap();
-        let first = ops::append_assistant_revision(
-            &mut conn,
+    /// The first revision of `c1`'s plan, written and on disk.
+    async fn first_revision(tx: &WriteTx, conversation_id: &str) -> ops::PlanRevisionAppendResult {
+        let document = ops::create_or_resume_document(tx, conversation_id, 2).await.unwrap();
+        let appended = ops::append_assistant_revision(
+            tx,
             &ops::PlanRevisionAppend {
                 document_id: &document.id,
                 expected_generation: 0,
@@ -1595,107 +1468,188 @@ mod tests {
                 now: 3,
             },
         )
+        .await
         .unwrap();
-        ops::mark_materialization_applied(&mut conn, &first.materialization.id, 4).unwrap();
-        db::ops::turn::begin(&mut conn, "t1", "c1", meridian_core::turn::TurnOrigin::Desktop, None, 4).unwrap();
-        let first_review = ops::submit_native_head_for_review(
-            &mut conn,
+        ops::mark_materialization_applied(tx, &appended.materialization.id, 4)
+            .await
+            .unwrap();
+        appended
+    }
+
+    /// Submit the head of `appended`'s document for native review.
+    async fn submit_native(
+        tx: &WriteTx,
+        appended: &ops::PlanRevisionAppendResult,
+        turn_id: Option<&str>,
+        message_id: &str,
+        call_id: &str,
+        now: i64,
+    ) -> ops::PlanReviewBundle {
+        ops::submit_native_head_for_review(
+            tx,
             &ops::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: first.document.working_generation,
-                expected_head_sha256: &first.revision.content_sha256,
-                turn_id: Some("t1"),
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
+                document_id: &appended.document.id,
+                expected_generation: appended.document.working_generation,
+                expected_head_sha256: &appended.revision.content_sha256,
+                turn_id,
+                assistant_message_id: Some(message_id),
+                provider_call_id: Some(call_id),
                 provider_kind: PlanReviewProviderKind::Native,
-                now: 5,
+                now,
             },
             &native_plan_runtime(),
         )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn direct_native_send_is_refused_by_a_durable_pending_review() {
+        let db = db::sea::sea_test_db().await;
+        db.write(async |tx| {
+            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await?;
+            let appended = first_revision(tx, "c1").await;
+            submit_native(tx, &appended, None, "m1", "exit-1", 5).await;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
         .unwrap();
-        let approved = ops::decide_review(
-            &mut conn,
-            &ops::PlanReviewDecision {
-                review_id: &first_review.review.id,
-                decision_id: "approve-1",
-                expected_lock_version: 0,
-                expected_draft_generation: 0,
-                expected_draft_sha256: &first_review.draft.draft_sha256,
-                action: ops::PlanReviewDecisionAction::Approve,
-                decision_summary: None,
-                delivery_target: Some(PlanDeliveryTarget::Native),
-                target_session_id: None,
-                target_turn_id: Some("continuation-1"),
-                now: 6,
-            },
-        )
-        .unwrap();
-        let delivery = approved.delivery.unwrap();
+
+        let error = ensure_conversation_not_waiting_review(&db, "c1").await.unwrap_err();
+        assert!(error.contains("waiting for plan review"));
+    }
+
+    #[tokio::test]
+    async fn native_continuation_is_refused_before_start_when_the_review_workspace_drifted() {
+        let db = db::sea::sea_test_db().await;
+        let runtime = db
+            .write(async |tx| {
+                for (id, path) in [("project-a", "A"), ("project-b", "B")] {
+                    db::sea::ops::project::create_project(
+                        tx,
+                        db::entity::project::Model {
+                            id: id.into(),
+                            name: id.into(),
+                            path: Some(path.into()),
+                            source_type: db::entity::project::ProjectSource::Local,
+                            source_id: None,
+                            assistant_id: None,
+                            description: None,
+                            created_at: 1,
+                            updated_at: 1,
+                        },
+                    )
+                    .await?;
+                }
+                db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-a"), 1).await?;
+                first_revision(tx, "c1").await;
+                // Bypass command guards to simulate external/old-code corruption;
+                // the continuation endpoint is the final defensive check.
+                db::sea::ops::conversation::update_project(tx, "c1", Some("project-b".into()), 7).await?;
+                Ok::<_, db::sea::DbErr>(NativePlanReviewRuntimeConfig {
+                    project_id: Some("project-a".into()),
+                    project_path: Some("A".into()),
+                    ..native_plan_runtime()
+                })
+            })
+            .await
+            .unwrap();
+
+        let error = crate::commands::chat::verify_plan_review_workspace(&db, "c1", &runtime)
+            .await
+            .unwrap_err();
+        assert!(error.contains("workspace changed"));
+        assert!(
+            db::sea::ops::turn::list_for_conversation(&db, "c1")
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn snapshot_delivery_state_and_review_diff_span_the_whole_review_episode() {
+        let sea = db::sea::sea_test_db().await;
+        let summaries = async |visible: &HashSet<&str>| {
+            sea.read(async |tx| {
+                Ok::<_, ops::PlanReviewStoreError>(summaries_for_conversation(tx, "c1", visible).await?)
+            })
+            .await
+            .unwrap()
+        };
+        let (first, delivery) = sea
+            .write(async |tx| {
+                db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await?;
+                let first = first_revision(tx, "c1").await;
+                db::sea::ops::turn::begin(tx, "t1", "c1", meridian_core::turn::TurnOrigin::Desktop, None, 4).await?;
+                let first_review = submit_native(tx, &first, Some("t1"), "m1", "exit-1", 5).await;
+                let approved = ops::decide_review(
+                    tx,
+                    &ops::PlanReviewDecision {
+                        review_id: &first_review.review.id,
+                        decision_id: "approve-1",
+                        expected_lock_version: 0,
+                        expected_draft_generation: 0,
+                        expected_draft_sha256: &first_review.draft.draft_sha256,
+                        action: ops::PlanReviewDecisionAction::Approve,
+                        decision_summary: None,
+                        delivery_target: Some(PlanDeliveryTarget::Native),
+                        target_session_id: None,
+                        target_turn_id: Some("continuation-1"),
+                        now: 6,
+                    },
+                )
+                .await
+                .unwrap();
+                Ok::<_, db::sea::DbErr>((first, approved.delivery.unwrap()))
+            })
+            .await
+            .unwrap();
         let visible = HashSet::from(["m1"]);
-        let queued = summaries_for_conversation(&mut conn, "c1", &visible).unwrap();
+        let queued = summaries(&visible).await;
         assert_eq!(queued[0].delivery_state.as_deref(), Some("queued"));
-        ops::mark_delivery_dispatched(&mut conn, &delivery.id, "attempt-1", 7).unwrap();
-        ops::mark_delivery_acknowledged(&mut conn, &delivery.id, "attempt-1", 8).unwrap();
-        let acknowledged = summaries_for_conversation(&mut conn, "c1", &visible).unwrap();
+        sea.write(async |tx| {
+            ops::mark_delivery_dispatched(tx, &delivery.id, "attempt-1", 7).await?;
+            ops::mark_delivery_acknowledged(tx, &delivery.id, "attempt-1", 8).await
+        })
+        .await
+        .unwrap();
+        let acknowledged = summaries(&visible).await;
         assert_eq!(acknowledged[0].delivery_state.as_deref(), Some("acknowledged"));
 
-        let second = ops::append_assistant_revision(
-            &mut conn,
-            &ops::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: first.document.working_generation,
-                expected_head_sha256: Some(&first.revision.content_sha256),
-                content_markdown: "# Plan\n\nAlpha\n",
-                patch: "patch-2",
-                source_message_id: Some("m2"),
-                source_call_id: Some("update-2"),
-                responding_to_suggestion_revision_id: None,
-                now: 9,
-            },
-        )
-        .unwrap();
-        ops::mark_materialization_applied(&mut conn, &second.materialization.id, 10).unwrap();
-        let third = ops::append_assistant_revision(
-            &mut conn,
-            &ops::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: second.document.working_generation,
-                expected_head_sha256: Some(&second.revision.content_sha256),
-                content_markdown: "# Plan\n\nAlpha\n\nBeta\n",
-                patch: "patch-3",
-                source_message_id: Some("m2"),
-                source_call_id: Some("update-3"),
-                responding_to_suggestion_revision_id: None,
-                now: 11,
-            },
-        )
-        .unwrap();
-        ops::mark_materialization_applied(&mut conn, &third.materialization.id, 12).unwrap();
-        db::ops::turn::begin(
-            &mut conn,
-            "t2",
-            "c1",
-            meridian_core::turn::TurnOrigin::Desktop,
-            None,
-            12,
-        )
-        .unwrap();
-        let second_review = ops::submit_native_head_for_review(
-            &mut conn,
-            &ops::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: third.document.working_generation,
-                expected_head_sha256: &third.revision.content_sha256,
-                turn_id: Some("t2"),
-                assistant_message_id: Some("m2"),
-                provider_call_id: Some("exit-2"),
-                provider_kind: PlanReviewProviderKind::Native,
-                now: 13,
-            },
-            &native_plan_runtime(),
-        )
-        .unwrap();
-        let response = bundle_response(&mut conn, second_review).unwrap();
+        let response = sea
+            .write(async |tx| {
+                let append =
+                    async |after: &ops::PlanRevisionAppendResult, markdown: &str, patch: &str, call: &str, now| {
+                        let appended = ops::append_assistant_revision(
+                            tx,
+                            &ops::PlanRevisionAppend {
+                                document_id: &after.document.id,
+                                expected_generation: after.document.working_generation,
+                                expected_head_sha256: Some(&after.revision.content_sha256),
+                                content_markdown: markdown,
+                                patch,
+                                source_message_id: Some("m2"),
+                                source_call_id: Some(call),
+                                responding_to_suggestion_revision_id: None,
+                                now,
+                            },
+                        )
+                        .await
+                        .unwrap();
+                        ops::mark_materialization_applied(tx, &appended.materialization.id, now + 1)
+                            .await
+                            .unwrap();
+                        appended
+                    };
+                let second = append(&first, "# Plan\n\nAlpha\n", "patch-2", "update-2", 9).await;
+                let third = append(&second, "# Plan\n\nAlpha\n\nBeta\n", "patch-3", "update-3", 11).await;
+                db::sea::ops::turn::begin(tx, "t2", "c1", meridian_core::turn::TurnOrigin::Desktop, None, 12).await?;
+                let second_review = submit_native(tx, &third, Some("t2"), "m2", "exit-2", 13).await;
+                Ok::<_, ops::PlanReviewStoreError>(bundle_response(tx, second_review).await?)
+            })
+            .await
+            .unwrap();
         assert_eq!(response.parent_revision.unwrap().id, first.revision.id);
         let patch = response.submitted_revision.patch.unwrap();
         assert_ne!(patch, "patch-3");

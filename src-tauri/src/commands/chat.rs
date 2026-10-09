@@ -8,13 +8,11 @@ use meridian_core::agent::turn_record;
 use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_context_items, do_compact,
     file_access_prompt, instruction_budget, load_project_instructions, microcompact, persist_todo_injection,
-    persisted_user_message, plan_todo_injection_async, resolve_file_uris_in_messages,
-    resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
+    persisted_user_message, plan_todo_injection, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages,
+    trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
-use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::AssistantRow;
-use meridian_core::db::models::message::MessageInsert;
+use meridian_core::db::entity::assistant;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
 use meridian_core::events::{
     ChatStopReason, ChatStreamEvent, CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger,
@@ -24,7 +22,7 @@ use meridian_core::provider::{ChatMessage, ChatParams};
 use meridian_core::services::Services;
 use meridian_core::tools;
 use meridian_core::turn::{TurnLease, TurnOrigin};
-use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
+use meridian_core::util::{now_ms, take_bytes_at_char_boundary};
 
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
@@ -34,9 +32,8 @@ use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 /// values through the loop to reach one branch is what the port exists to avoid.
 struct PlanTransitions {
     services: Services,
-    pool: DbPool,
     registry: Arc<tools::ToolRegistry>,
-    assistant: Option<AssistantRow>,
+    assistant: Option<assistant::Model>,
     conversation_id: String,
     project_id: Option<String>,
     persona: String,
@@ -72,21 +69,17 @@ fn select_turn_setting<T>(origin: TurnOrigin, explicit: Option<T>, conversation_
 }
 
 async fn load_message_context_items(
-    pool: &DbPool,
-    context: &db::ops::message::ActiveContext,
-) -> Result<std::collections::HashMap<String, Vec<db::models::message_context_item::MessageContextItemRow>>, String> {
+    db: &db::sea::cap::Db,
+    context: &db::sea::ops::message::ActiveContext,
+) -> Result<std::collections::HashMap<String, Vec<db::entity::message_context_item::Model>>, String> {
     let ids = context
         .path
         .iter()
         .map(|message| message.id.clone())
         .collect::<Vec<_>>();
-    let pool = pool.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        db::ops::message_context_item::list_for_messages(&mut conn, &ids).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    db::sea::ops::message_context_item::list_for_messages(db, &ids)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// `trailing_with_memory` plus the `@` references and `!` results attached to
@@ -132,8 +125,7 @@ fn reference_tool_context(
         conversation_id: None,
         turn_id: None,
         assistant_id: None,
-        db_pool: None,
-        sea: None,
+        db: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
         #[cfg(not(target_os = "android"))]
@@ -154,7 +146,6 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         // finished connecting since then belongs in the tool set the user just
         // agreed to.
         let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
-        let pool = self.pool.clone();
         let registry = self.registry.clone();
         let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
             assistant: self.assistant.clone(),
@@ -172,185 +163,212 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             session_tools: None,
             command_shell: self.command_shell,
         };
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
-        })
-        .await
-        .map_err(|e| e.to_string())
+        self.services
+            .db
+            .read(async |tx| {
+                Ok::<_, db::sea::DbErr>(meridian_core::agent::turn_config::resolve(tx, &registry, input).await)
+            })
+            .await
+            .map_err(|e| e.to_string())
     }
 
     async fn read_plan(&self) -> Result<meridian_core::agent::engine::PlanReadResult, String> {
-        use meridian_core::db::models::plan_review::PlanMaterializationState;
+        use meridian_core::db::entity::plan_materialization::PlanMaterializationState;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
 
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            let head =
-                db::ops::plan_review::get_head_revision(&mut conn, &document.id).map_err(|error| error.to_string())?;
-            let state = match report.conflict {
-                Some(_) => PlanMaterializationState::Conflict,
-                None => db::ops::plan_review::latest_materialization(&mut conn, &document.id)
-                    .map_err(|error| error.to_string())?
-                    .map(|row| row.state())
-                    .transpose()?
-                    .unwrap_or(PlanMaterializationState::Applied),
-            };
-            let (content, sha256) = match head {
-                Some(revision) => (revision.content_markdown, revision.content_sha256),
-                None => {
-                    let content = String::new();
-                    let sha256 = db::ops::plan_review::markdown_sha256(&content);
-                    (content, sha256)
-                }
-            };
-            Ok(meridian_core::agent::engine::PlanReadResult {
-                content,
-                generation: document.working_generation,
-                sha256,
-                file_sync_state: state,
+        let db = &self.services.db;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
+            .map_err(|error| error.to_string())?;
+        let report = self
+            .services
+            .plan_files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        let (head, latest) = db
+            .read(async |tx| {
+                let head = plan_ops::get_head_revision(tx, &document.id).await?;
+                let latest = plan_ops::latest_materialization(tx, &document.id).await?;
+                Ok::<_, plan_ops::PlanReviewStoreError>((head, latest))
             })
+            .await
+            .map_err(|error| error.to_string())?;
+        let state = match report.conflict {
+            Some(_) => PlanMaterializationState::Conflict,
+            None => latest.map_or(PlanMaterializationState::Applied, |row| row.state),
+        };
+        let (content, sha256) = match head {
+            Some(revision) => (revision.content_markdown, revision.content_sha256),
+            None => {
+                let content = String::new();
+                let sha256 = plan_ops::markdown_sha256(&content);
+                (content, sha256)
+            }
+        };
+        Ok(meridian_core::agent::engine::PlanReadResult {
+            content,
+            generation: document.working_generation,
+            sha256,
+            file_sync_state: state,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 
     async fn update_plan(
         &self,
         request: meridian_core::agent::engine::UpdatePlanRequest,
     ) -> Result<meridian_core::agent::engine::PlanUpdateResult, String> {
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            if report.conflict.is_some() {
-                return Err("plan.md is in conflict; restore the database copy before updating it".into());
-            }
-            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?;
-            let current_sha = head
-                .as_ref()
-                .map(|revision| revision.content_sha256.clone())
-                .unwrap_or_else(|| db::ops::plan_review::markdown_sha256(""));
-            if document.working_generation != request.base_generation || current_sha != request.base_sha256 {
-                return Err(format!(
-                    "stale plan base: current generation is {} and current SHA-256 is {}; call read_plan and regenerate the patch",
-                    document.working_generation, current_sha
-                ));
-            }
-            let content = meridian_core::tools::apply_patch::apply_plan_patch(
-                head.as_ref().map(|revision| revision.content_markdown.as_str()),
-                &request.patch,
-            )?;
-            let responding_to_suggestion_revision_id = db::ops::plan_review::list_reviews(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?
-                .into_iter()
-                .rev()
-                .find_map(|review| {
-                    (review.state
-                        == meridian_core::db::models::plan_review::PlanReviewState::ChangesRequested.as_str()
-                        && head
-                            .as_ref()
-                            .is_some_and(|current| current.id == review.submitted_revision_id))
-                        .then_some(review.suggestion_revision_id)
-                        .flatten()
-                });
-            let appended = db::ops::plan_review::append_assistant_revision(
-                &mut conn,
-                &db::ops::plan_review::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: request.base_generation,
-                    expected_head_sha256: head.as_ref().map(|revision| revision.content_sha256.as_str()),
-                    content_markdown: &content,
-                    patch: &request.patch,
-                    source_message_id: Some(&request.source_message_id),
-                    source_call_id: Some(&request.source_call_id),
-                    responding_to_suggestion_revision_id: responding_to_suggestion_revision_id.as_deref(),
-                    now,
-                },
-            )
+        use meridian_core::db::entity::plan_review_session::PlanReviewState;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
+
+        let db = &self.services.db;
+        let files = &self.services.plan_files;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
             .map_err(|error| error.to_string())?;
-            let materialized = files
-                .reconcile_document(&mut conn, &document.id, now_ms())
-                .map_err(|error| error.to_string())?;
-            if let Some(conflict) = materialized.conflict {
-                return Err(conflict.error.unwrap_or_else(|| "plan.md materialization conflicted".into()));
-            }
-            Ok(meridian_core::agent::engine::PlanUpdateResult {
-                generation: appended.document.working_generation,
-                sha256: appended.revision.content_sha256,
-                applied_diff: request.patch,
+        let report = files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        if report.conflict.is_some() {
+            return Err("plan.md is in conflict; restore the database copy before updating it".into());
+        }
+        // The base check, the patch and the append in one write: the append's
+        // generation and head CAS would refuse a moved base anyway, but here
+        // the refusal says what moved.
+        let appended = db
+            .write(async |tx| {
+                let document = plan_ops::get_document(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let head = plan_ops::get_head_revision(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let current_sha = head
+                    .as_ref()
+                    .map(|revision| revision.content_sha256.clone())
+                    .unwrap_or_else(|| plan_ops::markdown_sha256(""));
+                if document.working_generation != request.base_generation || current_sha != request.base_sha256 {
+                    return Err(format!(
+                        "stale plan base: current generation is {} and current SHA-256 is {}; call read_plan and regenerate the patch",
+                        document.working_generation, current_sha
+                    )
+                    .into());
+                }
+                let content = meridian_core::tools::apply_patch::apply_plan_patch(
+                    head.as_ref().map(|revision| revision.content_markdown.as_str()),
+                    &request.patch,
+                )?;
+                let responding_to_suggestion_revision_id = plan_ops::list_reviews(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .into_iter()
+                    .rev()
+                    .find_map(|review| {
+                        (review.state == PlanReviewState::ChangesRequested
+                            && head
+                                .as_ref()
+                                .is_some_and(|current| current.id == review.submitted_revision_id))
+                            .then_some(review.suggestion_revision_id)
+                            .flatten()
+                    });
+                plan_ops::append_assistant_revision(
+                    tx,
+                    &plan_ops::PlanRevisionAppend {
+                        document_id: &document.id,
+                        expected_generation: request.base_generation,
+                        expected_head_sha256: head.as_ref().map(|revision| revision.content_sha256.as_str()),
+                        content_markdown: &content,
+                        patch: &request.patch,
+                        source_message_id: Some(&request.source_message_id),
+                        source_call_id: Some(&request.source_call_id),
+                        responding_to_suggestion_revision_id: responding_to_suggestion_revision_id.as_deref(),
+                        now,
+                    },
+                )
+                .await
             })
+            .await
+            .map_err(|error: plan_ops::PlanReviewStoreError| error.to_string())?;
+        let materialized = files
+            .reconcile_document(db, &document.id, now_ms())
+            .await
+            .map_err(|error| error.to_string())?;
+        if let Some(conflict) = materialized.conflict {
+            return Err(conflict
+                .error
+                .unwrap_or_else(|| "plan.md materialization conflicted".into()));
+        }
+        Ok(meridian_core::agent::engine::PlanUpdateResult {
+            generation: appended.document.working_generation,
+            sha256: appended.revision.content_sha256,
+            applied_diff: request.patch,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 
     async fn submit_plan(
         &self,
         request: meridian_core::agent::engine::SubmitPlanRequest,
     ) -> Result<meridian_core::events::PlanReviewEvent, String> {
-        let pool = self.pool.clone();
-        let conversation_id = self.conversation_id.clone();
-        let files = self.services.plan_files.clone();
-        let native_runtime = self.native_runtime.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let now = now_ms();
-            let document = db::ops::plan_review::create_or_resume_document(&mut conn, &conversation_id, now)
-                .map_err(|error| error.to_string())?;
-            let report = files
-                .reconcile_document(&mut conn, &document.id, now)
-                .map_err(|error| error.to_string())?;
-            if report.conflict.is_some() {
-                return Err("plan.md is in conflict and cannot be submitted".into());
-            }
-            let head = db::ops::plan_review::get_head_revision(&mut conn, &document.id)
-                .map_err(|error| error.to_string())?
-                .ok_or_else(|| "plan.md has no saved revision; create it with update_plan first".to_string())?;
-            let bundle = db::ops::plan_review::submit_native_head_for_review(
-                &mut conn,
-                &db::ops::plan_review::PlanReviewSubmit {
-                    document_id: &document.id,
-                    expected_generation: document.working_generation,
-                    expected_head_sha256: &head.content_sha256,
-                    turn_id: Some(&request.turn_id),
-                    assistant_message_id: Some(&request.assistant_message_id),
-                    provider_call_id: Some(&request.provider_call_id),
-                    provider_kind: meridian_core::db::models::plan_review::PlanReviewProviderKind::Native,
-                    now,
-                },
-                &native_runtime,
-            )
+        use meridian_core::db::entity::plan_review_session::PlanReviewProviderKind;
+        use meridian_core::db::sea::ops::plan_review as plan_ops;
+
+        let db = &self.services.db;
+        let now = now_ms();
+        let document = db
+            .write(async |tx| plan_ops::create_or_resume_document(tx, &self.conversation_id, now).await)
+            .await
             .map_err(|error| error.to_string())?;
-            Ok(meridian_core::events::PlanReviewEvent {
-                review_id: bundle.review.id,
-                conversation_id,
-                document_id: bundle.document.id,
-                revision_id: bundle.submitted_revision.id,
-                turn_id: request.turn_id,
-                status: bundle.review.state,
-                lock_version: bundle.review.lock_version,
-                delivery_state: None,
+        let report = self
+            .services
+            .plan_files
+            .reconcile_document(db, &document.id, now)
+            .await
+            .map_err(|error| error.to_string())?;
+        if report.conflict.is_some() {
+            return Err("plan.md is in conflict and cannot be submitted".into());
+        }
+        let bundle = db
+            .write(async |tx| {
+                let document = plan_ops::get_document(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                let head = plan_ops::get_head_revision(tx, &document.id)
+                    .await
+                    .map_err(|error| error.to_string())?
+                    .ok_or_else(|| "plan.md has no saved revision; create it with update_plan first".to_string())?;
+                plan_ops::submit_native_head_for_review(
+                    tx,
+                    &plan_ops::PlanReviewSubmit {
+                        document_id: &document.id,
+                        expected_generation: document.working_generation,
+                        expected_head_sha256: &head.content_sha256,
+                        turn_id: Some(&request.turn_id),
+                        assistant_message_id: Some(&request.assistant_message_id),
+                        provider_call_id: Some(&request.provider_call_id),
+                        provider_kind: PlanReviewProviderKind::Native,
+                        now,
+                    },
+                    &self.native_runtime,
+                )
+                .await
             })
+            .await
+            .map_err(|error: plan_ops::PlanReviewStoreError| error.to_string())?;
+        Ok(meridian_core::events::PlanReviewEvent {
+            review_id: bundle.review.id,
+            conversation_id: self.conversation_id.clone(),
+            document_id: bundle.document.id,
+            revision_id: bundle.submitted_revision.id,
+            turn_id: request.turn_id,
+            status: bundle.review.state.as_str().to_string(),
+            lock_version: bundle.review.lock_version,
+            delivery_state: None,
         })
-        .await
-        .map_err(|error| error.to_string())?
     }
 }
 
@@ -395,9 +413,9 @@ impl TurnGuard<'_> {
     ///
     /// `Err` means the id is already on record, and the caller must not go on
     /// to close that turn out.
-    async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
+    async fn open_record(&self, db: &meridian_core::db::sea::cap::Db) -> Result<(), String> {
         turn_record::begin_triggered(
-            pool,
+            db,
             &self.turn_id,
             self.conversation_id,
             self.origin,
@@ -580,16 +598,11 @@ impl meridian_core::services::StartTurn for DesktopTurns {
     async fn start(
         &self,
         conversation_id: &str,
-        queued: &meridian_core::db::models::queue::QueuedPromptRow,
+        queued: &meridian_core::db::entity::queued_prompt::Model,
     ) -> Result<(), String> {
-        let pool = self.0.db.clone();
-        let queue_id = queued.id.clone();
-        let queued_context = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::queued_prompt_context_item::list_prepared(&mut conn, &queue_id).map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let queued_context = db::sea::ops::queued_prompt_context_item::list_prepared(&self.0.db, &queued.id)
+            .await
+            .map_err(|e| e.to_string())?;
         run_turn(
             self.0.clone(),
             conversation_id.to_string(),
@@ -766,7 +779,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
 ///
 /// `queued` names the queue item this turn is delivering, and travels all the
 /// way down to the transaction that writes the user's row so the two are spent
-/// together. See `db::ops::queue::take_next` for why that has to be one write.
+/// together. See `db::sea::ops::queue::take_next` for why that has to be one write.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_turn(
     services: Services,
@@ -791,10 +804,8 @@ pub async fn run_turn(
     // ended. See `StartTurn::start_unprompted`.
     wake: bool,
 ) -> Result<(), String> {
-    let pool = services.db.clone();
-
     if origin != TurnOrigin::PlanReview {
-        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&services.db, &conversation_id).await?;
     }
 
     // Nothing is awaited between taking this and handing it to the guard that
@@ -812,7 +823,7 @@ pub async fn run_turn(
     // durable read closes that gap. Plan-review continuations are the one
     // authorised path across their own barrier.
     if origin != TurnOrigin::PlanReview {
-        crate::commands::plan_review::ensure_conversation_not_waiting_review(&pool, &conversation_id).await?;
+        crate::commands::plan_review::ensure_conversation_not_waiting_review(&services.db, &conversation_id).await?;
     }
 
     // Set once the turn's row exists, and read below to decide whether closing
@@ -858,7 +869,7 @@ pub async fn run_turn(
     if let Err(ref e) = result
         && recorded.load(Ordering::Relaxed)
     {
-        turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
+        turn_record::finish(&services.db, &turn_id, TurnStatus::Failed, Some(e)).await;
     }
 
     // After the record is closed, and reading it back rather than being told:
@@ -906,35 +917,34 @@ pub async fn run_plan_review_continuation(
 }
 
 pub(crate) async fn verify_plan_review_workspace(
-    pool: &DbPool,
+    db: &db::sea::cap::Db,
     conversation_id: &str,
     runtime: &db::models::plan_review::NativePlanReviewRuntimeConfig,
 ) -> Result<(), String> {
-    let pool = pool.clone();
-    let conversation_id = conversation_id.to_string();
-    let expected_project_id = runtime.project_id.clone();
-    let expected_project_path = runtime.project_path.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let conversation =
-            db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
-        let current_project_id = conversation.project_id.clone();
-        let current_project_path = current_project_id
-            .as_deref()
-            .map(|project_id| db::ops::project::get_project(&mut conn, project_id))
-            .transpose()
-            .map_err(|e| e.to_string())?
-            .and_then(|project| project.path);
-        if current_project_id != expected_project_id || current_project_path != expected_project_path {
-            return Err(
-                "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
-                    .into(),
-            );
-        }
-        Ok(())
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    // The conversation and its project in one snapshot: a move between the
+    // two reads would compare one project's id with another's path.
+    let (current_project_id, current_project_path) = db
+        .read(async |tx| {
+            let conversation = db::sea::ops::conversation::get_conversation(tx, conversation_id)
+                .await?
+                .ok_or_else(|| db::sea::DbErr::RecordNotFound(format!("conversation {conversation_id}")))?;
+            let path = match conversation.project_id.as_deref() {
+                Some(project_id) => db::sea::ops::project::get_project(tx, project_id)
+                    .await?
+                    .and_then(|project| project.path),
+                None => None,
+            };
+            Ok::<_, db::sea::DbErr>((conversation.project_id, path))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    if current_project_id != runtime.project_id || current_project_path != runtime.project_path {
+        return Err(
+            "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
+                .into(),
+        );
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -967,7 +977,6 @@ async fn chat_inner(
     wake: bool,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
-    let pool = services.db.clone();
     // Every stream event this turn sends goes through here. The bus is an `Arc`
     // inside, so the clone is a refcount bump.
     let emitter = meridian_core::events::BusEmit(services.events.clone());
@@ -1006,7 +1015,7 @@ async fn chat_inner(
     // which notices this turn actually pays.
     #[cfg(not(target_os = "android"))]
     if wake {
-        stop_guard.trigger_ref = meridian_core::background::first_wake(&services.sea, &conversation_id).await;
+        stop_guard.trigger_ref = meridian_core::background::first_wake(&services.db, &conversation_id).await;
     }
 
     // Only now, with the guard up. From here the row says `running`; every exit
@@ -1018,7 +1027,7 @@ async fn chat_inner(
     // Refused, not logged, if the id is already on record: these are minted by
     // the front end, and a replayed one would rewrite the finished turn it
     // names and file this turn's messages under it.
-    stop_guard.open_record(&pool).await?;
+    stop_guard.open_record(&services.db).await?;
     recorded.store(true, Ordering::Relaxed);
 
     // Whatever background tasks ended since the model last heard, told before
@@ -1032,46 +1041,48 @@ async fn chat_inner(
     // looking and this turn getting the conversation.
     #[cfg(not(target_os = "android"))]
     if origin == TurnOrigin::Desktop && replaces.is_none() {
-        let told = meridian_core::background::claim(&services.sea, &conversation_id, &turn_id).await?;
+        let told = meridian_core::background::claim(&services.db, &conversation_id, &turn_id).await?;
         if wake && told.is_empty() {
-            turn_record::finish(&pool, &turn_id, TurnStatus::Done, None).await;
+            turn_record::finish(&services.db, &turn_id, TurnStatus::Done, None).await;
             stop_guard.disarm();
             return Ok(());
         }
     }
 
     // Load conversation + assistant + active path + project path
-    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        let aid_override = assistant_id.clone();
-        let replaces = replaces.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let effective_aid = select_turn_setting(origin, aid_override.as_deref(), conv.assistant_id.as_deref());
+    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = services
+        .db
+        .read(async |tx| {
+            let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                return Ok(Err(format!("conversation {conversation_id} not found")));
+            };
+            let effective_aid = select_turn_setting(origin, assistant_id.as_deref(), conv.assistant_id.as_deref());
             // Pinned before anything derives from it. A delegated run stays
             // writable after it ends, and a follow-up has to go to the model the
             // transcript was written by — one conversation spanning two models
             // with no record of where it changed is not something anyone can
             // read afterwards. An explicit override from the model picker still
-            // wins; this is the fallback, not a lock.
-            let assistant =
-                conv.pin_model(effective_aid.and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok()));
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let project = conv
-                .project_id
-                .as_deref()
-                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
+            // wins; this is the fallback, not a lock. An assistant or project
+            // that cannot be read is none, as before.
+            let assistant = match effective_aid {
+                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                None => None,
+            };
+            let assistant = conv.pin_model(assistant);
+            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let project = match conv.project_id.as_deref() {
+                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                None => None,
+            };
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
             let conv_prefs = (
                 conv.thinking_level.clone(),
-                conv.fast_mode != 0,
+                conv.fast_mode.get(),
                 conv.mode.clone(),
-                conv.accept_edits != 0,
+                conv.accept_edits.get(),
             );
             // Where the new messages hang. Looked up from the message being
             // replaced rather than passed in, so replacing a root works without
@@ -1079,7 +1090,7 @@ async fn chat_inner(
             // second root.
             let replaced = replaces.as_deref().and_then(|id| history.iter().find(|m| m.id == id));
             if replaces.is_some() && replaced.is_none() {
-                return Err("the message being replaced is not in this conversation".into());
+                return Ok(Err("the message being replaced is not in this conversation".to_string()));
             }
             let branch_parent = replaced.and_then(|m| m.parent_id.clone());
 
@@ -1094,16 +1105,16 @@ async fn chat_inner(
             // "no head, use the newest row" fallback would wrongly hand back the
             // whole conversation, so that case is built empty.
             let ctx = match (replaced.is_some(), branch_parent.as_deref()) {
-                (true, None) => db::ops::message::ActiveContext {
+                (true, None) => db::sea::ops::message::ActiveContext {
                     path: Vec::new(),
                     summary: None,
                     anchor_index: None,
                     head_id: None,
                 },
-                (true, parent) => db::ops::message::active_context(&history, parent),
-                (false, _) => db::ops::message::active_context(&history, conv.head_message_id.as_deref()),
+                (true, parent) => db::sea::ops::message::active_context(&history, parent),
+                (false, _) => db::sea::ops::message::active_context(&history, conv.head_message_id.as_deref()),
             };
-            Ok::<_, String>((
+            Ok::<_, db::sea::DbErr>(Ok((
                 assistant,
                 ctx,
                 conv.title,
@@ -1111,34 +1122,21 @@ async fn chat_inner(
                 project_id,
                 conv_prefs,
                 branch_parent,
-            ))
+            )))
         })
         .await
-        .map_err(|e| e.to_string())??
-    };
-    let mut stored_context_items = load_message_context_items(&pool, &ctx).await?;
+        .map_err(|e| e.to_string())??;
+    let mut stored_context_items = load_message_context_items(&services.db, &ctx).await?;
 
-    // Resolve provider config (with optional overrides). Off the async thread:
-    // it takes a pooled connection and reads the OS credential store, either of
-    // which can block for as long as the pool's acquire timeout.
-    let resolved = {
-        let pool2 = pool.clone();
-        let secrets2 = secrets.clone();
-        let assistant2 = assistant.clone();
-        let model_override = model_override.clone();
-        let provider_override = provider_override.clone();
-        tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_with_overrides(
-                &secrets2,
-                &pool2,
-                assistant2.as_ref(),
-                model_override,
-                provider_override.as_deref(),
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
+    // Resolve provider config (with optional overrides).
+    let resolved = meridian_core::agent::resolve_with_overrides(
+        secrets,
+        &services.db,
+        assistant.as_ref(),
+        model_override.clone(),
+        provider_override.as_deref(),
+    )
+    .await?;
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
     tracing::Span::current().record("model", resolved.model.as_str());
@@ -1155,7 +1153,7 @@ async fn chat_inner(
     // only matter once the request parameters are built.
     let conv_mode = conv_prefs.2.clone();
 
-    let file_access = build_file_access(&services.sea).await?;
+    let file_access = build_file_access(&services.db).await?;
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -1165,7 +1163,8 @@ async fn chat_inner(
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
     let interrupted =
-        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await?;
+        meridian_core::agent::interrupted::load_block(&services.db, &services.turns, &conversation_id, &turn_id)
+            .await?;
     // Everything the assistant may do this turn, and everything it is told.
     // Shared with the OneBot loop and the token estimator so the three cannot
     // drift apart again. The memory block is deliberately not part of it: that
@@ -1207,39 +1206,24 @@ async fn chat_inner(
     // and the turn it summarises have to send parameters filtered against the
     // same model, and what the model can be sent at all — whether it takes a
     // tools field — decides the tool set below.
-    let mut turn_params = {
-        let pool2 = pool.clone();
-        let assistant2 = assistant.clone();
-        let pid = effective_provider_id.clone();
-        let pt = resolved.provider_type.clone();
-        let af = resolved.api_format.clone();
-        let tp = resolved.transport_profile.clone();
-        let crs = resolved.codex_request_shape;
-        let mid = model.clone();
-        let level = effective_level.clone();
-        let fast = effective_fast;
-        tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_turn_params(
-                &pool2,
-                meridian_core::agent::TurnParamsResolveRequest {
-                    assistant: assistant2.as_ref(),
-                    provider_id: pid.as_deref(),
-                    provider_type: &pt,
-                    api_format: &af,
+    let mut turn_params = meridian_core::agent::resolve_turn_params(
+        &services.db,
+        meridian_core::agent::TurnParamsResolveRequest {
+            assistant: assistant.as_ref(),
+            provider_id: effective_provider_id.as_deref(),
+            provider_type: &resolved.provider_type,
+            api_format: &resolved.api_format,
 
-                    transport_profile: &tp,
-                    codex_request_shape: crs,
-                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
-                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
-                    model: &mid,
-                    thinking_level: level.as_deref(),
-                    fast,
-                },
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
+            transport_profile: &resolved.transport_profile,
+            codex_request_shape: resolved.codex_request_shape,
+            codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+            codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
+            model: &model,
+            thinking_level: effective_level.as_deref(),
+            fast: effective_fast,
+        },
+    )
+    .await?;
     // What the provider caches is a prefix, and the conversation is what keeps
     // one stable across turns. Set here rather than inside the resolver, which
     // is also what the summariser and the token estimator go through: neither
@@ -1315,12 +1299,7 @@ async fn chat_inner(
     // Not on Android, where `run_command` and the sandbox module are compiled
     // out: there is no command for either setting to govern, so nothing is read.
     #[cfg(not(target_os = "android"))]
-    let command_settings = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || meridian_core::sandbox::CommandSettings::read(&pool2))
-            .await
-            .map_err(|e| e.to_string())??
-    };
+    let command_settings = meridian_core::sandbox::CommandSettings::load(&services.db).await?;
     #[cfg(not(target_os = "android"))]
     let sandbox_policy = meridian_core::sandbox::resolve_command_sandbox(
         &command_settings,
@@ -1342,40 +1321,47 @@ async fn chat_inner(
     // resolved a different one would quietly change what the model may delegate
     // to — halfway through a turn, with nothing on screen to say so.
     let (turn, sub_agent_catalog) = {
-        let pool2 = pool.clone();
         let registry = tool_registry.clone();
         let assistant2 = assistant.clone();
         let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         let server_tools = turn_server_tools.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn)?;
-            let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
-                assistant: assistant2,
-                server_tools,
-                conversation_id: conv_id,
-                project_id: pid,
-                mode: meridian_core::agent::modes::Modes::Switchable(mode),
-                sub_agents: Some(catalog.clone()),
-                mcp_defs,
-                exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
-                persona: persona2,
-                context_blocks: blocks,
-                session_tools: None,
-                command_shell,
-            };
-            let turn = meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)?;
-            Ok::<_, String>((turn, catalog))
-        })
-        .await
-        .map_err(|e| e.to_string())??
+        services
+            .db
+            .read(async |tx| {
+                let catalog = match meridian_core::agent::sub_agents::catalog(tx).await {
+                    Ok(catalog) => catalog,
+                    Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
+                };
+                let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
+                    assistant: assistant2,
+                    server_tools,
+                    conversation_id: conv_id,
+                    project_id: pid,
+                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                    sub_agents: Some(catalog.clone()),
+                    mcp_defs,
+                    exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
+                    persona: persona2,
+                    context_blocks: blocks,
+                    session_tools: None,
+                    command_shell,
+                };
+                Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input)
+                    .await
+                    .map(|turn| (turn, catalog)))
+            })
+            .await
+            .map_err(|e| e.to_string())??
     };
     let tool_defs = turn.tool_defs;
     let offered = turn.offered;
     let system_prompt = turn.system_prompt;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
-    let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
+    let auto_compact = assistant
+        .as_ref()
+        .map(|a| a.auto_compact_enabled.get())
+        .unwrap_or(false);
 
     let context_limit = turn_params.context_limit;
     let max_output = turn_params.max_output;
@@ -1431,19 +1417,13 @@ async fn chat_inner(
                 let spent: usize = items.iter().map(|item| item.token_count.max(0) as usize).sum();
                 let budget_left = meridian_core::workspace::reference::turn_context_token_limit(Some(context_limit))
                     .saturating_sub(spent);
-                let pool2 = pool.clone();
-                let current = conversation_id.clone();
-                let frozen = tokio::task::spawn_blocking(move || {
-                    let mut conn = get_conn(&pool2)?;
-                    meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-                        &mut conn,
-                        &current,
-                        &conv_refs,
-                        budget_left,
-                    )
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                    &services.db,
+                    &conversation_id,
+                    &conv_refs,
+                    budget_left,
+                )
+                .await?;
                 items.extend(frozen);
             } else if message.is_some()
                 && let Some(replaced) = replaces.as_deref()
@@ -1455,37 +1435,29 @@ async fn chat_inner(
                 // so the replay stays word-for-word; a re-freeze would show the
                 // thread as it is now, which is not what the edited question
                 // was asked about.
-                let pool2 = pool.clone();
-                let replaced = replaced.to_string();
-                let copied = tokio::task::spawn_blocking(move || {
-                    let mut conn = get_conn(&pool2)?;
-                    let rows = db::ops::message_context_item::list_for_message(&mut conn, &replaced)
-                        .map_err(|e| e.to_string())?;
-                    Ok::<_, String>(
-                        rows.into_iter()
-                            .filter(|row| {
-                                row.kind
-                                    == meridian_core::workspace::reference::MessageContextKind::Conversation.as_str()
-                            })
-                            .map(|row| meridian_core::workspace::reference::PreparedContextItem {
-                                id: uuid::Uuid::new_v4().to_string(),
-                                kind: meridian_core::workspace::reference::MessageContextKind::Conversation,
-                                content: row.content,
-                                display_path: row.display_path,
-                                line_start: row.line_start,
-                                line_end: row.line_end,
-                                content_hash: row.content_hash,
-                                byte_count: row.byte_count,
-                                line_count: row.line_count,
-                                token_count: row.token_count,
-                                truncated: row.truncated,
-                                metadata: row.metadata,
-                            })
-                            .collect::<Vec<_>>(),
-                    )
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                // pool-read-before-write: the replaced message's frozen items never
+                // change once written; this turn's write only adds a sibling.
+                let rows = db::sea::ops::message_context_item::list_for_message(&services.db, replaced)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let copied = rows
+                    .into_iter()
+                    .filter(|row| row.kind == meridian_core::workspace::reference::MessageContextKind::Conversation)
+                    .map(|row| meridian_core::workspace::reference::PreparedContextItem {
+                        id: uuid::Uuid::new_v4().to_string(),
+                        kind: meridian_core::workspace::reference::MessageContextKind::Conversation,
+                        content: row.content,
+                        display_path: row.display_path,
+                        line_start: row.line_start,
+                        line_end: row.line_end,
+                        content_hash: row.content_hash,
+                        byte_count: row.byte_count,
+                        line_count: row.line_count,
+                        token_count: row.token_count,
+                        truncated: i32::from(row.truncated.get()),
+                        metadata: row.metadata,
+                    })
+                    .collect::<Vec<_>>();
                 items.extend(copied);
             }
             items
@@ -1515,7 +1487,7 @@ async fn chat_inner(
     // row are both built from it: a label given later must not change how this
     // message replays (CLAUDE.md, "What was sent is never dropped or rewritten").
     let message = match message {
-        Some(m) => Some(meridian_core::agent::freeze_sticker_parts(&services.sea, &m).await?),
+        Some(m) => Some(meridian_core::agent::freeze_sticker_parts(&services.db, &m).await?),
         None => None,
     };
     let live_user = message
@@ -1528,13 +1500,13 @@ async fn chat_inner(
         // Only to size the window. The real decision is taken after compaction,
         // against the path compaction leaves behind — see below.
         let probe = meridian_core::agent::plan_injection_async(
-            &services.sea,
+            &services.db,
             memory_request.clone(),
             ctx.live().to_vec(),
             now_ms(),
         )
         .await?;
-        let todo_probe = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
+        let todo_probe = plan_todo_injection(&services.db, &conversation_id, ctx.live()).await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
@@ -1566,11 +1538,18 @@ async fn chat_inner(
             // that follows reported as a compaction that never finished, and
             // tell the model its history might be half-rewritten when it is not.
             let compaction = engine::in_phase(
-                &pool,
+                &services.db,
                 &turn_id,
                 TurnPhase::Compacting,
                 None,
-                do_compact(&pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, None),
+                do_compact(
+                    &services.db,
+                    secrets,
+                    &conversation_id,
+                    assistant.as_ref(),
+                    keep_recent,
+                    None,
+                ),
             )
             .await;
             match compaction {
@@ -1614,29 +1593,31 @@ async fn chat_inner(
     // Compaction wrote a summary row, so the context has to be read again for it
     // to take effect.
     let ctx = if compacted {
-        let pool2 = pool.clone();
-        let conv_id = conversation_id.clone();
         // Not a fallback to the pre-compaction context. Compaction has already
         // written the summary and moved the head, so carrying on with the old
         // path would send the very history that just overflowed — and do it
         // while reporting the turn as compacted.
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            Ok::<_, String>(db::ops::message::active_context(
-                &history,
-                conv.head_message_id.as_deref(),
-            ))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
+        services
+            .db
+            .read(async |tx| {
+                let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                    return Ok(Err(format!("conversation {conversation_id} not found")));
+                };
+                let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+                Ok::<_, db::sea::DbErr>(Ok(db::sea::ops::message::active_context(
+                    &history,
+                    conv.head_message_id.as_deref(),
+                )))
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|read| read)
+            .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
     } else {
         ctx
     };
     if compacted {
-        stored_context_items = load_message_context_items(&pool, &ctx).await?;
+        stored_context_items = load_message_context_items(&services.db, &ctx).await?;
     }
 
     // After compaction, never before it: compaction moves the summary anchor, and
@@ -1646,11 +1627,11 @@ async fn chat_inner(
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
     let injection =
-        meridian_core::agent::plan_injection_async(&services.sea, memory_request, ctx.live().to_vec(), t0).await?;
+        meridian_core::agent::plan_injection_async(&services.db, memory_request, ctx.live().to_vec(), t0).await?;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
     // The checklist, frozen the same way and for the same reason; it goes right
     // after the memory block, which is the order the two rows are written in.
-    let todo = plan_todo_injection_async(&pool, conversation_id.clone(), ctx.live().to_vec()).await?;
+    let todo = plan_todo_injection(&services.db, &conversation_id, ctx.live()).await?;
 
     let mut chat_messages = build_messages_with_context_items(
         system_prompt.trim(),
@@ -1668,7 +1649,7 @@ async fn chat_inner(
     )?;
     resolve_sticker_parts_in_messages(
         &mut chat_messages,
-        Some(&services.sea),
+        Some(&services.db),
         Some(services.paths.data_dir.as_path()),
         supports_images,
     )
@@ -1703,96 +1684,42 @@ async fn chat_inner(
     // Ahead of the message, because that is where it was sent and where the next
     // turn has to find it.
     if let Some(ref injection) = injection {
-        parent_cursor =
-            meridian_core::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now)
-                .await;
+        parent_cursor = meridian_core::agent::persist_injection(
+            &services.db,
+            injection,
+            &conversation_id,
+            &turn_id,
+            parent_cursor,
+            now,
+        )
+        .await;
     }
     // After memory, before the message: the order `trailing` sent them in.
     if let Some(ref todo) = todo {
-        parent_cursor = persist_todo_injection(&pool, todo, &conversation_id, &turn_id, parent_cursor, now).await;
+        parent_cursor =
+            persist_todo_injection(&services.db, todo, &conversation_id, &turn_id, parent_cursor, now).await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
     // on record.
     if let Some(ref text) = message {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        let msg = text.clone();
-        let msg_id = user_msg_id.clone();
-        let parent = parent_cursor.clone();
-        let turn = turn_id.clone();
-        // Read before the shadowing clone below carries it into the closure.
         let delivered_from_queue = queued.is_some();
-        let queued = queued.clone();
-        let context_items = prepared_context.clone();
-        tokio::task::spawn_blocking(move || -> Result<(), String> {
-            use diesel::Connection;
-            let mut conn = get_conn(&pool)?;
-            // One transaction, because a queued message and the row it becomes
-            // must not come apart: killed in between, either the item is still
-            // queued and no row exists — deliver it again, safely — or the row
-            // is in the transcript and the item is spent.
-            conn.transaction::<_, diesel::result::Error, _>(|conn| {
-                db::ops::message::append_message(
-                    conn,
-                    &MessageInsert {
-                        id: &msg_id,
-                        conversation_id: &conv_id,
-                        role: "user",
-                        content: &msg,
-                        provider_id: None,
-                        model_id: None,
-                        input_tokens: None,
-                        output_tokens: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        sort_order: 0,
-                        created_at: now,
-                        reasoning_content: None,
-                        rating: None,
-                        schema_version: 2,
-                        is_compact_summary: 0,
-                        // Desktop chats have a single implicit speaker.
-                        sender_id: None,
-                        parent_id: None,
-                        compact_anchor_id: None,
-                        source: if voice == Some(true) { Some("voice") } else { None },
-                        turn_id: Some(&turn),
-                        tool_outcome: None,
-                        // What the user typed cost no tokens and came from no upstream.
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        server_tool_calls: None,
-                        provider_name: None,
-                        response_model_id: None,
-                    },
-                    parent.as_deref(),
-                )?;
-                db::ops::emoji::link_stickers_in_content(conn, &msg_id, &msg)?;
-                let rows = context_items
-                    .iter()
-                    .enumerate()
-                    .map(
-                        |(position, item)| db::models::message_context_item::MessageContextItemInsert {
-                            id: &item.id,
-                            message_id: &msg_id,
-                            position: position as i32,
-                            kind: item.kind.as_str(),
-                            content: &item.content,
-                            display_path: item.display_path.as_deref(),
-                            line_start: item.line_start,
-                            line_end: item.line_end,
-                            content_hash: &item.content_hash,
-                            byte_count: item.byte_count,
-                            line_count: item.line_count,
-                            token_count: item.token_count,
-                            truncated: item.truncated,
-                            metadata: item.metadata.as_deref(),
-                            created_at: now,
-                        },
-                    )
-                    .collect::<Vec<_>>();
-                db::ops::message_context_item::insert_many(conn, &rows)?;
+        let row = db::entity::message::Model {
+            // Desktop chats have a single implicit speaker.
+            source: (voice == Some(true)).then(|| "voice".to_string()),
+            turn_id: Some(turn_id.clone()),
+            ..db::sea::ops::message::new_row(&user_msg_id, &conversation_id, "user", text, now)
+        };
+        // One IMMEDIATE write, because a queued message and the row it becomes
+        // must not come apart: killed in between, either the item is still
+        // queued and no row exists — deliver it again, safely — or the row is
+        // in the transcript and the item is spent.
+        services
+            .db
+            .write(async |tx| {
+                db::sea::ops::message::append_message(tx, row, parent_cursor.as_deref()).await?;
+                db::sea::ops::emoji::link_stickers_in_content(tx, &user_msg_id, text).await?;
+                db::sea::ops::message_context_item::insert_prepared(tx, &user_msg_id, &prepared_context, now).await?;
                 if let Some(queued) = &queued {
                     // Refuses an item somebody else already took, or that has
                     // been held or dragged out of first place since it was
@@ -1801,22 +1728,12 @@ async fn chat_inner(
                     // wrong guarantee for a message that might say "delete the
                     // old migration", and the lease says nothing at all about
                     // the other two.
-                    //
-                    // `None`: a turn of its own takes whatever mode is at the
-                    // front, because with nothing running there is nothing for
-                    // an `interject` to wait for.
-                    if db::ops::queue::mark_dispatched(conn, &conv_id, queued, None, &turn, now)? == 0 {
-                        return Err(diesel::result::Error::RollbackTransaction);
-                    }
-                    db::ops::queue::mark_settled(conn, queued, Some(&msg_id), now)?;
-                    db::ops::queued_prompt_context_item::delete_for_queue(conn, queued)?;
+                    db::sea::ops::queue::spend(tx, &conversation_id, queued, &turn_id, &user_msg_id, now).await?;
                 }
                 Ok(())
             })
-            .map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            .await
+            .map_err(|e: db::sea::DbErr| e.to_string())?;
         // The row exists and the item has been spent, both in the transaction
         // above. Nothing else will say so until the turn ends, which for a
         // queued message is the whole of the wait: without this the front end
@@ -1830,10 +1747,12 @@ async fn chat_inner(
     }
 
     let sleep_enabled = {
-        let stored = db::sea::ops::preference::get_preference(&services.sea, "sleep_inhibitor.enabled")
+        // pool-read-before-write: whether to keep the machine awake guards none
+        // of the writes that follow it in this turn.
+        let stored = db::sea::ops::preference::get_preference(&services.db, "sleep_inhibitor.enabled")
             .await
             .map_err(|error| error.to_string())?;
-        db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
+        db::sea::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
     };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of
@@ -1841,20 +1760,14 @@ async fn chat_inner(
     // Missing still means enabled: sandbox-by-default on Windows.
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = sleep_enabled.then(|| services.sleep.begin_turn());
-    let tool_secrets = {
-        let pool2 = pool.clone();
-        let secrets2 = secrets.clone();
-        tokio::task::spawn_blocking(move || meridian_core::agent::build_tool_secrets(&secrets2, &pool2))
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    let tool_secrets = meridian_core::agent::build_tool_secrets(secrets, &services.db).await;
     // The shadow file journal for this turn: what the file primitives append
     // their observed transitions to. Desktop-only wiring for now — SAF paths
     // have no canonical key, so Android runs without one and its writes
     // surface as `external` on the next desktop observation.
     #[cfg(not(target_os = "android"))]
     let journal = Some(meridian_core::journal::capture::JournalCtx::new(
-        services.sea.clone(),
+        services.db.clone(),
         meridian_core::journal::journal_root(&services.paths.data_dir),
         conversation_id.clone(),
         turn_id.clone(),
@@ -1879,8 +1792,7 @@ async fn chat_inner(
         conversation_id: Some(conversation_id.clone()),
         turn_id: Some(turn_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
-        db_pool: Some(pool.clone()),
-        sea: Some(services.sea.clone()),
+        db: Some(services.db.clone()),
         #[cfg(not(target_os = "android"))]
         sandbox_policy,
         #[cfg(not(target_os = "android"))]
@@ -1892,7 +1804,6 @@ async fn chat_inner(
 
     let transitions = PlanTransitions {
         services: services.clone(),
-        pool: pool.clone(),
         registry: tool_registry.clone(),
         assistant: assistant.clone(),
         conversation_id: conversation_id.clone(),
@@ -1920,7 +1831,6 @@ async fn chat_inner(
     // behind, and a delegated run needs all three.
     let sub_agents = super::sub_agent::DesktopSubAgents {
         services: services.clone(),
-        pool: pool.clone(),
         secrets: secrets.clone(),
         registry: tool_registry.clone(),
         coordinator: services.turns.clone(),
@@ -1966,7 +1876,8 @@ async fn chat_inner(
             multi_party: false,
             unattended: false,
         },
-    )?;
+    )
+    .await?;
     // Outermost, so it sees the reviewer's own refusals as well as the ones the
     // user gave. Underneath it, the denials cheapest to repeat — the ones
     // nothing stopped to ask about — would be exactly the ones it missed.
@@ -1978,20 +1889,20 @@ async fn chat_inner(
     // the wrapper adds is the only thing that says so.
     let interjections = meridian_core::agent::queue::Announcing::wrap(
         services.events.clone(),
-        meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone()),
+        meridian_core::agent::queue::Interjections::new(services.db.clone(), conversation_id.clone(), turn_id.clone()),
     );
     // And a background task that ends while this turn runs is told at the
     // next round, after whatever was typed in the same interval.
     #[cfg(not(target_os = "android"))]
     let notices =
-        meridian_core::background::TaskNotices::new(services.sea.clone(), conversation_id.clone(), turn_id.clone());
+        meridian_core::background::TaskNotices::new(services.db.clone(), conversation_id.clone(), turn_id.clone());
     #[cfg(not(target_os = "android"))]
     let steering = engine::Chain(vec![&interjections, &notices]);
     #[cfg(target_os = "android")]
     let steering = engine::Chain(vec![&interjections]);
     let outcome = engine::run_turn(
         &engine::TurnServices {
-            pool: &pool,
+            db: &services.db,
             tools: tool_registry,
             mcp: &mcp,
             redaction: &services.redaction,
@@ -2024,7 +1935,7 @@ async fn chat_inner(
             withheld: engine::WithheldWording::Explained,
             files_root,
             stickers: Some(engine::StickerRendering {
-                db: services.sea.clone(),
+                db: services.db.clone(),
                 data_dir: services.paths.data_dir.clone(),
                 supports_images,
             }),
@@ -2090,7 +2001,7 @@ async fn chat_inner(
         (TurnStatus::Done, None)
     };
     if waiting_review.is_none() {
-        turn_record::finish(&pool, &turn_id, status, error).await;
+        turn_record::finish(&services.db, &turn_id, status, error).await;
     }
 
     let stop_reason = if turn_aborted {
@@ -2147,29 +2058,24 @@ async fn chat_inner(
             let title = answer.text.trim().trim_matches('"').trim_matches('\'').to_string();
             let title_usage = answer.usage;
             if !title.is_empty() {
-                let pool = pool.clone();
-                let conv_id = conversation_id.clone();
-                let assistant_row = assistant_msg_id.clone();
-                let (pid, pname, mid) = (
-                    resolved.provider_id.clone(),
-                    resolved.provider_name.clone(),
-                    model.clone(),
-                );
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Ok(mut conn) = pool.get() {
-                        let _ = db::ops::conversation::update_title(&mut conn, &conv_id, &title, now_ms());
+                // The title and what it cost, in one write; the cost in a
+                // savepoint, best effort as every side-request ledger write is.
+                let written = services
+                    .db
+                    .write(async |tx| {
+                        db::sea::ops::conversation::update_title(tx, &conversation_id, &title, now_ms()).await?;
                         // Filed against the reply the title was taken from —
                         // there is no row of its own, and this is the one it
                         // describes.
                         if let Some(usage) = title_usage {
-                            let cost = db::ops::audit::SideRequestCost {
-                                role: db::ops::audit::TITLE_ROLE,
-                                message_id: &assistant_row,
-                                conversation_id: &conv_id,
+                            let cost = db::sea::ops::audit::SideRequestCost {
+                                role: db::sea::ops::audit::TITLE_ROLE,
+                                message_id: &assistant_msg_id,
+                                conversation_id: &conversation_id,
                                 turn_id: None,
-                                provider_id: Some(&pid),
-                                provider_name: Some(&pname),
-                                model_id: Some(&mid),
+                                provider_id: Some(&resolved.provider_id),
+                                provider_name: Some(&resolved.provider_name),
+                                model_id: Some(&model),
                                 usage: db::models::message::MessageUsage {
                                     input_tokens: usage.prompt_tokens,
                                     output_tokens: usage.completion_tokens,
@@ -2180,13 +2086,19 @@ async fn chat_inner(
                                 peak_prompt_tokens: usage.prompt_tokens,
                                 summary: "title",
                             };
-                            if let Err(e) = db::ops::audit::record_side_request(&mut conn, cost) {
+                            if let Err(e) = tx
+                                .nested(async |tx| db::sea::ops::audit::record_side_request(tx, cost).await)
+                                .await
+                            {
                                 tracing::warn!(error = %e, "could not record what the title cost");
                             }
                         }
-                    }
-                })
-                .await;
+                        Ok::<_, db::sea::DbErr>(())
+                    })
+                    .await;
+                if let Err(e) = written {
+                    tracing::warn!(error = %e, "could not save the generated title");
+                }
                 services.events.emit_conversation_updated(&conversation_id).ok();
             }
         }

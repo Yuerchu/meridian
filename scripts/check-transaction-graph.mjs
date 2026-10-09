@@ -550,6 +550,11 @@ function isPub(text, at) {
   return /\bpub(?:\([^)]*\))?\s+(?:(?:async|unsafe|const)\s+)*$/.test(text.slice(Math.max(0, at - 60), at))
 }
 
+/** Callable from outside db/ops: `pub` or `pub(crate)`, not private or `pub(super)`. */
+function isReachableFromOutsideOps(text, at) {
+  return /\bpub(?:\(crate\))?\s+(?:(?:async|unsafe|const)\s+)*$/.test(text.slice(Math.max(0, at - 60), at))
+}
+
 /**
  * 双实现：db/sea/ops/<module>.rs 里的 pub fn，在 db/ops/<module>.rs 里有同名的那一个
  * （Diesel 版本）。每一对记下 Diesel 版本在 db/ops 之外还剩多少调用点——和 dieselOpsCalls
@@ -567,9 +572,11 @@ export function dualImplementations({ files, callSites }) {
   for (const file of files) {
     if (!isModule(file, 'db', 'sea', 'ops')) continue
     const module = file.module[3]
+    // A Diesel helper nothing outside db/ops can name (private, `pub(super)`)
+    // lives and dies with the Diesel ops that call it, so it is not a pair.
     const dieselFns = files
       .filter((f) => isModule(f, 'db', 'ops') && f.module[2] === module)
-      .flatMap((f) => f.fns.filter((fn) => !fn.test))
+      .flatMap((f) => f.fns.filter((fn) => !fn.test && isReachableFromOutsideOps(f.text, fn.at)))
     for (const fn of file.fns) {
       if (fn.test || !isPub(file.text, fn.at)) continue
       const diesel = dieselFns.filter((twin) => twin.name === fn.name)

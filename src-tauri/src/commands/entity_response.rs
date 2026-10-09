@@ -9,14 +9,11 @@ use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    assistant, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject, model_config,
-    model_profile, project, provider, skill, tool_category, tool_preset,
+    assistant, conversation, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject,
+    model_config, model_profile, project, provider, queued_prompt, skill, todo_item, todo_list, tool_category,
+    tool_preset,
 };
-use meridian_core::db::models::{
-    conversation::ConversationRow,
-    queue::QueuedPromptRow,
-    todo::{TodoItemRow, TodoListRow, TodoListView},
-};
+use meridian_core::db::sea::ops::todo::TodoListView;
 use meridian_core::db::types::Json;
 use std::collections::BTreeMap;
 
@@ -37,17 +34,6 @@ macro_rules! entity_response {
 
         pub type $list = Vec<$info>;
     };
-}
-
-/// SQLite stores booleans as integers, but the persistence representation must
-/// not leak through IPC. Reject corrupt rows instead of treating every non-zero
-/// value as `true`.
-fn decode_sqlite_bool(value: i32, field: &str) -> Result<bool, String> {
-    match value {
-        0 => Ok(false),
-        1 => Ok(true),
-        _ => Err(format!("persisted boolean `{field}` must be 0 or 1, got {value}")),
-    }
 }
 
 /// The complete set of first-party conversation kinds exposed over IPC.
@@ -350,10 +336,10 @@ pub struct ConversationInfoResponse {
     pub agent_model_id: Option<String>,
 }
 
-impl TryFrom<ConversationRow> for ConversationInfoResponse {
+impl TryFrom<conversation::Model> for ConversationInfoResponse {
     type Error = String;
 
-    fn try_from(row: ConversationRow) -> Result<Self, Self::Error> {
+    fn try_from(row: conversation::Model) -> Result<Self, Self::Error> {
         let thinking_level = row
             .thinking_level
             .as_deref()
@@ -369,10 +355,11 @@ impl TryFrom<ConversationRow> for ConversationInfoResponse {
             .as_deref()
             .map(ConversationAgentKind::parse)
             .transpose()?;
-        let is_pinned = decode_sqlite_bool(row.is_pinned, "conversation.is_pinned")?;
-        let is_archived = decode_sqlite_bool(row.is_archived, "conversation.is_archived")?;
-        let fast_mode = decode_sqlite_bool(row.fast_mode, "conversation.fast_mode")?;
-        let accept_edits = decode_sqlite_bool(row.accept_edits, "conversation.accept_edits")?;
+        // The flags were held to 0/1 at the read.
+        let is_pinned = row.is_pinned.get();
+        let is_archived = row.is_archived.get();
+        let fast_mode = row.fast_mode.get();
+        let accept_edits = row.accept_edits.get();
         Ok(Self {
             id: row.id,
             title: row.title,
@@ -880,16 +867,13 @@ pub struct QueuedPromptInfoResponse {
     pub reported_at: Option<i64>,
 }
 
-impl TryFrom<QueuedPromptRow> for QueuedPromptInfoResponse {
-    type Error = String;
-
-    fn try_from(row: QueuedPromptRow) -> Result<Self, Self::Error> {
-        let delivery = meridian_core::db::models::queue::Delivery::parse(&row.delivery)?;
-        Ok(Self {
+impl From<queued_prompt::Model> for QueuedPromptInfoResponse {
+    fn from(row: queued_prompt::Model) -> Self {
+        Self {
             id: row.id,
             conversation_id: row.conversation_id,
             content: row.content,
-            delivery,
+            delivery: row.delivery,
             position: row.position,
             created_at: row.created_at,
             dispatched_at: row.dispatched_at,
@@ -898,7 +882,7 @@ impl TryFrom<QueuedPromptRow> for QueuedPromptInfoResponse {
             settled_message_id: row.settled_message_id,
             held_at: row.held_at,
             reported_at: row.reported_at,
-        })
+        }
     }
 }
 
@@ -944,24 +928,21 @@ pub struct TodoListInfoResponse {
     pub id: String,
     pub conversation_id: String,
     pub title: String,
-    pub status: meridian_core::db::models::todo::ListStatus,
+    pub status: todo_list::ListStatus,
     pub created_at: i64,
     pub updated_at: i64,
 }
 
-impl TryFrom<TodoListRow> for TodoListInfoResponse {
-    type Error = String;
-
-    fn try_from(row: TodoListRow) -> Result<Self, Self::Error> {
-        let status = meridian_core::db::models::todo::ListStatus::parse(&row.status)?;
-        Ok(Self {
+impl From<todo_list::Model> for TodoListInfoResponse {
+    fn from(row: todo_list::Model) -> Self {
+        Self {
             id: row.id,
             conversation_id: row.conversation_id,
             title: row.title,
-            status,
+            status: row.status,
             created_at: row.created_at,
             updated_at: row.updated_at,
-        })
+        }
     }
 }
 
@@ -971,25 +952,22 @@ pub struct TodoItemInfoResponse {
     pub list_id: String,
     pub content: String,
     pub active_form: String,
-    pub status: meridian_core::db::models::todo::ItemStatus,
+    pub status: todo_item::ItemStatus,
     pub sort_order: i32,
     pub created_at: i64,
 }
 
-impl TryFrom<TodoItemRow> for TodoItemInfoResponse {
-    type Error = String;
-
-    fn try_from(row: TodoItemRow) -> Result<Self, Self::Error> {
-        let status = meridian_core::db::models::todo::ItemStatus::parse(&row.status)?;
-        Ok(Self {
+impl From<todo_item::Model> for TodoItemInfoResponse {
+    fn from(row: todo_item::Model) -> Self {
+        Self {
             id: row.id,
             list_id: row.list_id,
             content: row.content,
             active_form: row.active_form,
-            status,
+            status: row.status,
             sort_order: row.sort_order,
             created_at: row.created_at,
-        })
+        }
     }
 }
 
@@ -1001,18 +979,12 @@ pub struct TodoInfoResponse {
     pub items: TodoItemListResponse,
 }
 
-impl TryFrom<TodoListView> for TodoInfoResponse {
-    type Error = String;
-
-    fn try_from(view: TodoListView) -> Result<Self, Self::Error> {
-        Ok(Self {
-            list: view.list.try_into()?,
-            items: view
-                .items
-                .into_iter()
-                .map(TryInto::try_into)
-                .collect::<Result<_, _>>()?,
-        })
+impl From<TodoListView> for TodoInfoResponse {
+    fn from(view: TodoListView) -> Self {
+        Self {
+            list: view.list.into(),
+            items: view.items.into_iter().map(Into::into).collect(),
+        }
     }
 }
 
@@ -1101,30 +1073,22 @@ pub type ToolPresetListResponse = Vec<ToolPresetInfoResponse>;
 mod tests {
     use super::*;
 
-    #[test]
-    fn sqlite_booleans_are_closed_and_leave_ipc_as_booleans() {
-        assert!(!decode_sqlite_bool(0, "test.enabled").unwrap());
-        assert!(decode_sqlite_bool(1, "test.enabled").unwrap());
-        assert!(decode_sqlite_bool(-1, "test.enabled").is_err());
-        assert!(decode_sqlite_bool(2, "test.enabled").is_err());
-    }
-
-    fn conversation_row(agent_kind: Option<&str>) -> ConversationRow {
-        ConversationRow {
+    fn conversation_row(agent_kind: Option<&str>) -> conversation::Model {
+        conversation::Model {
             id: "conversation".into(),
             title: None,
             assistant_id: None,
-            is_pinned: 0,
-            is_archived: 0,
+            is_pinned: meridian_core::db::types::SqlBool::FALSE,
+            is_archived: meridian_core::db::types::SqlBool::FALSE,
             message_count: 0,
             created_at: 1,
             updated_at: 1,
             project_id: None,
             thinking_level: None,
-            fast_mode: 0,
+            fast_mode: meridian_core::db::types::SqlBool::FALSE,
             mode: None,
             head_message_id: None,
-            accept_edits: 0,
+            accept_edits: meridian_core::db::types::SqlBool::FALSE,
             parent_conversation_id: None,
             spawned_by_message_id: None,
             spawned_by_call_id: None,

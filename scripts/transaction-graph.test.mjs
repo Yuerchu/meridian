@@ -557,6 +557,30 @@ test('a sea op under another name is not a pair, by design', () => {
   assert.deepEqual(dualImplementations(graph), [])
 })
 
+test('a Diesel helper nothing outside db/ops can name is not a pair', () => {
+  const graph = graphFor({
+    ...BASE,
+    [`${CORE}/db/ops/todo.rs`]: `
+      fn get_active_list(conn: &mut SqliteConnection) -> QueryResult<()> { Ok(()) }
+      pub(super) fn complete(conn: &mut SqliteConnection) -> QueryResult<()> { Ok(()) }
+      pub(crate) fn render(conn: &mut SqliteConnection) -> QueryResult<()> { Ok(()) }
+      pub fn get_active_view(conn: &mut SqliteConnection) -> QueryResult<()> { get_active_list(conn) }`,
+    [`${CORE}/db/sea/ops/todo.rs`]: `
+      pub async fn get_active_list(db: &impl Read) -> Result<(), DbErr> { Ok(()) }
+      pub async fn complete(tx: &WriteTx) -> Result<(), DbErr> { Ok(()) }
+      pub fn render(view: &View) -> Option<String> { None }
+      pub async fn get_active_view(db: &impl Read) -> Result<(), DbErr> { Ok(()) }`,
+    [`${CORE}/agent/x.rs`]: `
+      fn freeze(conn: &mut SqliteConnection) {
+          let _ = crate::db::ops::todo::get_active_view(conn).ok().and_then(crate::db::ops::todo::render);
+      }`,
+  })
+  assert.deepEqual(dualImplementations(graph), [
+    { module: 'todo', name: 'get_active_view', remaining: 1 },
+    { module: 'todo', name: 'render', remaining: 1 },
+  ])
+})
+
 test('a pool read before a write transaction in the same function is R5', () => {
   const problems = problemsFor({
     [`${SHELL}/commands/x.rs`]: `

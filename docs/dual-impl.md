@@ -4,7 +4,8 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 `db/sea/ops/<module>.rs`（SeaORM）各有一份的，登记在这里。手写，不是生成的；
 `node scripts/check-transaction-graph.mjs` 核对它：
 
-- 一对 = 两边**同模块、同名的 `pub fn`**。
+- 一对 = 两边**同模块、同名的 `pub fn`**。Diesel 一侧只算 `db/ops` 之外叫得到的（`pub` 或
+  `pub(crate)`）：私有或 `pub(super)` 的辅助函数跟着调用它的 Diesel op 一起删，不成对。
 - 每行一对，`| module::name | 剩余 Diesel 调用点 |`。剩余调用点是 Diesel 版本在
   `db/ops/` 之外还被调用的次数（和 `docs/migration-counters.json` 里 `dieselOpsCalls`
   同一口径，含测试代码：测试还在调它，它就还删不掉）。
@@ -16,31 +17,3 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
-| assistant::create_assistant | 2 |
-| assistant::get_assistant | 11 |
-| assistant::update_assistant | 1 |
-| cached_model::list_by_provider | 1 |
-| conversation::all_ids | 1 |
-| conversation::get_conversation | 40 |
-| emoji::create_emoji | 1 |
-| emoji::list_confirmed_for_packs | 1 |
-| emoji_pack::assign_pack | 1 |
-| emoji_pack::create_pack | 1 |
-| emoji_pack::list_assigned_pack_ids | 1 |
-| memory::list_subjects | 1 |
-| model_config::get_with_profile | 1 |
-| model_config::list_by_provider_with_profiles | 1 |
-| plan_review::has_conversation_barrier | 8 |
-| plan_review::list_reviews_for_conversation | 1 |
-| preference::delete_preference | 1 |
-| preference::get_preference | 12 |
-| preference::set_preference | 4 |
-| project::create_project | 3 |
-| project::get_project | 5 |
-| provider::create_provider | 7 |
-| provider::get_provider | 5 |
-| provider::list_providers | 5 |
-| provider::update_provider | 2 |
-| skill_binding::resolve_available | 1 |
-| tool_preset::create_preset | 1 |
-| tool_preset::get_preset | 1 |

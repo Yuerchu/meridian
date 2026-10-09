@@ -101,7 +101,7 @@ pub struct AssistantCreateRequest {
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<AssistantListResponse, String> {
-    let rows = assistant_ops::list_assistants(&app.services().sea)
+    let rows = assistant_ops::list_assistants(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -140,7 +140,7 @@ pub async fn create_assistant(
         auto_compact_enabled: SqlBool::FALSE,
     };
     app.services()
-        .sea
+        .db
         .write(async |tx| assistant_ops::create_assistant(tx, row).await)
         .await
         .map(Into::into)
@@ -178,7 +178,7 @@ pub async fn update_assistant(
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
@@ -200,7 +200,7 @@ pub async fn update_assistant(
         ..Default::default()
     };
     let guarded = services
-        .sea
+        .db
         .write(async |tx| update_assistant_unless_plan_barrier(tx, &request.id, &conversation_ids, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -212,14 +212,14 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "an assistant delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| delete_assistant_unless_plan_barrier(tx, &id, &conversation_ids).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -277,61 +277,23 @@ mod tests {
         }
     }
 
-    /// The review is seeded through the Diesel plan-review ops, which have not
-    /// moved, on a file both pools open; the guarded mutations run on SeaORM.
     #[tokio::test]
     async fn assistant_update_and_delete_are_blocked_by_its_active_review_runtime() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
-        sea.write(async |tx| assistant_ops::create_assistant(tx, assistant_row("assistant-1")).await)
-            .await
-            .unwrap();
-        {
-            let conn = &mut pool.get().unwrap();
-            db::ops::conversation::create_conversation(conn, "conversation-1", None, None, None, 1).unwrap();
+        let sea = db::sea::sea_test_db().await;
+        sea.write(async |tx| {
+            assistant_ops::create_assistant(tx, assistant_row("assistant-1")).await?;
+            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
             let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-                provider_id: "provider-1".into(),
-                model: "model-1".into(),
                 assistant_id: Some("assistant-1".into()),
-                thinking_level: None,
-                fast: false,
-                project_id: None,
-                project_path: None,
-                accept_edits: false,
+                ..db::sea::ops::plan_review::test_runtime("provider-1", "model-1", None)
             };
-            let document = db::ops::plan_review::create_or_resume_document(conn, "conversation-1", 2).unwrap();
-            let appended = db::ops::plan_review::append_assistant_revision(
-                conn,
-                &db::ops::plan_review::PlanRevisionAppend {
-                    document_id: &document.id,
-                    expected_generation: 0,
-                    expected_head_sha256: None,
-                    content_markdown: "# Plan\n",
-                    patch: "first patch",
-                    source_message_id: Some("message-1"),
-                    source_call_id: Some("update-1"),
-                    responding_to_suggestion_revision_id: None,
-                    now: 3,
-                },
-            )
-            .unwrap();
-            db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-            db::ops::plan_review::submit_native_head_for_review(
-                conn,
-                &db::ops::plan_review::PlanReviewSubmit {
-                    document_id: &document.id,
-                    expected_generation: appended.document.working_generation,
-                    expected_head_sha256: &appended.revision.content_sha256,
-                    turn_id: None,
-                    assistant_message_id: Some("message-1"),
-                    provider_call_id: Some("exit-1"),
-                    provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                    now: 5,
-                },
-                &runtime,
-            )
-            .unwrap();
-        }
+            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", &runtime)
+                .await
+                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
         let conversations = vec!["conversation-1".to_string()];
 
         let updated = sea

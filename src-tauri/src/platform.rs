@@ -277,11 +277,11 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<SafRootListResp
         use crate::ServicesExt;
         let Some((uri, display_name)) = meridian_core::android_bridge::pick_directory().await? else {
             // user cancelled; return the unchanged list
-            let db = app.services().sea.clone();
+            let db = app.services().db.clone();
             return load_saf_roots(&db).await.map(saf_root_list_response);
         };
 
-        let db = app.services().sea.clone();
+        let db = app.services().db.clone();
         let mut roots = load_saf_roots(&db).await?;
         if roots.iter().any(|r| r.uri == uri) {
             return Ok(saf_root_list_response(roots));
@@ -320,7 +320,7 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<SafRootListResponse
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
-        let db = app.services().sea.clone();
+        let db = app.services().db.clone();
         load_saf_roots(&db).await.map(saf_root_list_response)
     }
     #[cfg(not(target_os = "android"))]
@@ -382,7 +382,7 @@ pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<SafRo
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
-        let db = app.services().sea.clone();
+        let db = app.services().db.clone();
         let mut roots = load_saf_roots(&db).await?;
         roots.retain(|r| r.uri != uri);
         save_saf_roots(&db, &roots).await?;

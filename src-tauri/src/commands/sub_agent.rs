@@ -10,7 +10,6 @@
 
 use std::sync::Arc;
 
-use diesel::Connection;
 use tokio_util::sync::CancellationToken;
 
 use crate::ServicesExt;
@@ -18,10 +17,7 @@ use meridian_core::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec,
 use meridian_core::agent::sub_agents::SubAgentKind;
 use meridian_core::agent::turn_record;
 use meridian_core::db;
-use meridian_core::db::DbPool;
-use meridian_core::db::models::assistant::AssistantRow;
-use meridian_core::db::models::conversation::ConversationInsert;
-use meridian_core::db::models::message::MessageInsert;
+use meridian_core::db::entity::assistant;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
 use meridian_core::events::{ChatStopReason, ChatStreamEvent};
 use meridian_core::secrets::SecretsManager;
@@ -29,7 +25,7 @@ use meridian_core::services::Services;
 use meridian_core::state::SubAgentInbox;
 use meridian_core::tools::{self, ToolRegistry};
 use meridian_core::turn::{TurnLease, TurnOrigin};
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 
 /// What an `Explore` agent may do.
 ///
@@ -93,7 +89,6 @@ pub async fn steer_conversation(app: tauri::AppHandle, request: ConversationStee
 /// row, the project and the tool context are hundreds of lines behind.
 pub(crate) struct DesktopSubAgents {
     pub services: Services,
-    pub pool: DbPool,
     pub secrets: Arc<SecretsManager>,
     pub registry: Arc<ToolRegistry>,
     pub coordinator: Arc<meridian_core::turn::TurnCoordinator>,
@@ -103,7 +98,7 @@ pub(crate) struct DesktopSubAgents {
     /// The turn that delegated. Its cancellation has to reach the child, so the
     /// child is entered under a token derived from this one.
     pub parent_cancel: CancellationToken,
-    pub assistant: Option<AssistantRow>,
+    pub assistant: Option<assistant::Model>,
     pub project_id: Option<String>,
     /// The parent's, cloned per run with the conversation and the cancellation
     /// swapped. Same derivation as `without_sandbox`, and for the same reason:
@@ -204,7 +199,7 @@ impl DesktopSubAgents {
             SubAgentStatus::Aborted => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED.to_string())),
             SubAgentStatus::Failed => (TurnStatus::Failed, outcome.reply.as_ref().err().cloned()),
         };
-        turn_record::finish(&self.pool, &turn_id, stored, error.as_deref()).await;
+        turn_record::finish(&self.services.db, &turn_id, stored, error.as_deref()).await;
 
         // Whatever was typed at the run and never reached it. Closing the inbox
         // is what makes this the last word: nothing can be added after it, so
@@ -255,7 +250,7 @@ impl DesktopSubAgents {
         let mut cursor = final_cursor.map(str::to_string);
         for item in leftover {
             match engine::write_steering(
-                &self.pool,
+                &self.services.db,
                 sub_conversation_id,
                 turn_id,
                 &item.text,
@@ -286,14 +281,14 @@ impl DesktopSubAgents {
     async fn resolve_model(
         &self,
         spec: &SubAgentSpec,
-    ) -> Result<(AssistantRow, meridian_core::agent::TurnParams), String> {
+    ) -> Result<(assistant::Model, meridian_core::agent::TurnParams), String> {
         let base = self
             .assistant
             .clone()
             .ok_or("This conversation has no assistant, so there is nothing to run a sub-agent on.")?;
 
         let key = default_model_preference(spec.kind);
-        let configured = db::sea::ops::preference::get_preference(&self.services.sea, &key)
+        let configured = db::sea::ops::preference::get_preference(&self.services.db, &key)
             .await
             .ok()
             .flatten();
@@ -314,42 +309,29 @@ impl DesktopSubAgents {
         Ok((assistant, params))
     }
 
-    async fn resolve_params(&self, assistant: &AssistantRow) -> Result<meridian_core::agent::TurnParams, String> {
-        let pool = self.pool.clone();
-        let secrets = self.secrets.clone();
+    async fn resolve_params(&self, assistant: &assistant::Model) -> Result<meridian_core::agent::TurnParams, String> {
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
-        let assistant = assistant.clone();
-        let resolved = {
-            let a = assistant.clone();
-            let pool2 = pool.clone();
-            tokio::task::spawn_blocking(move || {
-                meridian_core::agent::resolve_with_overrides(&secrets, &pool2, Some(&a), None, None)
-            })
-            .await
-            .map_err(|e| e.to_string())??
-        };
-        let provider_id = assistant.provider_id.clone();
-        let mut params = tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_turn_params(
-                &pool,
-                meridian_core::agent::TurnParamsResolveRequest {
-                    assistant: Some(&assistant),
-                    provider_id: provider_id.as_deref(),
-                    provider_type: &resolved.provider_type,
-                    api_format: &resolved.api_format,
+        let sea = &self.services.db;
+        let resolved =
+            meridian_core::agent::resolve_with_overrides(&self.secrets, sea, Some(assistant), None, None).await?;
+        let mut params = meridian_core::agent::resolve_turn_params(
+            sea,
+            meridian_core::agent::TurnParamsResolveRequest {
+                assistant: Some(assistant),
+                provider_id: assistant.provider_id.as_deref(),
+                provider_type: &resolved.provider_type,
+                api_format: &resolved.api_format,
 
-                    transport_profile: &resolved.transport_profile,
-                    codex_request_shape: resolved.codex_request_shape,
-                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
-                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::SubAgent,
-                    model: &resolved.model,
-                    thinking_level: None,
-                    fast: false,
-                },
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+                transport_profile: &resolved.transport_profile,
+                codex_request_shape: resolved.codex_request_shape,
+                codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+                codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::SubAgent,
+                model: &resolved.model,
+                thinking_level: None,
+                fast: false,
+            },
+        )
+        .await?;
 
         // The smaller of what the user asked for and what this model can write,
         // or the model's own maximum when nobody asked for anything.
@@ -371,100 +353,48 @@ impl DesktopSubAgents {
         sub_conversation_id: &str,
         turn_id: &str,
         spec: &SubAgentSpec,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
     ) -> Result<(String, i64), String> {
-        let pool = self.pool.clone();
-        let (conv_id, turn_id) = (sub_conversation_id.to_string(), turn_id.to_string());
-        let parent = self.parent_conversation_id.clone();
-        let project_id = self.project_id.clone();
-        let (message_id, prompt) = (uuid::Uuid::new_v4().to_string(), spec.prompt.clone());
-        let (title, kind) = (spec.description.clone(), spec.kind.as_str());
-        let (parent_message_id, parent_call_id) = (spec.parent_message_id.clone(), spec.parent_call_id.clone());
-        let (assistant_id, provider_id, model_id) = (
-            assistant.id.clone(),
-            assistant.provider_id.clone(),
-            assistant.model_id.clone(),
-        );
-        let returned = message_id.clone();
+        let message_id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
-
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            conn.transaction::<_, diesel::result::Error, _>(|conn| {
-                db::ops::conversation::insert(
-                    conn,
-                    ConversationInsert {
-                        id: &conv_id,
-                        title: Some(&title),
-                        assistant_id: Some(&assistant_id),
-                        is_pinned: 0,
-                        is_archived: 0,
-                        created_at: now,
-                        updated_at: now,
-                        project_id: project_id.as_deref(),
-                        parent_conversation_id: Some(&parent),
-                        spawned_by_message_id: Some(&parent_message_id),
-                        spawned_by_call_id: Some(&parent_call_id),
-                        spawned_turn_id: Some(&turn_id),
-                        agent_kind: Some(kind),
-                        agent_provider_id: provider_id.as_deref(),
-                        agent_model_id: model_id.as_deref(),
-                    },
-                )?;
-                db::ops::message::append_message(
-                    conn,
-                    &MessageInsert {
-                        id: &message_id,
-                        conversation_id: &conv_id,
-                        role: "user",
-                        content: &prompt,
-                        provider_id: None,
-                        model_id: None,
-                        input_tokens: None,
-                        output_tokens: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        sort_order: 0,
-                        created_at: now,
-                        reasoning_content: None,
-                        rating: None,
-                        schema_version: 2,
-                        is_compact_summary: 0,
-                        sender_id: None,
-                        parent_id: None,
-                        compact_anchor_id: None,
-                        source: None,
-                        turn_id: Some(&turn_id),
-                        tool_outcome: None,
-                        // The delegating prompt, not a reply: no upstream was
-                        // asked anything to produce it.
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        server_tool_calls: None,
-                        provider_name: None,
-                        response_model_id: None,
-                    },
-                    None,
-                )?;
-                // The synchronous op, not `turn_record::begin`: that one opens
-                // its own blocking task and so its own connection, which would
-                // put this row outside the transaction the other two are in.
-                db::ops::turn::begin(conn, &turn_id, &conv_id, TurnOrigin::SubAgent, None, now)?;
-                Ok(())
+        let conversation = db::entity::conversation::Model {
+            title: Some(spec.description.clone()),
+            assistant_id: Some(assistant.id.clone()),
+            project_id: self.project_id.clone(),
+            parent_conversation_id: Some(self.parent_conversation_id.clone()),
+            spawned_by_message_id: Some(spec.parent_message_id.clone()),
+            spawned_by_call_id: Some(spec.parent_call_id.clone()),
+            spawned_turn_id: Some(turn_id.to_string()),
+            agent_kind: Some(spec.kind.as_str().to_string()),
+            agent_provider_id: assistant.provider_id.clone(),
+            agent_model_id: assistant.model_id.clone(),
+            ..db::sea::ops::conversation::new_row(sub_conversation_id, now)
+        };
+        // The delegating prompt, not a reply: no upstream was asked anything to
+        // produce it.
+        let prompt = db::entity::message::Model {
+            turn_id: Some(turn_id.to_string()),
+            ..db::sea::ops::message::new_row(&message_id, sub_conversation_id, "user", &spec.prompt, now)
+        };
+        // The conversation, its prompt and the turn row: all three or none.
+        self.services
+            .db
+            .write(async |tx| {
+                db::sea::ops::conversation::insert(tx, conversation).await?;
+                db::sea::ops::message::append_message(tx, prompt, None).await?;
+                db::sea::ops::turn::begin(tx, turn_id, sub_conversation_id, TurnOrigin::SubAgent, None, now).await
             })
-            .map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            .await
+            .map_err(|e| e.to_string())?;
 
-        Ok((returned, now))
+        Ok((message_id, now))
     }
 
     #[allow(clippy::too_many_arguments)]
     async fn run_loop(
         &self,
         spec: &SubAgentSpec,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
         turn_params: &meridian_core::agent::TurnParams,
         sub_conversation_id: &str,
         turn_id: &str,
@@ -485,7 +415,7 @@ impl DesktopSubAgents {
 
         let chat_messages = match meridian_core::agent::build_messages_with_senders(
             config.system_prompt.trim(),
-            &db::ops::message::ActiveContext {
+            &db::sea::ops::message::ActiveContext {
                 path: Vec::new(),
                 summary: None,
                 anchor_index: None,
@@ -561,7 +491,7 @@ impl DesktopSubAgents {
 
         engine::run_turn(
             &engine::TurnServices {
-                pool: &self.pool,
+                db: &self.services.db,
                 tools: &self.registry,
                 mcp: &self.mcp,
                 redaction: &self.services.redaction,
@@ -631,7 +561,7 @@ impl DesktopSubAgents {
 
     async fn build_config(
         &self,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
         sub_conversation_id: &str,
         turn_params: &meridian_core::agent::TurnParams,
     ) -> Result<meridian_core::agent::turn_config::TurnConfig, String> {
@@ -670,20 +600,13 @@ impl DesktopSubAgents {
             #[cfg(target_os = "android")]
             command_shell: None,
         };
-        let pool = self.pool.clone();
-        let registry = self.registry.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            meridian_core::agent::turn_config::resolve(&mut conn, &registry, input)
-        })
-        .await
-        .map_err(|e| e.to_string())?
+        meridian_core::agent::turn_config::resolve_on(&self.services.db, &self.registry, input).await
     }
 
     /// The provider instance, and the provider type the token counter needs.
     async fn build_provider(
         &self,
-        assistant: &AssistantRow,
+        assistant: &assistant::Model,
     ) -> Result<
         (
             Box<dyn meridian_core::provider::ChatProvider>,
@@ -691,14 +614,9 @@ impl DesktopSubAgents {
         ),
         String,
     > {
-        let pool = self.pool.clone();
-        let secrets = self.secrets.clone();
-        let a = assistant.clone();
-        let resolved = tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let resolved =
+            meridian_core::agent::resolve_with_overrides(&self.secrets, &self.services.db, Some(assistant), None, None)
+                .await?;
         let provider = meridian_core::provider::registry::create_provider(resolved.wire())?;
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed
@@ -724,12 +642,12 @@ impl DesktopSubAgents {
 ///   assistant uses a preset containing write tools would hand them to an agent
 ///   whose whole definition is that it cannot change anything.
 fn effective_assistant(
-    base: AssistantRow,
+    base: assistant::Model,
     kind: SubAgentKind,
     provider_id: Option<String>,
     model_id: Option<String>,
-) -> AssistantRow {
-    let mut a = AssistantRow {
+) -> assistant::Model {
+    let mut a = assistant::Model {
         provider_id,
         model_id,
         context_limit: 0,
@@ -738,7 +656,9 @@ fn effective_assistant(
     };
     if kind == SubAgentKind::Explore {
         a.tool_preset_id = None;
-        a.enabled_tools = serde_json::to_string(EXPLORE_TOOLS).ok();
+        a.enabled_tools = Some(meridian_core::db::types::Json(
+            EXPLORE_TOOLS.iter().map(|name| name.to_string()).collect(),
+        ));
     }
     a
 }
@@ -860,8 +780,7 @@ impl Drop for ChildTurnGuard {
 mod tests {
     use super::*;
     use meridian_core::agent::modes::Modes;
-    use meridian_core::agent::turn_config::{TurnConfigResolveRequest, resolve};
-    use meridian_core::db::diesel_test_db;
+    use meridian_core::agent::turn_config::TurnConfigResolveRequest;
 
     #[test]
     fn conversation_steer_request_is_named_and_strict() {
@@ -883,8 +802,8 @@ mod tests {
         );
     }
 
-    fn parent(preset: Option<&str>, enabled: Option<&str>) -> AssistantRow {
-        AssistantRow {
+    fn parent(preset: Option<&str>, enabled: Option<&str>) -> assistant::Model {
+        assistant::Model {
             id: "a1".into(),
             name: "A".into(),
             description: None,
@@ -895,17 +814,17 @@ mod tests {
             temperature: Some(0.7),
             top_p: None,
             max_tokens: Some(64_000),
-            is_default: 0,
+            is_default: meridian_core::db::types::SqlBool::FALSE,
             sort_order: 0,
             created_at: 0,
             updated_at: 0,
             context_limit: 200_000,
             compact_keep_recent: 10,
-            enabled_tools: enabled.map(str::to_string),
-            thinking_enabled: 0,
+            enabled_tools: enabled.map(|json| meridian_core::db::types::Json::decode(json).unwrap()),
+            thinking_enabled: meridian_core::db::types::SqlBool::FALSE,
             thinking_budget: None,
             tool_preset_id: preset.map(str::to_string),
-            auto_compact_enabled: 0,
+            auto_compact_enabled: meridian_core::db::types::SqlBool::FALSE,
         }
     }
 
@@ -917,12 +836,15 @@ mod tests {
         )
     }
 
-    fn config_for(child: AssistantRow) -> meridian_core::agent::turn_config::TurnConfig {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
-        resolve(
-            &mut conn,
+    async fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        db.write(async |tx| {
+            meridian_core::db::sea::ops::conversation::create_conversation(tx, "sub-1", None, None, None, 1).await
+        })
+        .await
+        .unwrap();
+        meridian_core::agent::turn_config::resolve_on(
+            &db,
             &registry(),
             TurnConfigResolveRequest {
                 assistant: Some(child),
@@ -939,6 +861,7 @@ mod tests {
                 command_shell: None,
             },
         )
+        .await
         .unwrap()
     }
 
@@ -978,8 +901,8 @@ mod tests {
     /// overwritten. A preset wins over an explicit list, so a parent configured
     /// with one would hand its contents — writes included — to an agent whose
     /// whole definition is that it cannot change anything.
-    #[test]
-    fn a_read_only_agent_keeps_its_whitelist_even_when_the_parent_uses_a_preset() {
+    #[tokio::test]
+    async fn a_read_only_agent_keeps_its_whitelist_even_when_the_parent_uses_a_preset() {
         let child = effective_assistant(
             parent(Some("a-preset-with-writes"), None),
             SubAgentKind::Explore,
@@ -988,7 +911,7 @@ mod tests {
         );
         assert_eq!(child.tool_preset_id, None);
 
-        let offered = config_for(child).offered;
+        let offered = config_for(child).await.offered;
         assert!(offered.contains("read_file"), "an explorer that cannot read is useless");
         for writer in ["write_file", "edit_file", "apply_patch", "delete_file", "run_command"] {
             assert!(!offered.contains(writer), "{writer} reached a read-only agent");
@@ -1000,15 +923,15 @@ mod tests {
 
     /// A working agent is the assistant's own tool set, minus the two a
     /// sub-agent has no use for.
-    #[test]
-    fn a_working_agent_inherits_the_assistants_tools() {
+    #[tokio::test]
+    async fn a_working_agent_inherits_the_assistants_tools() {
         let child = effective_assistant(parent(None, None), SubAgentKind::Agent, None, None);
         assert!(
             child.enabled_tools.is_none(),
             "an unrestricted parent stays unrestricted"
         );
 
-        let offered = config_for(child).offered;
+        let offered = config_for(child).await.offered;
         assert!(offered.contains("write_file"), "it is the one that may change things");
         assert!(!offered.contains(meridian_core::agent::sub_agents::RUN_AGENT_TOOL));
         assert!(!offered.contains("enter_plan"));

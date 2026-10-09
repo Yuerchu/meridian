@@ -1,17 +1,5 @@
 {
-  "dieselOpsCalls": 622,
-  "dieselApiRefs": 997,
-  "pendingTables": [
-    "acp_context_deliveries",
-    "acp_session_notices",
-    "acp_sessions",
-    "audit_messages",
-    "message_context_items",
-    "mode_artifacts",
-    "queued_prompt_context_items",
-    "queued_prompts",
-    "todo_items",
-    "todo_lists",
-    "turns"
-  ]
+  "dieselOpsCalls": 0,
+  "dieselApiRefs": 0,
+  "pendingTables": []
 }

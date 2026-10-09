@@ -38,6 +38,26 @@ PostgreSQL 服务端版本动工时按这份清单逐项给出对应实现。
   缺陷的对照行在两边都必须被接受。
 - 生成器：`render(读回放库)` 的文本必须与入库文件逐字相同。
 
+## 查询构建器里的 SQLite 片段
+
+`Expr::cust` 把一段 SQL 文本原样塞进构建器生成的语句，是 `db/sql.rs` 之外唯一能写出 SQLite
+专属 SQL 的口子。每个用到它的文件都要带 `backend: sqlite-only` 标注并登记在下表——模型契约
+检查器核对两边：用了没登记、登记了没用、文件里没有标注，都是红。迁移目录（`db/sea/migration/`）
+另有上一节的登记，不在此列。
+
+| 文件 | 片段 | 用途 | PostgreSQL 时要做的事 |
+|---|---|---|---|
+| `core/src/db/sea/ops/turn.rs` | `rowid` | 同一毫秒开始的 turn 按写入顺序排（id 是 uuid，顺序无意义） | 加一列插入序号（`bigserial`）按它排 |
+
+## 依赖 SQLite 语义的构建器查询
+
+构建器能为任一后端渲染，但下面这些查询的**结果**依赖 SQLite 的语义，PostgreSQL 版本要逐条改写。
+代码里在函数上方带 `backend: sqlite-only` 注释。
+
+| 位置 | 依赖的语义 | PostgreSQL 时要做的事 |
+|---|---|---|
+| `core/src/db/sea/ops/conversation.rs` `search_transcripts` | `LIKE` 按 ASCII 折叠大小写，与 Rust 侧复核的折叠一致 | 改用 `ILIKE`（或对两边都做 `lower()`），并确认复核的折叠仍与之一致 |
+
 ## `db/sql.rs`：登记的原生 SQL
 
 SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly` 常量登记——构造器对模块私有，
@@ -49,3 +69,13 @@ SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly`
 | `JOURNAL_CHAINS_UNDER_PREFIX` | 路径前缀下每条链及其头 sha（死头为 NULL），按更新时间倒序，带上限 | 只有占位符与 `DbBackend::Sqlite`；`LIKE … ESCAPE '\'`、相关子查询 `MAX(seq)` 是标准 SQL | 改占位符为 `$1`/`$2`，`LIKE` 的大小写语义按 `norm_path` 的实际需要选 `LIKE`/`ILIKE` |
 | `JOURNAL_LIVE_CHAINS_UNDER_PREFIX` | 同上，只要活着的链（`new_sha IS NOT NULL`），上限按活文件计 | 同上 | 同上 |
 | `JOURNAL_UNREFERENCED_BLOBS` | 没有任何版本引用的 blob sha | 无（`NOT EXISTS` 是标准 SQL） | 无 |
+| `USAGE_BY_TOTAL` | 用量报表按总计分组（键为常量 `''`）：每组的条数、四类 token 求和与二十余个条件计数，价格列与计费方式一并分组 | 位置 `?`；标量两参数 `MAX(a, b)`（取较大值）；`CASE … THEN 1 ELSE 0` 计数 | 占位符改 `$n`；两参数 `MAX` 改 `GREATEST` |
+| `USAGE_BY_PROVIDER` | 同上，按 `COALESCE(provider_name, provider_id, '')` 分组 | 同上 | 同上 |
+| `USAGE_BY_MODEL` | 同上，按 `COALESCE(model_id, '')` 分组 | 同上 | 同上 |
+| `USAGE_BY_BOT` | 同上，按 `COALESCE(CAST(self_id AS TEXT), '')` 分组 | 同上 | 同上（`CAST(… AS TEXT)` 通用） |
+| `USAGE_BY_SOURCE` | 同上，按 `COALESCE(source_type \|\| ':' \|\| source_id, '')` 分组 | 同上；`\|\|` 遇 NULL 得 NULL 的语义 | 同上；`\|\|` 在 PostgreSQL 语义相同 |
+| `USAGE_BY_CONVERSATION` | 同上，按 `conversation_id` 分组 | 同上 | 同上 |
+| `USAGE_BY_DAY` | 同上，按本地日期分组 | 同上；`strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')` 取的是数据库进程的本地时区 | 同上；改 `to_char(to_timestamp(created_at / 1000) AT TIME ZONE <客户端时区>, 'YYYY-MM-DD')`，时区要由调用方传入——服务端没有「用户的本地时间」 |
+| `USAGE_BY_HOUR` | 同上，按本地小时分组 | 同上，格式 `'%Y-%m-%dT%H'` | 同上，格式 `'YYYY-MM-DD"T"HH24'` |
+| `USAGE_BY_KIND` | 同上，按 `role` 分组（回答 / 自动审查 / 压缩 / 标题 / 提取） | 同上 | 同上 |
+| `USAGE_BY_TURN` | 一个会话按 turn 分组；会话是等值条件而非可空过滤，好让 `(conversation_id, turn_id)` 索引可用（有测试钉住查询计划） | 同上 | 同上；确认 PostgreSQL 的计划同样走复合索引 |

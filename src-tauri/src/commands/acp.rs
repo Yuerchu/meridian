@@ -270,18 +270,12 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
     let context = if references.is_empty() {
         Vec::new()
     } else {
-        let pool = services.db.clone();
-        let conversation = conversation_id.clone();
-        let cwd = tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            meridian_core::db::ops::acp_session::get(&mut conn, &conversation)
-                .map_err(|e| e.to_string())?
-                .map(|row| row.cwd)
-                .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
-        let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
+        let cwd = meridian_core::db::sea::ops::acp_session::get(&services.db, &conversation_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|row| row.cwd)
+            .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())?;
+        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
         let tool_context = meridian_core::tools::ToolContext {
             working_directory: Some(cwd),
             shell: meridian_core::tools::ShellType::default_for_platform(),
@@ -290,8 +284,7 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
             conversation_id: Some(conversation_id.clone()),
             turn_id: turn_id.clone(),
             assistant_id: None,
-            db_pool: Some(services.db.clone()),
-            sea: Some(services.sea.clone()),
+            db: Some(services.db.clone()),
             sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
             #[cfg(not(target_os = "android"))]
             background: None,
@@ -311,19 +304,13 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
         let mut context = context;
         let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
         let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
-        let pool = services.db.clone();
-        let current = conversation_id.clone();
-        let frozen = tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-                &mut conn,
-                &current,
-                &conv_refs,
-                budget_left,
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+            &services.db,
+            &conversation_id,
+            &conv_refs,
+            budget_left,
+        )
+        .await?;
         context.extend(frozen);
         context
     };
@@ -406,20 +393,15 @@ pub async fn acp_conversation_session(
     conversation_id: String,
 ) -> Result<Option<AcpConversationSessionInfoResponse>, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = meridian_core::util::get_conn(&pool)?;
-        meridian_core::db::ops::acp_session::get(&mut conn, &conversation_id)
-            .map(|row| {
-                row.map(|row| AcpConversationSessionInfoResponse {
-                    cwd: row.cwd,
-                    acp_session_id: row.acp_session_id,
-                })
+    meridian_core::db::sea::ops::acp_session::get(&services.db, &conversation_id)
+        .await
+        .map(|row| {
+            row.map(|row| AcpConversationSessionInfoResponse {
+                cwd: row.cwd,
+                acp_session_id: row.acp_session_id,
             })
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        })
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(target_os = "android"))]
@@ -506,7 +488,7 @@ pub async fn acp_set_session_config(
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_get_config(app: tauri::AppHandle) -> Result<AcpConfigInfoResponse, String> {
-    AcpConfig::load(&app.services().sea).await.map(Into::into)
+    AcpConfig::load(&app.services().db).await.map(Into::into)
 }
 
 /// `local`, and this is the one row here where that is load-bearing:
@@ -523,8 +505,8 @@ pub async fn acp_save_config(
 ) -> Result<AcpConfigInfoResponse, String> {
     let services = app.services();
     let config = AcpConfig::from(request);
-    config.save(&services.sea).await?;
-    AcpConfig::load(&services.sea).await.map(Into::into)
+    config.save(&services.db).await?;
+    AcpConfig::load(&services.db).await.map(Into::into)
 }
 
 /// What a working adapter says about itself.
@@ -549,7 +531,7 @@ pub struct AcpCheckResponse {
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_check_adapter(app: tauri::AppHandle) -> Result<AcpCheckResponse, String> {
-    let config = AcpConfig::load(&app.services().sea).await?;
+    let config = AcpConfig::load(&app.services().db).await?;
     match acp::check_adapter(&config).await {
         Ok(report) => Ok(AcpCheckResponse {
             ok: true,

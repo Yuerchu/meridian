@@ -68,7 +68,7 @@ fn resolve_scope(
 
 #[tauri::command]
 pub async fn list_memories(app: tauri::AppHandle, project_id: String) -> Result<MemoryListResponse, String> {
-    let rows = mem_ops::list_by_scope(&app.services().sea, MemoryScope::Project, &project_id)
+    let rows = mem_ops::list_by_scope(&app.services().db, MemoryScope::Project, &project_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -100,7 +100,7 @@ pub async fn save_memory_scoped(
 ) -> Result<MemoryInfoResponse, String> {
     let row = scoped_memory(request, now_ms())?;
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::remember(tx, row).await)
         .await
         .map_err(|e| e.to_string())?
@@ -167,7 +167,7 @@ pub async fn update_memory(app: tauri::AppHandle, request: MemoryUpdateRequest) 
         updated_at: Some(now_ms()),
     };
     app.services()
-        .sea
+        .db
         .write(async |tx| {
             // The length check reads the row it guards in the same write.
             if let Some(content) = &changeset.content {
@@ -198,7 +198,7 @@ pub async fn delete_memory(app: tauri::AppHandle, id: String) -> Result<(), Stri
 #[tauri::command]
 pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::soft_delete_memories(tx, &ids, DeletedBy::Admin, now_ms()).await)
         .await
         .map(|n| n as usize)
@@ -210,15 +210,13 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
 /// return the bot-wide or per-person layers at all.
 #[tauri::command]
 pub async fn list_all_memories(app: tauri::AppHandle) -> Result<MemoryListResponse, String> {
-    let rows = mem_ops::list_all(&app.services().sea)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = mem_ops::list_all(&app.services().db).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
 pub async fn list_memory_subjects(app: tauri::AppHandle) -> Result<MemorySubjectListResponse, String> {
-    let rows = mem_ops::list_subjects(&app.services().sea)
+    let rows = mem_ops::list_subjects(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -229,7 +227,7 @@ pub async fn forget_memory_subject(app: tauri::AppHandle, subject_scope_id: Stri
     // The operator can clear their own notes too; a person doing this to
     // themselves cannot (see the /memory optout path).
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::forget_subject(tx, &subject_scope_id, true, DeletedBy::Admin, now_ms()).await)
         .await
         .map(|n| n as usize)
@@ -247,7 +245,7 @@ pub async fn set_memory_subject_flags(
         opted_out,
     } = request;
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::set_subject_flags(tx, &subject_scope_id, is_pinned.0, opted_out.0).await)
         .await
         .map_err(|e| e.to_string())?
@@ -258,7 +256,7 @@ pub async fn set_memory_subject_flags(
 pub async fn list_memory_trash(app: tauri::AppHandle, limit: Option<i64>) -> Result<MemoryListResponse, String> {
     // domain-default: a page size the caller did not ask about, not a fact about a model
     let limit = u64::try_from(limit.unwrap_or(200)).map_err(|_| "the trash page size must not be negative")?;
-    let rows = mem_ops::list_trash(&app.services().sea, limit)
+    let rows = mem_ops::list_trash(&app.services().db, limit)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -267,7 +265,7 @@ pub async fn list_memory_trash(app: tauri::AppHandle, limit: Option<i64>) -> Res
 #[tauri::command]
 pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::restore_memories(tx, &ids, now_ms()).await)
         .await
         .map(|n| n as usize)
@@ -277,7 +275,7 @@ pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result
 #[tauri::command]
 pub async fn purge_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
     app.services()
-        .sea
+        .db
         .write(async |tx| mem_ops::purge_memories(tx, &ids).await)
         .await
         .map(|n| n as usize)

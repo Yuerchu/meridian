@@ -146,9 +146,9 @@ pub type VoiceCorpusSessionListResponse = Vec<VoiceCorpusSessionInfoResponse>;
 pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<VoiceCorpusSessionListResponse, String> {
     let services = app.services();
     // 假名化密钥取一次，每一行都用同一把。
-    let storage_key = voice_corpus::storage_key(&services.sea).await?;
-    let totals = manage::list_sessions(&services.sea).await?;
-    let untranscribed = manage::untranscribed_counts(&services.sea).await?;
+    let storage_key = voice_corpus::storage_key(&services.db).await?;
+    let totals = manage::list_sessions(&services.db).await?;
+    let untranscribed = manage::untranscribed_counts(&services.db).await?;
     Ok(totals
         .into_iter()
         .map(|total| {
@@ -187,7 +187,7 @@ pub async fn delete_voice_corpus(
 ) -> Result<VoiceCorpusDeleteResponse, String> {
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
-    manage::delete(&services.sea, &data_dir, &services.corpus, request.selector.into())
+    manage::delete(&services.db, &data_dir, &services.corpus, request.selector.into())
         .await
         .map(Into::into)
 }
@@ -198,8 +198,8 @@ pub async fn set_voice_optout(app: tauri::AppHandle, request: VoiceCorpusOptoutU
     let VoiceCorpusOptoutUpdateRequest { sender_id, enabled } = request;
     let services = app.services();
     #[cfg(not(target_os = "android"))]
-    let config = meridian_core::onebot::load_config(&services.sea).await?;
-    manage::set_optout(&services.sea, &services.corpus, &sender_id, enabled).await?;
+    let config = meridian_core::onebot::load_config(&services.db).await?;
+    manage::set_optout(&services.db, &services.corpus, &sender_id, enabled).await?;
     // 名单立刻生效，不等下一次重启——这是一个人刚刚说的"别录我"。
     #[cfg(not(target_os = "android"))]
     {
@@ -226,7 +226,7 @@ pub async fn forget_voice_sender(
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
     #[cfg(not(target_os = "android"))]
-    let config = meridian_core::onebot::load_config(&services.sea).await?;
+    let config = meridian_core::onebot::load_config(&services.db).await?;
     #[cfg(not(target_os = "android"))]
     let refresh = || {
         let services = services.clone();
@@ -234,7 +234,7 @@ pub async fn forget_voice_sender(
     };
     #[cfg(target_os = "android")]
     let refresh = || async { Ok::<(), String>(()) };
-    manage::forget_sender(&services.sea, &data_dir, &services.corpus, &sender_id, refresh)
+    manage::forget_sender(&services.db, &data_dir, &services.corpus, &sender_id, refresh)
         .await
         .map(Into::into)
 }
@@ -252,10 +252,10 @@ pub async fn export_voice_corpus(
     } = request;
     let services = app.services();
     let data_dir = services.paths.data_dir.clone();
-    let key = voice_corpus::storage_key(&services.sea).await?;
+    let key = voice_corpus::storage_key(&services.db).await?;
     // 拷文件和写 manifest 在 `manage::export` 自己的阻塞线程上。
     manage::export(
-        &services.sea,
+        &services.db,
         &key,
         &data_dir,
         std::path::Path::new(&output_dir),

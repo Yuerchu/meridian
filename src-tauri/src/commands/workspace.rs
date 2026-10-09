@@ -294,8 +294,7 @@ fn reference_context(
         conversation_id: None,
         turn_id: None,
         assistant_id: None,
-        db_pool: None,
-        sea: None,
+        db: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
         #[cfg(not(target_os = "android"))]
@@ -365,7 +364,7 @@ pub async fn workspace_suggest_refs(
     request: WorkspaceReferenceSuggestRequest,
 ) -> Result<WorkspaceReferenceSuggestionListResponse, String> {
     let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
     // domain-default: how many completions to offer, the picker's own choice
     let suggestions =
@@ -390,7 +389,7 @@ pub async fn workspace_resolve_ref(
         line_end,
     } = request;
     let root = require_reference_directory(&app, conversation_id, project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
     let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
     let reference = workspace::reference::WorkspaceReferenceRequest {
@@ -415,7 +414,7 @@ pub async fn workspace_probe_ref(
     request: WorkspaceReferenceProbeRequest,
 ) -> Result<WorkspaceReferenceProbeResponse, String> {
     let root = require_reference_directory(&app, request.conversation_id, request.project_id).await?;
-    let file_access = meridian_core::agent::build_file_access(&app.services().sea).await?;
+    let file_access = meridian_core::agent::build_file_access(&app.services().db).await?;
     let context = reference_context(&root, file_access);
     workspace::reference::probe_reference(&context, &request.path)
         .await
@@ -456,20 +455,11 @@ pub async fn open_in_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenR
         line,
     } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let root = tokio::task::spawn_blocking({
-        let conversation_id = conversation_id.clone();
-        move || -> Result<PathBuf, String> {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            match workspace::resolve_workspace_root(&mut conn, &conversation_id)? {
-                WorkspaceRoot::Ok { root, .. } => Ok(PathBuf::from(root)),
-                _ => Err("workspace unavailable".into()),
-            }
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    let template = db::sea::ops::preference::get_preference(&services.sea, "files.editor_command")
+    let root = match workspace::resolve_workspace_root(&services.db, &conversation_id).await? {
+        WorkspaceRoot::Ok { root, .. } => PathBuf::from(root),
+        _ => return Err("workspace unavailable".into()),
+    };
+    let template = db::sea::ops::preference::get_preference(&services.db, "files.editor_command")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -552,14 +542,7 @@ pub(crate) async fn require_root(app: &tauri::AppHandle, conversation_id: String
 }
 
 async fn resolve_root(app: &tauri::AppHandle, conversation_id: String) -> Result<WorkspaceRoot, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        workspace::resolve_workspace_root(&mut conn, &conversation_id)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    workspace::resolve_workspace_root(&app.services().db, &conversation_id).await
 }
 
 async fn require_reference_directory(
@@ -568,24 +551,15 @@ async fn require_reference_directory(
     project_id: Option<String>,
 ) -> Result<PathBuf, String> {
     match (conversation_id, project_id) {
-        (Some(conversation_id), None) => {
-            let pool = app.services().db.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                workspace::resolve_workspace_dir(&mut conn, &conversation_id)?.ok_or_else(|| "no_path".to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?
-        }
+        (Some(conversation_id), None) => workspace::resolve_workspace_dir(&app.services().db, &conversation_id)
+            .await?
+            .ok_or_else(|| "no_path".to_string()),
         (None, Some(project_id)) => {
-            let pool = app.services().db.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                let project = db::ops::project::get_project(&mut conn, &project_id).map_err(|e| e.to_string())?;
-                project.path.map(PathBuf::from).ok_or_else(|| "no_path".to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?
+            let project = db::sea::ops::project::get_project(&app.services().db, &project_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("project {project_id} not found"))?;
+            project.path.map(PathBuf::from).ok_or_else(|| "no_path".to_string())
         }
         _ => Err("exactly one of conversation_id or project_id is required".into()),
     }

@@ -136,7 +136,7 @@ pub struct McpServerUpdateRequest {
 #[tauri::command]
 pub async fn list_mcp_servers(app: tauri::AppHandle) -> Result<McpServerListResponse, String> {
     let services = app.services();
-    let rows = mcp_server_ops::list_mcp_servers(&services.sea)
+    let rows = mcp_server_ops::list_mcp_servers(&services.db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -167,7 +167,7 @@ pub async fn create_mcp_server(
         updated_at: now,
     };
     let row = services
-        .sea
+        .db
         .write(async |tx| mcp_server_ops::create_mcp_server(tx, row).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -192,7 +192,7 @@ pub async fn update_mcp_server(
         updated_at: Some(now_ms()),
     };
     let row = services
-        .sea
+        .db
         .write(async |tx| mcp_server_ops::update_mcp_server(tx, &request.id, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -204,7 +204,7 @@ pub async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), 
     let services = app.services();
     services.mcp.disconnect(&id).await;
     services
-        .sea
+        .db
         .write(async |tx| mcp_server_ops::delete_mcp_server(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -214,7 +214,7 @@ pub async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), 
 #[tauri::command]
 pub async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
-    let server = mcp_server_ops::get_mcp_server(&services.sea, &id)
+    let server = mcp_server_ops::get_mcp_server(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("MCP server `{id}` not found"))?;

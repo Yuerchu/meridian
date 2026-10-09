@@ -10,7 +10,7 @@ use meridian_core::db::entity::{emoji as emoji_model, emoji_pack};
 use meridian_core::db::sea::ops::{emoji as emoji_ops, emoji_pack as pack_ops};
 use meridian_core::db::types::SqlBool;
 use meridian_core::emoji;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 use meridian_core::{agent, provider};
 
 #[derive(Debug, serde::Deserialize)]
@@ -52,7 +52,7 @@ pub struct AssistantEmojiPackAssignmentRequest {
 #[tauri::command]
 pub async fn list_emoji_packs(app: tauri::AppHandle) -> Result<EmojiPackListResponse, String> {
     let services = app.services();
-    pack_ops::list_packs(&services.sea)
+    pack_ops::list_packs(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -79,7 +79,7 @@ pub async fn create_emoji_pack(
     };
     emoji::ensure_pack_dir(&services.paths.data_dir, &row.id)?;
     services
-        .sea
+        .db
         .write(async |tx| pack_ops::create_pack(tx, row).await)
         .await
         .map(Into::into)
@@ -91,7 +91,7 @@ pub async fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), 
     let services = app.services();
     // The built-in check and the delete share one write lock.
     let refused = services
-        .sea
+        .db
         .write(async |tx| match pack_ops::get_pack(tx, &id).await? {
             None => Ok(Some(format!("emoji pack `{id}` not found"))),
             Some(pack) if pack.is_builtin.get() => Ok(Some("Cannot delete built-in emoji pack".to_owned())),
@@ -109,7 +109,7 @@ pub async fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), 
 #[tauri::command]
 pub async fn list_emojis(app: tauri::AppHandle, pack_id: String) -> Result<EmojiListResponse, String> {
     let services = app.services();
-    emoji_ops::list_by_pack(&services.sea, &pack_id)
+    emoji_ops::list_by_pack(&services.db, &pack_id)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -158,7 +158,7 @@ pub async fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -
             last_seen_at: Some(now),
         };
         let created = services
-            .sea
+            .db
             .write(async |tx| {
                 let mut row = row;
                 row.sort_order = i32::try_from(emoji_ops::count_by_pack(tx, &row.pack_id).await?).unwrap_or(i32::MAX);
@@ -175,7 +175,7 @@ pub async fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -
 pub async fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
     let gone = services
-        .sea
+        .db
         .write(async |tx| {
             let Some(sticker) = emoji_ops::get_emoji(tx, &id).await? else {
                 return Ok(None);
@@ -193,7 +193,7 @@ pub async fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), Strin
 pub async fn rename_emoji(app: tauri::AppHandle, request: EmojiRenameRequest) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| emoji_ops::rename_emoji(tx, &request.id, &request.new_name).await)
         .await
         .map(Into::into)
@@ -203,7 +203,7 @@ pub async fn rename_emoji(app: tauri::AppHandle, request: EmojiRenameRequest) ->
 #[tauri::command]
 pub async fn search_emojis(app: tauri::AppHandle, query: String) -> Result<EmojiListResponse, String> {
     let services = app.services();
-    emoji_ops::search_emojis(&services.sea, &query)
+    emoji_ops::search_emojis(&services.db, &query)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -221,7 +221,7 @@ pub async fn confirm_sticker_semantics(
     let tags = request.tags.0.as_deref().map(str::trim).filter(|v| !v.is_empty());
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| emoji_ops::confirm_semantics(tx, &request.id, name, tags).await)
         .await
         .map(Into::into)
@@ -231,29 +231,23 @@ pub async fn confirm_sticker_semantics(
 #[tauri::command]
 pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
     let data_dir = services.paths.data_dir.clone();
     // pool-read-before-write: a model call sits between the read and the write,
     // which must not hold the write lock; the write only fills the suggestion
     // fields and leaves what a person confirmed alone.
-    let sticker = emoji_ops::get_emoji(&services.sea, &id)
+    let sticker = emoji_ops::get_emoji(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{id}` not found"))?;
-    let assistant = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::assistant::get_default_assistant(&mut conn).map_err(|e| e.to_string())
-        })
+    // pool-read-before-write: as above, the model call sits between this read and the write.
+    let assistant = db::sea::ops::assistant::get_default_assistant(&services.db)
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())?;
     if sticker.file_name.is_empty() {
         return Err("This sticker has no cached image to inspect".into());
     }
-    let resolved = agent::resolve_provider_config(&secrets, &pool, assistant.as_ref())?;
+    let resolved = agent::resolve_provider_config(&secrets, &services.db, assistant.as_ref()).await?;
     let caps = provider::registry::get_capabilities(
         &resolved.provider_type,
         &resolved.api_format,
@@ -305,7 +299,7 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         .map(str::trim)
         .filter(|value| !value.is_empty());
     services
-        .sea
+        .db
         .write(async |tx| emoji_ops::update_suggestion(tx, &sticker.id, name, tags).await)
         .await
         .map(Into::into)
@@ -319,7 +313,7 @@ pub async fn assign_emoji_pack(
 ) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| pack_ops::assign_pack(tx, &request.assistant_id, &request.pack_id, now_ms()).await)
         .await
         .map_err(|e| e.to_string())
@@ -332,7 +326,7 @@ pub async fn unassign_emoji_pack(
 ) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| pack_ops::unassign_pack(tx, &request.assistant_id, &request.pack_id).await)
         .await
         .map_err(|e| e.to_string())
@@ -344,7 +338,7 @@ pub async fn list_assistant_emoji_packs(
     assistant_id: String,
 ) -> Result<EmojiPackListResponse, String> {
     let services = app.services();
-    pack_ops::list_packs_for_assistant(&services.sea, &assistant_id)
+    pack_ops::list_packs_for_assistant(&services.db, &assistant_id)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -353,7 +347,7 @@ pub async fn list_assistant_emoji_packs(
 #[tauri::command]
 pub async fn get_emoji_file_url(app: tauri::AppHandle, emoji_id: String) -> Result<String, String> {
     let services = app.services();
-    let e = emoji_ops::get_emoji(&services.sea, &emoji_id)
+    let e = emoji_ops::get_emoji(&services.db, &emoji_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{emoji_id}` not found"))?;

@@ -168,7 +168,7 @@ pub async fn journal_blame(
     .map_err(|e| e.to_string())??;
 
     let cancel = tokio_util::sync::CancellationToken::new();
-    meridian_core::journal::blame::blame(&services.sea, &blob_root, &norm, disk, cancel)
+    meridian_core::journal::blame::blame(&services.db, &blob_root, &norm, disk, cancel)
         .await
         .map(Into::into)
 }
@@ -194,13 +194,13 @@ pub async fn journal_file_history(
     .await
     .map_err(|e| e.to_string())??;
 
-    let Some(file) = db::sea::ops::journal::file_by_path(&services.sea, &norm)
+    let Some(file) = db::sea::ops::journal::file_by_path(&services.db, &norm)
         .await
         .map_err(|e| e.to_string())?
     else {
         return Ok(Vec::new());
     };
-    db::sea::ops::journal::chain(&services.sea, &file.id)
+    db::sea::ops::journal::chain(&services.db, &file.id)
         .await
         .map_err(|e| e.to_string())?
         .into_iter()
@@ -220,7 +220,7 @@ pub async fn journal_version_content(
     let services = app.services();
     let blob_root: PathBuf = meridian_core::journal::journal_root(&services.paths.data_dir);
 
-    let version = db::sea::ops::journal::version_by_id(&services.sea, &version_id)
+    let version = db::sea::ops::journal::version_by_id(&services.db, &version_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or("no such version")?;

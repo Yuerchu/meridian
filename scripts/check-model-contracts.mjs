@@ -81,10 +81,9 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/agent/compact.rs',
   'src-tauri/crates/core/src/agent/pricing.rs',
   'src-tauri/crates/core/src/db/entity/mod.rs',
-  'src-tauri/crates/core/src/db/ops/conversation.rs',
-  'src-tauri/crates/core/src/db/ops/message.rs',
-  'src-tauri/crates/core/src/db/ops/usage.rs',
-  'src-tauri/crates/core/src/db/schema.rs',
+  'src-tauri/crates/core/src/db/sea/ops/conversation.rs',
+  'src-tauri/crates/core/src/db/sea/ops/message.rs',
+  'src-tauri/crates/core/src/db/sea/ops/usage.rs',
   'src-tauri/crates/core/src/db/types.rs',
   'src-tauri/crates/core/src/decimal.rs',
   'src-tauri/crates/core/src/events.rs',
@@ -365,21 +364,11 @@ if (entityResponses != null) {
     }
   }
 
-  // SQLite represents booleans as i32. A Diesel row reaches IPC through
-  // decode_sqlite_bool, the one strict 0/1 conversion, so neither Rust IPC DTOs
-  // nor generated TS types can inherit that persistence representation. (A
-  // SeaORM row carries SqlBool, which is strict at the read.)
-  for (const [pattern, message] of [
-    [
-      /fn decode_sqlite_bool\(value: i32, field: &str\) -> Result<bool, String>/,
-      '缺少 SQLite i32 到 IPC bool 的统一转换器',
-    ],
-    [/0\s*=>\s*Ok\(false\)/, 'SQLite bool 转换必须只把 0 解释为 false'],
-    [/1\s*=>\s*Ok\(true\)/, 'SQLite bool 转换必须只把 1 解释为 true'],
-    [/_\s*=>\s*Err\(/, 'SQLite bool 转换必须拒绝 0/1 以外的持久化值'],
-  ]) {
-    if (!pattern.test(entityResponses)) add(entityResponseFile, message)
-  }
+  // SQLite represents booleans as i32. Every row reaches IPC as a SeaORM model
+  // whose flags are SqlBool, strict at the read (db/types.rs, held there by the
+  // rule below) — the Diesel reads convert into the same model through the same
+  // check — so no response decodes an integer itself, and the field rule below
+  // keeps a public flag a bool.
 
   // Also cover explicit/macro field declarations so a future response cannot
   // move a SQLite flag back into an integer-typed field list.
@@ -1252,17 +1241,28 @@ const autoReviewAgentSource = readAt(autoReviewAgentFile)
 if (/\bfn\s+payload\s*\(/.test(autoReviewAgentSource ?? '')) {
   add(autoReviewAgentFile, '自动审查持久化必须复用 typed AutoReviewVerdict，禁止维护第二套 JSON payload')
 }
-const messageOpsFile = 'src-tauri/crates/core/src/db/ops/message.rs'
+// The verdict map is written by the SeaORM op: typed in, decoded strictly
+// (a stored map this build cannot read fails rather than being replaced), and
+// never under an empty call id. `merge_by_call` does the decoding for every
+// per-call map, so the rules pin both the op and the helper.
+const messageOpsFile = 'src-tauri/crates/core/src/db/sea/ops/message.rs'
 const messageOpsSource = readAt(messageOpsFile)
-const recordAutoReview = messageOpsSource?.match(/pub fn record_auto_review\s*\([\s\S]*?\n\}/)?.[0]
-if (!/verdict:\s*&crate::events::AutoReviewVerdict/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 写入参数必须是 typed AutoReviewVerdict')
+const recordAutoReview = messageOpsSource?.match(/pub async fn record_auto_review\s*\([\s\S]*?\n\}/)?.[0]
+const mergeByCall = messageOpsSource?.match(/async fn merge_by_call<V>\s*\([\s\S]*?\n\}/)?.[0]
+if (
+  !/verdict:\s*&crate::events::AutoReviewVerdict/.test(recordAutoReview ?? '') ||
+  !/merge_by_call\([^;]*message::Column::AutoReview,\s*verdict\.clone\(\)\)/.test(recordAutoReview ?? '')
+) {
+  add(
+    messageOpsFile,
+    'record_auto_review 写入参数必须是 typed AutoReviewVerdict，并经 merge_by_call 写入 auto_review 列',
+  )
 }
-if (!/BTreeMap<String,\s*crate::events::AutoReviewVerdict>/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 必须严格解码已有嵌套 verdict，禁止 Value passthrough')
+if (!/BTreeMap<String,\s*V>/.test(mergeByCall ?? '') || /serde_json::Value/.test(mergeByCall ?? '')) {
+  add(messageOpsFile, 'merge_by_call 必须按 BTreeMap<String, V> 严格解码已有嵌套 verdict，禁止 Value passthrough')
 }
-if (!/call_id\.is_empty\(\)/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 必须拒绝空 call_id')
+if (!/call_id\.is_empty\(\)/.test(mergeByCall ?? '')) {
+  add(messageOpsFile, 'merge_by_call 必须拒绝空 call_id')
 }
 const providerContractFile = 'src-tauri/crates/core/src/provider/mod.rs'
 const providerContractSource = readAt(providerContractFile)
@@ -1293,7 +1293,7 @@ requireRustFields(acpImportCoreFile, 'ImportedSession', {
 requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationSearchHitInfoResponse', {
   role: /^TranscriptRole$/,
 })
-const conversationOpsFile = 'src-tauri/crates/core/src/db/ops/conversation.rs'
+const conversationOpsFile = 'src-tauri/crates/core/src/db/sea/ops/conversation.rs'
 const conversationOps = readAt(conversationOpsFile)
 if (/derive\([^)]*Serialize[^)]*\)[\s\S]{0,100}?pub struct TranscriptHit\b/.test(conversationOps ?? '')) {
   add(conversationOpsFile, 'TranscriptHit 是内部查询结果，禁止直接序列化越过 command response 边界')
@@ -1828,28 +1828,17 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
   for (const declaration of rustStructDeclarations(productionSource)) {
     const type = rustStructFields(productionSource, declaration.name)?.get('server_tools')
     if (type == null || /\bServerToolKind\b/.test(type)) continue
-    // The storage representations: the Diesel row and the SeaORM entity, the
-    // resolved view the turn loop reads, and the flat shape tests seed through.
-    // All four hold the JSON array as text and none of them crosses the command
-    // boundary (the entity rules below keep a Model out of every command).
+    // The storage representations: the SeaORM entity, the resolved view the
+    // turn loop reads, and the flat shape tests seed through. All three hold
+    // the JSON array as text and none of them crosses the command boundary
+    // (the entity rules below keep a Model out of every command).
     const storageFiles = [
-      'src-tauri/crates/core/src/db/models/model_config.rs',
       'src-tauri/crates/core/src/db/entity/model_config.rs',
       'src-tauri/crates/core/src/agent/model_config.rs',
-      'src-tauri/crates/core/src/db/ops/model_config.rs',
+      'src-tauri/crates/core/src/db/sea/ops/model_config.rs',
     ]
     if (storageFiles.includes(file) && /\b(?:str|String)\b/.test(type)) continue
     add(file, `${declaration.name}.server_tools 必须使用 ServerToolKind，当前为 ${type}`)
-  }
-}
-
-const schemaFile = 'src-tauri/crates/core/src/db/schema.rs'
-const schema = readAt(schemaFile)
-if (schema != null) {
-  for (const match of schema.matchAll(/^\s*(\w+)\s*->\s*([^,]+),/gm)) {
-    if (isMoneyLeafField(match[1]) && !/\bText\b/.test(match[2])) {
-      add(schemaFile, `金额列 ${match[1]} 必须映射为 SQLite Text，不得使用 ${match[2].trim()}`)
-    }
   }
 }
 
@@ -1877,7 +1866,7 @@ for (const table of ['model_configs', 'audit_messages']) {
 // `messages.auto_review` 的形状没有表级 CHECK 可守：迁移 50 那张 `valid_auto_review_shape`
 // 是 TEMP 守卫表，一次性数据改写的一部分，不在现行 schema 里（快照里 messages 没有 CHECK）。
 // 对历史改写文本的断言已删——它是冻结的历史。现行的形状约束在 Rust 侧，上面
-// record_auto_review 那几条规则守着；这里只钉住列本身：可空的 TEXT。
+// record_auto_review / merge_by_call 那几条规则守着；这里只钉住列本身：可空的 TEXT。
 const messagesBody = schemaSnapshot == null ? null : sqlCreateTableBody(schemaSnapshot, 'messages')
 if (messagesBody == null) add(schemaSnapshotFile, '快照里没有 CREATE TABLE "messages"')
 else if (!/"auto_review" text(?:,|\s*\))/.test(messagesBody)) {
@@ -1918,8 +1907,14 @@ for (const [pattern, message] of [
   [/pub const DECIMAL_SCALE: usize = 18;/, 'Decimal 必须固定 NUMERIC(38,18) scale'],
   [/serializer\.serialize_str\(&self\.canonical\(\)\)/, 'Decimal JSON 必须序列化为 canonical string'],
   [/deserializer\.deserialize_str\(DecimalVisitor\)/, 'Decimal JSON 必须拒绝 number，只接受 string'],
-  [/impl ToSql<Text, Sqlite> for Decimal/, 'Decimal SQLite 映射必须使用 Text'],
-  [/impl FromSql<Text, Sqlite> for Decimal/, 'Decimal SQLite 读取必须使用 Text'],
+  [
+    /impl From<Decimal> for sea_orm::Value \{[\s\S]{0,120}?sea_orm::Value::String\(Some\(value\.canonical\(\)\)\)/,
+    'Decimal SQLite 写入必须是 canonical Text',
+  ],
+  [
+    /impl sea_orm::TryGetable for Decimal \{[\s\S]{0,200}?String::try_get_by\([\s\S]{0,80}?Decimal::from_canonical_str/,
+    'Decimal SQLite 读取必须经 String 严格解析 canonical Text',
+  ],
 ]) {
   if (decimalSource != null && !pattern.test(decimalSource)) add(decimalFile, message)
 }
@@ -1991,6 +1986,60 @@ for (const [file, source] of rustSources) {
   }
 }
 
+// `Expr::cust` 是查询构建器里的原生 SQL 片段。迁移目录之外，用到它的文件必须带
+// `backend: sqlite-only` 标注，并且恰好是 docs/backend-neutrality.md「查询构建器里的 SQLite 片段」
+// 表里登记的那些——PostgreSQL 版本动工时，那张表就是要改写的全部清单。
+{
+  const neutralityFile = 'docs/backend-neutrality.md'
+  const neutrality = readAt(neutralityFile) ?? ''
+  const section = neutrality.split('## 查询构建器里的 SQLite 片段')[1]?.split('\n## ')[0] ?? ''
+  const registered = new Set(
+    [...section.matchAll(/^\| `core\/src\/([^`]+)` \|/gm)].map((m) => `src-tauri/crates/core/src/${m[1]}`),
+  )
+  const using = new Set()
+  for (const [file, source] of rustSources) {
+    if (source == null || file.startsWith(STATEMENT_ALLOWED_DIR) || !file.startsWith('src-tauri/crates/core/src/'))
+      continue
+    if (!/\bExpr::cust(?:_with_values)?\(/.test(rustProductionText(source))) continue
+    using.add(file)
+    if (!/backend: sqlite-only/.test(source)) add(file, 'Expr::cust 的文件必须带 `backend: sqlite-only` 标注')
+    if (!registered.has(file))
+      add(file, `用了 Expr::cust 却没登记在 ${neutralityFile} 的「查询构建器里的 SQLite 片段」表里`)
+  }
+  for (const file of registered) {
+    if (!using.has(file)) add(neutralityFile, `登记了 ${file} 用 Expr::cust，但它已经不用了：删掉这一行`)
+  }
+}
+
+// db/sql.rs 里每一条登记的原生语句（`ReadOnly` 常量）都必须是 docs/backend-neutrality.md
+// 「db/sql.rs：登记的原生 SQL」表里的一行，表里也不能有已经不存在的常量——那张表自称「就是全部」，
+// 这里让它真的是。
+{
+  const sqlFile = 'src-tauri/crates/core/src/db/sql.rs'
+  const neutralityFile = 'docs/backend-neutrality.md'
+  const sqlSource = readAt(sqlFile)
+  const neutrality = readAt(neutralityFile) ?? ''
+  if (sqlSource != null) {
+    const declared = new Set(
+      [
+        ...rustProductionText(sqlSource).matchAll(
+          /^\s*(?:pub(?:\([^)]*\))?\s+)?const\s+([A-Z][A-Z0-9_]*)\s*:\s*ReadOnly\b/gm,
+        ),
+      ].map((m) => m[1]),
+    )
+    const section = neutrality.split('## `db/sql.rs`：登记的原生 SQL')[1]?.split('\n## ')[0] ?? ''
+    const listed = new Set([...section.matchAll(/^\| `([A-Z][A-Z0-9_]*)` \|/gm)].map((m) => m[1]))
+    if (declared.size === 0) add(sqlFile, '没找到任何 ReadOnly 常量：登记表检查失去了对象，先修检查器')
+    for (const name of declared) {
+      if (!listed.has(name))
+        add(sqlFile, `登记的原生语句 ${name} 不在 ${neutralityFile} 的「db/sql.rs：登记的原生 SQL」表里`)
+    }
+    for (const name of listed) {
+      if (!declared.has(name)) add(neutralityFile, `表里登记了 ${name}，但 db/sql.rs 里已经没有这条语句：删掉这一行`)
+    }
+  }
+}
+
 // 两个 Cargo.toml 都不许开 sea-orm 的 with-bigdecimal。先去掉 `#` 注释：core 的那份正是在
 // 注释里解释为什么不开它。
 for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.toml']) {
@@ -2002,7 +2051,7 @@ for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.tom
   }
 }
 
-// SeaORM 侧与 decode_sqlite_bool 对应的那一道严格 0/1 转换，和 *_at 列的类型。
+// SeaORM 侧那一道严格 0/1 转换（行到 IPC 只经它），和 *_at 列的类型。
 const sqlBoolFile = 'src-tauri/crates/core/src/db/types.rs'
 const sqlBoolSource = readAt(sqlBoolFile)
 if (sqlBoolSource != null) for (const problem of sqlBoolProblems(sqlBoolSource)) add(sqlBoolFile, problem)
@@ -2045,7 +2094,7 @@ if (prices) {
   }
 }
 
-const usageFile = 'src-tauri/crates/core/src/db/ops/usage.rs'
+const usageFile = 'src-tauri/crates/core/src/db/sea/ops/usage.rs'
 const usage = readAt(usageFile)
 const usageBucket = usage?.match(/pub struct UsageBucket\s*\{([\s\S]*?)\n\}/)?.[1]
 if (usageBucket) {
@@ -2053,6 +2102,9 @@ if (usageBucket) {
   if (!/^\s*pub\s+total_cost\s*:\s*Decimal\s*,/m.test(usageBucket)) {
     add(usageFile, 'UsageBucket.total_cost 必须存在且使用 Decimal')
   }
+} else if (usage != null) {
+  // 结构体搬走而检查器没跟上，就是这条规则静默失效。
+  add(usageFile, '这里没有 pub struct UsageBucket：它搬到哪里，这条金额规则就要跟到哪里')
 }
 
 requireRustFields('src-tauri/crates/core/src/provider/balance.rs', 'BalanceAccount', {

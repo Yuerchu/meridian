@@ -199,7 +199,7 @@ pub struct LogSettingsResponse {
 #[tauri::command]
 pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettingsResponse, String> {
     let services = app.services();
-    let level = logging::load_saved_level(&services.sea).await?;
+    let level = logging::load_saved_level(&services.db).await?;
 
     let (max_file_bytes, max_files) = logging::file_limits();
     Ok(LogSettingsResponse {
@@ -225,7 +225,7 @@ pub async fn set_log_level(app: tauri::AppHandle, request: LogLevelUpdateRequest
 
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| {
             db::sea::ops::preference::set_preference(
                 tx,

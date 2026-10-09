@@ -95,7 +95,7 @@ pub fn phrases<'a>(contents: impl IntoIterator<Item = &'a str>) -> Vec<String> {
 /// The hints as they stand in the database now.
 pub async fn compute(services: &Services) -> Result<Vec<String>, String> {
     let rows = mem_ops::list_by_scopes(
-        &services.sea,
+        &services.db,
         MemoryScope::ClientGlobal,
         &[GLOBAL_SCOPE_ID.to_string()],
         &VisibilityCtx::private_injection(),
