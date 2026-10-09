@@ -618,7 +618,7 @@ async fn prepare(
     };
     // The row, its prior results and the settings in one write: the head the
     // retry check reads is the head the append moves.
-    let written = services
+    services
         .db
         .write(async |tx| {
             let Some(conversation) = sea_ops::conversation::get_conversation(tx, conversation_id).await? else {
@@ -669,8 +669,7 @@ async fn prepare(
             }))
         })
         .await
-        .map_err(|e| e.to_string())?;
-    written
+        .map_err(|e| e.to_string())?
 }
 
 async fn persist_result(
