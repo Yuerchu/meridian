@@ -936,9 +936,13 @@ mod tests {
             for id in ["conversation-1", "conversation-2"] {
                 conversation_ops::create_conversation(tx, id, None, None, Some("project-a"), 1).await?;
             }
-            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", Some(("project-a", "A")))
-                .await
-                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                "conversation-1",
+                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-a", "A"))),
+            )
+            .await
+            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await

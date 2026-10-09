@@ -17,7 +17,7 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
-| acp_session::get | 7 |
+| acp_session::get | 4 |
 | acp_session::owners | 3 |
 | acp_session::upsert | 6 |
 | acp_session_notice::list_for_conversation | 1 |
@@ -28,34 +28,32 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 | assistant::update_assistant | 1 |
 | audit::record_side_request | 1 |
 | conversation::all_ids | 1 |
-| conversation::create_conversation | 9 |
-| conversation::get_conversation | 9 |
+| conversation::create_conversation | 6 |
+| conversation::get_conversation | 7 |
 | conversation::insert | 4 |
 | conversation::toggle_archive | 1 |
 | conversation::toggle_pin | 1 |
 | conversation::update_title | 2 |
-| message::append_message | 3 |
+| message::append_message | 2 |
 | message::list_messages | 8 |
 | message::record_tool_diffs | 2 |
 | message::record_tool_diffs_for_call | 1 |
 | message::revise_tool_call | 1 |
-| message_context_item::insert_many | 1 |
-| message_context_item::list_for_message | 2 |
 | model_config::get_with_profile | 1 |
-| plan_review::append_assistant_revision | 5 |
-| plan_review::create_or_resume_document | 5 |
+| plan_review::append_assistant_revision | 1 |
+| plan_review::create_or_resume_document | 1 |
 | plan_review::decide_review | 1 |
 | plan_review::get_pending_review_for_conversation | 1 |
 | plan_review::get_review_bundle | 1 |
 | plan_review::mark_delivery_acknowledged | 1 |
 | plan_review::mark_delivery_dispatched | 1 |
-| plan_review::mark_materialization_applied | 5 |
-| plan_review::submit_native_head_for_review | 5 |
+| plan_review::mark_materialization_applied | 1 |
+| plan_review::submit_native_head_for_review | 1 |
 | preference::get_preference | 3 |
 | preference::set_preference | 2 |
 | project::find_project_by_path | 2 |
-| project::get_project | 3 |
-| provider::create_provider | 4 |
+| project::get_project | 1 |
+| provider::create_provider | 3 |
 | provider::get_provider | 3 |
 | provider::list_providers | 3 |
 | provider::update_provider | 2 |

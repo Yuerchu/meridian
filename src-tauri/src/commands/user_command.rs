@@ -7,23 +7,23 @@
 
 #![cfg(not(target_os = "android"))]
 
-use diesel::prelude::*;
-use meridian_core::db::entity::message_context_item;
-use meridian_core::db::models::message::MessageInsert;
-use meridian_core::db::models::message_context_item::MessageContextItemInsert;
+use meridian_core::db::entity::{message as message_entity, message_context_item};
+use meridian_core::db::sea::DbErr;
+use meridian_core::db::sea::ops as sea_ops;
+use meridian_core::db::types::SqlBool;
 use meridian_core::sandbox::{CommandSettings, ExecutionMode, SandboxBackend};
 use meridian_core::tools::run_command::{CommandExecution, CommandExecutionError};
 use meridian_core::tools::{FileAccess, ShellType, ToolContext};
 use meridian_core::turn::TurnOrigin;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 use meridian_core::workspace::WorkspaceRoot;
+use meridian_core::workspace::reference::MessageContextKind;
 use serde::{Deserialize, Serialize};
 
 use crate::ServicesExt;
 use crate::commands::model_config::RequiredNullable;
 
 const SOURCE: &str = "shell";
-const CONTEXT_KIND: &str = "shell_output";
 
 /// The complete, restart-stable answer to one `!` command attempt.
 ///
@@ -577,33 +577,29 @@ pub async fn get_user_command_result(
         message_id,
     } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let row = meridian_core::db::schema::messages::table
-            .filter(meridian_core::db::schema::messages::id.eq(&message_id))
-            .filter(meridian_core::db::schema::messages::conversation_id.eq(&conversation_id))
-            .filter(meridian_core::db::schema::messages::source.eq(SOURCE))
-            .select(meridian_core::db::models::message::MessageRow::as_select())
-            .first::<meridian_core::db::models::message::MessageRow>(&mut conn)
-            .optional()
-            .map_err(|e| e.to_string())?;
-        let Some(row) = row else { return Ok(None) };
-        let turn_id = row.turn_id.ok_or("shell message has no turn id")?;
-        let items = meridian_core::db::ops::message_context_item::list_for_message(&mut conn, &message_id)
-            .map_err(|e| e.to_string())?;
-        if let Some(stored) = parse_latest(&items)? {
-            return Ok(Some(stored.public(&conversation_id, &turn_id, &message_id)));
-        }
-        let cwd = meridian_core::workspace::resolve_workspace_dir(&mut conn, &conversation_id)
-            .ok()
-            .flatten()
-            .map(|path| path.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        Ok(Some(in_doubt(&conversation_id, &turn_id, &message_id, &cwd)))
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let read = services
+        .sea
+        .read(async |tx| {
+            let Some(row) = sea_ops::message::get_with_source(tx, &conversation_id, &message_id, SOURCE).await? else {
+                return Ok(None);
+            };
+            let items = sea_ops::message_context_item::list_for_message(tx, &message_id).await?;
+            Ok::<_, DbErr>(Some((row, items)))
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some((row, items)) = read else { return Ok(None) };
+    let turn_id = row.turn_id.ok_or("shell message has no turn id")?;
+    if let Some(stored) = parse_latest(&items)? {
+        return Ok(Some(stored.public(&conversation_id, &turn_id, &message_id)));
+    }
+    let cwd = meridian_core::workspace::resolve_workspace_dir(&services.sea, &conversation_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    Ok(Some(in_doubt(&conversation_id, &turn_id, &message_id, &cwd)))
 }
 
 async fn prepare(
@@ -612,102 +608,70 @@ async fn prepare(
     turn_id: &str,
     command: &str,
 ) -> Result<Prepared, String> {
-    let pool = services.db.clone();
-    let conversation_id = conversation_id.to_string();
-    let turn_id = turn_id.to_string();
     let visible = format!("!{command}");
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        let conversation = meridian_core::db::ops::conversation::get_conversation(&mut conn, &conversation_id)
-            .map_err(|e| e.to_string())?;
-        let cwd = match meridian_core::workspace::resolve_workspace_root(&mut conn, &conversation_id)? {
-            WorkspaceRoot::Ok { root, .. } => root,
-            WorkspaceRoot::NoProject => return Err("running a command needs a project or hosted session".into()),
-            WorkspaceRoot::NoPath => return Err("the conversation's project has no directory".into()),
-            WorkspaceRoot::MissingDir { path } => return Err(format!("workspace directory is unavailable: {path}")),
-        };
-
-        let existing = meridian_core::db::schema::messages::table
-            .filter(meridian_core::db::schema::messages::conversation_id.eq(&conversation_id))
-            .filter(meridian_core::db::schema::messages::turn_id.eq(&turn_id))
-            .filter(meridian_core::db::schema::messages::source.eq(SOURCE))
-            .select(meridian_core::db::models::message::MessageRow::as_select())
-            .first::<meridian_core::db::models::message::MessageRow>(&mut conn)
-            .optional()
-            .map_err(|e| e.to_string())?;
-
-        let message_was_existing = existing.is_some();
-        let message_id = match existing {
-            Some(row) => {
-                if row.content != visible {
-                    return Err("turn id was already used for a different command".into());
+    // The directory first: it is checked against the filesystem, which is no
+    // work to do holding the write lock.
+    let cwd = match meridian_core::workspace::resolve_workspace_root(&services.sea, conversation_id).await? {
+        WorkspaceRoot::Ok { root, .. } => root,
+        WorkspaceRoot::NoProject => return Err("running a command needs a project or hosted session".into()),
+        WorkspaceRoot::NoPath => return Err("the conversation's project has no directory".into()),
+        WorkspaceRoot::MissingDir { path } => return Err(format!("workspace directory is unavailable: {path}")),
+    };
+    // The row, its prior results and the settings in one write: the head the
+    // retry check reads is the head the append moves.
+    let written = services
+        .sea
+        .write(async |tx| {
+            let Some(conversation) = sea_ops::conversation::get_conversation(tx, conversation_id).await? else {
+                return Ok(Err(format!("conversation {conversation_id} not found")));
+            };
+            let existing = sea_ops::message::find_by_turn_and_source(tx, conversation_id, turn_id, SOURCE).await?;
+            let message_was_existing = existing.is_some();
+            let message_id = match existing {
+                Some(row) => {
+                    if row.content != visible {
+                        return Ok(Err("turn id was already used for a different command".into()));
+                    }
+                    row.id
                 }
-                row.id
-            }
-            None => {
-                let id = uuid::Uuid::new_v4().to_string();
-                let row = meridian_core::db::ops::message::append_message(
-                    &mut conn,
-                    &MessageInsert {
-                        id: &id,
-                        conversation_id: &conversation_id,
-                        role: "user",
-                        content: &visible,
-                        provider_id: None,
-                        model_id: None,
-                        input_tokens: None,
-                        output_tokens: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        sort_order: 0,
-                        created_at: now_ms(),
-                        reasoning_content: None,
-                        rating: None,
-                        schema_version: 2,
-                        is_compact_summary: 0,
-                        sender_id: None,
-                        parent_id: conversation.head_message_id.as_deref(),
-                        compact_anchor_id: None,
-                        source: Some(SOURCE),
-                        turn_id: Some(&turn_id),
-                        tool_outcome: None,
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        server_tool_calls: None,
-                        provider_name: None,
-                        response_model_id: None,
-                    },
-                    conversation.head_message_id.as_deref(),
-                )
-                .map_err(|e| e.to_string())?;
-                row.id
-            }
-        };
-        // For a new row append_message just made it the tip. For a retry, the
-        // database head read under the shell turn lease proves that the user
-        // has not since continued or switched to another branch.
-        let message_is_active_head =
-            !message_was_existing || conversation.head_message_id.as_deref() == Some(message_id.as_str());
-
-        let prior = meridian_core::db::ops::message_context_item::list_for_message(&mut conn, &message_id)
-            .map_err(|e| e.to_string())?;
-        // A failed read is `Unreadable`, not an error and not "unset": the row
-        // above already exists, and the result that lands beside it says why
-        // nothing ran instead of a guess about where it should have.
-        let settings = CommandSettings::read_on(&mut conn)?;
-
-        Ok(Prepared {
-            message_id,
-            message_was_existing,
-            message_is_active_head,
-            prior,
-            cwd,
-            project_id: conversation.project_id,
-            settings,
+                None => {
+                    let id = uuid::Uuid::new_v4().to_string();
+                    let row = message_entity::Model {
+                        source: Some(SOURCE.to_string()),
+                        turn_id: Some(turn_id.to_string()),
+                        ..sea_ops::message::new_row(&id, conversation_id, "user", &visible, now_ms())
+                    };
+                    sea_ops::message::append_message(tx, row, conversation.head_message_id.as_deref())
+                        .await?
+                        .id
+                }
+            };
+            // For a new row append_message just made it the tip. For a retry, the
+            // database head read under the shell turn lease proves that the user
+            // has not since continued or switched to another branch.
+            let message_is_active_head =
+                !message_was_existing || conversation.head_message_id.as_deref() == Some(message_id.as_str());
+            let prior = sea_ops::message_context_item::list_for_message(tx, &message_id).await?;
+            // A failed read is `Unreadable`, not an error and not "unset": the row
+            // above already exists, and the result that lands beside it says why
+            // nothing ran instead of a guess about where it should have.
+            let settings = match CommandSettings::read_in(tx).await {
+                Ok(settings) => settings,
+                Err(error) => return Ok(Err(error)),
+            };
+            Ok::<_, DbErr>(Ok(Prepared {
+                message_id,
+                message_was_existing,
+                message_is_active_head,
+                prior,
+                cwd,
+                project_id: conversation.project_id,
+                settings,
+            }))
         })
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        .await
+        .map_err(|e| e.to_string())?;
+    written
 }
 
 async fn persist_result(
@@ -720,41 +684,35 @@ async fn persist_result(
     let metadata = serde_json::to_string(stored).map_err(|e| e.to_string())?;
     let hash = meridian_core::journal::blobs::sha256_of(&content);
     let id = uuid::Uuid::new_v4().to_string();
-    let message_id = message_id.to_string();
     let bytes = content.len().min(i32::MAX as usize) as i32;
     let lines = content.lines().count().min(i32::MAX as usize) as i32;
     // A conservative descriptor estimate only. Provider budgeting recounts the
     // exact content with the selected model's tokenizer before sending.
     let tokens = content.chars().count().div_ceil(3).min(i32::MAX as usize) as i32;
-    let truncated = stored.execution.as_ref().is_some_and(|r| r.truncated) as i32;
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool)?;
-        meridian_core::db::ops::message_context_item::insert_many(
-            &mut conn,
-            &[MessageContextItemInsert {
-                id: &id,
-                message_id: &message_id,
-                position,
-                kind: CONTEXT_KIND,
-                content: &content,
-                display_path: None,
-                line_start: None,
-                line_end: None,
-                content_hash: &hash,
-                byte_count: bytes,
-                line_count: lines,
-                token_count: tokens,
-                truncated,
-                metadata: Some(&metadata),
-                created_at: now_ms(),
-            }],
-        )
+    let truncated = SqlBool::from(stored.execution.as_ref().is_some_and(|r| r.truncated));
+    let item = message_context_item::Model {
+        id,
+        message_id: message_id.to_string(),
+        position,
+        kind: MessageContextKind::ShellOutput,
+        content,
+        display_path: None,
+        line_start: None,
+        line_end: None,
+        content_hash: hash,
+        byte_count: bytes,
+        line_count: lines,
+        token_count: tokens,
+        truncated,
+        metadata: Some(metadata),
+        created_at: now_ms(),
+    };
+    services
+        .sea
+        .write(async |tx| sea_ops::message_context_item::insert_many(tx, vec![item]).await)
+        .await
         .map(|_| ())
         .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
 }
 
 fn parse_latest(items: &[message_context_item::Model]) -> Result<Option<StoredResult>, String> {

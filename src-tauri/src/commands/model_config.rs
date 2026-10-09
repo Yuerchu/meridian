@@ -576,51 +576,19 @@ mod tests {
         .unwrap();
     }
 
-    /// The review is seeded through the Diesel plan-review ops, which have not
-    /// moved, on a file both pools open; the guarded mutations run on SeaORM.
-    fn seed_pending_model_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        db::ops::conversation::create_conversation(conn, "conversation-1", None, None, None, 1).unwrap();
-        let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-            provider_id: "provider".into(),
-            model: "model".into(),
-            assistant_id: None,
-            thinking_level: None,
-            fast: false,
-            project_id: None,
-            project_path: None,
-            accept_edits: false,
-        };
-        let document = db::ops::plan_review::create_or_resume_document(conn, "conversation-1", 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("message-1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("message-1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &runtime,
-        )
+    async fn seed_pending_model_review(sea: &meridian_core::db::sea::cap::Db) {
+        sea.write(async |tx| {
+            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                "conversation-1",
+                &db::sea::ops::plan_review::test_runtime("provider", "model", None),
+            )
+            .await
+            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
         .unwrap();
     }
 
@@ -763,10 +731,9 @@ mod tests {
 
     #[tokio::test]
     async fn active_review_runtime_blocks_exact_model_config_save_and_delete() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        let sea = db::sea::sea_test_db().await;
         seed_provider(&sea).await;
-        seed_pending_model_review(&mut pool.get().unwrap());
+        seed_pending_model_review(&sea).await;
         let conversations = vec!["conversation-1".to_string()];
 
         let save = sea

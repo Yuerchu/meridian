@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：271
-- Diesel ops 调用点（db/ops 之外）：140
-- Diesel API 引用：475
+- 事务根（非测试）：275
+- Diesel ops 调用点（db/ops 之外）：109
+- Diesel API 引用：454
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -195,6 +195,7 @@
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
+| `src-tauri/crates/core/src/workspace/mod.rs` › `configured_dir` | sea-read | acp_session, conversation, project |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
@@ -298,5 +299,8 @@
 | `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/usage.rs` › `usage_report` | sea-read | model_config, usage |
+| `src-tauri/src/commands/user_command.rs` › `get_user_command_result` | sea-read | message, message_context_item |
+| `src-tauri/src/commands/user_command.rs` › `persist_result` | sea-write | message_context_item |
+| `src-tauri/src/commands/user_command.rs` › `prepare` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider |
 | `src-tauri/src/platform.rs` › `save_saf_roots` | sea-write | preference |
 | `src-tauri/src/remote/mod.rs` › `save_config` | sea-write | preference |

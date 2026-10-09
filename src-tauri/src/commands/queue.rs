@@ -14,7 +14,7 @@ use meridian_core::db::models::queue::Delivery;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::WriteTx;
 use meridian_core::db::sea::ops::queue as ops;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -149,15 +149,10 @@ pub async fn queue_enqueue(
     let prepared = if references.is_empty() {
         Vec::new()
     } else {
-        let pool_for_root = services.db.clone();
-        let conversation_for_root = conversation_id.clone();
-        let working_directory = blocking(move || {
-            let mut conn = get_conn(&pool_for_root)?;
-            meridian_core::workspace::resolve_workspace_dir(&mut conn, &conversation_for_root)?
-                .map(|path| path.to_string_lossy().into_owned())
-                .ok_or_else(|| "workspace unavailable".to_string())
-        })
-        .await?;
+        let working_directory = meridian_core::workspace::resolve_workspace_dir(&services.sea, &conversation_id)
+            .await?
+            .map(|path| path.to_string_lossy().into_owned())
+            .ok_or_else(|| "workspace unavailable".to_string())?;
         let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
         let context = meridian_core::tools::ToolContext {
             working_directory: Some(working_directory),
@@ -320,14 +315,6 @@ pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Re
     Ok(())
 }
 
-async fn blocking<T, F>(f: F) -> Result<T, String>
-where
-    T: Send + 'static,
-    F: FnOnce() -> Result<T, String> + Send + 'static,
-{
-    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,40 +332,16 @@ mod tests {
         }
     }
 
-    fn seed_pending_plan_review(conn: &mut diesel::sqlite::SqliteConnection, conversation_id: &str) {
-        let document =
-            meridian_core::db::ops::plan_review::create_or_resume_document(conn, conversation_id, 2).unwrap();
-        let appended = meridian_core::db::ops::plan_review::append_assistant_revision(
-            conn,
-            &meridian_core::db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("m1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        meridian_core::db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4)
-            .unwrap();
-        meridian_core::db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &meridian_core::db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: meridian_core::db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &native_plan_runtime(),
-        )
+    async fn seed_pending_plan_review(db: &meridian_core::db::sea::cap::Db, conversation_id: &str) {
+        db.write(async |tx| {
+            meridian_core::db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                conversation_id,
+                &native_plan_runtime(),
+            )
+            .await
+        })
+        .await
         .unwrap();
     }
 
@@ -476,8 +439,7 @@ mod tests {
 
     #[tokio::test]
     async fn enqueue_and_release_are_both_refused_by_the_durable_plan_barrier() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, db) = meridian_core::db::sea::shared_test_db(dir.path()).await;
+        let db = meridian_core::db::sea::sea_test_db().await;
         conversation(&db).await;
         db.write(async |tx| {
             ops::enqueue(tx, "held-1", "c1", "existing held message", Delivery::FollowUp, 2).await?;
@@ -485,7 +447,7 @@ mod tests {
         })
         .await
         .unwrap();
-        seed_pending_plan_review(&mut pool.get().unwrap(), "c1");
+        seed_pending_plan_review(&db, "c1").await;
 
         assert!(
             db.write(async |tx| {

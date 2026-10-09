@@ -270,17 +270,11 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
     let context = if references.is_empty() {
         Vec::new()
     } else {
-        let pool = services.db.clone();
-        let conversation = conversation_id.clone();
-        let cwd = tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            meridian_core::db::ops::acp_session::get(&mut conn, &conversation)
-                .map_err(|e| e.to_string())?
-                .map(|row| row.cwd)
-                .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let cwd = meridian_core::db::sea::ops::acp_session::get(&services.sea, &conversation_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .map(|row| row.cwd)
+            .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())?;
         let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
         let tool_context = meridian_core::tools::ToolContext {
             working_directory: Some(cwd),
@@ -400,20 +394,15 @@ pub async fn acp_conversation_session(
     conversation_id: String,
 ) -> Result<Option<AcpConversationSessionInfoResponse>, String> {
     let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = meridian_core::util::get_conn(&pool)?;
-        meridian_core::db::ops::acp_session::get(&mut conn, &conversation_id)
-            .map(|row| {
-                row.map(|row| AcpConversationSessionInfoResponse {
-                    cwd: row.cwd,
-                    acp_session_id: row.acp_session_id,
-                })
+    meridian_core::db::sea::ops::acp_session::get(&services.sea, &conversation_id)
+        .await
+        .map(|row| {
+            row.map(|row| AcpConversationSessionInfoResponse {
+                cwd: row.cwd,
+                acp_session_id: row.acp_session_id,
             })
-            .map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+        })
+        .map_err(|e| e.to_string())
 }
 
 #[cfg(not(target_os = "android"))]

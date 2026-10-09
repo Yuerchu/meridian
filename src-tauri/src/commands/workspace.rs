@@ -456,19 +456,10 @@ pub async fn open_in_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenR
         line,
     } = request;
     let services = app.services();
-    let pool = services.db.clone();
-    let root = tokio::task::spawn_blocking({
-        let conversation_id = conversation_id.clone();
-        move || -> Result<PathBuf, String> {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            match workspace::resolve_workspace_root(&mut conn, &conversation_id)? {
-                WorkspaceRoot::Ok { root, .. } => Ok(PathBuf::from(root)),
-                _ => Err("workspace unavailable".into()),
-            }
-        }
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let root = match workspace::resolve_workspace_root(&services.sea, &conversation_id).await? {
+        WorkspaceRoot::Ok { root, .. } => PathBuf::from(root),
+        _ => return Err("workspace unavailable".into()),
+    };
     let template = db::sea::ops::preference::get_preference(&services.sea, "files.editor_command")
         .await
         .map_err(|e| e.to_string())?;
@@ -552,14 +543,7 @@ pub(crate) async fn require_root(app: &tauri::AppHandle, conversation_id: String
 }
 
 async fn resolve_root(app: &tauri::AppHandle, conversation_id: String) -> Result<WorkspaceRoot, String> {
-    let services = app.services();
-    let pool = services.db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        workspace::resolve_workspace_root(&mut conn, &conversation_id)
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    workspace::resolve_workspace_root(&app.services().sea, &conversation_id).await
 }
 
 async fn require_reference_directory(
@@ -568,24 +552,15 @@ async fn require_reference_directory(
     project_id: Option<String>,
 ) -> Result<PathBuf, String> {
     match (conversation_id, project_id) {
-        (Some(conversation_id), None) => {
-            let pool = app.services().db.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                workspace::resolve_workspace_dir(&mut conn, &conversation_id)?.ok_or_else(|| "no_path".to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?
-        }
+        (Some(conversation_id), None) => workspace::resolve_workspace_dir(&app.services().sea, &conversation_id)
+            .await?
+            .ok_or_else(|| "no_path".to_string()),
         (None, Some(project_id)) => {
-            let pool = app.services().db.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool.get().map_err(|e| e.to_string())?;
-                let project = db::ops::project::get_project(&mut conn, &project_id).map_err(|e| e.to_string())?;
-                project.path.map(PathBuf::from).ok_or_else(|| "no_path".to_string())
-            })
-            .await
-            .map_err(|e| e.to_string())?
+            let project = db::sea::ops::project::get_project(&app.services().sea, &project_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or_else(|| format!("project {project_id} not found"))?;
+            project.path.map(PathBuf::from).ok_or_else(|| "no_path".to_string())
         }
         _ => Err("exactly one of conversation_id or project_id is required".into()),
     }

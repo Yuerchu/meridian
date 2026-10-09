@@ -259,9 +259,13 @@ mod tests {
             project_ops::create_project(tx, project_row()).await?;
             db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, Some("project-1"), 1)
                 .await?;
-            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", Some(("project-1", "A")))
-                .await
-                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                "conversation-1",
+                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-1", "A"))),
+            )
+            .await
+            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await

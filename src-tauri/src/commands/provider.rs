@@ -1048,71 +1048,40 @@ pub async fn get_provider_capabilities(
 #[cfg(test)]
 mod response_contract_tests {
     use super::*;
-    use meridian_core::db::models::provider::ProviderInsert;
 
-    fn seed_provider_with_pending_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        db::ops::provider::create_provider(
-            conn,
-            &ProviderInsert {
-                id: "provider-1",
-                name: "Provider",
-                provider_type: "openai",
-                base_url: "https://old.invalid",
-                is_enabled: 1,
-                sort_order: 0,
-                created_at: 1,
-                updated_at: 1,
-                api_format: "responses",
-                catalog_id: None,
-                credential_kind: "api_key",
-                transport_profile: "standard",
-                icon: None,
-                codex_request_shape: 0,
-            },
-        )
-        .unwrap();
-        db::ops::conversation::create_conversation(conn, "conversation-1", None, None, None, 1).unwrap();
-        let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-            provider_id: "provider-1".into(),
-            model: "model-1".into(),
-            assistant_id: None,
-            thinking_level: None,
-            fast: false,
-            project_id: None,
-            project_path: None,
-            accept_edits: false,
-        };
-        let document = db::ops::plan_review::create_or_resume_document(conn, "conversation-1", 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("message-1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("message-1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &runtime,
-        )
+    async fn seed_provider_with_pending_review(db: &meridian_core::db::sea::cap::Db) {
+        db.write(async |tx| {
+            db::sea::ops::provider::create_provider(
+                tx,
+                db::entity::provider::Model {
+                    id: "provider-1".into(),
+                    name: "Provider".into(),
+                    provider_type: meridian_core::provider::registry::ProviderType::Openai,
+                    base_url: "https://old.invalid".into(),
+                    is_enabled: db::types::SqlBool::TRUE,
+                    sort_order: 0,
+                    created_at: 1,
+                    updated_at: 1,
+                    api_format: meridian_core::provider::registry::ApiFormat::Responses,
+                    catalog_id: None,
+                    credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
+                    transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
+                    icon: None,
+                    codex_request_shape: db::types::SqlBool::FALSE,
+                },
+            )
+            .await?;
+            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            db::sea::ops::plan_review::seed_pending_native_review(
+                tx,
+                "conversation-1",
+                &db::sea::ops::plan_review::test_runtime("provider-1", "model-1", None),
+            )
+            .await
+            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
         .unwrap();
     }
 
@@ -1153,13 +1122,10 @@ mod response_contract_tests {
         );
     }
 
-    /// The review is seeded through the Diesel plan-review ops, which have not
-    /// moved, on a file both pools open; the guarded mutations run on SeaORM.
     #[tokio::test]
     async fn provider_update_and_delete_are_blocked_by_its_active_review_runtime() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
-        seed_provider_with_pending_review(&mut pool.get().unwrap());
+        let sea = db::sea::sea_test_db().await;
+        seed_provider_with_pending_review(&sea).await;
         let conversations = vec!["conversation-1".to_string()];
 
         let updated = sea
