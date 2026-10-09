@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：262
-- Diesel ops 调用点（db/ops 之外）：171
-- Diesel API 引用：513
+- 事务根（非测试）：271
+- Diesel ops 调用点（db/ops 之外）：140
+- Diesel API 引用：475
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -90,7 +90,6 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review, turn |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | queue, turn |
 | `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
-| `src-tauri/crates/core/src/db/ops/conversation.rs` › `delete_conversation` | diesel-deferred | conversation |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
@@ -215,7 +214,17 @@
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
+| `src-tauri/src/commands/conversation.rs` › `compact` | sea-read | assistant, conversation |
+| `src-tauri/src/commands/conversation.rs` › `create_conversation` | sea-write | assistant, conversation |
+| `src-tauri/src/commands/conversation.rs` › `delete_conversation` | sea-read | conversation |
+| `src-tauri/src/commands/conversation.rs` › `delete_conversation` | sea-write | conversation |
+| `src-tauri/src/commands/conversation.rs` › `get_context_info` | sea-read | assistant, conversation, message, message_context_item, project |
+| `src-tauri/src/commands/conversation.rs` › `search_conversations` | sea-read | conversation |
+| `src-tauri/src/commands/conversation.rs` › `set_conversation_mode` | sea-write | conversation |
 | `src-tauri/src/commands/conversation.rs` › `set_unless_plan_barrier` | sea-write | conversation, plan_review |
+| `src-tauri/src/commands/conversation.rs` › `toggle_archive_conversation` | sea-write | conversation |
+| `src-tauri/src/commands/conversation.rs` › `toggle_pin_conversation` | sea-write | conversation |
+| `src-tauri/src/commands/conversation.rs` › `update_conversation_title` | sea-write | conversation |
 | `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/emoji.rs` › `confirm_sticker_semantics` | sea-write | emoji |
 | `src-tauri/src/commands/emoji.rs` › `create_emoji_pack` | sea-write | emoji_pack |

@@ -44,27 +44,26 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
     if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
         return Err(PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.into());
     }
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
 
-    let (assistant, keep_recent) = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let assistant = conv
-                .assistant_id
-                .as_deref()
-                .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
+    let (assistant, keep_recent) = services
+        .sea
+        .read(async |tx| {
+            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+                return Ok(Err(format!("conversation {conversation_id} not found")));
+            };
+            // An assistant that cannot be read is no assistant, as before.
+            let assistant = match conv.assistant_id.as_deref() {
+                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                None => None,
+            };
             let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
             // Summarised by the model that wrote the transcript, and against
             // that model's window.
-            Ok::<_, String>((conv.pin_model(assistant), keep_recent))
+            Ok::<_, db::sea::DbErr>(Ok((conv.pin_model(assistant), keep_recent)))
         })
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())??;
 
     services.events.emit_compact_start(&CompactStartEvent {
         conversation_id: conversation_id.clone(),
@@ -117,14 +116,10 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
 
 #[tauri::command]
 pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<ConversationListResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows = db::ops::conversation::list_conversations(&mut conn, archived).map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows = conversation_ops::list_conversations(&app.services().sea, archived)
+        .await
+        .map_err(|e| e.to_string())?;
+    rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -139,25 +134,26 @@ pub async fn create_conversation(
     app: tauri::AppHandle,
     request: ConversationCreateRequest,
 ) -> Result<ConversationInfoResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let id = uuid::Uuid::new_v4().to_string();
-        let default_assistant = db::ops::assistant::get_default_assistant(&mut conn).map_err(|e| e.to_string())?;
-        let assistant_id = default_assistant.as_ref().map(|a| a.id.as_str());
-        let row = db::ops::conversation::create_conversation(
-            &mut conn,
-            &id,
-            request.title.0.as_deref(),
-            assistant_id,
-            request.project_id.0.as_deref(),
-            now_ms(),
-        )
+    let id = uuid::Uuid::new_v4().to_string();
+    // The default assistant read under the same lock the row is written under.
+    let row = app
+        .services()
+        .sea
+        .write(async |tx| {
+            let default_assistant = db::sea::ops::assistant::get_default_assistant(tx).await?;
+            conversation_ops::create_conversation(
+                tx,
+                &id,
+                request.title.0.as_deref(),
+                default_assistant.as_ref().map(|a| a.id.as_str()),
+                request.project_id.0.as_deref(),
+                now_ms(),
+            )
+            .await
+        })
+        .await
         .map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    row.try_into()
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -228,13 +224,12 @@ pub async fn set_conversation_mode(
         .0
         .and_then(meridian_core::agent::modes::ChatMode::canonical_storage)
         .map(str::to_string);
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_mode(&mut conn, &request.id, mode.as_deref(), now_ms()).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| conversation_ops::update_mode(tx, &request.id, mode.as_deref(), now_ms()).await)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Turn the standing approval for ordinary edits on or off.
@@ -278,13 +273,12 @@ pub async fn update_conversation_title(
     app: tauri::AppHandle,
     request: ConversationTitleUpdateRequest,
 ) -> Result<(), String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_title(&mut conn, &request.id, &request.title, now_ms()).map_err(|e| e.to_string())
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    app.services()
+        .sea
+        .write(async |tx| conversation_ops::update_title(tx, &request.id, &request.title, now_ms()).await)
+        .await
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Refile a conversation under another project, or under none (`None`).
@@ -400,10 +394,10 @@ pub struct ConversationSearchHitInfoResponse {
     pub created_at: i64,
 }
 
-impl TryFrom<db::ops::conversation::TranscriptHit> for ConversationSearchHitInfoResponse {
+impl TryFrom<conversation_ops::TranscriptHit> for ConversationSearchHitInfoResponse {
     type Error = String;
 
-    fn try_from(hit: db::ops::conversation::TranscriptHit) -> Result<Self, Self::Error> {
+    fn try_from(hit: conversation_ops::TranscriptHit) -> Result<Self, Self::Error> {
         Ok(Self {
             conversation_id: hit.conversation_id,
             title: hit.title,
@@ -422,29 +416,26 @@ pub async fn search_conversations(
     app: tauri::AppHandle,
     request: ConversationSearchRequest,
 ) -> Result<ConversationSearchHitListResponse, String> {
-    let pool = app.services().db.clone();
     // domain-default: a page size the caller did not ask about, not a fact about a model
     let limit = request.limit.0.unwrap_or(20).min(100) as usize;
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let hits =
-            db::ops::conversation::search_transcripts(&mut conn, &request.query, limit).map_err(|e| e.to_string())?;
-        hits.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let hits = app
+        .services()
+        .sea
+        .read(async |tx| conversation_ops::search_transcripts(tx, &request.query, limit).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    hits.into_iter().map(TryInto::try_into).collect()
 }
 
 #[tauri::command]
 pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<ConversationInfoResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let row = db::ops::conversation::toggle_pin(&mut conn, &id, now_ms()).map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let row = app
+        .services()
+        .sea
+        .write(async |tx| conversation_ops::toggle_pin(tx, &id, now_ms()).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    row.try_into()
 }
 
 #[tauri::command]
@@ -452,14 +443,13 @@ pub async fn toggle_archive_conversation(
     app: tauri::AppHandle,
     id: String,
 ) -> Result<ConversationInfoResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let row = db::ops::conversation::toggle_archive(&mut conn, &id, now_ms()).map_err(|e| e.to_string())?;
-        row.try_into()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let row = app
+        .services()
+        .sea
+        .write(async |tx| conversation_ops::toggle_archive(tx, &id, now_ms()).await)
+        .await
+        .map_err(|e| e.to_string())?;
+    row.try_into()
 }
 
 /// Delete a conversation and everything in it.
@@ -473,7 +463,7 @@ pub async fn toggle_archive_conversation(
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let coordinator = app.services().turns.clone();
-    let pool = app.services().db.clone();
+    let sea = app.services().sea.clone();
 
     // This one first, and on its own. A delegated run is started from inside a
     // turn on this conversation, and a turn cannot exist while a mutation holds
@@ -483,15 +473,10 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .try_acquire_mutations(std::slice::from_ref(&id), "a delete")
         .map_err(|busy| busy.to_string())?;
 
-    let doomed = {
-        let (pool, id) = (pool.clone(), id.clone());
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            db::ops::conversation::descendants(&mut conn, &id).map_err(|e| e.to_string())
-        })
+    let doomed = sea
+        .read(async |tx| conversation_ops::descendants(tx, &id).await)
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())?;
     // All of them or none. Any one can have a sub-agent running on it, and
     // taking them one at a time would mean holding part of a tree while being
     // refused the rest.
@@ -537,9 +522,10 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         }
     }
 
+    sea.write(async |tx| conversation_ops::delete_conversation(tx, &id).await)
+        .await
+        .map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())?;
         // Best-effort, and every run's directory as well as the parent's: the
         // rows are the source of truth, so a failed cleanup must not fail the
         // delete — but a directory nobody deletes is one nothing will ever come
@@ -549,10 +535,9 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
                 let _ = std::fs::remove_dir_all(&dir);
             }
         }
-        Ok::<_, String>(())
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -744,7 +729,7 @@ async fn assemble_system_prompt(
 /// replays after each stored user row.
 fn context_info_messages(
     system_prompt: &str,
-    context: &db::ops::message::ActiveContext,
+    context: &db::sea::ops::message::ActiveContext,
     trailing: Vec<ChatMessage>,
     context_items: &HashMap<String, Vec<message_context_item::Model>>,
 ) -> Result<Vec<ChatMessage>, String> {
@@ -754,33 +739,32 @@ fn context_info_messages(
 #[tauri::command]
 pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
 
-    let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let assistant = conv
-                .assistant_id
-                .as_deref()
-                .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let project = conv
-                .project_id
-                .as_deref()
-                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
+    let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = services
+        .sea
+        .read(async |tx| {
+            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+                return Ok(Err(format!("conversation {conversation_id} not found")));
+            };
+            // An assistant or project that cannot be read is none, as before.
+            let assistant = match conv.assistant_id.as_deref() {
+                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                None => None,
+            };
+            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let project = match conv.project_id.as_deref() {
+                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                None => None,
+            };
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
-            let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            let ctx = db::sea::ops::message::active_context(&history, conv.head_message_id.as_deref());
             let path_ids = ctx.path.iter().map(|message| message.id.clone()).collect::<Vec<_>>();
-            let context_items =
-                db::ops::message_context_item::list_for_messages(&mut conn, &path_ids).map_err(|e| e.to_string())?;
+            let context_items = db::sea::ops::message_context_item::list_for_messages(tx, &path_ids).await?;
             // The indicator has to describe the window a request from *this*
             // conversation would go into, which for a delegated run is its own
             // model's rather than the parent assistant's.
-            Ok::<_, String>((
+            Ok::<_, db::sea::DbErr>(Ok((
                 conv.pin_model(assistant),
                 ctx,
                 context_items,
@@ -788,11 +772,10 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                 project_id,
                 conv.mode.clone(),
                 conv.agent_kind.clone(),
-            ))
+            )))
         })
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())??;
 
     let auto_compact_enabled = assistant
         .as_ref()
@@ -916,103 +899,50 @@ pub async fn list_conversations_by_project(
     app: tauri::AppHandle,
     request: ConversationListByProjectRequest,
 ) -> Result<ConversationListResponse, String> {
-    let pool = app.services().db.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let rows =
-            db::ops::conversation::list_conversations_by_project(&mut conn, &request.project_id, request.archived)
-                .map_err(|e| e.to_string())?;
-        rows.into_iter().map(TryInto::try_into).collect()
-    })
-    .await
-    .map_err(|e| e.to_string())?
+    let rows =
+        conversation_ops::list_conversations_by_project(&app.services().sea, &request.project_id, request.archived)
+            .await
+            .map_err(|e| e.to_string())?;
+    rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use diesel::sqlite::SqliteConnection;
     use meridian_core::agent::{base_prompt, build_messages};
-    use meridian_core::db::diesel_test_db;
-    use meridian_core::db::models::assistant::AssistantInsert;
-    use meridian_core::db::models::project::ProjectInsert;
-
-    fn seed_pending_review(conn: &mut SqliteConnection, conversation_id: &str) {
-        let document = db::ops::plan_review::create_or_resume_document(conn, conversation_id, 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("m1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &db::models::plan_review::NativePlanReviewRuntimeConfig {
-                provider_id: "provider-test".into(),
-                model: "model-test".into(),
-                assistant_id: None,
-                thinking_level: None,
-                fast: false,
-                project_id: Some("project-a".into()),
-                project_path: Some("A".into()),
-                accept_edits: false,
-            },
-        )
-        .unwrap();
-    }
-
-    fn create_project(conn: &mut SqliteConnection, id: &str, path: &str) {
-        db::ops::project::create_project(
-            conn,
-            &ProjectInsert {
-                id,
-                name: id,
-                path: Some(path),
-                source_type: "local",
-                source_id: None,
-                assistant_id: None,
-                description: None,
-                created_at: 1,
-                updated_at: 1,
-            },
-        )
-        .unwrap();
-    }
+    use meridian_core::db::entity::project::{self as project_entity, ProjectSource};
 
     #[tokio::test]
     async fn a_pending_plan_review_prevents_changing_the_conversations_settings() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
-        {
-            let conn = &mut pool.get().unwrap();
-            create_project(conn, "project-a", "A");
-            create_project(conn, "project-b", "B");
-            db::ops::conversation::create_conversation(conn, "conversation-1", None, None, Some("project-a"), 1)
-                .unwrap();
-            db::ops::conversation::create_conversation(conn, "conversation-2", None, None, Some("project-a"), 1)
-                .unwrap();
-            seed_pending_review(conn, "conversation-1");
-        }
+        let sea = db::sea::sea_test_db().await;
+        sea.write(async |tx| {
+            for (id, path) in [("project-a", "A"), ("project-b", "B")] {
+                db::sea::ops::project::create_project(
+                    tx,
+                    project_entity::Model {
+                        id: id.into(),
+                        name: id.into(),
+                        path: Some(path.into()),
+                        source_type: ProjectSource::Local,
+                        source_id: None,
+                        assistant_id: None,
+                        description: None,
+                        created_at: 1,
+                        updated_at: 1,
+                    },
+                )
+                .await?;
+            }
+            for id in ["conversation-1", "conversation-2"] {
+                conversation_ops::create_conversation(tx, id, None, None, Some("project-a"), 1).await?;
+            }
+            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", Some(("project-a", "A")))
+                .await
+                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
         let settings = || {
             [
                 ConversationSetting::Assistant(None),
@@ -1169,7 +1099,7 @@ mod tests {
 
     #[test]
     fn transcript_search_role_is_closed_at_the_response_boundary() {
-        let hit = db::ops::conversation::TranscriptHit {
+        let hit = conversation_ops::TranscriptHit {
             conversation_id: "conversation-1".into(),
             title: None,
             role: "future_role".into(),
@@ -1180,34 +1110,30 @@ mod tests {
         assert!(ConversationSearchHitInfoResponse::try_from(hit).is_err());
     }
 
-    fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> assistant::Model {
-        db::ops::assistant::create_assistant(
-            conn,
-            &AssistantInsert {
-                id,
-                name,
-                description: None,
-                avatar: None,
-                system_prompt: prompt,
-                provider_id: None,
-                model_id: None,
-                temperature: None,
-                top_p: None,
-                max_tokens: None,
-                is_default: 0,
-                sort_order: 0,
-                created_at: 1000,
-                updated_at: 1000,
-                context_limit: 128_000,
-                compact_keep_recent: 10,
-                enabled_tools: None,
-                thinking_enabled: 0,
-                thinking_budget: None,
-                tool_preset_id: None,
-                auto_compact_enabled: 0,
-            },
-        )
-        .unwrap()
+    fn make_assistant(id: &str, name: &str, prompt: &str) -> assistant::Model {
+        assistant::Model {
+            id: id.into(),
+            name: name.into(),
+            description: None,
+            avatar: None,
+            system_prompt: prompt.into(),
+            provider_id: None,
+            model_id: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            is_default: db::types::SqlBool::FALSE,
+            sort_order: 0,
+            created_at: 1000,
+            updated_at: 1000,
+            context_limit: 128_000,
+            compact_keep_recent: 10,
+            enabled_tools: None,
+            thinking_enabled: db::types::SqlBool::FALSE,
+            thinking_budget: None,
+            tool_preset_id: None,
+            auto_compact_enabled: db::types::SqlBool::FALSE,
+        }
     }
 
     fn make_message(id: &str, role: &str, content: &str) -> db::entity::message::Model {
@@ -1293,14 +1219,7 @@ mod tests {
 
     #[tokio::test]
     async fn persona_is_sent_verbatim_and_memory_is_appended() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
-        let assistant = make_assistant(
-            &mut conn,
-            "a1",
-            "Nova",
-            "You are {{assistant_name}} helping {{user_name}}.",
-        );
+        let assistant = make_assistant("a1", "Nova", "You are {{assistant_name}} helping {{user_name}}.");
         let memory_db = memory_db("Rust + Tauri").await;
 
         let (persona, todo) = load_persona_and_todo(&memory_db, "c1", Some(&assistant), &[])
@@ -1318,10 +1237,7 @@ mod tests {
 
     #[tokio::test]
     async fn estimated_tokens_account_for_the_system_prompt() {
-        let pool = diesel_test_db();
-        let mut conn = pool.get().unwrap();
         let assistant = make_assistant(
-            &mut conn,
             "a1",
             "Nova",
             "You are {{assistant_name}}, a meticulous engineering assistant. \
@@ -1338,7 +1254,7 @@ mod tests {
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
         // Counted the way the chat path sends it: prompt plus the memory block
         // that now rides along as a user-role message.
-        let empty = meridian_core::db::ops::message::ActiveContext {
+        let empty = meridian_core::db::sea::ops::message::ActiveContext {
             path: Vec::new(),
             summary: None,
             anchor_index: None,
@@ -1366,7 +1282,7 @@ mod tests {
     #[test]
     fn context_info_messages_include_frozen_user_context() {
         let user = make_message("m1", "user", "inspect @src/lib.rs");
-        let context = db::ops::message::ActiveContext {
+        let context = db::sea::ops::message::ActiveContext {
             path: vec![user.clone()],
             summary: None,
             anchor_index: None,

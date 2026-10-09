@@ -226,52 +226,6 @@ mod tests {
     use super::*;
     use meridian_core::db;
 
-    /// The review is seeded through the Diesel plan-review ops, which have not
-    /// moved, on a file both pools open.
-    fn seed_pending_review(conn: &mut diesel::sqlite::SqliteConnection) {
-        let document = db::ops::plan_review::create_or_resume_document(conn, "conversation-1", 2).unwrap();
-        let appended = db::ops::plan_review::append_assistant_revision(
-            conn,
-            &db::ops::plan_review::PlanRevisionAppend {
-                document_id: &document.id,
-                expected_generation: 0,
-                expected_head_sha256: None,
-                content_markdown: "# Plan\n",
-                patch: "first patch",
-                source_message_id: Some("m1"),
-                source_call_id: Some("update-1"),
-                responding_to_suggestion_revision_id: None,
-                now: 3,
-            },
-        )
-        .unwrap();
-        db::ops::plan_review::mark_materialization_applied(conn, &appended.materialization.id, 4).unwrap();
-        db::ops::plan_review::submit_native_head_for_review(
-            conn,
-            &db::ops::plan_review::PlanReviewSubmit {
-                document_id: &document.id,
-                expected_generation: appended.document.working_generation,
-                expected_head_sha256: &appended.revision.content_sha256,
-                turn_id: None,
-                assistant_message_id: Some("m1"),
-                provider_call_id: Some("exit-1"),
-                provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
-                now: 5,
-            },
-            &db::models::plan_review::NativePlanReviewRuntimeConfig {
-                provider_id: "provider-test".into(),
-                model: "model-test".into(),
-                assistant_id: None,
-                thinking_level: None,
-                fast: false,
-                project_id: Some("project-1".into()),
-                project_path: Some("A".into()),
-                accept_edits: false,
-            },
-        )
-        .unwrap();
-    }
-
     fn project_row() -> project::Model {
         project::Model {
             id: "project-1".into(),
@@ -300,17 +254,18 @@ mod tests {
 
     #[tokio::test]
     async fn project_path_update_and_delete_are_blocked_by_a_referenced_plan_review() {
-        let dir = tempfile::tempdir().unwrap();
-        let (pool, sea) = db::sea::shared_test_db(dir.path()).await;
-        sea.write(async |tx| project_ops::create_project(tx, project_row()).await)
-            .await
-            .unwrap();
-        {
-            let conn = &mut pool.get().unwrap();
-            db::ops::conversation::create_conversation(conn, "conversation-1", None, None, Some("project-1"), 1)
-                .unwrap();
-            seed_pending_review(conn);
-        }
+        let sea = db::sea::sea_test_db().await;
+        sea.write(async |tx| {
+            project_ops::create_project(tx, project_row()).await?;
+            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, Some("project-1"), 1)
+                .await?;
+            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", Some(("project-1", "A")))
+                .await
+                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
         let expected = vec!["conversation-1".to_string()];
 
         let updated = sea
