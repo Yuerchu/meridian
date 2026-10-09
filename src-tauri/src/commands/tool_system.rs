@@ -21,7 +21,7 @@ async fn reload_custom_tools(app: &tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
     // A reload failure is part of the command result: reporting a successful
     // save while the running registry kept the old definition is not success.
-    let list = custom_tool_ops::list_enabled_tools(&services.sea)
+    let list = custom_tool_ops::list_enabled_tools(&services.db)
         .await
         .map_err(|e| e.to_string())?;
     let tools = list
@@ -100,7 +100,7 @@ pub struct ToolPresetCreateRequest {
 #[tauri::command]
 pub async fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryListResponse, String> {
     let services = app.services();
-    tool_category_ops::list_categories(&services.sea)
+    tool_category_ops::list_categories(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -109,7 +109,7 @@ pub async fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryL
 #[tauri::command]
 pub async fn list_custom_tools(app: tauri::AppHandle) -> Result<CustomToolListResponse, String> {
     let services = app.services();
-    custom_tool_ops::list_tools(&services.sea)
+    custom_tool_ops::list_tools(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -139,7 +139,7 @@ pub async fn create_custom_tool(
         updated_at: now,
     };
     let created = services
-        .sea
+        .db
         .write(async |tx| custom_tool_ops::create_tool(tx, row).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -168,7 +168,7 @@ pub async fn update_custom_tool(
         ..Default::default()
     };
     let updated = services
-        .sea
+        .db
         .write(async |tx| custom_tool_ops::update_tool(tx, &request.id, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -180,7 +180,7 @@ pub async fn update_custom_tool(
 pub async fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| custom_tool_ops::delete_tool(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -190,7 +190,7 @@ pub async fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(),
 #[tauri::command]
 pub async fn list_tool_presets(app: tauri::AppHandle) -> Result<ToolPresetListResponse, String> {
     let services = app.services();
-    tool_preset_ops::list_presets(&services.sea)
+    tool_preset_ops::list_presets(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -215,7 +215,7 @@ pub async fn create_tool_preset(
         updated_at: now,
     };
     services
-        .sea
+        .db
         .write(async |tx| tool_preset_ops::create_preset(tx, row).await)
         .await
         .map(Into::into)
@@ -236,7 +236,7 @@ pub async fn update_tool_preset(
         ..Default::default()
     };
     services
-        .sea
+        .db
         .write(async |tx| tool_preset_ops::update_preset(tx, &request.id, changeset).await)
         .await
         .map(Into::into)
@@ -247,7 +247,7 @@ pub async fn update_tool_preset(
 pub async fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| tool_preset_ops::delete_preset(tx, &id).await)
         .await
         .map(|_| ())

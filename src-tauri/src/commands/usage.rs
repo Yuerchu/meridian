@@ -173,7 +173,7 @@ pub async fn usage_report(
     let services = app.services();
     let (dimension, filter) = request.into_core();
     services
-        .sea
+        .db
         .read(async |tx| report(tx, dimension, &filter).await)
         .await
         .map(|buckets| buckets.into_iter().map(Into::into).collect())

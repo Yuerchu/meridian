@@ -101,7 +101,7 @@ pub struct AssistantCreateRequest {
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<AssistantListResponse, String> {
-    let rows = assistant_ops::list_assistants(&app.services().sea)
+    let rows = assistant_ops::list_assistants(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -140,7 +140,7 @@ pub async fn create_assistant(
         auto_compact_enabled: SqlBool::FALSE,
     };
     app.services()
-        .sea
+        .db
         .write(async |tx| assistant_ops::create_assistant(tx, row).await)
         .await
         .map(Into::into)
@@ -178,7 +178,7 @@ pub async fn update_assistant(
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
@@ -200,7 +200,7 @@ pub async fn update_assistant(
         ..Default::default()
     };
     let guarded = services
-        .sea
+        .db
         .write(async |tx| update_assistant_unless_plan_barrier(tx, &request.id, &conversation_ids, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -212,14 +212,14 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "an assistant delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| delete_assistant_unless_plan_barrier(tx, &id, &conversation_ids).await)
         .await
         .map_err(|e| e.to_string())?;

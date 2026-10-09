@@ -199,7 +199,7 @@ impl DesktopSubAgents {
             SubAgentStatus::Aborted => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED.to_string())),
             SubAgentStatus::Failed => (TurnStatus::Failed, outcome.reply.as_ref().err().cloned()),
         };
-        turn_record::finish(&self.services.sea, &turn_id, stored, error.as_deref()).await;
+        turn_record::finish(&self.services.db, &turn_id, stored, error.as_deref()).await;
 
         // Whatever was typed at the run and never reached it. Closing the inbox
         // is what makes this the last word: nothing can be added after it, so
@@ -250,7 +250,7 @@ impl DesktopSubAgents {
         let mut cursor = final_cursor.map(str::to_string);
         for item in leftover {
             match engine::write_steering(
-                &self.services.sea,
+                &self.services.db,
                 sub_conversation_id,
                 turn_id,
                 &item.text,
@@ -288,7 +288,7 @@ impl DesktopSubAgents {
             .ok_or("This conversation has no assistant, so there is nothing to run a sub-agent on.")?;
 
         let key = default_model_preference(spec.kind);
-        let configured = db::sea::ops::preference::get_preference(&self.services.sea, &key)
+        let configured = db::sea::ops::preference::get_preference(&self.services.db, &key)
             .await
             .ok()
             .flatten();
@@ -311,7 +311,7 @@ impl DesktopSubAgents {
 
     async fn resolve_params(&self, assistant: &assistant::Model) -> Result<meridian_core::agent::TurnParams, String> {
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
-        let sea = &self.services.sea;
+        let sea = &self.services.db;
         let resolved =
             meridian_core::agent::resolve_with_overrides(&self.secrets, sea, Some(assistant), None, None).await?;
         let mut params = meridian_core::agent::resolve_turn_params(
@@ -378,7 +378,7 @@ impl DesktopSubAgents {
         };
         // The conversation, its prompt and the turn row: all three or none.
         self.services
-            .sea
+            .db
             .write(async |tx| {
                 db::sea::ops::conversation::insert(tx, conversation).await?;
                 db::sea::ops::message::append_message(tx, prompt, None).await?;
@@ -491,7 +491,7 @@ impl DesktopSubAgents {
 
         engine::run_turn(
             &engine::TurnServices {
-                db: &self.services.sea,
+                db: &self.services.db,
                 tools: &self.registry,
                 mcp: &self.mcp,
                 redaction: &self.services.redaction,
@@ -600,7 +600,7 @@ impl DesktopSubAgents {
             #[cfg(target_os = "android")]
             command_shell: None,
         };
-        meridian_core::agent::turn_config::resolve_on(&self.services.sea, &self.registry, input).await
+        meridian_core::agent::turn_config::resolve_on(&self.services.db, &self.registry, input).await
     }
 
     /// The provider instance, and the provider type the token counter needs.
@@ -614,14 +614,9 @@ impl DesktopSubAgents {
         ),
         String,
     > {
-        let resolved = meridian_core::agent::resolve_with_overrides(
-            &self.secrets,
-            &self.services.sea,
-            Some(assistant),
-            None,
-            None,
-        )
-        .await?;
+        let resolved =
+            meridian_core::agent::resolve_with_overrides(&self.secrets, &self.services.db, Some(assistant), None, None)
+                .await?;
         let provider = meridian_core::provider::registry::create_provider(resolved.wire())?;
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed

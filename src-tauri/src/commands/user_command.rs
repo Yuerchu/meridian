@@ -441,7 +441,7 @@ pub async fn run_user_command(
         conversation_id: Some(conversation_id.clone()),
         turn_id: Some(turn_id.clone()),
         assistant_id: None,
-        sea: Some(services.sea.clone()),
+        db: Some(services.db.clone()),
         sandbox_policy: policy,
         #[cfg(not(target_os = "android"))]
         background: None,
@@ -577,7 +577,7 @@ pub async fn get_user_command_result(
     } = request;
     let services = app.services();
     let read = services
-        .sea
+        .db
         .read(async |tx| {
             let Some(row) = sea_ops::message::get_with_source(tx, &conversation_id, &message_id, SOURCE).await? else {
                 return Ok(None);
@@ -592,7 +592,7 @@ pub async fn get_user_command_result(
     if let Some(stored) = parse_latest(&items)? {
         return Ok(Some(stored.public(&conversation_id, &turn_id, &message_id)));
     }
-    let cwd = meridian_core::workspace::resolve_workspace_dir(&services.sea, &conversation_id)
+    let cwd = meridian_core::workspace::resolve_workspace_dir(&services.db, &conversation_id)
         .await
         .ok()
         .flatten()
@@ -610,7 +610,7 @@ async fn prepare(
     let visible = format!("!{command}");
     // The directory first: it is checked against the filesystem, which is no
     // work to do holding the write lock.
-    let cwd = match meridian_core::workspace::resolve_workspace_root(&services.sea, conversation_id).await? {
+    let cwd = match meridian_core::workspace::resolve_workspace_root(&services.db, conversation_id).await? {
         WorkspaceRoot::Ok { root, .. } => root,
         WorkspaceRoot::NoProject => return Err("running a command needs a project or hosted session".into()),
         WorkspaceRoot::NoPath => return Err("the conversation's project has no directory".into()),
@@ -619,7 +619,7 @@ async fn prepare(
     // The row, its prior results and the settings in one write: the head the
     // retry check reads is the head the append moves.
     let written = services
-        .sea
+        .db
         .write(async |tx| {
             let Some(conversation) = sea_ops::conversation::get_conversation(tx, conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
@@ -707,7 +707,7 @@ async fn persist_result(
         created_at: now_ms(),
     };
     services
-        .sea
+        .db
         .write(async |tx| sea_ops::message_context_item::insert_many(tx, vec![item]).await)
         .await
         .map(|_| ())

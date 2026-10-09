@@ -488,7 +488,7 @@ pub async fn codex_auth_status(_app: tauri::AppHandle) -> Result<CodexAuthStatus
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<ProviderListResponse, String> {
-    let rows = provider_ops::list_providers(&app.services().sea)
+    let rows = provider_ops::list_providers(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()
@@ -600,7 +600,7 @@ pub async fn create_provider(
         }
     };
     services
-        .sea
+        .db
         .write(async |tx| provider_ops::create_provider(tx, row).await)
         .await
         .map_err(|e| e.to_string())?
@@ -615,7 +615,7 @@ pub async fn update_provider(
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
@@ -656,7 +656,7 @@ pub async fn update_provider(
     // changes it: checked outside, a concurrent update could leave this one
     // validated against values that are no longer there.
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             let Some(current) = provider_ops::get_provider(tx, &request.id).await? else {
                 return Ok(Err(format!("provider `{}` does not exist", request.id)));
@@ -713,14 +713,14 @@ pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), St
     let secrets = services.secrets.clone();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a provider delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| delete_provider_unless_plan_barrier(tx, &id, &conversation_ids).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -748,7 +748,7 @@ pub async fn set_provider_key(app: tauri::AppHandle, request: ProviderKeyUpdateR
     let secrets = services.secrets.clone();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
@@ -761,7 +761,7 @@ pub async fn set_provider_key(app: tauri::AppHandle, request: ProviderKeyUpdateR
     // The secret store is blocking I/O, so it runs off the runtime while the
     // write waits for it.
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             if let Some(refused) = provider_barrier(tx, &pid, &conversation_ids).await? {
                 return Ok(Ok(refused));
@@ -840,7 +840,7 @@ pub async fn list_cached_provider_models(
     app: tauri::AppHandle,
     request: ProviderCachedModelListRequest,
 ) -> Result<ProviderModelListResponse, String> {
-    cached_models_for(&app.services().sea, &request.provider_id).await
+    cached_models_for(&app.services().db, &request.provider_id).await
 }
 
 async fn cached_models_for(
@@ -874,7 +874,7 @@ pub async fn fetch_provider_models(
     // pool-read-before-write: the cache read only decides whether to go to the network,
     // and a network call sits between it and the write, which replaces the list whole.
     if !force {
-        let cached = meridian_core::db::sea::ops::cached_model::list_by_provider(&services.sea, &provider_id)
+        let cached = meridian_core::db::sea::ops::cached_model::list_by_provider(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?;
 
@@ -892,7 +892,7 @@ pub async fn fetch_provider_models(
     // pool-read-before-write: the address is read for the network call; the write
     // after it replaces the cached list whole and depends on nothing read here.
     let (provider_type, base_url, api_format, transport_profile, credential_kind) = {
-        let p = provider_ops::get_provider(&services.sea, &provider_id)
+        let p = provider_ops::get_provider(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
@@ -939,7 +939,7 @@ pub async fn fetch_provider_models(
     // means the next open fetches again.
     let listed: Vec<(String, String)> = models.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
     let cached = services
-        .sea
+        .db
         .write(async |tx| {
             meridian_core::db::sea::ops::cached_model::replace_models(tx, &provider_id, &listed, now_ms()).await
         })
@@ -966,7 +966,7 @@ pub async fn get_provider_balance(
     let secrets = services.secrets.clone();
 
     let (catalog_id, provider_type, base_url) = {
-        let p = provider_ops::get_provider(&services.sea, &provider_id)
+        let p = provider_ops::get_provider(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
@@ -1005,7 +1005,7 @@ pub async fn get_provider_capabilities(
     let provider_id = request.provider_id;
     let model_id = request.model_id;
     let (provider_type, api_format, transport_profile, codex_request_shape, overrides) = services
-        .sea
+        .db
         .read(async |tx| {
             let Some(p) = db::sea::ops::provider::get_provider(tx, &provider_id).await? else {
                 return Ok(Err(format!("provider {provider_id} not found")));

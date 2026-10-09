@@ -12,7 +12,7 @@ pub async fn get_active_todo_list(
 ) -> Result<Option<TodoInfoResponse>, String> {
     let view = app
         .services()
-        .sea
+        .db
         .read(async |tx| todo_ops::get_active_view(tx, &conversation_id).await)
         .await
         .map_err(|e| e.to_string())?;

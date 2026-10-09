@@ -121,7 +121,7 @@ fn finish_guarded_project_mutation<T>(result: GuardedProjectMutation<T>) -> Resu
 
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<ProjectListResponse, String> {
-    let rows = project_ops::list_projects(&app.services().sea)
+    let rows = project_ops::list_projects(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -145,7 +145,7 @@ pub async fn create_project(
         updated_at: now,
     };
     app.services()
-        .sea
+        .db
         .write(async |tx| project_ops::create_project(tx, row).await)
         .await
         .map(Into::into)
@@ -167,7 +167,7 @@ pub async fn update_project(
     };
     // pool-read-before-write: decides only whether to take leases; the write
     // decides again on the row it locks and refuses on any difference.
-    let current = project_ops::get_project(&services.sea, &request.id)
+    let current = project_ops::get_project(&services.db, &request.id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("project `{}` was not found", request.id))?;
@@ -175,7 +175,7 @@ pub async fn update_project(
     let referenced = if path_changed {
         // pool-read-before-write: these ids only pick which turn leases to
         // take; the write re-reads them and refuses on any difference.
-        conversation_ops::ids_by_project(&services.sea, &request.id)
+        conversation_ops::ids_by_project(&services.db, &request.id)
             .await
             .map_err(|e| e.to_string())?
     } else {
@@ -191,7 +191,7 @@ pub async fn update_project(
         Vec::new()
     };
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             update_project_unless_plan_barrier(tx, &request.id, path_changed, &referenced, changeset).await
         })
@@ -205,7 +205,7 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the delete on any difference.
-    let referenced = conversation_ops::ids_by_project(&services.sea, &id)
+    let referenced = conversation_ops::ids_by_project(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?;
     let _leases = services
@@ -214,7 +214,7 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
         .try_acquire_mutations(&referenced, "a project delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| delete_project_unless_plan_barrier(tx, &id, &referenced).await)
         .await
         .map_err(|e| e.to_string())?;

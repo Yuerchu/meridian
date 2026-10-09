@@ -120,7 +120,7 @@ async fn transcribe_samples(
     let engine = get_or_load_engine(&services.voice, dir).await?;
 
     let level = {
-        let pref = db::sea::ops::preference::get_preference(&services.sea, "voice.filter_level")
+        let pref = db::sea::ops::preference::get_preference(&services.db, "voice.filter_level")
             .await
             .map_err(|e| e.to_string())?;
         voice::filter::FilterLevel::from_preference(pref.as_deref())?

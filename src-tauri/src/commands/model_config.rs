@@ -383,7 +383,7 @@ impl ModelConfigUpsertRequest {
 pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<ModelConfigListResponse, String> {
     let (rows, counts) = app
         .services()
-        .sea
+        .db
         .read(async |tx| {
             let rows = config_ops::list_by_provider_with_profiles(tx, &provider_id).await?;
             Ok::<_, DbErr>((rows, profile_model_counts(tx).await?))
@@ -406,7 +406,7 @@ pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> R
 #[tauri::command]
 pub async fn list_model_profiles(app: tauri::AppHandle) -> Result<ModelProfileListResponse, String> {
     app.services()
-        .sea
+        .db
         .read(async |tx| profile_ops::list_with_model_counts(tx).await)
         .await
         .map_err(|error| error.to_string())?
@@ -429,7 +429,7 @@ pub async fn get_model_config(
 ) -> Result<Option<ModelConfigInfoResponse>, String> {
     let found = app
         .services()
-        .sea
+        .db
         .read(async |tx| {
             let Some((row, profile)) =
                 config_ops::get_with_profile(tx, &request.provider_id, &request.model_id).await?
@@ -459,7 +459,7 @@ pub async fn save_model_config(
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the save on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
@@ -524,7 +524,7 @@ pub async fn save_model_config(
         updated_at: now,
     };
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             upsert_model_config_unless_plan_barrier(tx, &conversation_ids, profile_is_new, profile, new).await
         })
@@ -539,20 +539,20 @@ pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<()
     let services = app.services();
     // pool-read-before-write: the row only names the model whose barrier the
     // write checks; the write re-reads it and refuses on any difference.
-    let row = config_ops::get(&services.sea, &id)
+    let row = config_ops::get(&services.db, &id)
         .await
         .map_err(|error| error.to_string())?
         .ok_or_else(|| "model configuration was not found".to_string())?;
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the delete on any difference.
-    let conversation_ids = sorted_conversation_ids(&services.sea).await?;
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
     let _leases = services
         .turns
         .clone()
         .try_acquire_mutations(&conversation_ids, "a model configuration delete")
         .map_err(|busy| busy.to_string())?;
     let guarded = services
-        .sea
+        .db
         .write(async |tx| {
             delete_model_config_unless_plan_barrier(tx, &id, &row.provider_id, &row.model_id, &conversation_ids).await
         })

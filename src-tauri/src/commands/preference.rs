@@ -461,7 +461,7 @@ pub async fn get_preference(
     request: PreferenceReadRequest,
 ) -> Result<PreferenceInfoResponse, String> {
     let services = app.services();
-    let raw = db::sea::ops::preference::get_preference(&services.sea, request.key.as_str())
+    let raw = db::sea::ops::preference::get_preference(&services.db, request.key.as_str())
         .await
         .map_err(|e| e.to_string())?;
     decode_preference(request.key, raw)
@@ -472,7 +472,7 @@ pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequ
     let (key, value) = request.into_storage()?;
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| match value {
             Some(value) => db::sea::ops::preference::set_preference(tx, key.as_str(), &value, now_ms()).await,
             None => db::sea::ops::preference::delete_preference(tx, key.as_str()).await,

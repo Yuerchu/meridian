@@ -638,7 +638,7 @@ pub async fn get_plan_review(
     request: PlanReviewReadRequest,
 ) -> Result<PlanReviewInfoResponse, String> {
     app.services()
-        .sea
+        .db
         .read(async |tx| {
             let bundle = ops::get_review_bundle(tx, &request.review_id)
                 .await
@@ -654,7 +654,7 @@ pub async fn list_plan_revisions(
     app: tauri::AppHandle,
     request: PlanRevisionListRequest,
 ) -> Result<PlanRevisionListResponse, String> {
-    ops::list_revisions(&app.services().sea, &request.document_id)
+    ops::list_revisions(&app.services().db, &request.document_id)
         .await
         .map_err(|error| error.to_string())?
         .into_iter()
@@ -727,7 +727,7 @@ pub async fn save_plan_review_draft(
     // outside it, a save in between could change the schema being fallen
     // back from.
     let (response, event) = services
-        .sea
+        .db
         .write(async |tx| {
             let current = ops::get_review_bundle(tx, &request.review_id)
                 .await
@@ -829,7 +829,7 @@ pub async fn discard_plan_review_draft(
 ) -> Result<PlanReviewInfoResponse, String> {
     let services = app.services();
     let (response, event) = services
-        .sea
+        .db
         .write(async |tx| {
             let bundle = ops::discard_review_draft(tx, &request.review_id, request.expected_generation, now_ms())
                 .await
@@ -855,7 +855,7 @@ pub async fn get_plan_review_delivery(
 ) -> Result<Option<PlanReviewDeliveryInfoResponse>, String> {
     let bundle = app
         .services()
-        .sea
+        .db
         .read(async |tx| ops::get_review_bundle(tx, &request.review_id).await)
         .await
         .map_err(|error| error.to_string())?;
@@ -873,20 +873,20 @@ pub async fn resolve_plan_file_conflict(
     let services = app.services();
     let now = now_ms();
     services
-        .sea
+        .db
         .write(async |tx| ops::retry_materialization_from_database(tx, &request.document_id, now).await)
         .await
         .map_err(|error| error.to_string())?;
     let report = services
         .plan_files
-        .reconcile_document(&services.sea, &request.document_id, now)
+        .reconcile_document(&services.db, &request.document_id, now)
         .await
         .map_err(|error| error.to_string())?;
     if report.conflict.is_some() {
         return Err("plan.md is still in conflict after restoring the database revision".into());
     }
     services
-        .sea
+        .db
         .read(async |tx| {
             let document = ops::get_document(tx, &request.document_id)
                 .await
@@ -949,7 +949,7 @@ pub async fn decide_plan_review(
     let services = app.services();
     let continuation_turn_id = uuid::Uuid::new_v4().to_string();
     let commit = services
-        .sea
+        .db
         .write(async |tx| {
             let before = ops::get_review_bundle(tx, &request.review_id).await?;
             let was_pending = before.review.state == PlanReviewState::Pending;
@@ -1101,7 +1101,7 @@ async fn settle_delivery(
     settle: impl AsyncFnOnce(&WriteTx) -> Result<plan_review_delivery::Model, ops::PlanReviewStoreError>,
 ) -> Result<(plan_review_delivery::Model, PlanReviewEvent), String> {
     services
-        .sea
+        .db
         .write(async |tx| {
             let row = settle(tx).await.map_err(|error| error.to_string())?;
             let event = event_after(tx, &row).await?;
@@ -1119,7 +1119,7 @@ async fn dispatch_native_delivery(
     // Read, decide and claim in one IMMEDIATE write: two dispatchers reading
     // the same queued row would otherwise both go on to the claim.
     let dispatch = services
-        .sea
+        .db
         .write(async |tx| {
             let row = ops::get_delivery(tx, delivery_id)
                 .await
@@ -1280,7 +1280,7 @@ async fn dispatch_acp_delivery(
     }
 
     let dispatch = services
-        .sea
+        .db
         .write(async |tx| {
             let row = ops::get_delivery(tx, delivery_id)
                 .await
@@ -1384,7 +1384,7 @@ pub async fn continue_plan_review_delivery(
     request: PlanReviewDeliveryContinueRequest,
 ) -> Result<PlanReviewDeliveryInfoResponse, String> {
     let services = app.services();
-    let target = ops::get_delivery(&services.sea, &request.delivery_id)
+    let target = ops::get_delivery(&services.db, &request.delivery_id)
         .await
         .map_err(|error| error.to_string())?
         .target;

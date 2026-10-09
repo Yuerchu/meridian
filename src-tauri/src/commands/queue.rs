@@ -92,7 +92,7 @@ async fn release_unless_plan_barrier(tx: &WriteTx, conversation_id: &str) -> Res
 /// would make an item vanish a beat before the message it became appears.
 #[tauri::command]
 pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Result<QueuedPromptListResponse, String> {
-    let rows = ops::list(&app.services().sea, &conversation_id)
+    let rows = ops::list(&app.services().db, &conversation_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -149,11 +149,11 @@ pub async fn queue_enqueue(
     let prepared = if references.is_empty() {
         Vec::new()
     } else {
-        let working_directory = meridian_core::workspace::resolve_workspace_dir(&services.sea, &conversation_id)
+        let working_directory = meridian_core::workspace::resolve_workspace_dir(&services.db, &conversation_id)
             .await?
             .map(|path| path.to_string_lossy().into_owned())
             .ok_or_else(|| "workspace unavailable".to_string())?;
-        let file_access = meridian_core::agent::build_file_access(&services.sea).await?;
+        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
         let context = meridian_core::tools::ToolContext {
             working_directory: Some(working_directory),
             shell: meridian_core::tools::ShellType::default_for_platform(),
@@ -162,7 +162,7 @@ pub async fn queue_enqueue(
             conversation_id: Some(conversation_id.clone()),
             turn_id: None,
             assistant_id: None,
-            sea: Some(services.sea.clone()),
+            db: Some(services.db.clone()),
             #[cfg(not(target_os = "android"))]
             sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
             #[cfg(not(target_os = "android"))]
@@ -187,7 +187,7 @@ pub async fn queue_enqueue(
         // taken at enqueue time; the write below guards only this conversation's
         // plan barrier, which they do not touch.
         let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-            &services.sea,
+            &services.db,
             &conversation_id,
             &conv_refs,
             budget_left,
@@ -198,7 +198,7 @@ pub async fn queue_enqueue(
     };
 
     let item = services
-        .sea
+        .db
         .write(async |tx| {
             enqueue_unless_plan_barrier(tx, &id, &conversation_id, &content, delivery, &prepared, now_ms()).await
         })
@@ -224,7 +224,7 @@ pub async fn queue_remove(app: tauri::AppHandle, request: QueuedPromptRemoveRequ
     let QueuedPromptRemoveRequest { conversation_id, id } = request;
     let services = app.services();
     let removed = services
-        .sea
+        .db
         .write(async |tx| ops::remove(tx, &conversation_id, &id).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -242,7 +242,7 @@ pub async fn queue_reorder(app: tauri::AppHandle, request: QueuedPromptReorderRe
     let QueuedPromptReorderRequest { conversation_id, ids } = request;
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| ops::reorder(tx, &conversation_id, &ids).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -270,7 +270,7 @@ pub async fn queue_set_delivery(
     } = request;
     let services = app.services();
     let changed = services
-        .sea
+        .db
         .write(async |tx| ops::set_delivery(tx, &conversation_id, &id, delivery).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -299,7 +299,7 @@ pub async fn queue_set_delivery(
 pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| release_unless_plan_barrier(tx, &conversation_id).await)
         .await
         .map_err(|error| error.to_string())?

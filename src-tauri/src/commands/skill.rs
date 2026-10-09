@@ -30,7 +30,7 @@ pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let services = app.services();
-    skill_ops::list_skills(&services.sea)
+    skill_ops::list_skills(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -40,7 +40,7 @@ pub async fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, Str
 pub async fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let root = skills_root(&app)?;
     let services = app.services();
-    Ok(skills::sync_index(&services.sea, &root)
+    Ok(skills::sync_index(&services.db, &root)
         .await?
         .into_iter()
         .map(Into::into)
@@ -70,12 +70,12 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
     )?;
 
     let services = app.services();
-    skills::sync_index(&services.sea, &root).await?;
+    skills::sync_index(&services.db, &root).await?;
 
     let dir_name = request.dir_name;
     let display_name = request.display_name.0.filter(|n| !n.trim().is_empty());
     let row = services
-        .sea
+        .db
         .write(async |tx| match display_name {
             Some(name) => skill_ops::update_skill(
                 tx,
@@ -110,7 +110,7 @@ async fn existing_skill(
     services: &meridian_core::services::Services,
     dir_name: &str,
 ) -> Result<meridian_core::db::entity::skill::Model, String> {
-    skill_ops::get_skill(&services.sea, dir_name)
+    skill_ops::get_skill(&services.db, dir_name)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("skill '{dir_name}' is not in the index"))
@@ -141,7 +141,7 @@ pub async fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) ->
                 .ok_or_else(|| format!("skill '{dir_name}' has no readable SKILL.md"))?,
         };
         skills::write_skill_file(&root, &dir_name, &current.llm_name, &description, &body)?;
-        skills::sync_index(&services.sea, &root).await?;
+        skills::sync_index(&services.db, &root).await?;
     }
 
     let changeset = SkillChangeset {
@@ -151,7 +151,7 @@ pub async fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) ->
         ..Default::default()
     };
     services
-        .sea
+        .db
         .write(async |tx| skill_ops::update_skill(tx, &dir_name, changeset).await)
         .await
         .map(Into::into)
@@ -171,7 +171,7 @@ pub async fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(),
 
     skills::delete_skill_dir(&root, &dir_name)?;
     services
-        .sea
+        .db
         .write(async |tx| skill_ops::delete_skill(tx, &dir_name).await)
         .await
         .map(|_| ())
@@ -202,7 +202,7 @@ pub async fn list_skill_bindings(
     request: SkillBindingListRequest,
 ) -> Result<SkillBindingNamesResponse, String> {
     let services = app.services();
-    binding_ops::list_layer(&services.sea, request.layer, request.anchor_id.as_deref())
+    binding_ops::list_layer(&services.db, request.layer, request.anchor_id.as_deref())
         .await
         .map_err(|e| e.to_string())
 }
@@ -226,7 +226,7 @@ pub async fn set_skill_binding(
     // The count and the bind share one write lock: checked outside it, two
     // binds racing for the last slot would both see room.
     let refused = services
-        .sea
+        .db
         .write(async |tx| {
             if !request.bound {
                 return binding_ops::unbind(tx, layer, anchor, dir_name).await.map(|()| false);
@@ -246,7 +246,7 @@ pub async fn set_skill_binding(
         ));
     }
 
-    binding_ops::list_layer(&services.sea, layer, anchor)
+    binding_ops::list_layer(&services.db, layer, anchor)
         .await
         .map_err(|e| e.to_string())
 }

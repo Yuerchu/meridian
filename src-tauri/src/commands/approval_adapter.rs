@@ -150,7 +150,7 @@ impl DesktopApprovals {
         }
         // After the card is on screen, so the recorded phase is never ahead of
         // what the user can actually see.
-        let db = services.sea.clone();
+        let db = services.db.clone();
         // The bracket restores `Streaming` however the wait ends — leaving the
         // phase behind would have a crash a minute later report a card that is
         // no longer on screen.

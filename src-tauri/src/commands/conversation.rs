@@ -47,7 +47,7 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
     let secrets = services.secrets.clone();
 
     let (assistant, keep_recent) = services
-        .sea
+        .db
         .read(async |tx| {
             let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
@@ -72,7 +72,7 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
     })?;
 
     let result = do_compact(
-        &services.sea,
+        &services.db,
         &secrets,
         &conversation_id,
         assistant.as_ref(),
@@ -116,7 +116,7 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
 
 #[tauri::command]
 pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<ConversationListResponse, String> {
-    let rows = conversation_ops::list_conversations(&app.services().sea, archived)
+    let rows = conversation_ops::list_conversations(&app.services().db, archived)
         .await
         .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()
@@ -138,7 +138,7 @@ pub async fn create_conversation(
     // The default assistant read under the same lock the row is written under.
     let row = app
         .services()
-        .sea
+        .db
         .write(async |tx| {
             let default_assistant = db::sea::ops::assistant::get_default_assistant(tx).await?;
             conversation_ops::create_conversation(
@@ -175,7 +175,7 @@ pub async fn set_conversation_assistant(
         .try_acquire_mutation(&request.id, "an assistant change")
         .map_err(|busy| busy.to_string())?;
     let setting = ConversationSetting::Assistant(request.assistant_id.0);
-    set_unless_plan_barrier(&services.sea, &request.id, setting).await
+    set_unless_plan_barrier(&services.db, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -202,7 +202,7 @@ pub async fn set_conversation_reasoning_prefs(
         thinking_level,
         fast_mode: request.fast_mode,
     };
-    set_unless_plan_barrier(&services.sea, &request.id, setting).await
+    set_unless_plan_barrier(&services.db, &request.id, setting).await
 }
 
 /// Switch the conversation's collaboration mode. `None` is the canonical
@@ -225,7 +225,7 @@ pub async fn set_conversation_mode(
         .and_then(meridian_core::agent::modes::ChatMode::canonical_storage)
         .map(str::to_string);
     app.services()
-        .sea
+        .db
         .write(async |tx| conversation_ops::update_mode(tx, &request.id, mode.as_deref(), now_ms()).await)
         .await
         .map(|_| ())
@@ -258,7 +258,7 @@ pub async fn set_conversation_accept_edits(
         .try_acquire_mutation(&request.id, "an edit-approval change")
         .map_err(|busy| busy.to_string())?;
     let setting = ConversationSetting::AcceptEdits(request.accept_edits);
-    set_unless_plan_barrier(&services.sea, &request.id, setting).await
+    set_unless_plan_barrier(&services.db, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -274,7 +274,7 @@ pub async fn update_conversation_title(
     request: ConversationTitleUpdateRequest,
 ) -> Result<(), String> {
     app.services()
-        .sea
+        .db
         .write(async |tx| conversation_ops::update_title(tx, &request.id, &request.title, now_ms()).await)
         .await
         .map(|_| ())
@@ -358,7 +358,7 @@ pub async fn set_conversation_project(
         .try_acquire_mutation(&request.id, "a project move")
         .map_err(|busy| busy.to_string())?;
     let setting = ConversationSetting::Project(request.project_id.0);
-    set_unless_plan_barrier(&services.sea, &request.id, setting).await
+    set_unless_plan_barrier(&services.db, &request.id, setting).await
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -420,7 +420,7 @@ pub async fn search_conversations(
     let limit = request.limit.0.unwrap_or(20).min(100) as usize;
     let hits = app
         .services()
-        .sea
+        .db
         .read(async |tx| conversation_ops::search_transcripts(tx, &request.query, limit).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -431,7 +431,7 @@ pub async fn search_conversations(
 pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<ConversationInfoResponse, String> {
     let row = app
         .services()
-        .sea
+        .db
         .write(async |tx| conversation_ops::toggle_pin(tx, &id, now_ms()).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -445,7 +445,7 @@ pub async fn toggle_archive_conversation(
 ) -> Result<ConversationInfoResponse, String> {
     let row = app
         .services()
-        .sea
+        .db
         .write(async |tx| conversation_ops::toggle_archive(tx, &id, now_ms()).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -463,7 +463,7 @@ pub async fn toggle_archive_conversation(
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let coordinator = app.services().turns.clone();
-    let sea = app.services().sea.clone();
+    let sea = app.services().db.clone();
 
     // This one first, and on its own. A delegated run is started from inside a
     // turn on this conversation, and a turn cannot exist while a mutation holds
@@ -659,12 +659,12 @@ async fn assemble_system_prompt(
             None
         }
     };
-    let file_access = build_file_access(&app.services().sea).await?;
+    let file_access = build_file_access(&app.services().db).await?;
 
     // The very same resolver the chat loop runs. Counting anything else here is
     // how the estimate ended up short of what actually gets sent — the checklist
     // block used to be missing from this side entirely.
-    let sea = &app.services().sea;
+    let sea = &app.services().db;
     let mode = meridian_core::agent::modes::resolve(mode)?;
     let context_blocks = vec![
         instruction_block.unwrap_or_default(),
@@ -741,7 +741,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     let services = app.services();
 
     let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = services
-        .sea
+        .db
         .read(async |tx| {
             let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
@@ -792,9 +792,9 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
             transport_profile,
             codex_request_shape,
             ..
-        } = resolve_provider_config(&services.secrets, &services.sea, assistant.as_ref()).await?;
+        } = resolve_provider_config(&services.secrets, &services.db, assistant.as_ref()).await?;
         let turn = resolve_turn_params(
-            &services.sea,
+            &services.db,
             TurnParamsResolveRequest {
                 assistant: assistant.as_ref(),
                 provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
@@ -840,7 +840,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     // reported to it. Reading costs nothing — only a request that reaches a
     // provider marks anything as told, and an estimate sends none.
     let interrupted_block =
-        meridian_core::agent::interrupted::load_block(&services.sea, &services.turns, &conversation_id, "").await?;
+        meridian_core::agent::interrupted::load_block(&services.db, &services.turns, &conversation_id, "").await?;
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.
@@ -900,7 +900,7 @@ pub async fn list_conversations_by_project(
     request: ConversationListByProjectRequest,
 ) -> Result<ConversationListResponse, String> {
     let rows =
-        conversation_ops::list_conversations_by_project(&app.services().sea, &request.project_id, request.archived)
+        conversation_ops::list_conversations_by_project(&app.services().db, &request.project_id, request.archived)
             .await
             .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()

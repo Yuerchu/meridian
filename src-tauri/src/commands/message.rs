@@ -745,7 +745,7 @@ pub async fn read_message_context_item(
     // One snapshot: the item has to be on the path the head names at the
     // moment it is read.
     app.services()
-        .sea
+        .db
         .read(async |tx| {
             const OFF_BRANCH: &str = "context item is not on the active conversation branch";
             let conv = conversation_ops::get_conversation(tx, &conversation_id)
@@ -1229,7 +1229,7 @@ pub async fn conversation_snapshot(
     let ConversationSnapshotRequest { conversation_id } = request;
     let services = app.services();
     let coordinator = services.turns.clone();
-    let db = &services.sea;
+    let db = &services.db;
 
     let mut settled = None;
     for attempt in 0..SNAPSHOT_ATTEMPTS {
@@ -1509,7 +1509,7 @@ pub async fn switch_branch(app: tauri::AppHandle, request: MessageBranchSwitchRe
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
     let changed = services
-        .sea
+        .db
         .write(async |tx| switch_branch_unless_plan_barrier(tx, &conversation_id, &message_id).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -1551,7 +1551,7 @@ pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
     let changed = services
-        .sea
+        .db
         .write(async |tx| delete_message_unless_plan_barrier(tx, &conversation_id, &id).await)
         .await
         .map_err(|e| e.to_string())?;
@@ -1565,7 +1565,7 @@ pub async fn rate_message(app: tauri::AppHandle, request: MessageRatingUpdateReq
     let MessageRatingUpdateRequest { id, rating } = request;
     let rating = rating.map(Into::into);
     app.services()
-        .sea
+        .db
         .write(async |tx| message_ops::update_rating(tx, &id, rating).await)
         .await
         .map_err(|e| e.to_string())
@@ -1607,7 +1607,7 @@ pub async fn export_conversation(
     } = request;
     let services = app.services();
     let (path, system_prompt) = services
-        .sea
+        .db
         .read(async |tx| {
             let conv = conversation_ops::get_conversation(tx, &conversation_id)
                 .await?

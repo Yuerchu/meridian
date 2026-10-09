@@ -144,15 +144,15 @@ pub fn run() {
             // The stored configs are read on the same crossing: four awaits
             // inside the one `block_on`, not four crossings.
             #[cfg(not(target_os = "android"))]
-            let onebot_config = tauri::async_runtime::block_on(meridian_core::onebot::load_config(&services.sea))
+            let onebot_config = tauri::async_runtime::block_on(meridian_core::onebot::load_config(&services.db))
                 .map_err(|error| std::io::Error::other(format!("invalid stored OneBot config: {error}")))?;
             #[cfg(not(target_os = "android"))]
-            let hooks_config = tauri::async_runtime::block_on(meridian_core::hooks::load_config(&services.sea))
+            let hooks_config = tauri::async_runtime::block_on(meridian_core::hooks::load_config(&services.db))
                 .map_err(|error| std::io::Error::other(format!("invalid stored hooks config: {error}")))?;
             #[cfg(not(target_os = "android"))]
-            let remote_config = tauri::async_runtime::block_on(remote::load_config(&services.sea))
+            let remote_config = tauri::async_runtime::block_on(remote::load_config(&services.db))
                 .map_err(|error| std::io::Error::other(format!("invalid stored remote config: {error}")))?;
-            let notify_config = tauri::async_runtime::block_on(meridian_core::notify::load_config(&services.sea))
+            let notify_config = tauri::async_runtime::block_on(meridian_core::notify::load_config(&services.db))
                 .map_err(|error| std::io::Error::other(format!("invalid stored notification config: {error}")))?;
             // The one thing core needs from up here: how to run a turn. The
             // prompt queue lives below the line and has to be able to start
@@ -242,7 +242,7 @@ pub fn run() {
             {
                 let services = services.clone();
                 tauri::async_runtime::spawn(async move {
-                    let live = meridian_core::db::sea::ops::conversation::all_ids(&services.sea)
+                    let live = meridian_core::db::sea::ops::conversation::all_ids(&services.db)
                         .await
                         .map_err(|e| e.to_string());
                     match live {

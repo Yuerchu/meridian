@@ -245,7 +245,7 @@ fn check_body_template(
 #[tauri::command]
 pub async fn get_notify_config(app: tauri::AppHandle) -> Result<NotifyConfigInfoResponse, String> {
     let services = app.services();
-    let config = notify::load_config(&services.sea).await?;
+    let config = notify::load_config(&services.db).await?;
     let running = {
         let watcher = app.state::<notify::AppNotify>();
         let server = watcher.0.lock().await;
@@ -275,7 +275,7 @@ pub async fn get_notify_config(app: tauri::AppHandle) -> Result<NotifyConfigInfo
 pub async fn save_notify_config(app: tauri::AppHandle, request: NotifyConfigUpdateRequest) -> Result<(), String> {
     let services = app.services();
     let config = notify::NotifyConfig::try_from(request)?;
-    notify::save_config(&services.sea, &config).await?;
+    notify::save_config(&services.db, &config).await?;
 
     let watcher = app.state::<notify::AppNotify>();
     let mut server = watcher.0.lock().await;
@@ -291,7 +291,7 @@ pub async fn save_notify_config(app: tauri::AppHandle, request: NotifyConfigUpda
 #[tauri::command]
 pub async fn list_notification_webhooks(app: tauri::AppHandle) -> Result<NotificationWebhookListResponse, String> {
     let services = app.services();
-    let rows = notification_ops::list_webhooks(&services.sea)
+    let rows = notification_ops::list_webhooks(&services.db)
         .await
         .map_err(|error| error.to_string())?;
 
@@ -337,7 +337,7 @@ pub async fn create_notification_webhook(
     // count sees the first insert. `None` is the ceiling, reported outside so
     // the closure's error type stays the database's.
     let row = services
-        .sea
+        .db
         .write(async |tx| {
             if notification_ops::count_webhooks(tx).await? >= MAX_WEBHOOKS as u64 {
                 return Ok(None);
@@ -375,7 +375,7 @@ pub async fn update_notification_webhook(
         updated_at: Some(now),
     };
     let row = services
-        .sea
+        .db
         .write(async |tx| notification_ops::update_webhook(tx, &request.id, changeset).await)
         .await
         .map_err(|error| error.to_string())?;
@@ -389,7 +389,7 @@ pub async fn update_notification_webhook(
 pub async fn delete_notification_webhook(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let services = app.services();
     services
-        .sea
+        .db
         .write(async |tx| notification_ops::delete_webhook(tx, &id).await)
         .await
         .map_err(|error| error.to_string())?;
