@@ -11,7 +11,7 @@ Multi-provider AI desktop client with coding agent capabilities.
 | UI | Tailwind CSS v4 + self-built components (React Aria) + boardui design conventions |
 | Backend | Rust (tokio async runtime) |
 | AI Streaming | reqwest + eventsource-stream (SSE) |
-| Database | SQLite (planned) |
+| Database | SQLite through SeaORM (sqlx) |
 | License | AGPL-3.0-or-later (dual licensing available) |
 
 ## Architecture
@@ -26,7 +26,7 @@ src-tauri/
     android_bridge.rs       # the Java_* symbols MainActivity.kt calls back into
   crates/                   # git submodule: github.com/Yuerchu/meridian-core (Apache-2.0)
     core/                   # meridian-core: everything framework-free
-      migrations/           # the 65 Diesel migrations, frozen: db/sea/bridge replays them, the SeaORM baseline replaces them
+      migrations/legacy/    # the 65 migrations of the Diesel era, frozen: db/sea/bridge replays them for old databases
       src/
         agent/engine/       # the turn loop, and the ports the runners plug into
         db/ provider/ tools/ mcp/ secrets/ …

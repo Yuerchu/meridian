@@ -34,9 +34,9 @@ from `src/dev/schema-data.ts`, which is the single source both halves of this fe
   The snapshot is the live schema as SQLite stores it, one `CREATE …;` per object;
   `cargo run -p meridian-core --example gen_schema_snapshot --features test-support`
   regenerates it and a core test pins it to the migrations, so a schema change that
-  forgets the file is red there first. The 65 Diesel migrations are frozen history,
-  replayed only by the bridge for old databases; a checker that reads them guards
-  nothing live. Types are compared by SQLite affinity, not spelling: a bridged
+  forgets the file is red there first. The 65 Diesel-era migrations
+  (`migrations/legacy/`) are frozen history, replayed only by the bridge for old
+  databases; a checker that reads them guards nothing live. Types are compared by SQLite affinity, not spelling: a bridged
   database carries Diesel's `BIGINT` / `REAL` and a fresh one sea-query's `integer` /
   `double`, and SQLite treats the two alike. Structure that drifts is worse than no
   diagram: it is wrong in a way that reads as authoritative.
