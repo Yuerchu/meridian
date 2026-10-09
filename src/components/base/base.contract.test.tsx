@@ -16,6 +16,7 @@ import {
   DropdownItem,
   DropdownPopover,
   Input,
+  Kanban,
   Label,
   LinkButton,
   Meter,
@@ -350,6 +351,51 @@ describe('Sidebar.Menu is a tree', () => {
     expect(screen.getByRole('row', { name: 'Beta' })).toHaveFocus()
     await userEvent.keyboard('{Enter}')
     expect(onAction).toHaveBeenCalledWith('b')
+  })
+})
+
+describe('Kanban cards are a React Aria grid list', () => {
+  function Board({ withField = false }: { withField?: boolean }) {
+    return (
+      <Kanban aria-label="Board">
+        <Kanban.Column>
+          <Kanban.CardList aria-label="Running">
+            <Kanban.Card id="a" textValue="Alpha">
+              Alpha
+              {withField && <textarea aria-label="Say to Alpha" />}
+            </Kanban.Card>
+            <Kanban.Card id="b" textValue="Beta">
+              Beta
+            </Kanban.Card>
+          </Kanban.CardList>
+        </Kanban.Column>
+      </Kanban>
+    )
+  }
+
+  it('names its list and walks cards with the arrow keys', async () => {
+    render(<Board />)
+    expect(screen.getByRole('grid', { name: 'Running' })).toBeInTheDocument()
+    await userEvent.tab()
+    expect(screen.getByRole('row', { name: 'Alpha' })).toHaveFocus()
+    await userEvent.keyboard('{ArrowDown}')
+    expect(screen.getByRole('row', { name: 'Beta' })).toHaveFocus()
+  })
+
+  it('cannot be dragged without dragAndDropHooks', () => {
+    render(<Board />)
+    expect(screen.getByRole('row', { name: 'Alpha' })).not.toHaveAttribute('draggable')
+  })
+
+  // The list's keyboard delegate listens on the way up; a field inside a card
+  // lost its caret to the next card on the first arrow key.
+  it('leaves the keys typed into a field inside a card to the field', async () => {
+    render(<Board withField />)
+    const field = screen.getByRole('textbox', { name: 'Say to Alpha' })
+    await userEvent.click(field)
+    await userEvent.keyboard('ab{ArrowLeft}{ArrowDown}{Home}{End}x')
+    expect(field).toHaveFocus()
+    expect(field).toHaveValue('abx')
   })
 })
 

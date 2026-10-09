@@ -23,6 +23,7 @@ import { ModelIcon } from '@/components/ui/model-icon'
 import { PathLabel } from '@/components/ui/path-label'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { Section } from './shell'
+import { DraggableKanban } from './kanban-demo'
 
 function noop() {}
 
@@ -109,6 +110,11 @@ export function DataParts() {
             </Kanban.Column>
           ))}
         </Kanban>
+      </Section>
+      <Section title="Kanban / 拖拽">
+        {/* Pointer: drag a card. Keyboard: Tab to a card's grip, Enter to pick
+            it up, Tab to a drop position, Enter to drop. */}
+        <DraggableKanban />
       </Section>
       <Section title="Resizable / 可拖拽分栏">
         <div className="h-40 max-w-2xl overflow-hidden rounded-2xl ring-1 ring-border-button-default ring-inset">
