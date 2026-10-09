@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：274
-- Diesel ops 调用点（db/ops 之外）：81
-- Diesel API 引用：373
+- 事务根（非测试）：278
+- Diesel ops 调用点（db/ops 之外）：57
+- Diesel API 引用：329
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -77,6 +77,8 @@
 | `src-tauri/crates/core/src/background.rs` › `claim` | sea-write | background_task, conversation, message |
 | `src-tauri/crates/core/src/background.rs` › `run` | sea-write | background_task |
 | `src-tauri/crates/core/src/background.rs` › `start` | sea-write | background_task |
+| `src-tauri/crates/core/src/bootstrap.rs` › `bootstrap_with_secrets` | sea-write | assistant |
+| `src-tauri/crates/core/src/bootstrap.rs` › `bootstrap_with_secrets` | sea-write | assistant, provider |
 | `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-read | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-write | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
@@ -94,7 +96,6 @@
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
-| `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `(顶层)` | sea-read | — |
@@ -192,6 +193,9 @@
 | `src-tauri/crates/core/src/workspace/mod.rs` › `configured_dir` | sea-read | acp_session, conversation, project |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
+| `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | provider |
+| `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | provider |
+| `src-tauri/crates/meridiand/src/apply.rs` › `claim_data_dir` | sea-write | preference, provider |
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
