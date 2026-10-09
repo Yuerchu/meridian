@@ -20,7 +20,7 @@ import {
   type GridListItemProps,
   type Key,
 } from 'react-aria-components'
-import { ArrowUp, X } from '@keyline-icons/react/two-tone'
+import { ArrowUp, GripVertical, X } from '@keyline-icons/react/two-tone'
 import { Stop } from '@keyline-icons/react/fill'
 import { cx } from '@/utils/cx'
 import { Button, type ButtonProps } from './buttons/button'
@@ -692,14 +692,7 @@ function QueueItemHandle({ className, 'aria-label': ariaLabel }: { className?: s
         className,
       )}
     >
-      <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
-        <circle cx="6" cy="4" r="1.2" />
-        <circle cx="10" cy="4" r="1.2" />
-        <circle cx="6" cy="8" r="1.2" />
-        <circle cx="10" cy="8" r="1.2" />
-        <circle cx="6" cy="12" r="1.2" />
-        <circle cx="10" cy="12" r="1.2" />
-      </svg>
+      <GripVertical aria-hidden className="size-4" />
     </AriaButton>
   )
 }

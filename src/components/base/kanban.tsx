@@ -11,6 +11,7 @@ import {
   type GridListItemProps,
   type Key,
 } from 'react-aria-components'
+import { GripVertical } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 
 /**
@@ -173,14 +174,7 @@ function KanbanDragHandle({ className, ...props }: KanbanDragHandleProps) {
         className,
       )}
     >
-      <svg viewBox="0 0 16 16" className="size-4" fill="currentColor" aria-hidden>
-        <circle cx="6" cy="4" r="1.2" />
-        <circle cx="10" cy="4" r="1.2" />
-        <circle cx="6" cy="8" r="1.2" />
-        <circle cx="10" cy="8" r="1.2" />
-        <circle cx="6" cy="12" r="1.2" />
-        <circle cx="10" cy="12" r="1.2" />
-      </svg>
+      <GripVertical aria-hidden className="size-4" />
     </AriaButton>
   )
 }

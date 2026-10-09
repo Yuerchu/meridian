@@ -156,6 +156,7 @@ function HoverCardContent({ className, placement = 'top', offset = 8, children }
 function HoverCardArrow({ className }: { className?: string }) {
   return (
     <OverlayArrow data-slot="hover-card-arrow" className={cx('group', className)}>
+      {/* eslint-disable-next-line no-restricted-syntax -- the popover's caret, filled and stroked as the card's edge */}
       <svg
         width={12}
         height={7}

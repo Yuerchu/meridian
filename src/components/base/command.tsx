@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from 'react'
+import { X } from '@keyline-icons/react/two-tone'
 import {
   Autocomplete,
   Button as AriaButton,
@@ -187,16 +188,7 @@ function CommandInputGroupClearButton({
         className,
       )}
     >
-      <svg
-        data-slot="command-clear-icon"
-        className="size-3"
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      >
-        <path d="M4 4l8 8M12 4l-8 8" />
-      </svg>
+      <X data-slot="command-clear-icon" aria-hidden className="size-3" />
     </AriaButton>
   )
 }

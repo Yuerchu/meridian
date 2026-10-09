@@ -180,7 +180,7 @@ What remains under `components/ui/` is Meridian-specific domain components (bubb
   font weights, `bg-muted`, raw `shadow-*`, `animate-pulse`/`animate-spin` in
   place of `Skeleton`/`Spinner`, status colours at alpha, a Button painted
   `text-status-danger` or given `h-auto`, a Spinner sized by className, a
-  template-string className, `t(…).replace`, glyph icons, native form elements
+  template-string className, `t(…).replace`, glyph icons and hand-drawn `<svg>` icons (a recurrence gate: four shipped in our own files, 2026-10; a chart, a caret, a spinner or the brand mark disables it with what it draws), native form elements
   and browser dialogs, and the React Aria rules (a state attribute on a
   `*.Content` slot, `onClick`/`disabled` on Button). `scripts/eslint-rules/` is
   the local plugin for what needs more than a selector: `icon-only-needs-name`

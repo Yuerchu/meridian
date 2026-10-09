@@ -130,6 +130,18 @@ const styleRestrictions = [
     message:
       'A glyph is not an icon: screen readers read it as nothing or as "multiplication x", and it does not match the icon set. Use the icon library (X, Check, ArrowUp…).',
   },
+  // Recurrence gate (2026-10): four icons in our own files were drawn by hand
+  // — a drag grip copied from the prompt queue into the Kanban handle, the
+  // command palette's clear cross, the sidebar's menu bars. The checklist
+  // listed icon sources as something no selector could see; an inline <svg>
+  // is exactly what one sees. Registry files are exempt with the rest of the
+  // style rules (VENDORED); a drawing that is not an icon — a chart, a caret,
+  // a spinner, the brand mark — takes a disable comment saying so.
+  {
+    selector: "JSXOpeningElement[name.name='svg']",
+    message:
+      'An icon comes from @keyline-icons/react/two-tone (or /fill for a solid glyph by meaning), not a hand-drawn <svg>. A drawing that is not an icon — a chart, a caret, a spinner, the brand mark — takes // eslint-disable-next-line no-restricted-syntax -- <what it draws>.',
+  },
 ]
 
 // Enforced outside src/components/ui/, which is where the domain-specific
