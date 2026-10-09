@@ -10,7 +10,6 @@
 
 use std::sync::Arc;
 
-use diesel::Connection;
 use tokio_util::sync::CancellationToken;
 
 use crate::ServicesExt;
@@ -18,10 +17,7 @@ use meridian_core::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec,
 use meridian_core::agent::sub_agents::SubAgentKind;
 use meridian_core::agent::turn_record;
 use meridian_core::db;
-use meridian_core::db::DbPool;
 use meridian_core::db::entity::assistant;
-use meridian_core::db::models::conversation::ConversationInsert;
-use meridian_core::db::models::message::MessageInsert;
 use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
 use meridian_core::events::{ChatStopReason, ChatStreamEvent};
 use meridian_core::secrets::SecretsManager;
@@ -29,7 +25,7 @@ use meridian_core::services::Services;
 use meridian_core::state::SubAgentInbox;
 use meridian_core::tools::{self, ToolRegistry};
 use meridian_core::turn::{TurnLease, TurnOrigin};
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 
 /// What an `Explore` agent may do.
 ///
@@ -93,7 +89,6 @@ pub async fn steer_conversation(app: tauri::AppHandle, request: ConversationStee
 /// row, the project and the tool context are hundreds of lines behind.
 pub(crate) struct DesktopSubAgents {
     pub services: Services,
-    pub pool: DbPool,
     pub secrets: Arc<SecretsManager>,
     pub registry: Arc<ToolRegistry>,
     pub coordinator: Arc<meridian_core::turn::TurnCoordinator>,
@@ -360,91 +355,39 @@ impl DesktopSubAgents {
         spec: &SubAgentSpec,
         assistant: &assistant::Model,
     ) -> Result<(String, i64), String> {
-        let pool = self.pool.clone();
-        let (conv_id, turn_id) = (sub_conversation_id.to_string(), turn_id.to_string());
-        let parent = self.parent_conversation_id.clone();
-        let project_id = self.project_id.clone();
-        let (message_id, prompt) = (uuid::Uuid::new_v4().to_string(), spec.prompt.clone());
-        let (title, kind) = (spec.description.clone(), spec.kind.as_str());
-        let (parent_message_id, parent_call_id) = (spec.parent_message_id.clone(), spec.parent_call_id.clone());
-        let (assistant_id, provider_id, model_id) = (
-            assistant.id.clone(),
-            assistant.provider_id.clone(),
-            assistant.model_id.clone(),
-        );
-        let returned = message_id.clone();
+        let message_id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
-
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            conn.transaction::<_, diesel::result::Error, _>(|conn| {
-                db::ops::conversation::insert(
-                    conn,
-                    ConversationInsert {
-                        id: &conv_id,
-                        title: Some(&title),
-                        assistant_id: Some(&assistant_id),
-                        is_pinned: 0,
-                        is_archived: 0,
-                        created_at: now,
-                        updated_at: now,
-                        project_id: project_id.as_deref(),
-                        parent_conversation_id: Some(&parent),
-                        spawned_by_message_id: Some(&parent_message_id),
-                        spawned_by_call_id: Some(&parent_call_id),
-                        spawned_turn_id: Some(&turn_id),
-                        agent_kind: Some(kind),
-                        agent_provider_id: provider_id.as_deref(),
-                        agent_model_id: model_id.as_deref(),
-                    },
-                )?;
-                db::ops::message::append_message(
-                    conn,
-                    &MessageInsert {
-                        id: &message_id,
-                        conversation_id: &conv_id,
-                        role: "user",
-                        content: &prompt,
-                        provider_id: None,
-                        model_id: None,
-                        input_tokens: None,
-                        output_tokens: None,
-                        tool_calls: None,
-                        tool_call_id: None,
-                        sort_order: 0,
-                        created_at: now,
-                        reasoning_content: None,
-                        rating: None,
-                        schema_version: 2,
-                        is_compact_summary: 0,
-                        sender_id: None,
-                        parent_id: None,
-                        compact_anchor_id: None,
-                        source: None,
-                        turn_id: Some(&turn_id),
-                        tool_outcome: None,
-                        // The delegating prompt, not a reply: no upstream was
-                        // asked anything to produce it.
-                        cache_read_tokens: None,
-                        cache_write_tokens: None,
-                        server_tool_calls: None,
-                        provider_name: None,
-                        response_model_id: None,
-                    },
-                    None,
-                )?;
-                // The synchronous op, not `turn_record::begin`: that one opens
-                // its own blocking task and so its own connection, which would
-                // put this row outside the transaction the other two are in.
-                db::ops::turn::begin(conn, &turn_id, &conv_id, TurnOrigin::SubAgent, None, now)?;
-                Ok(())
+        let conversation = db::entity::conversation::Model {
+            title: Some(spec.description.clone()),
+            assistant_id: Some(assistant.id.clone()),
+            project_id: self.project_id.clone(),
+            parent_conversation_id: Some(self.parent_conversation_id.clone()),
+            spawned_by_message_id: Some(spec.parent_message_id.clone()),
+            spawned_by_call_id: Some(spec.parent_call_id.clone()),
+            spawned_turn_id: Some(turn_id.to_string()),
+            agent_kind: Some(spec.kind.as_str().to_string()),
+            agent_provider_id: assistant.provider_id.clone(),
+            agent_model_id: assistant.model_id.clone(),
+            ..db::sea::ops::conversation::new_row(sub_conversation_id, now)
+        };
+        // The delegating prompt, not a reply: no upstream was asked anything to
+        // produce it.
+        let prompt = db::entity::message::Model {
+            turn_id: Some(turn_id.to_string()),
+            ..db::sea::ops::message::new_row(&message_id, sub_conversation_id, "user", &spec.prompt, now)
+        };
+        // The conversation, its prompt and the turn row: all three or none.
+        self.services
+            .sea
+            .write(async |tx| {
+                db::sea::ops::conversation::insert(tx, conversation).await?;
+                db::sea::ops::message::append_message(tx, prompt, None).await?;
+                db::sea::ops::turn::begin(tx, turn_id, sub_conversation_id, TurnOrigin::SubAgent, None, now).await
             })
-            .map_err(|e| e.to_string())
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            .await
+            .map_err(|e| e.to_string())?;
 
-        Ok((returned, now))
+        Ok((message_id, now))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -472,7 +415,7 @@ impl DesktopSubAgents {
 
         let chat_messages = match meridian_core::agent::build_messages_with_senders(
             config.system_prompt.trim(),
-            &db::ops::message::ActiveContext {
+            &db::sea::ops::message::ActiveContext {
                 path: Vec::new(),
                 summary: None,
                 anchor_index: None,

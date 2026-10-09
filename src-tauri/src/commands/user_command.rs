@@ -441,7 +441,6 @@ pub async fn run_user_command(
         conversation_id: Some(conversation_id.clone()),
         turn_id: Some(turn_id.clone()),
         assistant_id: None,
-        db_pool: Some(services.db.clone()),
         sea: Some(services.sea.clone()),
         sandbox_policy: policy,
         #[cfg(not(target_os = "android"))]

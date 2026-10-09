@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：275
-- Diesel ops 调用点（db/ops 之外）：109
-- Diesel API 引用：454
+- 事务根（非测试）：280
+- Diesel ops 调用点（db/ops 之外）：96
+- Diesel API 引用：440
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -201,7 +201,11 @@
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-nested | audit, memory, model_config, model_profile, provider |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | assistant, conversation, message, project |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | conversation, message |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-read | plan_review |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-write | plan_review |
@@ -279,6 +283,7 @@
 | `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |
 | `src-tauri/src/commands/provider.rs` › `delete_provider` | sea-write | conversation, plan_review, provider |
 | `src-tauri/src/commands/provider.rs` › `fetch_provider_models` | sea-write | cached_model |
+| `src-tauri/src/commands/provider.rs` › `get_provider_capabilities` | sea-read | model_config, model_profile, provider |
 | `src-tauri/src/commands/provider.rs` › `set_provider_key` | sea-write | cached_model, conversation, plan_review |
 | `src-tauri/src/commands/provider.rs` › `update_provider` | sea-write | cached_model, conversation, plan_review, provider |
 | `src-tauri/src/commands/queue.rs` › `queue_enqueue` | sea-write | plan_review, queue, queued_prompt_context_item |
@@ -290,7 +295,7 @@
 | `src-tauri/src/commands/skill.rs` › `delete_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |
 | `src-tauri/src/commands/skill.rs` › `update_skill` | sea-write | skill |
-| `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | diesel-deferred | audit, conversation, message, model_config, turn |
+| `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, turn |
 | `src-tauri/src/commands/todo.rs` › `get_active_todo_list` | sea-read | todo |
 | `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |

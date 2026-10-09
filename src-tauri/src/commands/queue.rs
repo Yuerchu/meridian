@@ -162,7 +162,6 @@ pub async fn queue_enqueue(
             conversation_id: Some(conversation_id.clone()),
             turn_id: None,
             assistant_id: None,
-            db_pool: Some(services.db.clone()),
             sea: Some(services.sea.clone()),
             #[cfg(not(target_os = "android"))]
             sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,

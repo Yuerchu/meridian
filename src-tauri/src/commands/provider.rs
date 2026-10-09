@@ -1002,32 +1002,34 @@ pub async fn get_provider_capabilities(
     request: ProviderCapabilitiesReadRequest,
 ) -> Result<ProviderCapabilitiesInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let provider_id = request.provider_id;
     let model_id = request.model_id;
-    let (provider_type, api_format, transport_profile, codex_request_shape, overrides) = {
-        let pid = provider_id.clone();
-        let mid = model_id.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
+    let (provider_type, api_format, transport_profile, codex_request_shape, overrides) = services
+        .sea
+        .read(async |tx| {
+            let Some(p) = db::sea::ops::provider::get_provider(tx, &provider_id).await? else {
+                return Ok(Err(format!("provider {provider_id} not found")));
+            };
             // The patch is the model's, not this provider's door to it: the
-            // same correction applies wherever that model is reached.
-            let overrides = meridian_core::agent::model_config::load(&mut conn, &pid, &mid)
+            // same correction applies wherever that model is reached. A config
+            // that cannot be read patches nothing, as before.
+            let overrides = db::sea::ops::model_config::get_with_profile(tx, &provider_id, &model_id)
+                .await
                 .ok()
                 .flatten()
-                .and_then(|config| config.capability_overrides);
-            Ok::<_, String>((
-                p.provider_type,
-                p.api_format,
-                p.transport_profile,
-                p.codex_request_shape != 0,
+                .and_then(|(config, profile)| {
+                    meridian_core::agent::model_config::effective(&config, &profile).capability_overrides
+                });
+            Ok::<_, db::sea::DbErr>(Ok((
+                p.provider_type.as_str().to_string(),
+                p.api_format.as_str().to_string(),
+                p.transport_profile.as_str().to_string(),
+                p.codex_request_shape.get(),
                 overrides,
-            ))
+            )))
         })
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())??;
     let mut caps = meridian_core::provider::registry::get_capabilities(
         &provider_type,
         &api_format,

@@ -242,13 +242,9 @@ pub fn run() {
             {
                 let services = services.clone();
                 tauri::async_runtime::spawn(async move {
-                    let pool = services.db.clone();
-                    let live = tokio::task::spawn_blocking(move || {
-                        let mut conn = pool.get().map_err(|e| e.to_string())?;
-                        meridian_core::db::ops::conversation::all_ids(&mut conn).map_err(|e| e.to_string())
-                    })
-                    .await
-                    .unwrap_or_else(|e| Err(e.to_string()));
+                    let live = meridian_core::db::sea::ops::conversation::all_ids(&services.sea)
+                        .await
+                        .map_err(|e| e.to_string());
                     match live {
                         Ok(live) => {
                             services.containers.reconcile(&live).await;

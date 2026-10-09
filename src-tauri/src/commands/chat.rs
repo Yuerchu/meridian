@@ -22,7 +22,7 @@ use meridian_core::provider::{ChatMessage, ChatParams};
 use meridian_core::services::Services;
 use meridian_core::tools;
 use meridian_core::turn::{TurnLease, TurnOrigin};
-use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
+use meridian_core::util::{now_ms, take_bytes_at_char_boundary};
 
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
@@ -70,7 +70,7 @@ fn select_turn_setting<T>(origin: TurnOrigin, explicit: Option<T>, conversation_
 
 async fn load_message_context_items(
     db: &db::sea::cap::Db,
-    context: &db::ops::message::ActiveContext,
+    context: &db::sea::ops::message::ActiveContext,
 ) -> Result<std::collections::HashMap<String, Vec<db::entity::message_context_item::Model>>, String> {
     let ids = context
         .path
@@ -125,7 +125,6 @@ fn reference_tool_context(
         conversation_id: None,
         turn_id: None,
         assistant_id: None,
-        db_pool: None,
         sea: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
@@ -978,7 +977,6 @@ async fn chat_inner(
     wake: bool,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
-    let pool = services.db.clone();
     // Every stream event this turn sends goes through here. The bus is an `Arc`
     // inside, so the clone is a refcount bump.
     let emitter = meridian_core::events::BusEmit(services.events.clone());
@@ -1052,28 +1050,30 @@ async fn chat_inner(
     }
 
     // Load conversation + assistant + active path + project path
-    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        let aid_override = assistant_id.clone();
-        let replaces = replaces.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let effective_aid = select_turn_setting(origin, aid_override.as_deref(), conv.assistant_id.as_deref());
+    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = services
+        .sea
+        .read(async |tx| {
+            let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                return Ok(Err(format!("conversation {conversation_id} not found")));
+            };
+            let effective_aid = select_turn_setting(origin, assistant_id.as_deref(), conv.assistant_id.as_deref());
             // Pinned before anything derives from it. A delegated run stays
             // writable after it ends, and a follow-up has to go to the model the
             // transcript was written by — one conversation spanning two models
             // with no record of where it changed is not something anyone can
             // read afterwards. An explicit override from the model picker still
-            // wins; this is the fallback, not a lock.
-            let assistant =
-                conv.pin_model(effective_aid.and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok()));
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let project = conv
-                .project_id
-                .as_deref()
-                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
+            // wins; this is the fallback, not a lock. An assistant or project
+            // that cannot be read is none, as before.
+            let assistant = match effective_aid {
+                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                None => None,
+            };
+            let assistant = conv.pin_model(assistant);
+            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let project = match conv.project_id.as_deref() {
+                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                None => None,
+            };
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
             // Conversation-level reasoning prefs act as the fallback when the
@@ -1090,7 +1090,7 @@ async fn chat_inner(
             // second root.
             let replaced = replaces.as_deref().and_then(|id| history.iter().find(|m| m.id == id));
             if replaces.is_some() && replaced.is_none() {
-                return Err("the message being replaced is not in this conversation".into());
+                return Ok(Err("the message being replaced is not in this conversation".to_string()));
             }
             let branch_parent = replaced.and_then(|m| m.parent_id.clone());
 
@@ -1105,16 +1105,16 @@ async fn chat_inner(
             // "no head, use the newest row" fallback would wrongly hand back the
             // whole conversation, so that case is built empty.
             let ctx = match (replaced.is_some(), branch_parent.as_deref()) {
-                (true, None) => db::ops::message::ActiveContext {
+                (true, None) => db::sea::ops::message::ActiveContext {
                     path: Vec::new(),
                     summary: None,
                     anchor_index: None,
                     head_id: None,
                 },
-                (true, parent) => db::ops::message::active_context(&history, parent),
-                (false, _) => db::ops::message::active_context(&history, conv.head_message_id.as_deref()),
+                (true, parent) => db::sea::ops::message::active_context(&history, parent),
+                (false, _) => db::sea::ops::message::active_context(&history, conv.head_message_id.as_deref()),
             };
-            Ok::<_, String>((
+            Ok::<_, db::sea::DbErr>(Ok((
                 assistant,
                 ctx,
                 conv.title,
@@ -1122,11 +1122,10 @@ async fn chat_inner(
                 project_id,
                 conv_prefs,
                 branch_parent,
-            ))
+            )))
         })
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())??;
     let mut stored_context_items = load_message_context_items(&services.sea, &ctx).await?;
 
     // Resolve provider config (with optional overrides).
@@ -1594,24 +1593,26 @@ async fn chat_inner(
     // Compaction wrote a summary row, so the context has to be read again for it
     // to take effect.
     let ctx = if compacted {
-        let pool2 = pool.clone();
-        let conv_id = conversation_id.clone();
         // Not a fallback to the pre-compaction context. Compaction has already
         // written the summary and moved the head, so carrying on with the old
         // path would send the very history that just overflowed — and do it
         // while reporting the turn as compacted.
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
-            Ok::<_, String>(db::ops::message::active_context(
-                &history,
-                conv.head_message_id.as_deref(),
-            ))
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
+        services
+            .sea
+            .read(async |tx| {
+                let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                    return Ok(Err(format!("conversation {conversation_id} not found")));
+                };
+                let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+                Ok::<_, db::sea::DbErr>(Ok(db::sea::ops::message::active_context(
+                    &history,
+                    conv.head_message_id.as_deref(),
+                )))
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|read| read)
+            .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
     } else {
         ctx
     };
@@ -1746,10 +1747,12 @@ async fn chat_inner(
     }
 
     let sleep_enabled = {
+        // pool-read-before-write: whether to keep the machine awake guards none
+        // of the writes that follow it in this turn.
         let stored = db::sea::ops::preference::get_preference(&services.sea, "sleep_inhibitor.enabled")
             .await
             .map_err(|error| error.to_string())?;
-        db::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
+        db::sea::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
     };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of
@@ -1789,7 +1792,6 @@ async fn chat_inner(
         conversation_id: Some(conversation_id.clone()),
         turn_id: Some(turn_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
-        db_pool: Some(pool.clone()),
         sea: Some(services.sea.clone()),
         #[cfg(not(target_os = "android"))]
         sandbox_policy,
@@ -1829,7 +1831,6 @@ async fn chat_inner(
     // behind, and a delegated run needs all three.
     let sub_agents = super::sub_agent::DesktopSubAgents {
         services: services.clone(),
-        pool: pool.clone(),
         secrets: secrets.clone(),
         registry: tool_registry.clone(),
         coordinator: services.turns.clone(),
@@ -2057,29 +2058,24 @@ async fn chat_inner(
             let title = answer.text.trim().trim_matches('"').trim_matches('\'').to_string();
             let title_usage = answer.usage;
             if !title.is_empty() {
-                let pool = pool.clone();
-                let conv_id = conversation_id.clone();
-                let assistant_row = assistant_msg_id.clone();
-                let (pid, pname, mid) = (
-                    resolved.provider_id.clone(),
-                    resolved.provider_name.clone(),
-                    model.clone(),
-                );
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Ok(mut conn) = pool.get() {
-                        let _ = db::ops::conversation::update_title(&mut conn, &conv_id, &title, now_ms());
+                // The title and what it cost, in one write; the cost in a
+                // savepoint, best effort as every side-request ledger write is.
+                let written = services
+                    .sea
+                    .write(async |tx| {
+                        db::sea::ops::conversation::update_title(tx, &conversation_id, &title, now_ms()).await?;
                         // Filed against the reply the title was taken from —
                         // there is no row of its own, and this is the one it
                         // describes.
                         if let Some(usage) = title_usage {
                             let cost = db::ops::audit::SideRequestCost {
                                 role: db::ops::audit::TITLE_ROLE,
-                                message_id: &assistant_row,
-                                conversation_id: &conv_id,
+                                message_id: &assistant_msg_id,
+                                conversation_id: &conversation_id,
                                 turn_id: None,
-                                provider_id: Some(&pid),
-                                provider_name: Some(&pname),
-                                model_id: Some(&mid),
+                                provider_id: Some(&resolved.provider_id),
+                                provider_name: Some(&resolved.provider_name),
+                                model_id: Some(&model),
                                 usage: db::models::message::MessageUsage {
                                     input_tokens: usage.prompt_tokens,
                                     output_tokens: usage.completion_tokens,
@@ -2090,13 +2086,19 @@ async fn chat_inner(
                                 peak_prompt_tokens: usage.prompt_tokens,
                                 summary: "title",
                             };
-                            if let Err(e) = db::ops::audit::record_side_request(&mut conn, cost) {
+                            if let Err(e) = tx
+                                .nested(async |tx| db::sea::ops::audit::record_side_request(tx, cost).await)
+                                .await
+                            {
                                 tracing::warn!(error = %e, "could not record what the title cost");
                             }
                         }
-                    }
-                })
-                .await;
+                        Ok::<_, db::sea::DbErr>(())
+                    })
+                    .await;
+                if let Err(e) = written {
+                    tracing::warn!(error = %e, "could not save the generated title");
+                }
                 services.events.emit_conversation_updated(&conversation_id).ok();
             }
         }

@@ -284,7 +284,6 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
             conversation_id: Some(conversation_id.clone()),
             turn_id: turn_id.clone(),
             assistant_id: None,
-            db_pool: Some(services.db.clone()),
             sea: Some(services.sea.clone()),
             sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
             #[cfg(not(target_os = "android"))]
