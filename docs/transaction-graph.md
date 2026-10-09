@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：278
-- Diesel ops 调用点（db/ops 之外）：57
-- Diesel API 引用：329
+- 事务根（非测试）：288
+- Diesel ops 调用点（db/ops 之外）：31
+- Diesel API 引用：306
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -31,14 +31,25 @@
 |---|---|---|
 | `src-tauri/crates/core/src/acp/import.rs` › `attach` | diesel-deferred | acp_session, conversation |
 | `src-tauri/crates/core/src/acp/import.rs` › `import` | diesel-deferred | acp_session, acp_session_notice, assistant, audit, conversation, message, model_config, plan, project, todo, turn |
+| `src-tauri/crates/core/src/acp/mod.rs` › `remember_session` | sea-write | acp_session |
+| `src-tauri/crates/core/src/acp/mod.rs` › `reopen_session` | sea-read | acp_session, conversation |
 | `src-tauri/crates/core/src/acp/mod.rs` › `save` | sea-write | preference |
-| `src-tauri/crates/core/src/acp/mod.rs` › `write_conversation_row` | diesel-deferred | acp_session, assistant, conversation |
+| `src-tauri/crates/core/src/acp/mod.rs` › `write_conversation_row` | sea-write | acp_session, assistant, conversation |
 | `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review |
 | `src-tauri/crates/core/src/acp/plan_review.rs` › `submit` | sea-write | plan_review, turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `adopt_title` | sea-write | conversation |
+| `src-tauri/crates/core/src/acp/session.rs` › `deliver_plan_review` | sea-write | turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `finish` | sea-write | turn |
 | `src-tauri/crates/core/src/acp/session.rs` › `pending_shell_context` | sea-read | acp_context_delivery, conversation, message, message_context_item |
+| `src-tauri/crates/core/src/acp/session.rs` › `record_diffs` | sea-write | message |
+| `src-tauri/crates/core/src/acp/session.rs` › `record_notice` | sea-write | acp_session_notice |
+| `src-tauri/crates/core/src/acp/session.rs` › `record_phase` | sea-write | turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `revise_stored` | sea-write | message |
 | `src-tauri/crates/core/src/acp/session.rs` › `settle` | sea-write | acp_context_delivery |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_interjections` | sea-write | queue |
+| `src-tauri/crates/core/src/acp/session.rs` › `write_plan` | sea-write | plan, todo |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item, turn |
+| `src-tauri/crates/core/src/acp/session.rs` › `write_row` | sea-write | message |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-nested | message |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-write | audit, memory, message, model_config, model_profile, provider |
@@ -91,7 +102,6 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review, turn |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | queue, turn |
-| `src-tauri/crates/core/src/db/ops/acp_session_notice.rs` › `upsert_if_newer` | diesel-immediate | acp_session_notice |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |

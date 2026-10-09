@@ -17,28 +17,21 @@ Diesel 与 SeaORM 共存期间，同一个操作在 `db/ops/<module>.rs`（Diese
 
 | 操作 | 剩余 Diesel 调用点 |
 |---|---|
-| acp_session::get | 4 |
+| acp_session::get | 3 |
 | acp_session::owners | 3 |
-| acp_session::upsert | 6 |
+| acp_session::upsert | 4 |
 | acp_session_notice::list_for_conversation | 1 |
-| acp_session_notice::upsert_if_newer | 1 |
-| assistant::get_default_assistant | 2 |
-| conversation::create_conversation | 3 |
-| conversation::get_conversation | 5 |
-| conversation::insert | 3 |
+| assistant::get_default_assistant | 1 |
+| conversation::create_conversation | 1 |
+| conversation::get_conversation | 2 |
+| conversation::insert | 2 |
 | conversation::toggle_archive | 1 |
 | conversation::toggle_pin | 1 |
-| conversation::update_title | 1 |
 | message::append_message | 1 |
-| message::list_messages | 6 |
-| message::record_tool_diffs | 2 |
-| message::record_tool_diffs_for_call | 1 |
-| message::revise_tool_call | 1 |
+| message::list_messages | 3 |
+| message::record_tool_diffs | 1 |
 | model_config::get_with_profile | 1 |
-| project::find_project_by_path | 2 |
-| todo::replace_active_list | 2 |
-| turn::begin | 3 |
+| project::find_project_by_path | 1 |
+| todo::replace_active_list | 1 |
+| turn::begin | 1 |
 | turn::finish | 1 |
-| turn::finish_waiting_review | 2 |
-| turn::list_for_conversation | 1 |
-| turn::set_phase | 1 |
