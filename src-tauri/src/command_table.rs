@@ -403,6 +403,36 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             local commands::hooks => stop_hooks(),
 
+            // The agent board. Not `local`, for the reason `acp_open_session`
+            // below is not: starting a card opens an agent in a directory, which
+            // a remote caller can already do.
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_list(),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_create(
+                request: $crate::commands::board::BoardTaskCreateRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_update(
+                request: $crate::commands::board::BoardTaskUpdateRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_move(
+                request: $crate::commands::board::BoardTaskMoveRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_start(
+                request: $crate::commands::board::BoardTaskStartRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_remove_worktree(
+                request: $crate::commands::board::BoardTaskWorktreeRemoveRequest,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::board => board_task_delete(
+                request: $crate::commands::board::BoardTaskDeleteRequest,
+            ),
+
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_open_session(
                 request: $crate::commands::acp::AcpSessionOpenRequest,

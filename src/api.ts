@@ -4,6 +4,15 @@
 import { invoke } from '@/lib/transport'
 import type {
   AcpCheckResponse,
+  BoardTaskCreateRequest,
+  BoardTaskDeleteRequest,
+  BoardTaskInfoResponse,
+  BoardTaskListResponse,
+  BoardTaskMoveRequest,
+  BoardTaskStartRequest,
+  BoardTaskStartResponse,
+  BoardTaskUpdateRequest,
+  BoardTaskWorktreeRemoveRequest,
   AcpConfigInfoResponse,
   AcpConfigUpdateRequest,
   AcpConfigOptionListResponse,
@@ -584,6 +593,16 @@ export const api = {
   updateProject: (request: ProjectUpdateRequest) => invoke<ProjectInfoResponse>('update_project', { request }),
 
   deleteProject: (id: string) => invoke<void>('delete_project', { id }),
+
+  // The agent board (desktop only).
+  boardTaskList: () => invoke<BoardTaskListResponse>('board_task_list'),
+  boardTaskCreate: (request: BoardTaskCreateRequest) => invoke<BoardTaskInfoResponse>('board_task_create', { request }),
+  boardTaskUpdate: (request: BoardTaskUpdateRequest) => invoke<BoardTaskInfoResponse>('board_task_update', { request }),
+  boardTaskMove: (request: BoardTaskMoveRequest) => invoke<BoardTaskInfoResponse>('board_task_move', { request }),
+  boardTaskStart: (request: BoardTaskStartRequest) => invoke<BoardTaskStartResponse>('board_task_start', { request }),
+  boardTaskRemoveWorktree: (request: BoardTaskWorktreeRemoveRequest) =>
+    invoke<BoardTaskInfoResponse>('board_task_remove_worktree', { request }),
+  boardTaskDelete: (request: BoardTaskDeleteRequest) => invoke<void>('board_task_delete', { request }),
 
   listConversationsByProject: (request: ConversationListByProjectRequest) =>
     invoke<ConversationListResponse>('list_conversations_by_project', { request }),

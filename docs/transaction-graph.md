@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：283
+- 事务根（非测试）：291
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 28 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
+- 29 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
 - 1 个：custom_tool
 - 1 个：journal
 - 1 个：mcp_server
@@ -195,7 +195,7 @@
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/workspace/mod.rs` › `configured_dir` | sea-read | acp_session, conversation, project |
+| `src-tauri/crates/core/src/workspace/mod.rs` › `configured_dir` | sea-read | acp_session, board_task, conversation, project |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | provider |
@@ -204,8 +204,16 @@
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/board.rs` › `board_task_move` | sea-write | board_task |
+| `src-tauri/src/commands/board.rs` › `board_task_update` | sea-write | board_task |
+| `src-tauri/src/commands/board.rs` › `create` | sea-write | board_task, project |
+| `src-tauri/src/commands/board.rs` › `delete` | sea-write | board_task |
+| `src-tauri/src/commands/board.rs` › `remove_worktree` | sea-write | board_task |
+| `src-tauri/src/commands/board.rs` › `start` | sea-write | assistant, board_task, conversation |
+| `src-tauri/src/commands/board.rs` › `start` | sea-write | board_task |
+| `src-tauri/src/commands/board.rs` › `start` | sea-write | conversation |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-nested | audit, memory, model_config, model_profile, provider |
-| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | assistant, conversation, message, project |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | acp_session, assistant, board_task, conversation, message, project |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | conversation, message |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
@@ -217,15 +225,15 @@
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review, turn |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
-| `src-tauri/src/commands/chat.rs` › `verify_plan_review_workspace` | sea-read | conversation, project |
+| `src-tauri/src/commands/chat.rs` › `verify_plan_review_workspace` | sea-read | acp_session, board_task, conversation, project |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/conversation.rs` › `compact` | sea-read | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `create_conversation` | sea-write | assistant, conversation |
-| `src-tauri/src/commands/conversation.rs` › `delete_conversation` | sea-read | conversation |
-| `src-tauri/src/commands/conversation.rs` › `delete_conversation` | sea-write | conversation |
+| `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-read | conversation |
+| `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-write | conversation |
 | `src-tauri/src/commands/conversation.rs` › `get_context_info` | sea-read | assistant, conversation, message, message_context_item, project |
 | `src-tauri/src/commands/conversation.rs` › `search_conversations` | sea-read | conversation |
 | `src-tauri/src/commands/conversation.rs` › `set_conversation_mode` | sea-write | conversation |
@@ -280,7 +288,7 @@
 | `src-tauri/src/commands/plan_review.rs` › `settle_delivery` | sea-write | plan_review · 回调来自 2 处 |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
-| `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | conversation, memory, plan_review, project |
+| `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | board_task, conversation, memory, plan_review, project |
 | `src-tauri/src/commands/project.rs` › `update_project` | sea-write | conversation, plan_review, project |
 | `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
 | `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |

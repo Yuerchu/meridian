@@ -1567,6 +1567,82 @@ mod tests {
         );
     }
 
+    /// A board card's plan was written in its worktree, so that is the
+    /// directory continuation compares against — not the project's path,
+    /// which the guard read itself before the resolver knew about cards. A
+    /// runtime recorded against the main checkout no longer matches.
+    #[tokio::test]
+    async fn a_board_card_continues_in_its_worktree_and_not_in_the_main_checkout() {
+        use meridian_core::db::entity::board_task::{BoardAgentKind, BoardSource, BoardStage};
+        use meridian_core::db::sea::ops::board_task;
+
+        let db = db::sea::sea_test_db().await;
+        db.write(async |tx| {
+            db::sea::ops::project::create_project(
+                tx,
+                db::entity::project::Model {
+                    id: "project-a".into(),
+                    name: "repo".into(),
+                    path: Some("A".into()),
+                    source_type: db::entity::project::ProjectSource::Local,
+                    source_id: None,
+                    assistant_id: None,
+                    description: None,
+                    created_at: 1,
+                    updated_at: 1,
+                },
+            )
+            .await?;
+            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-a"), 1).await?;
+            board_task::insert(
+                tx,
+                &board_task::BoardTaskInsert {
+                    id: "t1",
+                    project_id: "project-a",
+                    source: BoardSource::Local,
+                    title: "fix",
+                    request: None,
+                    stage: BoardStage::Backlog,
+                    now: 1,
+                },
+            )
+            .await?;
+            board_task::set_started(
+                tx,
+                "t1",
+                &board_task::BoardTaskStartChangeset {
+                    conversation_id: "c1",
+                    agent_kind: BoardAgentKind::Native,
+                    worktree_path: "A.worktrees/t1",
+                    now: 2,
+                },
+            )
+            .await?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
+
+        let in_worktree = NativePlanReviewRuntimeConfig {
+            project_id: Some("project-a".into()),
+            project_path: Some("A.worktrees/t1".into()),
+            ..native_plan_runtime()
+        };
+        crate::commands::chat::verify_plan_review_workspace(&db, "c1", &in_worktree)
+            .await
+            .unwrap();
+
+        let in_main_checkout = NativePlanReviewRuntimeConfig {
+            project_id: Some("project-a".into()),
+            project_path: Some("A".into()),
+            ..native_plan_runtime()
+        };
+        let error = crate::commands::chat::verify_plan_review_workspace(&db, "c1", &in_main_checkout)
+            .await
+            .unwrap_err();
+        assert!(error.contains("workspace changed"), "{error}");
+    }
+
     #[tokio::test]
     async fn snapshot_delivery_state_and_review_diff_span_the_whole_review_episode() {
         let sea = db::sea::sea_test_db().await;

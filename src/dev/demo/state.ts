@@ -1,5 +1,6 @@
 import type {
   BackgroundTaskInfoResponse,
+  BoardTaskInfoResponse,
   AssistantInfoResponse,
   ComposerDraftInfoResponse,
   ConversationInfoResponse,
@@ -32,6 +33,7 @@ import {
   PLAN_MARKDOWN,
   PLAN_REVIEW_ID,
   PLAN_REVISION_ID,
+  PROJECT_MERIDIAN,
   buildConversations,
   buildProjects,
   buildThreads,
@@ -68,6 +70,8 @@ import {
 export interface DemoState {
   now: number
   projects: ProjectInfoResponse[]
+  /** The agent board's cards. */
+  boardTasks: BoardTaskInfoResponse[]
   conversations: ConversationInfoResponse[]
   threads: Record<string, DemoThread>
   queues: Record<string, QueuedPromptInfoResponse[]>
@@ -205,6 +209,40 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
   return {
     now,
     projects: buildProjects(now),
+    // Two cards waiting in the backlog; the board's own fixtures (cards with
+    // agents at work, waiting, under review) come with the board page.
+    boardTasks: [
+      {
+        id: 'demo-card-csv',
+        project_id: PROJECT_MERIDIAN,
+        conversation_id: null,
+        source: 'local',
+        title: '导出 CSV 支持自定义列',
+        request: '导出对话时让人选要哪些列',
+        stage: 'backlog',
+        position: 0,
+        agent_kind: null,
+        worktree_path: null,
+        created_at: now - 3_600_000,
+        updated_at: now - 3_600_000,
+        worktree_removed_at: null,
+      },
+      {
+        id: 'demo-card-virtual',
+        project_id: PROJECT_MERIDIAN,
+        conversation_id: null,
+        source: 'local',
+        title: '会话列表改虚拟滚动',
+        request: null,
+        stage: 'backlog',
+        position: 1,
+        agent_kind: null,
+        worktree_path: null,
+        created_at: now - 1_800_000,
+        updated_at: now - 1_800_000,
+        worktree_removed_at: null,
+      },
+    ],
     conversations: buildConversations(now, threads),
     threads,
     queues: {},

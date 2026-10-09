@@ -462,8 +462,33 @@ pub async fn toggle_archive_conversation(
 /// until then this refuses rather than races.
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let coordinator = app.services().turns.clone();
-    let sea = app.services().db.clone();
+    let services = app.services();
+    // A board card's conversation goes with its card, from the board: deleted
+    // on its own it would leave a card pointing at nothing, and the card is
+    // what says the worktree is gone.
+    #[cfg(not(target_os = "android"))]
+    if let Some(card) = meridian_core::db::sea::ops::board_task::for_conversation(&services.db, &id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        return Err(format!(
+            "this conversation works board card \"{}\"; delete the card on the board instead",
+            card.title
+        ));
+    }
+    delete_conversation_tree(&services, &id).await
+}
+
+/// Delete a conversation with its delegated runs, their processes and their
+/// files. `delete_conversation` after its board check; the board's own delete
+/// calls it for a card's conversation.
+pub(crate) async fn delete_conversation_tree(
+    services: &meridian_core::services::Services,
+    id: &str,
+) -> Result<(), String> {
+    let id = id.to_owned();
+    let coordinator = services.turns.clone();
+    let sea = services.db.clone();
 
     // This one first, and on its own. A delegated run is started from inside a
     // turn on this conversation, and a turn cannot exist while a mutation holds
@@ -484,7 +509,6 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .try_acquire_mutations(&doomed, "a delete")
         .map_err(|busy| busy.to_string())?;
 
-    let services = app.services();
     #[allow(unused_mut)]
     let mut attachment_dirs: Vec<std::path::PathBuf> = std::iter::once(&id)
         .chain(doomed.iter())

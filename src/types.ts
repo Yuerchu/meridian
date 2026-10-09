@@ -353,6 +353,67 @@ export interface ProjectInfoResponse {
 
 export type ProjectSource = 'local' | 'onebot_private' | 'onebot_group'
 
+// The agent board. A card's column is a person's choice; starting a card
+// makes its worktree and its conversation.
+export type BoardSource = 'local'
+export type BoardStage = 'backlog' | 'running' | 'review' | 'done'
+export type BoardAgentKind = 'native' | 'claude_code'
+
+export interface BoardTaskInfoResponse {
+  id: string
+  project_id: string
+  conversation_id: string | null
+  source: BoardSource
+  title: string
+  request: string | null
+  stage: BoardStage
+  position: number
+  agent_kind: BoardAgentKind | null
+  worktree_path: string | null
+  created_at: number
+  updated_at: number
+  worktree_removed_at: number | null
+}
+
+export type BoardTaskListResponse = BoardTaskInfoResponse[]
+
+export interface BoardTaskStartResponse {
+  task: BoardTaskInfoResponse
+  conversation: ConversationInfoResponse
+}
+
+export interface BoardTaskCreateRequest {
+  projectId: string
+  title: string
+  request: string | null
+  stage: BoardStage
+}
+
+export interface BoardTaskUpdateRequest {
+  id: string
+  title: string
+  request: string | null
+}
+
+export interface BoardTaskMoveRequest {
+  id: string
+  stage: BoardStage
+  index: number
+}
+
+export interface BoardTaskStartRequest {
+  id: string
+  agentKind: BoardAgentKind
+}
+
+export interface BoardTaskWorktreeRemoveRequest {
+  id: string
+}
+
+export interface BoardTaskDeleteRequest {
+  id: string
+}
+
 export type PreferenceKey =
   | 'shell'
   | 'sandbox.enabled'

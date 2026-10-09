@@ -38,6 +38,10 @@ enum GuardedProjectMutation<T> {
     Applied(T),
     PlanReviewBarrier,
     ReferencesChanged,
+    /// Board cards of the project still have worktrees on disk; deleting the
+    /// project would delete the cards and leave the worktrees with nothing
+    /// that knows about them.
+    LiveWorktrees(usize),
 }
 
 /// What stops a project workspace mutation before it writes anything: the
@@ -103,6 +107,14 @@ async fn delete_project_unless_plan_barrier(
     if let Some(refused) = project_barrier(tx, project_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
+    let live = meridian_core::db::sea::ops::board_task::list(tx)
+        .await?
+        .into_iter()
+        .filter(|card| card.project_id == project_id && card.worktree_path.is_some())
+        .count();
+    if live > 0 {
+        return Ok(GuardedProjectMutation::LiveWorktrees(live));
+    }
     project_ops::delete_project(tx, project_id)
         .await
         .map(|_| GuardedProjectMutation::Applied(()))
@@ -112,6 +124,9 @@ fn finish_guarded_project_mutation<T>(result: GuardedProjectMutation<T>) -> Resu
     match result {
         GuardedProjectMutation::Applied(value) => Ok(value),
         GuardedProjectMutation::PlanReviewBarrier => Err(PLAN_REVIEW_PROJECT_MUTATION_BARRIER.into()),
+        GuardedProjectMutation::LiveWorktrees(count) => Err(format!(
+            "{count} board card(s) of this project still have a worktree. Remove them from the board before deleting the project."
+        )),
         GuardedProjectMutation::ReferencesChanged => Err(
             "The conversations using this project changed while the workspace mutation was being prepared. Try again."
                 .into(),
@@ -250,6 +265,66 @@ mod tests {
 
     async fn stored_path(sea: &db::sea::cap::Db) -> Option<String> {
         project_ops::get_project(sea, "project-1").await.unwrap().unwrap().path
+    }
+
+    /// Deleting a project deletes its board cards, and a card's worktree is on
+    /// disk: while one is, the delete is refused. Once the worktree has been
+    /// removed from the board, the project goes.
+    #[cfg(not(target_os = "android"))]
+    #[tokio::test]
+    async fn a_project_is_not_deleted_from_under_a_live_worktree() {
+        use meridian_core::db::entity::board_task::{BoardAgentKind, BoardSource, BoardStage};
+        use meridian_core::db::sea::ops::board_task;
+
+        let sea = db::sea::sea_test_db().await;
+        sea.write(async |tx| {
+            project_ops::create_project(tx, project_row()).await?;
+            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-1"), 1).await?;
+            board_task::insert(
+                tx,
+                &board_task::BoardTaskInsert {
+                    id: "t1",
+                    project_id: "project-1",
+                    source: BoardSource::Local,
+                    title: "fix",
+                    request: None,
+                    stage: BoardStage::Backlog,
+                    now: 1,
+                },
+            )
+            .await?;
+            board_task::set_started(
+                tx,
+                "t1",
+                &board_task::BoardTaskStartChangeset {
+                    conversation_id: "c1",
+                    agent_kind: BoardAgentKind::Native,
+                    worktree_path: "A.worktrees/t1",
+                    now: 2,
+                },
+            )
+            .await?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
+        let expected = vec!["c1".to_string()];
+
+        let refused = sea
+            .write(async |tx| delete_project_unless_plan_barrier(tx, "project-1", &expected).await)
+            .await
+            .unwrap();
+        assert!(matches!(refused, GuardedProjectMutation::LiveWorktrees(1)));
+        assert!(project_ops::get_project(&sea, "project-1").await.unwrap().is_some());
+
+        sea.write(async |tx| board_task::clear_worktree(tx, "t1", 3).await)
+            .await
+            .unwrap();
+        let deleted = sea
+            .write(async |tx| delete_project_unless_plan_barrier(tx, "project-1", &expected).await)
+            .await
+            .unwrap();
+        assert!(matches!(deleted, GuardedProjectMutation::Applied(())));
     }
 
     #[tokio::test]

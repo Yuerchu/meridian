@@ -921,23 +921,23 @@ pub(crate) async fn verify_plan_review_workspace(
     conversation_id: &str,
     runtime: &db::models::plan_review::NativePlanReviewRuntimeConfig,
 ) -> Result<(), String> {
-    // The conversation and its project in one snapshot: a move between the
-    // two reads would compare one project's id with another's path.
+    // The conversation and the directory it works in, in one snapshot: a move
+    // between the two reads would compare one project's id with another's
+    // path. The directory is the resolver's, as the turn read it — a board
+    // card's worktree rather than its project's path.
     let (current_project_id, current_project_path) = db
         .read(async |tx| {
             let conversation = db::sea::ops::conversation::get_conversation(tx, conversation_id)
                 .await?
                 .ok_or_else(|| db::sea::DbErr::RecordNotFound(format!("conversation {conversation_id}")))?;
-            let path = match conversation.project_id.as_deref() {
-                Some(project_id) => db::sea::ops::project::get_project(tx, project_id)
-                    .await?
-                    .and_then(|project| project.path),
-                None => None,
+            let path = match meridian_core::workspace::configured_dir_in(tx, conversation_id).await {
+                Ok((dir, _)) => dir.map(|dir| dir.to_string_lossy().into_owned()),
+                Err(e) => return Ok(Err(e)),
             };
-            Ok::<_, db::sea::DbErr>((conversation.project_id, path))
+            Ok::<_, db::sea::DbErr>(Ok((conversation.project_id, path)))
         })
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| e.to_string())??;
     if current_project_id != runtime.project_id || current_project_path != runtime.project_path {
         return Err(
             "The conversation workspace changed after this plan was submitted. Restore the original project/path or request a new plan before continuing."
@@ -1074,7 +1074,15 @@ async fn chat_inner(
                 Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
                 None => None,
             };
-            let project_path = project.as_ref().and_then(|p| p.path.clone());
+            // Where the turn works: the resolver's answer, not the project's
+            // path read here — a board card works in its worktree, and one
+            // whose worktree was removed has nowhere to work and is refused.
+            // Every use below (instructions, sandbox root, references, journal,
+            // the tools' directory, plan transitions) takes this one value.
+            let project_path = match meridian_core::workspace::configured_dir_in(tx, &conversation_id).await {
+                Ok((dir, _)) => dir.map(|dir| dir.to_string_lossy().into_owned()),
+                Err(e) => return Ok(Err(e)),
+            };
             let project_id = project.as_ref().map(|p| p.id.clone());
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
