@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：288
-- Diesel ops 调用点（db/ops 之外）：31
-- Diesel API 引用：306
+- 事务根（非测试）：283
+- Diesel ops 调用点（db/ops 之外）：0
+- Diesel API 引用：166
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -29,8 +29,8 @@
 
 | 位置 | 类型 | 触及的 ops 模块 |
 |---|---|---|
-| `src-tauri/crates/core/src/acp/import.rs` › `attach` | diesel-deferred | acp_session, conversation |
-| `src-tauri/crates/core/src/acp/import.rs` › `import` | diesel-deferred | acp_session, acp_session_notice, assistant, audit, conversation, message, model_config, plan, project, todo, turn |
+| `src-tauri/crates/core/src/acp/import.rs` › `attach` | sea-write | acp_session, conversation |
+| `src-tauri/crates/core/src/acp/import.rs` › `import` | sea-write | acp_session, acp_session_notice, assistant, audit, conversation, memory, message, model_config, model_profile, plan, project, provider, todo, turn |
 | `src-tauri/crates/core/src/acp/mod.rs` › `remember_session` | sea-write | acp_session |
 | `src-tauri/crates/core/src/acp/mod.rs` › `reopen_session` | sea-read | acp_session, conversation |
 | `src-tauri/crates/core/src/acp/mod.rs` › `save` | sea-write | preference |
@@ -102,11 +102,6 @@
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | plan_review, turn |
 | `src-tauri/crates/core/src/bootstrap.rs` › `startup_recovery` | sea-write | queue, turn |
-| `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_archive` | diesel-immediate | — |
-| `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
-| `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
-| `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
-| `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `(顶层)` | sea-read | — |
 | `src-tauri/crates/core/src/db/sea/ops/plan_review.rs` › `(顶层)` | sea-write | — |

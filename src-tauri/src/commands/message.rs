@@ -647,8 +647,8 @@ pub struct BranchPointInfoResponse {
     pub sibling_ids: Vec<String>,
 }
 
-impl From<db::ops::message::BranchPoint> for BranchPointInfoResponse {
-    fn from(point: db::ops::message::BranchPoint) -> Self {
+impl From<db::sea::ops::message::BranchPoint> for BranchPointInfoResponse {
+    fn from(point: db::sea::ops::message::BranchPoint) -> Self {
         Self {
             message_id: point.message_id,
             index: point.index,

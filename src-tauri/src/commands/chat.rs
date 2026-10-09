@@ -779,7 +779,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
 ///
 /// `queued` names the queue item this turn is delivering, and travels all the
 /// way down to the transaction that writes the user's row so the two are spent
-/// together. See `db::ops::queue::take_next` for why that has to be one write.
+/// together. See `db::sea::ops::queue::take_next` for why that has to be one write.
 #[allow(clippy::too_many_arguments)]
 pub async fn run_turn(
     services: Services,
@@ -2068,8 +2068,8 @@ async fn chat_inner(
                         // there is no row of its own, and this is the one it
                         // describes.
                         if let Some(usage) = title_usage {
-                            let cost = db::ops::audit::SideRequestCost {
-                                role: db::ops::audit::TITLE_ROLE,
+                            let cost = db::sea::ops::audit::SideRequestCost {
+                                role: db::sea::ops::audit::TITLE_ROLE,
                                 message_id: &assistant_msg_id,
                                 conversation_id: &conversation_id,
                                 turn_id: None,

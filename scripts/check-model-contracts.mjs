@@ -81,8 +81,8 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/agent/compact.rs',
   'src-tauri/crates/core/src/agent/pricing.rs',
   'src-tauri/crates/core/src/db/entity/mod.rs',
-  'src-tauri/crates/core/src/db/ops/conversation.rs',
-  'src-tauri/crates/core/src/db/ops/message.rs',
+  'src-tauri/crates/core/src/db/sea/ops/conversation.rs',
+  'src-tauri/crates/core/src/db/sea/ops/message.rs',
   'src-tauri/crates/core/src/db/sea/ops/usage.rs',
   'src-tauri/crates/core/src/db/schema.rs',
   'src-tauri/crates/core/src/db/types.rs',
@@ -1294,7 +1294,7 @@ requireRustFields(acpImportCoreFile, 'ImportedSession', {
 requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationSearchHitInfoResponse', {
   role: /^TranscriptRole$/,
 })
-const conversationOpsFile = 'src-tauri/crates/core/src/db/ops/conversation.rs'
+const conversationOpsFile = 'src-tauri/crates/core/src/db/sea/ops/conversation.rs'
 const conversationOps = readAt(conversationOpsFile)
 if (/derive\([^)]*Serialize[^)]*\)[\s\S]{0,100}?pub struct TranscriptHit\b/.test(conversationOps ?? '')) {
   add(conversationOpsFile, 'TranscriptHit 是内部查询结果，禁止直接序列化越过 command response 边界')
