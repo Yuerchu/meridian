@@ -311,19 +311,13 @@ pub async fn acp_send(app: tauri::AppHandle, request: AcpPromptSendRequest) -> R
         let mut context = context;
         let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
         let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
-        let pool = services.db.clone();
-        let current = conversation_id.clone();
-        let frozen = tokio::task::spawn_blocking(move || {
-            let mut conn = meridian_core::util::get_conn(&pool)?;
-            meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-                &mut conn,
-                &current,
-                &conv_refs,
-                budget_left,
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+            &services.sea,
+            &conversation_id,
+            &conv_refs,
+            budget_left,
+        )
+        .await?;
         context.extend(frozen);
         context
     };

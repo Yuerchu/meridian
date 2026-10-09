@@ -189,17 +189,15 @@ pub async fn queue_enqueue(
         let mut prepared = prepared;
         let spent: usize = prepared.iter().map(|item| item.token_count.max(0) as usize).sum();
         let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
-        let pool_for_refs = services.db.clone();
-        let current = conversation_id.clone();
-        let frozen = blocking(move || {
-            let mut conn = get_conn(&pool_for_refs)?;
-            meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-                &mut conn,
-                &current,
-                &conv_refs,
-                budget_left,
-            )
-        })
+        // pool-read-before-write: the excerpts are a snapshot of other threads
+        // taken at enqueue time; the write below guards only this conversation's
+        // plan barrier, which they do not touch.
+        let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+            &services.sea,
+            &conversation_id,
+            &conv_refs,
+            budget_left,
+        )
         .await?;
         prepared.extend(frozen);
         prepared

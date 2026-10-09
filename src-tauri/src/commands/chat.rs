@@ -1418,19 +1418,13 @@ async fn chat_inner(
                 let spent: usize = items.iter().map(|item| item.token_count.max(0) as usize).sum();
                 let budget_left = meridian_core::workspace::reference::turn_context_token_limit(Some(context_limit))
                     .saturating_sub(spent);
-                let pool2 = pool.clone();
-                let current = conversation_id.clone();
-                let frozen = tokio::task::spawn_blocking(move || {
-                    let mut conn = get_conn(&pool2)?;
-                    meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-                        &mut conn,
-                        &current,
-                        &conv_refs,
-                        budget_left,
-                    )
-                })
-                .await
-                .map_err(|e| e.to_string())??;
+                let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                    &services.sea,
+                    &conversation_id,
+                    &conv_refs,
+                    budget_left,
+                )
+                .await?;
                 items.extend(frozen);
             } else if message.is_some()
                 && let Some(replaced) = replaces.as_deref()

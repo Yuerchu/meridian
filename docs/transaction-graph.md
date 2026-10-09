@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：252
-- Diesel ops 调用点（db/ops 之外）：211
-- Diesel API 引用：533
+- 事务根（非测试）：254
+- Diesel ops 调用点（db/ops 之外）：196
+- Diesel API 引用：525
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -48,6 +48,7 @@
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-read | conversation, message, message_context_item |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-write | audit, memory, message, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/agent/conversation_excerpt.rs` › `freeze_conversation_refs` | sea-read | conversation, message |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `append_tool_result` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `begin_assistant` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `complete_assistant` | sea-nested | audit, memory, model_config, model_profile, provider |
@@ -167,6 +168,7 @@
 | `src-tauri/crates/core/src/sandbox.rs` › `load` | sea-read | — |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
+| `src-tauri/crates/core/src/tools/read_conversation.rs` › `execute` | sea-read | conversation, message, message_context_item |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
