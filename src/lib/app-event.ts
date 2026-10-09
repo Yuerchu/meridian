@@ -14,6 +14,11 @@ export interface ConversationUpdatedEvent {
   conversation_id: string
 }
 
+/** A board card changed; `null` asks for the whole board to be read again. */
+export interface BoardUpdatedEvent {
+  task_id: string | null
+}
+
 export interface QueueUpdatedEvent {
   conversation_id: string
   delivered: boolean
@@ -75,6 +80,7 @@ export interface AppEventPayloadMap {
   'chat-stream': ChatStreamEvent
   'conversation-updated': ConversationUpdatedEvent
   'queue-updated': QueueUpdatedEvent
+  'board-updated': BoardUpdatedEvent
   'background-tasks-updated': BackgroundTasksUpdatedEvent
   'compact-start': CompactStartEvent
   'compact-done': CompactDoneEvent
@@ -154,6 +160,11 @@ export function parseQueueUpdatedEvent(value: unknown): QueueUpdatedEvent {
     conversation_id: stringValue(event.conversation_id, 'queue-updated payload.conversation_id'),
     delivered: booleanValue(event.delivered, 'queue-updated payload.delivered'),
   }
+}
+
+export function parseBoardUpdatedEvent(value: unknown): BoardUpdatedEvent {
+  const event = exactObject(value, ['task_id'], 'board-updated payload')
+  return { task_id: nullableString(event.task_id, 'board-updated payload.task_id') }
 }
 
 export function parseBackgroundTasksUpdatedEvent(value: unknown): BackgroundTasksUpdatedEvent {
@@ -435,6 +446,8 @@ export function parseAppEventPayload(channel: string, value: unknown): unknown {
       return parseConversationUpdatedEvent(value)
     case 'queue-updated':
       return parseQueueUpdatedEvent(value)
+    case 'board-updated':
+      return parseBoardUpdatedEvent(value)
     case 'background-tasks-updated':
       return parseBackgroundTasksUpdatedEvent(value)
     case 'compact-start':

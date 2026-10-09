@@ -789,6 +789,46 @@ impl From<project::Model> for ProjectInfoResponse {
 
 pub type ProjectListResponse = Vec<ProjectInfoResponse>;
 
+/// An agent board card, as the board draws it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BoardTaskInfoResponse {
+    pub id: String,
+    pub project_id: String,
+    pub conversation_id: Option<String>,
+    pub source: meridian_core::db::entity::board_task::BoardSource,
+    pub title: String,
+    pub request: Option<String>,
+    pub stage: meridian_core::db::entity::board_task::BoardStage,
+    pub position: i32,
+    pub agent_kind: Option<meridian_core::db::entity::board_task::BoardAgentKind>,
+    pub worktree_path: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
+    pub worktree_removed_at: Option<i64>,
+}
+
+impl From<meridian_core::db::entity::board_task::Model> for BoardTaskInfoResponse {
+    fn from(row: meridian_core::db::entity::board_task::Model) -> Self {
+        Self {
+            id: row.id,
+            project_id: row.project_id,
+            conversation_id: row.conversation_id,
+            source: row.source,
+            title: row.title,
+            request: row.request,
+            stage: row.stage,
+            position: row.position,
+            agent_kind: row.agent_kind,
+            worktree_path: row.worktree_path,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            worktree_removed_at: row.worktree_removed_at,
+        }
+    }
+}
+
+pub type BoardTaskListResponse = Vec<BoardTaskInfoResponse>;
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProviderInfoResponse {
     pub id: String,

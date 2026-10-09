@@ -8,6 +8,8 @@ pub mod assistant;
 /// Commands that outlive their turn. Desktop only, like the core module behind it.
 #[cfg(not(target_os = "android"))]
 pub mod background;
+#[cfg(not(target_os = "android"))]
+pub mod board;
 pub mod chat;
 pub mod composer_draft;
 pub mod conversation;

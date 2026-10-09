@@ -122,6 +122,16 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
       },
     },
   },
+  board_task_list: {},
+  board_task_create: {
+    args: { request: { projectId: PROJECT_MERIDIAN, title: '修登录循环', request: null, stage: 'backlog' } },
+  },
+  board_task_update: { args: { request: { id: 'demo-card-csv', title: '导出 CSV', request: null } } },
+  board_task_move: { args: { request: { id: 'demo-card-csv', stage: 'running', index: 0 } } },
+  board_task_start: { args: { request: { id: 'demo-card-csv', agentKind: 'native' } } },
+  // A fresh board has no card with a worktree to remove.
+  board_task_remove_worktree: { args: { request: { id: 'demo-card-csv' } }, reject: true },
+  board_task_delete: { args: { request: { id: 'demo-card-virtual' } } },
   list_projects: {},
   create_project: {
     args: {
@@ -377,6 +387,30 @@ describe('demo fixtures', () => {
     const call = backend.invoke(command, sample.args)
     if (sample.reject) await expect(call).rejects.toBeTypeOf('string')
     else await call
+  })
+
+  // The backend's rules, kept by the fixture: a started card has a
+  // conversation and a worktree, its worktree must go before it does, and it
+  // goes with its conversation.
+  it('takes a board card from start to removal to deletion', async () => {
+    const backend = createDemoBackend()
+    const started = (await backend.invoke('board_task_start', {
+      request: { id: 'demo-card-csv', agentKind: 'claude_code' },
+    })) as { task: { stage: string; conversation_id: string; worktree_path: string | null } }
+    expect(started.task.stage).toBe('running')
+    const conversationId = started.task.conversation_id
+    expect(backend.state.conversations.some((c) => c.id === conversationId)).toBe(true)
+    await expect(backend.invoke('board_task_delete', { request: { id: 'demo-card-csv' } })).rejects.toMatch(/worktree/)
+
+    const removed = (await backend.invoke('board_task_remove_worktree', { request: { id: 'demo-card-csv' } })) as {
+      stage: string
+      worktree_path: string | null
+    }
+    expect([removed.stage, removed.worktree_path]).toEqual(['done', null])
+
+    await backend.invoke('board_task_delete', { request: { id: 'demo-card-csv' } })
+    expect(backend.state.boardTasks.some((t) => t.id === 'demo-card-csv')).toBe(false)
+    expect(backend.state.conversations.some((c) => c.id === conversationId)).toBe(false)
   })
 
   it('answers every other command with a valid empty result or DemoUnsupported', async () => {

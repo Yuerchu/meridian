@@ -1,6 +1,9 @@
 import { decimal } from '@/lib/decimal'
 import type {
   AssistantCreateRequest,
+  BoardAgentKind,
+  BoardStage,
+  BoardTaskInfoResponse,
   AssistantUpdateRequest,
   ChatRequest,
   ComposerDraftUpsertRequest,
@@ -21,6 +24,7 @@ import type {
 } from '@/types'
 import { conversation, message } from './factories'
 import type { DemoArgs, DemoBackend, DemoHandler } from './index'
+import type { DemoState } from './state'
 import {
   APP_INFO,
   CAPABILITIES,
@@ -678,6 +682,111 @@ const plan: Record<string, DemoHandler> = {
   },
 }
 
+// The agent board, in memory. The rules are the backend's: a card's column
+// is set only by moving it or starting it, a started card is deleted with its
+// conversation and only once its worktree is gone. No worktree is made — the
+// path a card reports is where one would be.
+function boardCard(state: DemoState, id: string): BoardTaskInfoResponse {
+  const card = state.boardTasks.find((t) => t.id === id)
+  if (!card) throw `board card \`${id}\` not found`
+  return card
+}
+
+function renumber(stage: BoardStage, order: BoardTaskInfoResponse[]) {
+  order.forEach((card, position) => {
+    card.stage = stage
+    card.position = position
+  })
+}
+
+function columnOf(state: DemoState, stage: BoardStage, except: string): BoardTaskInfoResponse[] {
+  return state.boardTasks.filter((t) => t.stage === stage && t.id !== except).sort((a, b) => a.position - b.position)
+}
+
+function moveCard(state: DemoState, card: BoardTaskInfoResponse, stage: BoardStage, index: number) {
+  const order = columnOf(state, stage, card.id)
+  order.splice(Math.min(index, order.length), 0, card)
+  renumber(stage, order)
+  card.updated_at = Date.now()
+}
+
+const board: Record<string, DemoHandler> = {
+  board_task_list: (_args, { state }) =>
+    [...state.boardTasks].sort((a, b) => a.stage.localeCompare(b.stage) || a.position - b.position),
+  board_task_create: (args, { state }) => {
+    const req = request<{ projectId: string; title: string; request: string | null; stage: BoardStage }>(args)
+    const title = req.title.trim()
+    if (!title) throw 'a card needs a title'
+    if (!state.projects.some((p) => p.id === req.projectId)) throw `project \`${req.projectId}\` not found`
+    const now = Date.now()
+    const card: BoardTaskInfoResponse = {
+      id: mintId(state, 'card'),
+      project_id: req.projectId,
+      conversation_id: null,
+      source: 'local',
+      title: title.slice(0, 80),
+      request: req.request,
+      stage: req.stage,
+      position: columnOf(state, req.stage, '').length,
+      agent_kind: null,
+      worktree_path: null,
+      created_at: now,
+      updated_at: now,
+      worktree_removed_at: null,
+    }
+    state.boardTasks.push(card)
+    return card
+  },
+  board_task_update: (args, { state }) => {
+    const req = request<{ id: string; title: string; request: string | null }>(args)
+    const title = req.title.trim()
+    if (!title) throw 'a card needs a title'
+    const card = boardCard(state, req.id)
+    card.title = title.slice(0, 80)
+    card.request = req.request
+    card.updated_at = Date.now()
+    return card
+  },
+  board_task_move: (args, { state }) => {
+    const req = request<{ id: string; stage: BoardStage; index: number }>(args)
+    const card = boardCard(state, req.id)
+    moveCard(state, card, req.stage, req.index)
+    return card
+  },
+  board_task_start: (args, backend) => {
+    const req = request<{ id: string; agentKind: BoardAgentKind }>(args)
+    const { state } = backend
+    const card = boardCard(state, req.id)
+    if (card.conversation_id !== null || card.worktree_removed_at !== null) throw 'this card has already been started'
+    const project = state.projects.find((p) => p.id === card.project_id)
+    if (!project?.path) throw "the card's project has no folder; give the project one before starting a card"
+    const conversation = conversations.create_conversation(
+      { request: { title: card.title, projectId: card.project_id } },
+      backend,
+    ) as ConversationInfoResponse
+    card.conversation_id = conversation.id
+    card.agent_kind = req.agentKind
+    card.worktree_path = `${project.path}.worktrees/${card.id.replace(/[^a-z0-9]/gi, '').slice(0, 8)}`
+    moveCard(state, card, 'running', columnOf(state, 'running', card.id).length)
+    return { task: card, conversation }
+  },
+  board_task_remove_worktree: (args, { state }) => {
+    const card = boardCard(state, request<{ id: string }>(args).id)
+    if (card.worktree_path === null) throw 'this card has no worktree'
+    card.worktree_path = null
+    card.worktree_removed_at = Date.now()
+    moveCard(state, card, 'done', columnOf(state, 'done', card.id).length)
+    return card
+  },
+  board_task_delete: (args, backend) => {
+    const card = boardCard(backend.state, request<{ id: string }>(args).id)
+    if (card.worktree_path !== null) throw "remove the card's worktree before deleting it"
+    if (card.conversation_id !== null) conversations.delete_conversation({ id: card.conversation_id }, backend)
+    backend.state.boardTasks = backend.state.boardTasks.filter((t) => t.id !== card.id)
+    return null
+  },
+}
+
 const projects: Record<string, DemoHandler> = {
   list_projects: (_args, { state }) => state.projects,
   create_project: (args, { state }) => {
@@ -1258,6 +1367,7 @@ export const DEMO_HANDLERS: Record<string, DemoHandler> = {
   ...chat,
   ...plan,
   ...projects,
+  ...board,
   ...providers,
   ...assistants,
   ...mcp,
