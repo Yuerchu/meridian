@@ -357,6 +357,12 @@ describe('ui selector restrictions', () => {
     ['template className', '<div className={`${base} rounded-xl`} />', /cx\(/],
     ['t().replace', `const s = t('toolbar.noAssistant').replace(/^No /, 'Select ')`, /translation/],
     ['glyph icon', `<Button aria-label="Cancel">✕</Button>`, /icon/],
+    // The Kanban grip, copied from the prompt queue's.
+    [
+      'hand-drawn icon',
+      `<svg viewBox="0 0 16 16" className="size-4" fill="currentColor"><circle cx="6" cy="4" r="1.2" /></svg>`,
+      /keyline-icons/,
+    ],
     ['native label', `<label htmlFor="a">A</label>`, /<Label>/],
     ['native kbd', `<kbd>Ctrl</kbd>`, /<Kbd>/],
   ]
@@ -410,6 +416,10 @@ describe('ui selector restrictions', () => {
     ['Label component', `<Label>A</Label>`],
     ['composite type', `<p className="text-body-medium text-caption-1-semibold" />`],
     ['prefixed weight', `<p className="[&_strong]:font-medium prose-headings:font-semibold" />`],
+    // The replacement for the grip above.
+    ['keyline icon', `<GripVertical aria-hidden className="size-4" />`],
+    // An SVG as an image source is content, not markup.
+    ['svg data URL', `<img src={'data:image/svg+xml,' + encodeURIComponent('<svg/>')} />`],
   ]
   for (const [name, code] of clean) {
     it(`accepts ${name}`, () => {

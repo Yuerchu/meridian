@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useState, type ComponentProps, type ReactNode } from 'react'
+import { Menu } from '@keyline-icons/react/two-tone'
 import {
   Button as AriaButton,
   Focusable,
@@ -122,27 +123,6 @@ function SidebarMain({ className, ...props }: ComponentProps<'main'>) {
   )
 }
 
-function MenuGlyph({
-  className,
-  'aria-hidden': ariaHidden,
-}: {
-  className?: string
-  'aria-hidden'?: boolean | 'true' | 'false'
-}) {
-  return (
-    <svg
-      className={className}
-      aria-hidden={ariaHidden}
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <path d="M2 4h12M2 8h12M2 12h12" />
-    </svg>
-  )
-}
-
 /** Opens the mobile sheet below 768px; collapses the panel above it. */
 function SidebarTrigger({
   className,
@@ -159,7 +139,7 @@ function SidebarTrigger({
       variant="neutral"
       iconOnly
       size="small"
-      leadingIcon={MenuGlyph}
+      leadingIcon={Menu}
       aria-label={ariaLabel}
       aria-expanded={isMobile ? isMobileOpen : isOpen}
       onPress={() => (isMobile ? setMobileOpen(!isMobileOpen) : setOpen(!isOpen))}

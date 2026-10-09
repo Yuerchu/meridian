@@ -45,6 +45,7 @@ function ProgressCircleRoot({ size = 'md', color = 'accent', className, children
     >
       {({ percentage, isIndeterminate }) => (
         <>
+          {/* eslint-disable-next-line no-restricted-syntax -- the meter itself: a track and an arc drawn to the value */}
           <svg
             data-slot="progress-circle-svg"
             viewBox="0 0 24 24"

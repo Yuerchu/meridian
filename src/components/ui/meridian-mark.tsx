@@ -81,6 +81,7 @@ export function MeridianMark({
   }, [intro])
 
   return (
+    // eslint-disable-next-line no-restricted-syntax -- the brand mark, which is content rather than an icon
     <svg
       data-slot="meridian-mark"
       viewBox="0 0 100 100"

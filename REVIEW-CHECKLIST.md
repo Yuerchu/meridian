@@ -80,9 +80,11 @@ those rules no selector can see, plus this app's own architecture.
 - **major** A font family named anywhere but `src/styles/fonts.css`. theme.css
   reads `--font-inter` and `--font-mono-source`; fonts.css defines them and
   `src/styles/fonts.test.ts` holds the chain together.
-- **major** An icon from anywhere but `@keyline-icons/react/two-tone` (or
-  `/fill` for a solid glyph by meaning, like stop or a starred item). Brand
-  marks and file-type icons are content, not icons, and are exempt.
+- **major** An icon imported from anywhere but `@keyline-icons/react/two-tone`
+  (or `/fill` for a solid glyph by meaning, like stop or a starred item).
+  Brand marks and file-type icons are content, not icons, and are exempt. A
+  hand-drawn `<svg>` is the lint's (`no-restricted-syntax`); what is left
+  here is another icon package, which no selector can tell from a component.
 - **major** A new tool (Rust `Tool`, QQ tool, or a Claude Code tool a hosted
   session can call) without an entry in `src/lib/tool-renderers.ts` choosing
   how its arguments and result are drawn, or an entry that is `structured` /

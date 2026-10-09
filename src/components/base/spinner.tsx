@@ -28,6 +28,7 @@ const colorClasses: Record<SpinnerColor, string> = {
 function SpinnerIcon(props: ComponentProps<'svg'>) {
   const id = useId()
   return (
+    // eslint-disable-next-line no-restricted-syntax -- an animated gradient arc, which no icon set carries
     <svg data-slot="spinner-icon" viewBox="0 0 24 24" {...props}>
       <defs>
         <linearGradient id={`sp-g1-${id}`} x1="50%" x2="50%" y1="5.271%" y2="91.793%">
