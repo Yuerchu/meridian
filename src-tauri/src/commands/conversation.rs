@@ -603,7 +603,7 @@ async fn load_persona_and_todo(
     live: &[db::entity::message::Model],
 ) -> Result<(String, String), String> {
     let persona = assistant.map(|a| a.system_prompt.clone()).unwrap_or_default();
-    let todo = meridian_core::agent::plan_todo_injection_async(db, conversation_id, live)
+    let todo = meridian_core::agent::plan_todo_injection(db, conversation_id, live)
         .await?
         .map(|t| t.text)
         .unwrap_or_default();

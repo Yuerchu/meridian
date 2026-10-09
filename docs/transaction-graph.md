@@ -4,8 +4,8 @@
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
 - 事务根（非测试）：252
-- Diesel ops 调用点（db/ops 之外）：268
-- Diesel API 引用：545
+- Diesel ops 调用点（db/ops 之外）：211
+- Diesel API 引用：533
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -68,7 +68,7 @@
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
-| `src-tauri/crates/core/src/agent/todo_context.rs` › `plan_todo_injection_async` | sea-read | todo |
+| `src-tauri/crates/core/src/agent/todo_context.rs` › `plan_todo_injection` | sea-read | todo |
 | `src-tauri/crates/core/src/agent/turn_config.rs` › `resolve_on` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `begin_triggered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `finish` | sea-write | turn |

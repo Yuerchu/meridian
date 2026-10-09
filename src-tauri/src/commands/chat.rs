@@ -8,8 +8,8 @@ use meridian_core::agent::turn_record;
 use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_context_items, do_compact,
     file_access_prompt, instruction_budget, load_project_instructions, microcompact, persist_todo_injection,
-    persisted_user_message, plan_todo_injection_async, resolve_file_uris_in_messages,
-    resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
+    persisted_user_message, plan_todo_injection, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages,
+    trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
 use meridian_core::db::entity::assistant;
@@ -1513,7 +1513,7 @@ async fn chat_inner(
             now_ms(),
         )
         .await?;
-        let todo_probe = plan_todo_injection_async(&services.sea, &conversation_id, ctx.live()).await?;
+        let todo_probe = plan_todo_injection(&services.sea, &conversation_id, ctx.live()).await?;
         let pre_msgs = build_messages_with_context_items(
             system_prompt.trim(),
             &ctx,
@@ -1636,7 +1636,7 @@ async fn chat_inner(
     let injected = injection.as_ref().and_then(|i| i.text.clone());
     // The checklist, frozen the same way and for the same reason; it goes right
     // after the memory block, which is the order the two rows are written in.
-    let todo = plan_todo_injection_async(&services.sea, &conversation_id, ctx.live()).await?;
+    let todo = plan_todo_injection(&services.sea, &conversation_id, ctx.live()).await?;
 
     let mut chat_messages = build_messages_with_context_items(
         system_prompt.trim(),
