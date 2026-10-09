@@ -12,7 +12,11 @@ fi
 # 不 fetch：从这个克隆 push 过的提交，远端跟踪分支就已经包含它，离线也能过。
 if git diff --cached --name-only | grep -qE '^src-tauri/crates$'; then
   pinned=$(git ls-files --stage src-tauri/crates | awk '{print $2}')
-  if [ -z "$(git -C src-tauri/crates branch -r --contains "$pinned" 2>/dev/null)" ]; then
+  # In a subshell without the superproject's GIT_DIR / GIT_INDEX_FILE /
+  # GIT_WORK_TREE: git exports them to hooks run from a linked worktree, and
+  # `-C` alone does not override them — the question went to the superproject,
+  # which has no such commit, and every pointer bump from a worktree was refused.
+  if [ -z "$( (unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE; git -C src-tauri/crates branch -r --contains "$pinned") 2>/dev/null)" ]; then
     echo "✗ src-tauri/crates 指向 ${pinned}，它不在 meridian-core 的任何远端分支上；先在子模块里 push" >&2
     exit 1
   fi
