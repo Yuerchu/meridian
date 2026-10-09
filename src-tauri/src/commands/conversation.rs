@@ -73,7 +73,7 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
     })?;
 
     let result = do_compact(
-        &pool,
+        &services.sea,
         &secrets,
         &conversation_id,
         assistant.as_ref(),
@@ -755,7 +755,6 @@ fn context_info_messages(
 pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfoResponse, String> {
     let services = app.services();
     let pool = services.db.clone();
-    let secrets = services.secrets.clone();
 
     let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = {
         let pool = pool.clone();
@@ -800,47 +799,36 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         .map(|a| a.auto_compact_enabled.get())
         .unwrap_or(false);
 
-    // Both take a pooled connection, and the first also reads the OS credential
-    // store. Run off the async thread: the UI polls this command every time the
-    // transcript grows, so a blocking call here occupies a worker repeatedly
-    // rather than once.
-    //
     // Resolved exactly as the chat path does, so the threshold the UI reports is
     // the one the compaction check actually compares against.
     let (provider_type, model, turn) = {
-        let pool2 = pool.clone();
-        let secrets2 = secrets.clone();
-        let assistant2 = assistant.clone();
-        tokio::task::spawn_blocking(move || {
-            let meridian_core::agent::ResolvedProvider {
-                provider_type,
-                model,
-                api_format,
-                transport_profile,
-                codex_request_shape,
-                ..
-            } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
-            let turn = resolve_turn_params(
-                &pool2,
-                TurnParamsResolveRequest {
-                    assistant: assistant2.as_ref(),
-                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                    provider_type: &provider_type,
-                    api_format: &api_format,
+        let meridian_core::agent::ResolvedProvider {
+            provider_type,
+            model,
+            api_format,
+            transport_profile,
+            codex_request_shape,
+            ..
+        } = resolve_provider_config(&services.secrets, &services.sea, assistant.as_ref()).await?;
+        let turn = resolve_turn_params(
+            &services.sea,
+            TurnParamsResolveRequest {
+                assistant: assistant.as_ref(),
+                provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
 
-                    transport_profile: &transport_profile,
-                    codex_request_shape,
-                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Background,
-                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
-                    model: &model,
-                    thinking_level: None,
-                    fast: false,
-                },
-            )?;
-            Ok::<_, String>((provider_type, model, turn))
-        })
-        .await
-        .map_err(|e| e.to_string())??
+                transport_profile: &transport_profile,
+                codex_request_shape,
+                codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Background,
+                codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
+                model: &model,
+                thinking_level: None,
+                fast: false,
+            },
+        )
+        .await?;
+        (provider_type, model, turn)
     };
     let context_limit = turn.context_limit;
     let budget = TokenBudget::new(

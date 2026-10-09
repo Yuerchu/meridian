@@ -315,41 +315,28 @@ impl DesktopSubAgents {
     }
 
     async fn resolve_params(&self, assistant: &assistant::Model) -> Result<meridian_core::agent::TurnParams, String> {
-        let pool = self.pool.clone();
-        let secrets = self.secrets.clone();
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
-        let assistant = assistant.clone();
-        let resolved = {
-            let a = assistant.clone();
-            let pool2 = pool.clone();
-            tokio::task::spawn_blocking(move || {
-                meridian_core::agent::resolve_with_overrides(&secrets, &pool2, Some(&a), None, None)
-            })
-            .await
-            .map_err(|e| e.to_string())??
-        };
-        let provider_id = assistant.provider_id.clone();
-        let mut params = tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_turn_params(
-                &pool,
-                meridian_core::agent::TurnParamsResolveRequest {
-                    assistant: Some(&assistant),
-                    provider_id: provider_id.as_deref(),
-                    provider_type: &resolved.provider_type,
-                    api_format: &resolved.api_format,
+        let sea = &self.services.sea;
+        let resolved =
+            meridian_core::agent::resolve_with_overrides(&self.secrets, sea, Some(assistant), None, None).await?;
+        let mut params = meridian_core::agent::resolve_turn_params(
+            sea,
+            meridian_core::agent::TurnParamsResolveRequest {
+                assistant: Some(assistant),
+                provider_id: assistant.provider_id.as_deref(),
+                provider_type: &resolved.provider_type,
+                api_format: &resolved.api_format,
 
-                    transport_profile: &resolved.transport_profile,
-                    codex_request_shape: resolved.codex_request_shape,
-                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
-                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::SubAgent,
-                    model: &resolved.model,
-                    thinking_level: None,
-                    fast: false,
-                },
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+                transport_profile: &resolved.transport_profile,
+                codex_request_shape: resolved.codex_request_shape,
+                codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+                codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::SubAgent,
+                model: &resolved.model,
+                thinking_level: None,
+                fast: false,
+            },
+        )
+        .await?;
 
         // The smaller of what the user asked for and what this model can write,
         // or the model's own maximum when nobody asked for anything.
@@ -684,14 +671,14 @@ impl DesktopSubAgents {
         ),
         String,
     > {
-        let pool = self.pool.clone();
-        let secrets = self.secrets.clone();
-        let a = assistant.clone();
-        let resolved = tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        let resolved = meridian_core::agent::resolve_with_overrides(
+            &self.secrets,
+            &self.services.sea,
+            Some(assistant),
+            None,
+            None,
+        )
+        .await?;
         let provider = meridian_core::provider::registry::create_provider(resolved.wire())?;
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed

@@ -10,7 +10,7 @@ use meridian_core::db::entity::{emoji as emoji_model, emoji_pack};
 use meridian_core::db::sea::ops::{emoji as emoji_ops, emoji_pack as pack_ops};
 use meridian_core::db::types::SqlBool;
 use meridian_core::emoji;
-use meridian_core::util::{get_conn, now_ms};
+use meridian_core::util::now_ms;
 use meridian_core::{agent, provider};
 
 #[derive(Debug, serde::Deserialize)]
@@ -231,7 +231,6 @@ pub async fn confirm_sticker_semantics(
 #[tauri::command]
 pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
-    let pool = services.db.clone();
     let secrets = services.secrets.clone();
     let data_dir = services.paths.data_dir.clone();
     // pool-read-before-write: a model call sits between the read and the write,
@@ -241,19 +240,14 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{id}` not found"))?;
-    let assistant = {
-        let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::assistant::get_default_assistant(&mut conn).map_err(|e| e.to_string())
-        })
+    // pool-read-before-write: as above, the model call sits between this read and the write.
+    let assistant = db::sea::ops::assistant::get_default_assistant(&services.sea)
         .await
-        .map_err(|e| e.to_string())??
-    };
+        .map_err(|e| e.to_string())?;
     if sticker.file_name.is_empty() {
         return Err("This sticker has no cached image to inspect".into());
     }
-    let resolved = agent::resolve_provider_config(&secrets, &pool, assistant.as_ref())?;
+    let resolved = agent::resolve_provider_config(&secrets, &services.sea, assistant.as_ref()).await?;
     let caps = provider::registry::get_capabilities(
         &resolved.provider_type,
         &resolved.api_format,

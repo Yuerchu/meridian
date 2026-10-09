@@ -1129,27 +1129,15 @@ async fn chat_inner(
     };
     let mut stored_context_items = load_message_context_items(&services.sea, &ctx).await?;
 
-    // Resolve provider config (with optional overrides). Off the async thread:
-    // it takes a pooled connection and reads the OS credential store, either of
-    // which can block for as long as the pool's acquire timeout.
-    let resolved = {
-        let pool2 = pool.clone();
-        let secrets2 = secrets.clone();
-        let assistant2 = assistant.clone();
-        let model_override = model_override.clone();
-        let provider_override = provider_override.clone();
-        tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_with_overrides(
-                &secrets2,
-                &pool2,
-                assistant2.as_ref(),
-                model_override,
-                provider_override.as_deref(),
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
+    // Resolve provider config (with optional overrides).
+    let resolved = meridian_core::agent::resolve_with_overrides(
+        secrets,
+        &services.sea,
+        assistant.as_ref(),
+        model_override.clone(),
+        provider_override.as_deref(),
+    )
+    .await?;
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
     tracing::Span::current().record("model", resolved.model.as_str());
@@ -1219,39 +1207,24 @@ async fn chat_inner(
     // and the turn it summarises have to send parameters filtered against the
     // same model, and what the model can be sent at all — whether it takes a
     // tools field — decides the tool set below.
-    let mut turn_params = {
-        let pool2 = pool.clone();
-        let assistant2 = assistant.clone();
-        let pid = effective_provider_id.clone();
-        let pt = resolved.provider_type.clone();
-        let af = resolved.api_format.clone();
-        let tp = resolved.transport_profile.clone();
-        let crs = resolved.codex_request_shape;
-        let mid = model.clone();
-        let level = effective_level.clone();
-        let fast = effective_fast;
-        tokio::task::spawn_blocking(move || {
-            meridian_core::agent::resolve_turn_params(
-                &pool2,
-                meridian_core::agent::TurnParamsResolveRequest {
-                    assistant: assistant2.as_ref(),
-                    provider_id: pid.as_deref(),
-                    provider_type: &pt,
-                    api_format: &af,
+    let mut turn_params = meridian_core::agent::resolve_turn_params(
+        &services.sea,
+        meridian_core::agent::TurnParamsResolveRequest {
+            assistant: assistant.as_ref(),
+            provider_id: effective_provider_id.as_deref(),
+            provider_type: &resolved.provider_type,
+            api_format: &resolved.api_format,
 
-                    transport_profile: &tp,
-                    codex_request_shape: crs,
-                    codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
-                    codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
-                    model: &mid,
-                    thinking_level: level.as_deref(),
-                    fast,
-                },
-            )
-        })
-        .await
-        .map_err(|e| e.to_string())??
-    };
+            transport_profile: &resolved.transport_profile,
+            codex_request_shape: resolved.codex_request_shape,
+            codex_request_kind: meridian_core::provider::codex_metadata::CodexRequestKind::Turn,
+            codex_thread_source: meridian_core::provider::codex_metadata::CodexThreadSource::User,
+            model: &model,
+            thinking_level: effective_level.as_deref(),
+            fast: effective_fast,
+        },
+    )
+    .await?;
     // What the provider caches is a prefix, and the conversation is what keeps
     // one stable across turns. Set here rather than inside the resolver, which
     // is also what the summariser and the token estimator go through: neither
@@ -1576,7 +1549,14 @@ async fn chat_inner(
                 &turn_id,
                 TurnPhase::Compacting,
                 None,
-                do_compact(&pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, None),
+                do_compact(
+                    &services.sea,
+                    secrets,
+                    &conversation_id,
+                    assistant.as_ref(),
+                    keep_recent,
+                    None,
+                ),
             )
             .await;
             match compaction {
@@ -1783,13 +1763,7 @@ async fn chat_inner(
     // Missing still means enabled: sandbox-by-default on Windows.
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = sleep_enabled.then(|| services.sleep.begin_turn());
-    let tool_secrets = {
-        let pool2 = pool.clone();
-        let secrets2 = secrets.clone();
-        tokio::task::spawn_blocking(move || meridian_core::agent::build_tool_secrets(&secrets2, &pool2))
-            .await
-            .map_err(|e| e.to_string())?
-    };
+    let tool_secrets = meridian_core::agent::build_tool_secrets(secrets, &services.sea).await;
     // The shadow file journal for this turn: what the file primitives append
     // their observed transitions to. Desktop-only wiring for now — SAF paths
     // have no canonical key, so Android runs without one and its writes
