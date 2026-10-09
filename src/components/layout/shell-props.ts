@@ -9,7 +9,7 @@ import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
  * narrow one — so this is the only thing a screen change ever decides. There
  * was once a second, stack-shaped answer for phones; one shell means one.
  */
-export type Page = 'chat' | 'settings'
+export type Page = 'chat' | 'settings' | 'board'
 
 /**
  * Everything the shell needs from `App`.
@@ -49,6 +49,9 @@ export interface ShellProps {
   onRenameProject: (id: string, newName: string) => Promise<void>
   onOpenSettings: () => void
   onCloseSettings: () => void
+  /** The agent board, a page beside the chat like settings. */
+  onOpenBoard: () => void
+  onCloseBoard: () => void
   onSettingsTabChange: (tab: SettingsTab) => void
   onCreateWithDraft: (draft: InitialTurnDraft) => Promise<void>
   onInitialDraftConsumed: () => void

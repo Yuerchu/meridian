@@ -28,6 +28,7 @@ import type { ShellProps } from './shell-props'
 import { titleIfTruncated } from '@/lib/truncation'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
+const BoardPage = lazy(() => import('@/components/board/board-page').then((module) => ({ default: module.BoardPage })))
 const PlanReviewPage = lazy(() =>
   import('@/components/plan-review/plan-review-page').then((module) => ({ default: module.PlanReviewPage })),
 )
@@ -77,6 +78,8 @@ export function AppShell(props: ShellProps) {
     onRenameProject,
     onOpenSettings,
     onCloseSettings,
+    onOpenBoard,
+    onCloseBoard,
     onSettingsTabChange,
     onCreateWithDraft,
     onInitialDraftConsumed,
@@ -188,6 +191,18 @@ export function AppShell(props: ShellProps) {
     })
   })
 
+  // The board is a page beside the chat, as settings is: the back gesture
+  // leaves it, and reaching it from settings asks about unsaved work first.
+  useHistoryLevel(page === 'board', onCloseBoard)
+  const openBoard = async () => {
+    if (!(await leavePlanReview())) return
+    if (page === 'settings') {
+      if (!(await requestLeaveSettings())) return
+      clearSettingsTabDirty(settingsTab)
+    }
+    onOpenBoard()
+  }
+
   const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
   const createConversation = async (projectId?: string | null) => {
     if (!(await leavePlanReview())) return
@@ -241,6 +256,7 @@ export function AppShell(props: ShellProps) {
           onOpenSearch={() => setPaletteOpen(true)}
           onDelete={onDelete}
           page={page}
+          onOpenBoard={() => void openBoard()}
           onOpenSettings={() => {
             void leavePlanReview().then((left) => {
               if (left) onOpenSettings()
@@ -309,7 +325,7 @@ export function AppShell(props: ShellProps) {
               between them and leave a gap in the middle of the pair. */}
             <div data-slot="app-header-actions" className="ml-auto flex shrink-0 items-center gap-1">
               {/* Only where the panel it toggles can open. */}
-              {activeId && !isMobile && page !== 'settings' && !activeReviewId && (
+              {activeId && !isMobile && page === 'chat' && !activeReviewId && (
                 <TooltipTrigger>
                   <Button
                     iconOnly
@@ -351,7 +367,8 @@ export function AppShell(props: ShellProps) {
                     if (changed) onOpenSettings()
                   })
                 }}
-                transcriptInert={page === 'settings' || activeReviewId !== null}
+                transcriptInert={page !== 'chat' || activeReviewId !== null}
+                boardOpen={page === 'board'}
                 isOpen={inboxOpen}
                 onOpenChange={setInboxOpen}
               />
@@ -400,7 +417,7 @@ export function AppShell(props: ShellProps) {
             <div
               data-slot="app-chat-layer"
               className="flex h-full flex-col"
-              inert={page === 'settings' || activeReviewId !== null || undefined}
+              inert={page !== 'chat' || activeReviewId !== null || undefined}
             >
               {/* The split lives inside the chat branch, not around it: `<main>`
                 is the positioned box the settings layer covers, and a group
@@ -481,6 +498,15 @@ export function AppShell(props: ShellProps) {
                 </Suspense>
               </div>
             )}
+            {page === 'board' && (
+              <div data-slot="board-layer" className="absolute inset-0 z-20 bg-background-full">
+                <Suspense fallback={null}>
+                  {/* Opening a card's conversation is the ordinary navigation:
+                    it selects the conversation and leaves the board. */}
+                  <BoardPage onOpenConversation={(id) => void selectConversation(id)} />
+                </Suspense>
+              </div>
+            )}
             {activeReviewId && (
               <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-full">
                 <Suspense fallback={null}>
@@ -501,7 +527,8 @@ export function AppShell(props: ShellProps) {
           permission prompt is not something being in settings should hide. */}
         <ApprovalNotifications
           onSelect={selectConversation}
-          transcriptInert={page === 'settings' || activeReviewId !== null}
+          transcriptInert={page !== 'chat' || activeReviewId !== null}
+          boardOpen={page === 'board'}
           inboxOpen={inboxOpen}
         />
 

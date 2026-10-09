@@ -96,6 +96,7 @@ A new decision about one subsystem goes into that subsystem's file.
 | [`android.md`](.claude/rules/android.md) | `gen/android/`, `android_bridge.rs`, `platform.rs`, the keyboard's Kotlin | file access, the keyboard process, insets, back gesture |
 | [`packaging.md`](.claude/rules/packaging.md) | `tauri*.conf.json`, `nsis/`, `wix/`, release workflow, sherpa-onnx, IME builds | what each platform ships, the IME installers, the Android keyboard build |
 | [`schema-canvas.md`](.claude/rules/schema-canvas.md) | any migration, `schema-data.ts` | the schema canvas and its checker |
+| [`board.md`](.claude/rules/board.md) | `components/board/`, `board_tasks`, `worktree.rs`, `commands/board.rs` | the agent board: columns vs state, answering in place, worktrees and their removal, no `.git` in the sandbox |
 | [`roadmap.md`](.claude/rules/roadmap.md) | planning multi-agent or remote work | the desktop as a control plane |
 
 ## Key Design Decisions

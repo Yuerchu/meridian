@@ -336,7 +336,11 @@ function App() {
   const activeProject = projects.find((p) => p.id === activeProjectId)
   const appName = t('app.name')
   const headerTitle =
-    page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? appName)
+    page === 'settings'
+      ? t('settings.title')
+      : page === 'board'
+        ? t('board.title')
+        : (activeConversation?.title ?? activeProject?.name ?? appName)
 
   useEffect(() => {
     document.title = headerTitle === appName ? appName : `${headerTitle} — ${appName}`
@@ -366,6 +370,8 @@ function App() {
     onRenameProject: handleRenameProject,
     onOpenSettings: () => setPage('settings'),
     onCloseSettings: () => setPage('chat'),
+    onOpenBoard: () => setPage('board'),
+    onCloseBoard: () => setPage('chat'),
     onSettingsTabChange: setSettingsTab,
     onCreateWithDraft: handleCreateWithDraft,
     onInitialDraftConsumed: () => setPendingTurn(null),

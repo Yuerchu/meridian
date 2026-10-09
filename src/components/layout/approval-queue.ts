@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { identifyingArg, toolDescription, type IdentifyingArg } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
+import { useBoardStore } from '@/stores/board-store'
 import { errorMessage } from '@/lib/error-message'
 import { TOOLS, toolUi } from '@/lib/tool-catalog'
 
@@ -32,6 +33,10 @@ export const MAX_VISIBLE = 3
  * one. The exclusions are the whole policy, and neither fails in a way anybody
  * would see: a question that should have been filtered out just draws, and one
  * that should have been offered just does not.
+ *
+ * `onBoard` is the board's conversations while the board is the page being
+ * read: their questions are on its cards, in front of the reader, so they are
+ * `here` too — the same rule as the transcript's, for the board's surface.
  */
 export function pending(
   attention: Record<string, AttentionItem>,
@@ -39,6 +44,7 @@ export function pending(
   activeId: string | null,
   transcriptInert = false,
   activeReviewId: string | null = null,
+  onBoard: ReadonlySet<string> | null = null,
 ): { listed: AttentionItem[]; here: AttentionItem[] } {
   const listed: AttentionItem[] = []
   const here: AttentionItem[] = []
@@ -59,6 +65,11 @@ export function pending(
       here.push(item)
       continue
     }
+    // On a card of the board being read, answered there.
+    if (onBoard?.has(item.conversationId)) {
+      here.push(item)
+      continue
+    }
     listed.push(item)
   }
   return { listed, here }
@@ -75,21 +86,32 @@ export function visible(
   return pending(attention, order, activeId, transcriptInert, activeReviewId).listed.slice(0, MAX_VISIBLE)
 }
 
-/** `pending()` over the live stores. */
-export function usePendingAttention(transcriptInert: boolean): { listed: AttentionItem[]; here: AttentionItem[] } {
+/** `pending()` over the live stores. `boardOpen`: the board is the page. */
+export function usePendingAttention(
+  transcriptInert: boolean,
+  boardOpen = false,
+): { listed: AttentionItem[]; here: AttentionItem[] } {
   const attention = useConversationStore((s) => s.attention)
   const order = useConversationStore((s) => s.attentionOrder)
   const activeId = useConversationStore((s) => s.activeId)
   const activeReviewId = usePlanReviewStore((s) => s.activeReviewId)
+  const tasks = useBoardStore((s) => s.tasks)
+  const onBoard = useMemo(
+    () =>
+      boardOpen
+        ? new Set(tasks.flatMap((task) => (task.conversation_id === null ? [] : [task.conversation_id])))
+        : null,
+    [boardOpen, tasks],
+  )
   return useMemo(
-    () => pending(attention, order, activeId, transcriptInert, activeReviewId),
-    [attention, order, activeId, transcriptInert, activeReviewId],
+    () => pending(attention, order, activeId, transcriptInert, activeReviewId, onBoard),
+    [attention, order, activeId, transcriptInert, activeReviewId, onBoard],
   )
 }
 
 /** `visible()` over the live stores, for the shell's notification stack. */
-export function useVisibleApprovals(transcriptInert: boolean): AttentionItem[] {
-  const { listed } = usePendingAttention(transcriptInert)
+export function useVisibleApprovals(transcriptInert: boolean, boardOpen = false): AttentionItem[] {
+  const { listed } = usePendingAttention(transcriptInert, boardOpen)
   return useMemo(() => listed.slice(0, MAX_VISIBLE), [listed])
 }
 

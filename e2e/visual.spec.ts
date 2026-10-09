@@ -97,6 +97,28 @@ const scenes: Scene[] = [
     arrange: (page) => openConversation(page, '设置页导出入口'),
   },
   {
+    // The agent board: the strip of what waits, the running column open with
+    // a command to approve, a question and a plan review on its cards, and the
+    // other columns folded to rails.
+    name: 'board',
+    quiet: false,
+    arrange: async (page) => {
+      await page.getByRole('row', { name: '看板' }).first().click()
+      await expect(page.getByRole('region', { name: '待你处理' })).toBeVisible()
+      await expect(page.locator('[data-card-id="demo-card-approval"]')).toBeVisible()
+    },
+  },
+  {
+    // A card opened in place: the real approval block, inside the card.
+    name: 'board-expanded',
+    quiet: false,
+    arrange: async (page) => {
+      await page.getByRole('row', { name: '看板' }).first().click()
+      await page.getByRole('button', { name: '展开「release 构建体积」' }).click()
+      await expect(page.locator('[data-card-id="demo-card-approval"] [data-slot="board-card-detail"]')).toBeVisible()
+    },
+  },
+  {
     name: 'inbox',
     quiet: false,
     arrange: async (page) => {

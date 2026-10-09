@@ -53,6 +53,7 @@ import {
   FolderPlus,
   GitPullRequest,
   GripVertical,
+  LayoutDashboard,
   MoreVertical,
   Plus,
   Search,
@@ -104,6 +105,7 @@ interface AppSidebarProps {
   /** Refile a conversation under another project, or under none (`null`). */
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   page: Page
+  onOpenBoard: () => void
   onOpenSettings: () => void
   onCloseSettings: () => void
   settingsTab: SettingsTab
@@ -786,6 +788,7 @@ export function AppSidebar({
   onMoveToProject,
   page,
   onOpenSettings,
+  onOpenBoard,
   onCloseSettings,
   settingsTab,
   onSettingsTabChange,
@@ -929,6 +932,7 @@ export function AppSidebar({
   const createConversation = dismissing(onCreate)
   const openSearch = dismissing(onOpenSearch)
   const openSettings = dismissing(onOpenSettings)
+  const openBoard = dismissing(onOpenBoard)
   const closeSettings = dismissing(onCloseSettings)
   const changeSettingsTab = dismissing(onSettingsTabChange)
 
@@ -1299,7 +1303,7 @@ export function AppSidebar({
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
           {conv.is_pinned && <Bookmark aria-label={t('contextMenu.pin')} className="size-3 text-text-secondary" />}
-          <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
+          <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page !== 'chat'} />
           {/* The age and the actions button share one slot — see `ConversationTimeSlot`. */}
           <ConversationTimeSlot updatedAt={conv.updated_at}>
             <RowActionsMenu label={title} actions={conversationActions(conv)} />
@@ -1381,6 +1385,17 @@ export function AppSidebar({
               <Kbd data-slot="sidebar-search-shortcut">{searchShortcut}</Kbd>
             </Sidebar.MenuChip>
           </Sidebar.MenuItem>
+          {/* The agent board. Its commands are the desktop host's, as starting
+              a hosted session is: hidden on a phone running its own backend,
+              shown on one driving a desktop. */}
+          {canHostSessions && (
+            <Sidebar.MenuItem id={`${prefix}board`} textValue={t('board.title')} onAction={openBoard}>
+              <Sidebar.MenuIcon>
+                <LayoutDashboard className="size-4" />
+              </Sidebar.MenuIcon>
+              <Sidebar.MenuLabel>{t('board.title')}</Sidebar.MenuLabel>
+            </Sidebar.MenuItem>
+          )}
         </Sidebar.Menu>
         {showNewHosted && (
           <NewHostedSessionForm

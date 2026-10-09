@@ -37,7 +37,9 @@ work they did.
   it and all are somebody being there: an item added, an item switched to `interject`, and
   a turn reaching its ending. A turn that did *not* reach one holds the whole queue —
   "now rename that function" means nothing if the function was never created — and
-  `queue_release` is a person deciding otherwise.
+  `queue_release` is a person deciding otherwise. The agent board's card composer never
+  calls it: a message typed on a card whose turn failed starts a new turn, and what was
+  queued behind the failure stays held for the transcript to decide (`board.md`).
 - **The two runners take it by opposite routes, and the asymmetry is the design.** A hosted
   session is *asked*: `_session/steering` and `session/prompt` are requests and the reply is
   the only evidence there is. A native turn is *offered* — `agent::queue::Interjections` is
