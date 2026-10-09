@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：280
-- Diesel ops 调用点（db/ops 之外）：96
-- Diesel API 引用：440
+- 事务根（非测试）：274
+- Diesel ops 调用点（db/ops 之外）：81
+- Diesel API 引用：373
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -94,12 +94,6 @@
 | `src-tauri/crates/core/src/db/ops/conversation.rs` › `toggle_pin` | diesel-immediate | — |
 | `src-tauri/crates/core/src/db/ops/message.rs` › `append_message` | diesel-deferred | message |
 | `src-tauri/crates/core/src/db/ops/plan.rs` › `complete_active` | diesel-deferred | plan |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `append_assistant_revision` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `create_or_resume_document` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `decide_review` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `mark_delivery_acknowledged` | diesel-deferred | plan_review |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `submit_head_for_review_inner` | diesel-deferred | plan_review, turn |
-| `src-tauri/crates/core/src/db/ops/plan_review.rs` › `transition_delivery` | diesel-deferred | plan_review |
 | `src-tauri/crates/core/src/db/ops/queue.rs` › `enqueue_with_context` | diesel-immediate | queue, queued_prompt_context_item |
 | `src-tauri/crates/core/src/db/ops/todo.rs` › `replace_active_list_with_plan_completion` | diesel-deferred | plan, todo |
 | `src-tauri/crates/core/src/db/sea/ops/message.rs` › `audit_copy` | sea-nested | audit, memory, model_config, model_profile, provider |
