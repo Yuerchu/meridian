@@ -1242,17 +1242,28 @@ const autoReviewAgentSource = readAt(autoReviewAgentFile)
 if (/\bfn\s+payload\s*\(/.test(autoReviewAgentSource ?? '')) {
   add(autoReviewAgentFile, '自动审查持久化必须复用 typed AutoReviewVerdict，禁止维护第二套 JSON payload')
 }
-const messageOpsFile = 'src-tauri/crates/core/src/db/ops/message.rs'
+// The verdict map is written by the SeaORM op: typed in, decoded strictly
+// (a stored map this build cannot read fails rather than being replaced), and
+// never under an empty call id. `merge_by_call` does the decoding for every
+// per-call map, so the rules pin both the op and the helper.
+const messageOpsFile = 'src-tauri/crates/core/src/db/sea/ops/message.rs'
 const messageOpsSource = readAt(messageOpsFile)
-const recordAutoReview = messageOpsSource?.match(/pub fn record_auto_review\s*\([\s\S]*?\n\}/)?.[0]
-if (!/verdict:\s*&crate::events::AutoReviewVerdict/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 写入参数必须是 typed AutoReviewVerdict')
+const recordAutoReview = messageOpsSource?.match(/pub async fn record_auto_review\s*\([\s\S]*?\n\}/)?.[0]
+const mergeByCall = messageOpsSource?.match(/async fn merge_by_call<V>\s*\([\s\S]*?\n\}/)?.[0]
+if (
+  !/verdict:\s*&crate::events::AutoReviewVerdict/.test(recordAutoReview ?? '') ||
+  !/merge_by_call\([^;]*message::Column::AutoReview,\s*verdict\.clone\(\)\)/.test(recordAutoReview ?? '')
+) {
+  add(
+    messageOpsFile,
+    'record_auto_review 写入参数必须是 typed AutoReviewVerdict，并经 merge_by_call 写入 auto_review 列',
+  )
 }
-if (!/BTreeMap<String,\s*crate::events::AutoReviewVerdict>/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 必须严格解码已有嵌套 verdict，禁止 Value passthrough')
+if (!/BTreeMap<String,\s*V>/.test(mergeByCall ?? '') || /serde_json::Value/.test(mergeByCall ?? '')) {
+  add(messageOpsFile, 'merge_by_call 必须按 BTreeMap<String, V> 严格解码已有嵌套 verdict，禁止 Value passthrough')
 }
-if (!/call_id\.is_empty\(\)/.test(recordAutoReview ?? '')) {
-  add(messageOpsFile, 'record_auto_review 必须拒绝空 call_id')
+if (!/call_id\.is_empty\(\)/.test(mergeByCall ?? '')) {
+  add(messageOpsFile, 'merge_by_call 必须拒绝空 call_id')
 }
 const providerContractFile = 'src-tauri/crates/core/src/provider/mod.rs'
 const providerContractSource = readAt(providerContractFile)
@@ -1867,7 +1878,7 @@ for (const table of ['model_configs', 'audit_messages']) {
 // `messages.auto_review` 的形状没有表级 CHECK 可守：迁移 50 那张 `valid_auto_review_shape`
 // 是 TEMP 守卫表，一次性数据改写的一部分，不在现行 schema 里（快照里 messages 没有 CHECK）。
 // 对历史改写文本的断言已删——它是冻结的历史。现行的形状约束在 Rust 侧，上面
-// record_auto_review 那几条规则守着；这里只钉住列本身：可空的 TEXT。
+// record_auto_review / merge_by_call 那几条规则守着；这里只钉住列本身：可空的 TEXT。
 const messagesBody = schemaSnapshot == null ? null : sqlCreateTableBody(schemaSnapshot, 'messages')
 if (messagesBody == null) add(schemaSnapshotFile, '快照里没有 CREATE TABLE "messages"')
 else if (!/"auto_review" text(?:,|\s*\))/.test(messagesBody)) {

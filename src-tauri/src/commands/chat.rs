@@ -1881,7 +1881,8 @@ async fn chat_inner(
             multi_party: false,
             unattended: false,
         },
-    )?;
+    )
+    .await?;
     // Outermost, so it sees the reviewer's own refusals as well as the ones the
     // user gave. Underneath it, the denials cheapest to repeat — the ones
     // nothing stopped to ask about — would be exactly the ones it missed.

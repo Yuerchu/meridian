@@ -3,9 +3,9 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：246
-- Diesel ops 调用点（db/ops 之外）：287
-- Diesel API 引用：564
+- 事务根（非测试）：252
+- Diesel ops 调用点（db/ops 之外）：268
+- Diesel API 引用：545
 
 ## R2 无法检查的 SeaORM 事务根
 
@@ -39,6 +39,11 @@
 | `src-tauri/crates/core/src/acp/session.rs` › `settle` | sea-write | acp_context_delivery |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_interjections` | sea-write | queue |
 | `src-tauri/crates/core/src/acp/session.rs` › `write_prompt_row` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item, turn |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-nested | audit, memory, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-nested | message |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-write | audit, memory, message, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `scene_text` | sea-read | conversation, message |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `wrap` | sea-read | preference |
 | `src-tauri/crates/core/src/agent/codex_install.rs` › `installation_id` | sea-write | preference |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-read | conversation, message, message_context_item |
@@ -118,7 +123,8 @@
 | `src-tauri/crates/core/src/db/sea/ops/usage.rs` › `(顶层)` | sea-read | — |
 | `src-tauri/crates/core/src/db/sea/ops/usage.rs` › `(顶层)` | sea-read | — |
 | `src-tauri/crates/core/src/hooks/mod.rs` › `save_config` | sea-write | preference |
-| `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | diesel-deferred | audit, conversation, message, model_config, project, turn |
+| `src-tauri/crates/core/src/hooks/review.rs` › `load_history` | sea-read | conversation, message |
+| `src-tauri/crates/core/src/hooks/review.rs` › `write_round` | sea-write | audit, conversation, memory, message, model_config, model_profile, project, provider, turn |
 | `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `record` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `settle_command_bracket` | sea-write | journal |
