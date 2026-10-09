@@ -84,7 +84,6 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/db/sea/ops/conversation.rs',
   'src-tauri/crates/core/src/db/sea/ops/message.rs',
   'src-tauri/crates/core/src/db/sea/ops/usage.rs',
-  'src-tauri/crates/core/src/db/schema.rs',
   'src-tauri/crates/core/src/db/types.rs',
   'src-tauri/crates/core/src/decimal.rs',
   'src-tauri/crates/core/src/events.rs',
@@ -1829,28 +1828,17 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
   for (const declaration of rustStructDeclarations(productionSource)) {
     const type = rustStructFields(productionSource, declaration.name)?.get('server_tools')
     if (type == null || /\bServerToolKind\b/.test(type)) continue
-    // The storage representations: the Diesel row and the SeaORM entity, the
-    // resolved view the turn loop reads, and the flat shape tests seed through.
-    // All four hold the JSON array as text and none of them crosses the command
-    // boundary (the entity rules below keep a Model out of every command).
+    // The storage representations: the SeaORM entity, the resolved view the
+    // turn loop reads, and the flat shape tests seed through. All three hold
+    // the JSON array as text and none of them crosses the command boundary
+    // (the entity rules below keep a Model out of every command).
     const storageFiles = [
-      'src-tauri/crates/core/src/db/models/model_config.rs',
       'src-tauri/crates/core/src/db/entity/model_config.rs',
       'src-tauri/crates/core/src/agent/model_config.rs',
       'src-tauri/crates/core/src/db/sea/ops/model_config.rs',
     ]
     if (storageFiles.includes(file) && /\b(?:str|String)\b/.test(type)) continue
     add(file, `${declaration.name}.server_tools 必须使用 ServerToolKind，当前为 ${type}`)
-  }
-}
-
-const schemaFile = 'src-tauri/crates/core/src/db/schema.rs'
-const schema = readAt(schemaFile)
-if (schema != null) {
-  for (const match of schema.matchAll(/^\s*(\w+)\s*->\s*([^,]+),/gm)) {
-    if (isMoneyLeafField(match[1]) && !/\bText\b/.test(match[2])) {
-      add(schemaFile, `金额列 ${match[1]} 必须映射为 SQLite Text，不得使用 ${match[2].trim()}`)
-    }
   }
 }
 
@@ -1919,8 +1907,14 @@ for (const [pattern, message] of [
   [/pub const DECIMAL_SCALE: usize = 18;/, 'Decimal 必须固定 NUMERIC(38,18) scale'],
   [/serializer\.serialize_str\(&self\.canonical\(\)\)/, 'Decimal JSON 必须序列化为 canonical string'],
   [/deserializer\.deserialize_str\(DecimalVisitor\)/, 'Decimal JSON 必须拒绝 number，只接受 string'],
-  [/impl ToSql<Text, Sqlite> for Decimal/, 'Decimal SQLite 映射必须使用 Text'],
-  [/impl FromSql<Text, Sqlite> for Decimal/, 'Decimal SQLite 读取必须使用 Text'],
+  [
+    /impl From<Decimal> for sea_orm::Value \{[\s\S]{0,120}?sea_orm::Value::String\(Some\(value\.canonical\(\)\)\)/,
+    'Decimal SQLite 写入必须是 canonical Text',
+  ],
+  [
+    /impl sea_orm::TryGetable for Decimal \{[\s\S]{0,200}?String::try_get_by\([\s\S]{0,80}?Decimal::from_canonical_str/,
+    'Decimal SQLite 读取必须经 String 严格解析 canonical Text',
+  ],
 ]) {
   if (decimalSource != null && !pattern.test(decimalSource)) add(decimalFile, message)
 }

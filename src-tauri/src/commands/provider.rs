@@ -1172,7 +1172,7 @@ mod response_contract_tests {
     #[tokio::test]
     async fn an_unblocked_provider_update_applies_and_clears_its_cache() {
         let dir = tempfile::tempdir().unwrap();
-        let (_pool, sea) = db::sea::shared_test_db(dir.path()).await;
+        let sea = db::sea::file_test_db(dir.path()).await;
         sea.write(async |tx| {
             let row = provider::Model {
                 id: "provider-1".into(),
