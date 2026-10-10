@@ -56,6 +56,7 @@ export function NotificationInbox({
   onSelect,
   onOpenSettingsTab,
   transcriptInert,
+  boardOpen = false,
   isOpen: openProp,
   onOpenChange,
 }: {
@@ -63,6 +64,8 @@ export function NotificationInbox({
   /** Where a failed system notice sends the reader to fix it. */
   onOpenSettingsTab: (tab: SettingsTab) => void
   transcriptInert: boolean
+  /** The board is the page: its cards' questions are on it, and this says so. */
+  boardOpen?: boolean
   /** Controlled by the shell, which hides the floating stack while this is open. */
   isOpen?: boolean
   onOpenChange?: (open: boolean) => void
@@ -74,7 +77,7 @@ export function NotificationInbox({
     setOwnOpen(open)
     onOpenChange?.(open)
   }
-  const { listed, here } = usePendingAttention(transcriptInert)
+  const { listed, here } = usePendingAttention(transcriptInert, boardOpen)
   const activeId = useConversationStore((s) => s.activeId)
   const conversations = useConversationStore((s) => s.conversations)
   const act = useAttentionActions(onSelect)
@@ -141,7 +144,16 @@ export function NotificationInbox({
       // added as bottom padding for the last row to scroll clear of it.
       dialogClassName="flex max-h-[inherit] flex-col"
       before={
-        here.length > 0 && activeId !== null ? (
+        here.length > 0 && boardOpen ? (
+          <div
+            data-slot="notification-inbox-on-board"
+            className="mb-2 rounded-2xl border border-border-button-default bg-background-primary-default px-4 py-2 shadow-dropdown"
+          >
+            <p className="text-body-regular text-text-secondary">
+              {t('notifications.inbox.onBoard', { count: here.length })}
+            </p>
+          </div>
+        ) : here.length > 0 && activeId !== null ? (
           <div
             data-slot="notification-inbox-here"
             className="mb-2 flex items-center gap-3 rounded-2xl border border-border-button-default bg-background-primary-default py-2 pr-2 pl-4 shadow-dropdown"

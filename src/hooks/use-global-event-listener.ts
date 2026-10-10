@@ -10,6 +10,7 @@ import { isAskTool } from '@/lib/tool-catalog'
 import type { PlanReviewEventInfo } from '@/stores/plan-review-store'
 import { receivePlanReview } from '@/lib/plan-review-sync'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
+import { useBoardStore } from '@/stores/board-store'
 import type { ChatStreamEvent } from '@/types'
 
 // Keyed by turn, not by conversation. Keyed by conversation, a second turn's
@@ -372,6 +373,12 @@ export function useGlobalEventListener() {
       useSystemNoticeStore.getState().receive(event.payload)
     })
 
+    // The board reads its cards whole again on any change — a move renumbers
+    // a column. Only once it has been opened: nobody else is drawing them.
+    const boardUnlisten = listen('board-updated', () => {
+      if (useBoardStore.getState().loaded) void useBoardStore.getState().load()
+    })
+
     const compactStartUnlisten = listen('compact-start', (event) => {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
@@ -416,6 +423,7 @@ export function useGlobalEventListener() {
       userCommandUnlisten.then((fn) => fn())
       resyncUnlisten.then((fn) => fn())
       systemNoticeUnlisten.then((fn) => fn())
+      boardUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())
       compactDoneUnlisten.then((fn) => fn())
       planReviewRequestedUnlisten.then((fn) => fn())

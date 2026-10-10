@@ -121,3 +121,22 @@ describe('the whole queue', () => {
     expect(here).toEqual([])
   })
 })
+
+/** While the board is the page, its cards' questions are answered on its
+ *  cards: neither the stack nor the inbox lists them a second time. */
+describe('the board as the page being read', () => {
+  it('keeps the board conversations apart and lists everything else', () => {
+    const { attention, order } = queue(item('a', 'card-1'), item('b', 'loose'), item('c', 'card-2'))
+    const { listed, here } = pending(attention, order, null, true, null, new Set(['card-1', 'card-2']))
+    expect(listed.map((i) => i.approvalId)).toEqual(['b'])
+    expect(here.map((i) => i.approvalId)).toEqual(['a', 'c'])
+    expect(visible(attention, order, null, true, null).map((i) => i.approvalId)).toEqual(['a', 'b', 'c'])
+  })
+
+  it('changes nothing while the board is not open', () => {
+    const { attention, order } = queue(item('a', 'card-1'), item('b', 'loose'))
+    const { listed, here } = pending(attention, order, null, false, null, null)
+    expect(listed.map((i) => i.approvalId)).toEqual(['a', 'b'])
+    expect(here).toEqual([])
+  })
+})

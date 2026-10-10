@@ -69,15 +69,18 @@ import {
 export function ApprovalNotifications({
   onSelect,
   transcriptInert = false,
+  boardOpen = false,
   inboxOpen = false,
 }: {
   onSelect: (conversationId: string) => Promise<boolean>
   transcriptInert?: boolean
+  /** The board is the page: its cards' questions are answered on it. */
+  boardOpen?: boolean
   /** The inbox lists every row this stack would draw; while it is open the stack is a duplicate beside it. */
   inboxOpen?: boolean
 }) {
   const { t } = useTranslation()
-  const { listed } = usePendingAttention(transcriptInert)
+  const { listed } = usePendingAttention(transcriptInert, boardOpen)
   const ignored = useConversationStore((s) => s.stackIgnored)
   const approvals = useMemo(
     () => listed.filter((item) => !ignored[item.approvalId]).slice(0, MAX_VISIBLE),
