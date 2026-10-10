@@ -1163,6 +1163,20 @@ describe('a failed turn says why, under itself', () => {
     expect(onRegenerate).toHaveBeenCalledWith(turn.assistantMessages[0].id)
   })
 
+  // On the last turn the retry continues rather than forks: a long task keeps
+  // the rounds it finished, and no "continue" lands in the history.
+  it('continues the last turn instead of regenerating it', async () => {
+    const onRegenerate = vi.fn()
+    const onContinue = vi.fn()
+    const { container } = render(
+      <TurnItem turn={failedTurn()} conversationId={CONV} onRegenerate={onRegenerate} onContinue={onContinue} />,
+    )
+    const region = within(container.querySelector<HTMLElement>('[data-slot="turn-failure"]')!).getByRole('status')
+    await userEvent.click(within(region).getByRole('button', { name: i18n.t('common.retry') }))
+    expect(onContinue).toHaveBeenCalledTimes(1)
+    expect(onRegenerate).not.toHaveBeenCalled()
+  })
+
   it('draws nothing for a turn that did not fail', () => {
     const { container } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
     expect(container.querySelector('[data-slot="turn-failure"]')).toBeNull()

@@ -47,6 +47,9 @@ export interface TurnItemProps {
   streaming?: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
+  /** Ask again from where the conversation stands, without a new message.
+   *  Given only to the last turn, which is the only one it can continue. */
+  onContinue?: () => void
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: MessageRating | null) => void
   isOneBot?: boolean
@@ -84,6 +87,7 @@ export const TurnItem = React.memo(function TurnItem({
   streaming = false,
   onDelete,
   onRegenerate,
+  onContinue,
   onEdit,
   onRate,
   isOneBot,
@@ -304,16 +308,22 @@ export const TurnItem = React.memo(function TurnItem({
             Read off the turn record, so it is here after a reload and for a
             run nobody in this window started. `status` rather than `alert`:
             this is part of the record and is drawn on every visit, and a
-            screen reader should not be interrupted by history. The retry is
-            regeneration, which needs an answer to replace — a run that died
-            before writing one has the reason and nothing to press. */}
+            screen reader should not be interrupted by history.
+
+            On the last turn the retry continues it: the request is sent again
+            from where the conversation stands, with no new message and with
+            every round the turn already finished kept. Regenerating instead
+            would fork from the question and throw a long task's work off the
+            path, and typing "continue" leaves one more message in the history
+            for every failure. An earlier turn has newer ones built on it, so
+            the only retry left to it is regeneration. */}
         {turn.failure !== null && (
           <div data-slot="turn-failure" className="pl-10">
             <ErrorAlert
               role="status"
               title={t('chat.turn.failed')}
               message={turn.failure}
-              onRetry={!streaming ? onRegenerateTurn : undefined}
+              onRetry={!streaming ? (onContinue ?? onRegenerateTurn) : undefined}
             />
           </div>
         )}

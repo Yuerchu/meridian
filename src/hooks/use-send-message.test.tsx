@@ -80,6 +80,29 @@ describe('useSendMessage', () => {
     expect(request).toEqual(expect.objectContaining({ contextRefs }))
   })
 
+  // Continuing after a failure asks again from the head with no message and no
+  // fork; the backend reads that pair as "continue".
+  it('continues with no message and nothing replaced', async () => {
+    const { result } = renderHook(() =>
+      useSendMessage('conversation-1', {
+        streaming: false,
+        selectedAssistantId: 'assistant-1',
+        selectedModelId: 'model-1',
+        selectedProviderId: 'provider-1',
+        thinkingLevel: 'default',
+        fastMode: false,
+        mode: 'work',
+      }),
+    )
+
+    await act(async () => {
+      result.current.handleContinue()
+    })
+    expect(mocks.chat).toHaveBeenCalledTimes(1)
+    const [request] = mocks.chat.mock.calls[0]
+    expect(request).toEqual(expect.objectContaining({ message: null, replaces: null }))
+  })
+
   // A file on its own is a message; empty text with nothing attached is not.
   it('sends an attachment with no text, and nothing at all for nothing', async () => {
     const { result } = renderHook(() =>

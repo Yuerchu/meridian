@@ -1049,6 +1049,21 @@ async fn chat_inner(
         }
     }
 
+    // Continuing from the head, after a request that failed: the empty row it
+    // opened was never sent, and replaying it would put an empty answer in the
+    // history every time somebody retries. Under the lease, so no turn is
+    // writing past it.
+    if replaces.is_none() {
+        let retracted = services
+            .db
+            .write(async |tx| db::sea::ops::message::retract_failed_head(tx, &conversation_id).await)
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(id) = retracted {
+            tracing::debug!(message_id = %id, "took back the empty row of a failed request");
+        }
+    }
+
     // Load conversation + assistant + active path + project path
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = services
         .db

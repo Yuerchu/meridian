@@ -221,15 +221,18 @@ function ChatViewInner({
     storeLoadActiveTodos(conversationId)
   }, [conversationId, storeEnsureSession, storeLoadMessages, storeLoadActiveTodos])
 
-  const { sendMessage, steerMessage, handleRegenerate, handleEdit, handleVoiceSend } = useSendMessage(conversationId, {
-    streaming,
-    selectedAssistantId: settings.selectedAssistantId,
-    selectedModelId: settings.selectedModelId,
-    selectedProviderId: settings.selectedProviderId,
-    thinkingLevel: settings.thinkingLevel,
-    fastMode: settings.fastMode,
-    mode: settings.mode,
-  })
+  const { sendMessage, steerMessage, handleRegenerate, handleContinue, handleEdit, handleVoiceSend } = useSendMessage(
+    conversationId,
+    {
+      streaming,
+      selectedAssistantId: settings.selectedAssistantId,
+      selectedModelId: settings.selectedModelId,
+      selectedProviderId: settings.selectedProviderId,
+      thinkingLevel: settings.thinkingLevel,
+      fastMode: settings.fastMode,
+      mode: settings.mode,
+    },
+  )
 
   // Read at click time rather than closed over, so the button always aims at
   // whatever is running now. Null falls back to "stop this conversation's
@@ -965,6 +968,7 @@ function ChatViewInner({
             // is the affordance agreeing with it. Delete is still offered: it does
             // what it says, removing rows from *this* app's copy.
             onRegenerate={isHostedAgent ? undefined : handleRegenerate}
+            onContinue={isHostedAgent ? undefined : handleContinue}
             onEdit={isHostedAgent ? undefined : handleEdit}
             onRate={handleRate}
             isOneBot={isOneBot}

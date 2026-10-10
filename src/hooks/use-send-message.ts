@@ -4,7 +4,7 @@ import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'
 import { buildMessageContent } from '@/lib/message-content'
 import type { AttachedFile } from '@/components/chat/input-bar'
-import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
+import type { ChatMode, MessageViewModel, StickerContentPart, ThinkingLevel } from '@/types'
 import type { WorkspaceReferenceRequest } from '@/types'
 import { extractComposerReferences, selectExistingReferences } from '@/lib/composer-intent'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
@@ -22,7 +22,8 @@ export interface SendOptions {
 
 export interface SendMessage {
   /**
-   * @param text  `null` means "regenerate": no new wording, only a new answer.
+   * @param text  `null` asks again without new wording: a regeneration with
+   *   `replaces`, a continuation from the head without it.
    * @param replaces  Id of the message the new one is a sibling of.
    */
   sendMessage: (
@@ -38,8 +39,17 @@ export interface SendMessage {
   /** Says something to the run already going; false when nobody was reading. */
   steerMessage: (text: string) => Promise<boolean>
   handleRegenerate: (messageId: string) => void
+  /** Ask again from where the conversation stands, adding no message. */
+  handleContinue: () => void
   handleEdit: (id: string, content: string) => void
   handleVoiceSend: (text: string) => void
+}
+
+/** The empty row a request that failed left open: no text, no reasoning, no
+ *  calls. The backend's test also needs the turn to be recorded as failed;
+ *  this side only removes the bubble, and the reload on stop is the truth. */
+function isUnansweredRow(m: MessageViewModel): boolean {
+  return m.role === 'assistant' && m.content === '' && !m.reasoning_content && !m.tool_calls?.length
 }
 
 /**
@@ -132,9 +142,10 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       contextRefs: WorkspaceReferenceRequest[] = [],
       conversationRefs: string[] = [],
     ) => {
-      // A null message means "regenerate", which needs no text of its own.
+      // A null message asks again without new words: with `replaces` it
+      // regenerates that answer, without it it continues from the head.
       const nothing = text !== null && !text.trim() && !sticker && !files?.length
-      if ((text === null ? !replaces : nothing) || streaming || submittingRef.current) return
+      if (nothing || streaming || submittingRef.current) return
       // Regenerating and editing rewrite history and ask again from a point in
       // it. A hosted session's history lives in the adapter's process, not
       // here, so re-asking would send the question to an agent that still
@@ -180,6 +191,23 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
             sessions: {
               ...state.sessions,
               [conversationId]: { ...session, messages: session.messages.slice(0, idx) },
+            },
+          }
+        })
+      }
+
+      // Continuing: the backend takes back the empty row a failed request left
+      // at the head (`retract_failed_head`), so the bubble for it goes now
+      // rather than sitting above the new answer until the reload on stop.
+      if (text === null && !replaces) {
+        useConversationStore.setState((state) => {
+          const session = state.sessions[conversationId]
+          const last = session?.messages[session.messages.length - 1]
+          if (!session || !last || !isUnansweredRow(last)) return state
+          return {
+            sessions: {
+              ...state.sessions,
+              [conversationId]: { ...session, messages: session.messages.slice(0, -1) },
             },
           }
         })
@@ -295,6 +323,13 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
     [sendMessage],
   )
 
+  // After a request failed: send the history as it stands again. Every round
+  // the turn finished stays, and nothing new is written into the history —
+  // where typing "continue" would add a message for every failure.
+  const handleContinue = useCallback(() => {
+    sendMessage(null, false)
+  }, [sendMessage])
+
   // Editing forks rather than overwrites: the question is re-asked as a sibling
   // of the original and answered fresh, leaving the old wording and its answer
   // reachable through the pager.
@@ -318,5 +353,5 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
     [sendMessage],
   )
 
-  return { sendMessage, steerMessage, handleRegenerate, handleEdit, handleVoiceSend }
+  return { sendMessage, steerMessage, handleRegenerate, handleContinue, handleEdit, handleVoiceSend }
 }
