@@ -106,6 +106,9 @@ export interface ChatTranscriptProps {
   streaming: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
+  /** Ask again from where the conversation stands, without a new message:
+   *  what a failed last turn offers instead of forking it. */
+  onContinue?: () => void
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: MessageRating | null) => void
   isOneBot?: boolean
@@ -272,6 +275,7 @@ function TranscriptTurns({
   streaming,
   onDelete,
   onRegenerate,
+  onContinue,
   onEdit,
   onRate,
   isOneBot,
@@ -299,6 +303,7 @@ function TranscriptTurns({
               questionPosition={questionPositionOf(turns, i)}
               onDelete={onDelete}
               onRegenerate={onRegenerate}
+              onContinue={isLastTurn ? onContinue : undefined}
               onEdit={onEdit}
               onRate={onRate}
               isOneBot={isOneBot}
@@ -350,6 +355,7 @@ export function ChatTranscript({
   streaming,
   onDelete,
   onRegenerate,
+  onContinue,
   onEdit,
   onRate,
   isOneBot,
@@ -456,6 +462,7 @@ export function ChatTranscript({
                       streaming={streaming}
                       onDelete={onDelete}
                       onRegenerate={onRegenerate}
+                      onContinue={onContinue}
                       onEdit={onEdit}
                       onRate={onRate}
                       isOneBot={isOneBot}

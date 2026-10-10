@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：291
+- 事务根（非测试）：292
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -218,6 +218,7 @@
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | conversation, message |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | message, turn |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-read | plan_review |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `rebuild` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
