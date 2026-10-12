@@ -9,7 +9,7 @@ import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
-vi.mock('@/api', () => ({ api: { usageReport: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { usageReport: vi.fn(), usageGaps: vi.fn() } }))
 
 const mockApi = vi.mocked(api)
 const onOpenConversation = vi.fn()
@@ -24,10 +24,13 @@ function bucket(over: Partial<UsageBucketInfoResponse> = {}): UsageBucketInfoRes
     external_messages: 0,
     missing_token_usage_messages: 0,
     incomplete_token_usage_messages: 0,
+    missing_input_messages: 0,
     input_tokens: 1_000,
     output_tokens: 500,
     cache_read_tokens: 250,
     cache_write_tokens: 0,
+    reported_input_tokens: 1_000,
+    reported_input_cache_read_tokens: 250,
     input_cost: decimal('0.5'),
     output_cost: decimal('0.75'),
     cache_cost: decimal('0.2'),
@@ -262,7 +265,17 @@ it('does not render externally settled traffic as an exact local zero', async ()
  * one.
  */
 it('shows a dash for the hit rate rather than dividing by nothing', async () => {
-  serve({ total: [bucket({ messages: 2, input_tokens: 0, cache_read_tokens: 0 })] })
+  serve({
+    total: [
+      bucket({
+        messages: 2,
+        input_tokens: 0,
+        cache_read_tokens: 0,
+        reported_input_tokens: 0,
+        reported_input_cache_read_tokens: 0,
+      }),
+    ],
+  })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
   expect(await screen.findByText('—')).toBeInTheDocument()
@@ -278,6 +291,9 @@ it('does not present a cache-hit rate as exact when prompt usage is incomplete',
         output_tokens: 20,
         cache_read_tokens: 900,
         incomplete_token_usage_messages: 1,
+        missing_input_messages: 1,
+        reported_input_tokens: 0,
+        reported_input_cache_read_tokens: 0,
       }),
     ],
   })
@@ -787,4 +803,98 @@ it('shows the pressed heatmap cell when the browser does not focus it', async ()
 
   expect(cell).toHaveFocus()
   expect(card.querySelector('[data-slot="activity-heatmap-caption"]')).toHaveTextContent('Tue 14:00 · 9 replies')
+})
+
+/**
+ * Three replies that failed before the provider reported anything used to hide
+ * the hit rate of the other two hundred and fifty. The rate is now read off the
+ * replies that reported a prompt, and says how many those were.
+ */
+it('reads the hit rate off the replies that reported a prompt', async () => {
+  serve({
+    total: [
+      bucket({
+        messages: 253,
+        missing_input_messages: 3,
+        incomplete_token_usage_messages: 3,
+        input_tokens: 1_900,
+        cache_read_tokens: 1_300,
+        reported_input_tokens: 1_000,
+        reported_input_cache_read_tokens: 400,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText('40.0%', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
+  expect(screen.getByText('Over the 250 replies that reported input tokens, of 253')).toBeInTheDocument()
+})
+
+/** A count with no way to the rows it counts is a number nobody can act on. */
+it('lists the incomplete replies and opens the conversation one is in', async () => {
+  serve({ total: [bucket({ messages: 3, unpriced_token_messages: 1, unpriced_messages: 1 })] })
+  mockApi.usageGaps.mockResolvedValue({
+    total: 2,
+    items: [
+      {
+        id: 'a1',
+        created_at: 0,
+        conversation_id: 'conv-1',
+        conversation_title: 'QQ group',
+        role: 'assistant',
+        provider_name: 'BigModel',
+        model_id: 'glm-5.3-flash',
+        source_type: 'onebot_group',
+        billing_mode: 'metered',
+        content_chars: 0,
+        missing_input: true,
+        missing_output: true,
+        unpriced_tokens: true,
+        unpriced_tools: false,
+      },
+      {
+        id: 'a2',
+        created_at: 0,
+        conversation_id: 'gone',
+        conversation_title: null,
+        role: 'extraction',
+        provider_name: null,
+        model_id: null,
+        source_type: null,
+        billing_mode: 'metered',
+        content_chars: 12,
+        missing_input: false,
+        missing_output: false,
+        unpriced_tokens: true,
+        unpriced_tools: false,
+      },
+    ],
+  })
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  await user.click(await screen.findByRole('button', { name: 'Show which' }))
+  const sheet = await screen.findByRole('dialog', { name: 'Replies with incomplete usage or pricing' })
+  // The same window as the report whose warning was pressed.
+  expect(mockApi.usageGaps).toHaveBeenCalledWith(
+    expect.objectContaining({ sinceMs: expect.any(Number), origin: null, conversationId: null }),
+  )
+  const rows = within(sheet).getAllByText(/QQ group|Deleted conversation/)
+  expect(rows).toHaveLength(2)
+  expect(within(sheet).getByText('Empty reply')).toBeInTheDocument()
+  expect(within(sheet).getByText('Memory extraction', { exact: false })).toBeInTheDocument()
+  // A deleted conversation has nowhere to go.
+  const open = within(sheet).getAllByRole('button', { name: 'Open the conversation this reply is in' })
+  expect(open).toHaveLength(1)
+
+  await user.click(open[0])
+  expect(onOpenConversation).toHaveBeenCalledWith('conv-1')
+})
+
+it('offers no list when nothing is incomplete', async () => {
+  serve({ total: [bucket()] })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText('1.50', { selector: '[data-slot="cost-total"]' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Show which' })).not.toBeInTheDocument()
 })

@@ -26,6 +26,7 @@ import { compareDecimals, decimal, decimalPercent, sumDecimals, type DecimalStri
 import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
+import { UsageGapsSheet } from './usage-gaps-sheet'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 import { HOUR_COUNT, rankByTokens, weekdayHourGrid } from '@/lib/usage-charts'
@@ -220,6 +221,8 @@ interface Report {
   activity: number[][]
   rows: UsageBucketInfoResponse[]
   rowsDimension: Breakdown
+  /** The window these figures cover, so the gap list explains the same counts. */
+  sinceMs: number | null
 }
 
 const EMPTY_TOTAL: UsageBucketInfoResponse = {
@@ -231,10 +234,13 @@ const EMPTY_TOTAL: UsageBucketInfoResponse = {
   external_messages: 0,
   missing_token_usage_messages: 0,
   incomplete_token_usage_messages: 0,
+  missing_input_messages: 0,
   input_tokens: 0,
   output_tokens: 0,
   cache_read_tokens: 0,
   cache_write_tokens: 0,
+  reported_input_tokens: 0,
+  reported_input_cache_read_tokens: 0,
   input_cost: ZERO_DECIMAL,
   output_cost: ZERO_DECIMAL,
   cache_cost: ZERO_DECIMAL,
@@ -274,9 +280,10 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     // Read here rather than in a memo over `range`: "the last 30 days" is
     // relative to the moment the query runs, and a clock read during render is
     // both impure and stale by the time anything uses it.
+    const sinceMs = range === null ? null : Date.now() - range * DAY_MS
     const request = (dimension: UsageDimension): UsageReportRequest => ({
       dimension,
-      sinceMs: range === null ? null : Date.now() - range * DAY_MS,
+      sinceMs,
       untilMs: null,
       origin,
       conversationId: null,
@@ -306,6 +313,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           activity,
           rows,
           rowsDimension: breakdown,
+          sinceMs,
         })
       })
       .catch((reason) => {
@@ -337,13 +345,18 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             value: compact.format(total.cache_read_tokens),
           })
       : t('settings.usage.kpi.inputNote', { value: compact.format(total.cache_read_tokens) })
-  // Of the prompt tokens that were sent, how many the upstream already had.
-  // Zero prompt tokens is not a 0% hit rate — it is no data — so the card shows
-  // a dash rather than a number nobody earned.
+  // Of the prompt tokens that were sent, how many the upstream already had —
+  // over the replies that reported a prompt, and only those. This used to be
+  // withheld whenever any reply was incomplete, so three empty failed rounds
+  // hid the rate of the other two hundred and fifty; and the totals cannot be
+  // divided instead, because a reply with no prompt count contributes its
+  // cache hits to both sides. Zero prompt tokens is not a 0% hit rate — it is
+  // no data — so the card shows a dash rather than a number nobody earned.
   const hitRate =
-    total.incomplete_token_usage_messages === 0 && total.input_tokens > 0
-      ? total.cache_read_tokens / total.input_tokens
-      : null
+    total.reported_input_tokens > 0 ? total.reported_input_cache_read_tokens / total.reported_input_tokens : null
+  const hitRateCounted = total.messages - total.missing_input_messages
+  const hasGaps = total.unpriced_messages > 0 || total.incomplete_token_usage_messages > 0
+  const [gapsOpen, setGapsOpen] = useState(false)
 
   return (
     <SettingsPane>
@@ -416,7 +429,11 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </Kpi>
             <Kpi
               title={t('settings.usage.kpi.cacheRate')}
-              note={t('settings.usage.kpi.replies', { count: total.messages })}
+              note={
+                total.missing_input_messages > 0
+                  ? t('settings.usage.kpi.cacheRateNote', { counted: hitRateCounted, count: total.messages })
+                  : t('settings.usage.kpi.replies', { count: total.messages })
+              }
             >
               <KPI.Value data-slot="cache-rate" className="block truncate">
                 {hitRate === null ? '—' : percent.format(hitRate)}
@@ -441,6 +458,17 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                   ? t('settings.usage.estimated', { count: total.estimated_messages })
                   : t('settings.usage.unpriced', { count: total.unpriced_messages })}
             </p>
+          )}
+          {hasGaps && (
+            <Button
+              size="small"
+              variant="secondary"
+              className="self-start"
+              data-slot="usage-gaps-show"
+              onPress={() => setGapsOpen(true)}
+            >
+              {t('settings.usage.gaps.show')}
+            </Button>
           )}
           {billingNote && (
             <p data-slot="billing-coverage-warning" className="text-caption-1-regular text-text-secondary">
@@ -511,6 +539,13 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           </section>
         </>
       )}
+      <UsageGapsSheet
+        isOpen={gapsOpen}
+        onOpenChange={setGapsOpen}
+        sinceMs={report?.sinceMs ?? null}
+        origin={origin}
+        onOpenConversation={onOpenConversation}
+      />
     </SettingsPane>
   )
 }
@@ -1057,10 +1092,13 @@ function conversationRows(
       external_messages: matches.reduce((sum, row) => sum + row.external_messages, 0),
       missing_token_usage_messages: matches.reduce((sum, row) => sum + row.missing_token_usage_messages, 0),
       incomplete_token_usage_messages: matches.reduce((sum, row) => sum + row.incomplete_token_usage_messages, 0),
+      missing_input_messages: matches.reduce((sum, row) => sum + row.missing_input_messages, 0),
       input_tokens: matches.reduce((sum, row) => sum + row.input_tokens, 0),
       output_tokens: matches.reduce((sum, row) => sum + row.output_tokens, 0),
       cache_read_tokens: matches.reduce((sum, row) => sum + row.cache_read_tokens, 0),
       cache_write_tokens: matches.reduce((sum, row) => sum + row.cache_write_tokens, 0),
+      reported_input_tokens: matches.reduce((sum, row) => sum + row.reported_input_tokens, 0),
+      reported_input_cache_read_tokens: matches.reduce((sum, row) => sum + row.reported_input_cache_read_tokens, 0),
       input_cost: sumDecimals(matches.map((row) => row.input_cost)),
       output_cost: sumDecimals(matches.map((row) => row.output_cost)),
       cache_cost: sumDecimals(matches.map((row) => row.cache_cost)),

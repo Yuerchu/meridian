@@ -217,6 +217,8 @@ import type {
   ToolPresetUpdateRequest,
   UsageReportRequest,
   UsageBucketListResponse,
+  UsageGapListRequest,
+  UsageGapListResponse,
   UploadFileResponse,
   VoiceModelDownloadRequest,
   VoiceModelImportRequest,
@@ -1034,4 +1036,6 @@ export const api = {
    * cached token bills at the cache rate instead of the input rate.
    */
   usageReport: (request: UsageReportRequest) => invoke<UsageBucketListResponse>('usage_report', { request }),
+  /** The replies behind the page's two "incomplete" warnings, newest first. */
+  usageGaps: (request: UsageGapListRequest) => invoke<UsageGapListResponse>('usage_gaps', { request }),
 }

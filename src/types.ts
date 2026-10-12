@@ -2763,6 +2763,42 @@ export interface UsageReportRequest {
   conversationId: string | null
 }
 
+/** `usage_report`'s filter, without the grouping: gaps are listed one reply at a time. */
+export interface UsageGapListRequest {
+  sinceMs: number | null
+  untilMs: number | null
+  origin: TurnOrigin | null
+  conversationId: string | null
+}
+
+export type UsageGapBillingMode = 'metered' | 'subscription' | 'external'
+
+/** One reply behind the usage page's warnings, and which part of it is missing. */
+export interface UsageGapInfoResponse {
+  id: string
+  created_at: number
+  conversation_id: string
+  /** `null` when the conversation is gone; `''` when it exists untitled. */
+  conversation_title: string | null
+  role: string
+  provider_name: string | null
+  model_id: string | null
+  source_type: string | null
+  billing_mode: UsageGapBillingMode
+  /** Length of the stored reply; 0 is a round that failed before it said anything. */
+  content_chars: number
+  missing_input: boolean
+  missing_output: boolean
+  unpriced_tokens: boolean
+  unpriced_tools: boolean
+}
+
+export interface UsageGapListResponse {
+  /** Every gap in the filter; `items` is the newest of them. */
+  total: number
+  items: UsageGapInfoResponse[]
+}
+
 export type TurnOrigin =
   'desktop' | 'onebot' | 'sub_agent' | 'plan_review' | 'impl_review' | 'claude_code' | 'user_shell'
 
@@ -2789,10 +2825,16 @@ export interface UsageBucketInfoResponse {
   missing_token_usage_messages: number
   /** Replies missing either input or output token usage. */
   incomplete_token_usage_messages: number
+  /** Replies with no prompt count — the ones a hit rate cannot be read off. */
+  missing_input_messages: number
   input_tokens: number
   output_tokens: number
   cache_read_tokens: number
   cache_write_tokens: number
+  /** Prompt tokens over the replies that reported one; the hit rate's denominator. */
+  reported_input_tokens: number
+  /** Cache hits over those same replies; the hit rate's numerator. */
+  reported_input_cache_read_tokens: number
   /** Already-priced uncached prompt cost, computed by the backend. */
   input_cost: DecimalString
   /** Already-priced completion cost, computed by the backend. */

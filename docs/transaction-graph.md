@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：292
+- 事务根（非测试）：293
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -315,6 +315,7 @@
 | `src-tauri/src/commands/tool_system.rs` › `delete_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
+| `src-tauri/src/commands/usage.rs` › `usage_gaps` | sea-read | model_config, usage |
 | `src-tauri/src/commands/usage.rs` › `usage_report` | sea-read | model_config, usage |
 | `src-tauri/src/commands/user_command.rs` › `get_user_command_result` | sea-read | message, message_context_item |
 | `src-tauri/src/commands/user_command.rs` › `persist_result` | sea-write | message_context_item |
