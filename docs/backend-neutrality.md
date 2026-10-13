@@ -79,3 +79,5 @@ SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly`
 | `USAGE_BY_HOUR` | 同上，按本地小时分组 | 同上，格式 `'%Y-%m-%dT%H'` | 同上，格式 `'YYYY-MM-DD"T"HH24'` |
 | `USAGE_BY_KIND` | 同上，按 `role` 分组（回答 / 自动审查 / 压缩 / 标题 / 提取） | 同上 | 同上 |
 | `USAGE_BY_TURN` | 一个会话按 turn 分组；会话是等值条件而非可空过滤，好让 `(conversation_id, turn_id)` 索引可用（有测试钉住查询计划） | 同上 | 同上；确认 PostgreSQL 的计划同样走复合索引 |
+| `USAGE_GAPS` | 同上，按 `id` 分组（一条回复一组），只取缺用量或缺价格快照的候选行；哪条真有缺口由累加器判定 | 同上 | 同上 |
+| `USAGE_GAP_DETAILS` | 与 `USAGE_GAPS` 同一组候选行的定位信息（时间、会话、服务商/模型、`LENGTH(content)`），按时间倒序 | 位置 `?`；`LENGTH` 按字符计 | 占位符改 `$n`；`LENGTH` 在 PostgreSQL 同样按字符计 |

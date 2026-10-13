@@ -1,6 +1,7 @@
 use crate::ServicesExt;
+use meridian_core::agent::pricing::BillingMode as CoreBillingMode;
 use meridian_core::db::sea::ops::usage::{
-    UsageBucket, UsageDimension as CoreUsageDimension, UsageFilter as CoreUsageFilter, report,
+    UsageBucket, UsageDimension as CoreUsageDimension, UsageFilter as CoreUsageFilter, UsageGap, gaps, report,
 };
 use meridian_core::decimal::Decimal;
 use meridian_core::turn::TurnOrigin as CoreTurnOrigin;
@@ -106,10 +107,13 @@ pub struct UsageBucketInfoResponse {
     pub external_messages: i64,
     pub missing_token_usage_messages: i64,
     pub incomplete_token_usage_messages: i64,
+    pub missing_input_messages: i64,
     pub input_tokens: i64,
     pub output_tokens: i64,
     pub cache_read_tokens: i64,
     pub cache_write_tokens: i64,
+    pub reported_input_tokens: i64,
+    pub reported_input_cache_read_tokens: i64,
     pub input_cost: Decimal,
     pub output_cost: Decimal,
     pub cache_cost: Decimal,
@@ -134,10 +138,13 @@ impl From<UsageBucket> for UsageBucketInfoResponse {
             external_messages: bucket.external_messages,
             missing_token_usage_messages: bucket.missing_token_usage_messages,
             incomplete_token_usage_messages: bucket.incomplete_token_usage_messages,
+            missing_input_messages: bucket.missing_input_messages,
             input_tokens: bucket.input_tokens,
             output_tokens: bucket.output_tokens,
             cache_read_tokens: bucket.cache_read_tokens,
             cache_write_tokens: bucket.cache_write_tokens,
+            reported_input_tokens: bucket.reported_input_tokens,
+            reported_input_cache_read_tokens: bucket.reported_input_cache_read_tokens,
             input_cost: bucket.input_cost,
             output_cost: bucket.output_cost,
             cache_cost: bucket.cache_cost,
@@ -180,6 +187,118 @@ pub async fn usage_report(
         .map_err(|e| e.to_string())
 }
 
+/// The same filter as a report, without the dimension: the gaps are listed one
+/// reply at a time.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageGapListRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub since_ms: Option<i64>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub until_ms: Option<i64>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub origin: Option<TurnOrigin>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub conversation_id: Option<String>,
+}
+
+impl UsageGapListRequest {
+    fn into_core(self) -> CoreUsageFilter {
+        CoreUsageFilter {
+            since_ms: self.since_ms,
+            until_ms: self.until_ms,
+            origin: self.origin.map(Into::into),
+            conversation_id: self.conversation_id,
+        }
+    }
+}
+
+/// How many gaps one answer lists. The count is always whole; a page this
+/// long is already more than anyone reads row by row.
+const GAP_LIST_LIMIT: usize = 200;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UsageGapBillingMode {
+    Metered,
+    Subscription,
+    External,
+}
+
+impl From<CoreBillingMode> for UsageGapBillingMode {
+    fn from(mode: CoreBillingMode) -> Self {
+        match mode {
+            CoreBillingMode::Metered => Self::Metered,
+            CoreBillingMode::Subscription => Self::Subscription,
+            CoreBillingMode::External => Self::External,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UsageGapInfoResponse {
+    pub id: String,
+    pub created_at: i64,
+    pub conversation_id: String,
+    pub conversation_title: Option<String>,
+    pub role: String,
+    pub provider_name: Option<String>,
+    pub model_id: Option<String>,
+    pub source_type: Option<String>,
+    pub billing_mode: UsageGapBillingMode,
+    pub content_chars: i64,
+    pub missing_input: bool,
+    pub missing_output: bool,
+    pub unpriced_tokens: bool,
+    pub unpriced_tools: bool,
+}
+
+impl From<UsageGap> for UsageGapInfoResponse {
+    fn from(gap: UsageGap) -> Self {
+        Self {
+            id: gap.id,
+            created_at: gap.created_at,
+            conversation_id: gap.conversation_id,
+            conversation_title: gap.conversation_title,
+            role: gap.role,
+            provider_name: gap.provider_name,
+            model_id: gap.model_id,
+            source_type: gap.source_type,
+            billing_mode: gap.billing_mode.into(),
+            content_chars: gap.content_chars,
+            missing_input: gap.missing_input,
+            missing_output: gap.missing_output,
+            unpriced_tokens: gap.unpriced_tokens,
+            unpriced_tools: gap.unpriced_tools,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UsageGapListResponse {
+    /// Every gap in the filter, of which `items` is the newest
+    /// [`GAP_LIST_LIMIT`].
+    pub total: i64,
+    pub items: Vec<UsageGapInfoResponse>,
+}
+
+/// The replies behind the usage page's two warnings, so that "3 replies are
+/// incomplete" can be followed to the three.
+#[tauri::command]
+pub async fn usage_gaps(app: tauri::AppHandle, request: UsageGapListRequest) -> Result<UsageGapListResponse, String> {
+    let services = app.services();
+    let filter = request.into_core();
+    services
+        .db
+        .read(async |tx| gaps(tx, &filter, GAP_LIST_LIMIT).await)
+        .await
+        .map(|found| UsageGapListResponse {
+            total: found.total,
+            items: found.items.into_iter().map(Into::into).collect(),
+        })
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,10 +314,14 @@ mod tests {
             external_messages: 3,
             missing_token_usage_messages: 4,
             incomplete_token_usage_messages: 5,
+            missing_input_messages: 16,
+            missing_output_messages: 17,
             input_tokens: 6,
             output_tokens: 7,
             cache_read_tokens: 8,
             cache_write_tokens: 9,
+            reported_input_tokens: 18,
+            reported_input_cache_read_tokens: 19,
             input_cost: "0.1".parse().unwrap(),
             output_cost: "0.2".parse().unwrap(),
             cache_cost: "0.3".parse().unwrap(),
@@ -216,7 +339,10 @@ mod tests {
         assert_eq!(value["total_cost"], "1");
         assert_eq!(value["tool_cost"], "0.4");
         assert_eq!(value["unpriced_messages"], 15);
-        assert_eq!(value.as_object().unwrap().len(), 23);
+        assert_eq!(value.as_object().unwrap().len(), 26);
+        assert_eq!(value["missing_input_messages"], 16);
+        assert_eq!(value["reported_input_tokens"], 18);
+        assert_eq!(value["reported_input_cache_read_tokens"], 19);
     }
 
     #[test]

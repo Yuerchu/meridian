@@ -211,6 +211,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   usage_report: {
     args: { request: { dimension: 'total', sinceMs: null, untilMs: null, origin: null, conversationId: null } },
   },
+  usage_gaps: { args: { request: { sinceMs: null, untilMs: null, origin: null, conversationId: null } } },
   list_assistants: {},
   create_assistant: {
     args: { request: { name: 'a', systemPrompt: '', modelId: null, temperature: null, topP: null, maxTokens: null } },

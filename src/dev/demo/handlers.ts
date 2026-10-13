@@ -965,6 +965,8 @@ const providers: Record<string, DemoHandler> = {
     return null
   },
   usage_report: (args, { state }) => usageBuckets(request<{ dimension: UsageDimension }>(args).dimension, state.now),
+  // The fixture's total has nothing unpriced or incomplete, so its list is empty.
+  usage_gaps: () => ({ total: 0, items: [] }),
 }
 
 const assistants: Record<string, DemoHandler> = {
