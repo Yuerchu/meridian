@@ -553,6 +553,21 @@ describe('web search sources', () => {
     expect(screen.getByText('React')).toBeInTheDocument()
   })
 
+  it('renders Vertex URL Context with the fetched page as a source', async () => {
+    render(
+      <ToolCallBlock
+        data={{
+          ...toolCall('url_context', { urls: ['https://example.com/docs'] }, 'completed'),
+          result: JSON.stringify({
+            sources: [{ url: 'https://example.com/docs', title: 'Example documentation', site_name: 'Example' }],
+          }),
+        }}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 1 }) }))
+    expect(screen.getByText('Example')).toBeInTheDocument()
+  })
+
   /**
    * This is a WebView. An anchor left to itself navigates the application to
    * the page — no address bar, no way back — and `target="_blank"` does not

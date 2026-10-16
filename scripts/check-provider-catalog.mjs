@@ -52,8 +52,8 @@ const SCHEMA_SNAPSHOT_REL = 'src-tauri/crates/core/schema.snapshot.sql'
  */
 const TRANSPORT_PROFILES = ['standard', 'chatgpt_codex']
 
-/** credential_kind 的合法取值。后两个由 PR2b 落地,理由同上。 */
-const CREDENTIAL_KINDS = ['api_key', 'codex_cli', 'chatgpt_oauth']
+/** credential_kind 的合法取值。 */
+const CREDENTIAL_KINDS = ['api_key', 'google_vertex_service_account', 'codex_cli', 'chatgpt_oauth']
 
 /**
  * transport_profile 与 credential_kind 的合法搭配。
@@ -64,7 +64,7 @@ const CREDENTIAL_KINDS = ['api_key', 'codex_cli', 'chatgpt_oauth']
  * 端点没有意义。
  */
 const CREDENTIALS_BY_TRANSPORT = {
-  standard: ['api_key'],
+  standard: ['api_key', 'google_vertex_service_account'],
   chatgpt_codex: ['codex_cli', 'chatgpt_oauth'],
 }
 

@@ -4436,6 +4436,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "literal",
+          "value": "gemini_interactions"
+        },
+        {
+          "kind": "literal",
           "value": "gemma_tool"
         }
       ]
@@ -4446,6 +4450,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "api_key"
+        },
+        {
+          "kind": "literal",
+          "value": "google_vertex_service_account"
         },
         {
           "kind": "literal",
@@ -7132,6 +7140,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "literal",
+          "value": "google_search"
+        },
+        {
+          "kind": "literal",
+          "value": "url_context"
+        },
+        {
+          "kind": "literal",
           "value": "x_search"
         },
         {
@@ -9202,6 +9218,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           }
         },
         "gemini_generate_content": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "gemini_interactions": {
           "optional": true,
           "schema": {
             "kind": "string"

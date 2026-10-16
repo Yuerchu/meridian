@@ -2061,8 +2061,9 @@ export type StoredThinkingLevel = Exclude<ThinkingLevel, 'default'>
 /** Provider-specific wire shape used to enable or disable model reasoning. */
 export type ThinkingStyle = 'none' | 'effort_only' | 'budget' | 'adaptive' | 'always_on' | 'toggle_off'
 
-export type ProviderApiFormat = 'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemma_tool'
-export type ProviderCredentialKind = 'api_key' | 'codex_cli' | 'chatgpt_oauth'
+export type ProviderApiFormat =
+  'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemini_interactions' | 'gemma_tool'
+export type ProviderCredentialKind = 'api_key' | 'google_vertex_service_account' | 'codex_cli' | 'chatgpt_oauth'
 export type ProviderTransportProfile = 'standard' | 'chatgpt_codex'
 export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google'
 
@@ -2086,7 +2087,8 @@ export interface ProviderInfoResponse {
    */
   catalog_id: string | null
   /**
-   * Where the credential comes from: `api_key`, or one of the ChatGPT logins.
+   * Where the credential comes from: `api_key`, a Google Vertex Service
+   * Account JSON document, or one of the ChatGPT logins.
    *
    * Not an input to which adapter runs — two ways of signing in to ChatGPT
    * produce the same token on the same wire.
@@ -2524,7 +2526,7 @@ export interface ProviderCapabilitiesInfoResponse {
 export type CapabilityVerbosity = 'low' | 'medium' | 'high'
 
 /** Provider-side tools Meridian knows how to request. This is not an extension point. */
-export type ServerToolKind = 'web_search' | 'x_search' | 'code_execution'
+export type ServerToolKind = 'web_search' | 'google_search' | 'url_context' | 'x_search' | 'code_execution'
 
 /** Closed patch shape persisted as JSON text but carried over IPC as an object. */
 export interface ProviderCapabilityOverrides {
