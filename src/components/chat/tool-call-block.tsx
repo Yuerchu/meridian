@@ -1469,12 +1469,23 @@ function parseWebSearchResult(result: string): WebSearchSource[] | null {
   return null
 }
 
+function providerWebToolTitle(t: ReturnType<typeof useTranslation>['t'], toolName: string) {
+  if (toolName === 'google_search') return t('chat.tool.name.google_search')
+  if (toolName === 'url_context') return t('chat.tool.name.url_context')
+  return t('chat.tool.name.web_search')
+}
+
 function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
 
   const query = useMemo(() => {
     try {
-      return JSON.parse(data.arguments)?.query ?? ''
+      const args = JSON.parse(data.arguments)
+      if (typeof args?.query === 'string') return args.query
+      if (Array.isArray(args?.queries))
+        return args.queries.filter((value: unknown) => typeof value === 'string').join(', ')
+      if (Array.isArray(args?.urls)) return args.urls.filter((value: unknown) => typeof value === 'string').join(', ')
+      return ''
     } catch {
       return ''
     }
@@ -1510,7 +1521,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         >
           <Globe aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
           <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
-            {t('chat.tool.name.web_search')}
+            {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
             <span data-slot="tool-arg" className="text-text-secondary">
@@ -1584,7 +1595,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <ChatToolTrigger>
           <ChatToolStatusIcon />
           <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
-            {t('chat.tool.name.web_search')}
+            {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
             <span
@@ -1623,7 +1634,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <ChatToolTrigger>
           <ChatToolStatusIcon />
           <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
-            {t('chat.tool.name.web_search')}
+            {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
             <span

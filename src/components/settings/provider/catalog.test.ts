@@ -10,6 +10,7 @@ import {
   parseProviderApiFormat,
   requireProviderType,
   usesChatGptLogin,
+  usesVertexServiceAccount,
 } from './catalog'
 
 const entry = (over: Partial<ProviderCatalogEntryInfoResponse>): ProviderCatalogEntryInfoResponse => ({
@@ -115,13 +116,21 @@ describe('sign-in options', () => {
     const provider = (credentialKind: string) => ({ credential_kind: credentialKind }) as ProviderInfoResponse
     expect(usesChatGptLogin(provider('codex_cli'))).toBe(true)
     expect(usesChatGptLogin(provider('api_key'))).toBe(false)
+    expect(usesVertexServiceAccount(provider('google_vertex_service_account'))).toBe(true)
+    expect(usesVertexServiceAccount(provider('api_key'))).toBe(false)
   })
 })
 
 /** Unknown values are a contract error, not a default to fall back to. */
 describe('strict decoders', () => {
-  it('accepts the four dialects and nothing else', () => {
-    for (const format of ['chat_completions', 'responses', 'gemini_generate_content', 'gemma_tool']) {
+  it('accepts the five dialects and nothing else', () => {
+    for (const format of [
+      'chat_completions',
+      'responses',
+      'gemini_generate_content',
+      'gemini_interactions',
+      'gemma_tool',
+    ]) {
       expect(parseProviderApiFormat(format)).toBe(format)
     }
     expect(() => parseProviderApiFormat('grpc')).toThrow(/unknown provider API format/)

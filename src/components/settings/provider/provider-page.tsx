@@ -11,6 +11,7 @@ import {
   Sheet,
   Spinner,
   Switch,
+  TextArea,
   TextField,
   type DataGridColumn,
 } from '@/components/base'
@@ -44,6 +45,7 @@ import {
   URL_PLACEHOLDERS,
   useProviderCatalog,
   usesChatGptLogin,
+  usesVertexServiceAccount,
 } from './catalog'
 import { isPriced } from './pricing'
 import type {
@@ -705,13 +707,18 @@ function ProviderEditor({
   ]
   const googleFormatOptions: { value: ProviderApiFormat; label: string }[] = [
     { value: 'gemini_generate_content', label: t('settings.provider.apiFormatGeminiGenerateContent') },
+    { value: 'gemini_interactions', label: t('settings.provider.apiFormatGeminiInteractions') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatOpenAICompatible') },
   ]
   const formatDescription =
     providerType === 'google'
       ? apiFormat === 'gemini_generate_content'
         ? t('settings.provider.apiFormatGeminiGenerateContentHint')
-        : t('settings.provider.apiFormatOpenAICompatibleHint')
+        : apiFormat === 'gemini_interactions'
+          ? usesVertexServiceAccount(provider)
+            ? t('settings.provider.apiFormatGeminiInteractionsServiceAccountHint')
+            : t('settings.provider.apiFormatGeminiInteractionsHint')
+          : t('settings.provider.apiFormatOpenAICompatibleHint')
       : undefined
 
   return (
@@ -760,10 +767,9 @@ function ProviderEditor({
           )}
         </SettingsRow>
 
-        {/* Only where the vendor lists more than one way in — which is OpenAI
-            today. This is the one control that writes `credential_kind`, and
-            without it a ChatGPT-login row could only be made by editing the
-            database by hand. */}
+        {/* Only where the vendor lists more than one way in. This is the one
+            control that writes `credential_kind`, and without it a login could
+            only be changed by editing the database by hand. */}
         {(rowEntry?.auth.length ?? 0) > 1 && (
           <SettingsRow
             label={t('settings.provider.authMethod')}
@@ -818,7 +824,7 @@ function ProviderEditor({
                 value={apiFormat}
                 options={
                   providerType === 'google'
-                    ? googleFormatOptions
+                    ? googleFormatOptions.filter((option) => formatsFor(activeAuth).includes(option.value))
                     : formatOptions.filter((option) => formatsFor(activeAuth).includes(option.value))
                 }
                 onChange={handleApiFormatChange}
@@ -897,32 +903,57 @@ function ProviderEditor({
         <div data-slot="provider-credentials" className="flex flex-col gap-2">
           <SettingsCard>
             <SettingsRow
-              label={t('settings.provider.apiKey')}
+              label={
+                usesVertexServiceAccount(provider)
+                  ? t('settings.provider.vertexServiceAccountJson')
+                  : t('settings.provider.apiKey')
+              }
               stacked
               className="@sm/pane:flex-col @sm/pane:items-stretch"
             >
               {({ labelId }) => (
                 <div data-slot="provider-api-key-row" className="flex w-full gap-2">
-                  <Input
-                    aria-labelledby={labelId}
-                    type="password"
-                    name={`providerApiKey-${provider.id}`}
-                    autoComplete="off"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    disabled={keyStatus === 'loading' || savingKey}
-                    placeholder={
-                      keyStatus === 'loading'
-                        ? t('settings.provider.apiKeyChecking')
-                        : keyStatus === 'set'
-                          ? t('settings.provider.apiKeyPlaceholderSet')
-                          : t('settings.provider.apiKeyPlaceholder')
-                    }
-                    // The shell is what sits in this row (`className` reaches the
-                    // inner <input>); without `flex-1 min-w-0` the row grew to the
-                    // input's intrinsic width plus the button and ran off a phone.
-                    fieldClassName="min-w-0 flex-1"
-                  />
+                  {usesVertexServiceAccount(provider) ? (
+                    <TextArea
+                      aria-labelledby={labelId}
+                      name={`providerApiKey-${provider.id}`}
+                      autoComplete="off"
+                      rows={6}
+                      resize="vertical"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      disabled={keyStatus === 'loading' || savingKey}
+                      placeholder={
+                        keyStatus === 'loading'
+                          ? t('settings.provider.apiKeyChecking')
+                          : keyStatus === 'set'
+                            ? t('settings.provider.apiKeyPlaceholderSet')
+                            : t('settings.provider.vertexServiceAccountPlaceholder')
+                      }
+                      fieldClassName="min-w-0 flex-1 font-mono"
+                    />
+                  ) : (
+                    <Input
+                      aria-labelledby={labelId}
+                      type="password"
+                      name={`providerApiKey-${provider.id}`}
+                      autoComplete="off"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      disabled={keyStatus === 'loading' || savingKey}
+                      placeholder={
+                        keyStatus === 'loading'
+                          ? t('settings.provider.apiKeyChecking')
+                          : keyStatus === 'set'
+                            ? t('settings.provider.apiKeyPlaceholderSet')
+                            : t('settings.provider.apiKeyPlaceholder')
+                      }
+                      // The shell is what sits in this row (`className` reaches the
+                      // inner <input>); without `flex-1 min-w-0` the row grew to the
+                      // input's intrinsic width plus the button and ran off a phone.
+                      fieldClassName="min-w-0 flex-1"
+                    />
+                  )}
                   <Button
                     leadingIcon={Key}
                     variant="secondary"

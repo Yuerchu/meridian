@@ -185,6 +185,7 @@ export function parseProviderApiFormat(value: string): ProviderApiFormat {
     case 'chat_completions':
     case 'responses':
     case 'gemini_generate_content':
+    case 'gemini_interactions':
     case 'gemma_tool':
       return value
     default:
@@ -194,6 +195,7 @@ export function parseProviderApiFormat(value: string): ProviderApiFormat {
 
 export const URL_PLACEHOLDERS: Record<string, string> = {
   gemini_generate_content: 'https://api.example.com',
+  gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global',
   chat_completions: 'https://api.example.com/v1',
 }
 
@@ -202,12 +204,18 @@ export function usesChatGptLogin(provider: ProviderInfoResponse): boolean {
   return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
 }
 
+/** Whether this row authenticates Vertex with a service-account JSON document. */
+export function usesVertexServiceAccount(provider: ProviderInfoResponse): boolean {
+  return provider.credential_kind === 'google_vertex_service_account'
+}
+
 /**
  * Display names for the closed sign-in-kind set. Adding one requires adding
  * its backend resolver and its UI label in the same change.
  */
 export const AUTH_METHOD_LABELS: Record<string, string> = {
   api_key: 'settings.provider.authMethodApiKey',
+  google_vertex_service_account: 'settings.provider.authMethodGoogleVertexServiceAccount',
   codex_cli: 'settings.provider.authMethodCodexCli',
   chatgpt_oauth: 'settings.provider.authMethodChatGptOauth',
 }

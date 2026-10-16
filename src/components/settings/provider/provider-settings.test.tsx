@@ -97,11 +97,19 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
         id: 'api_key',
         credential_kind: 'api_key',
         transport_profile: 'standard',
-        api_formats: ['gemini_generate_content', 'chat_completions'],
+        api_formats: ['gemini_generate_content', 'gemini_interactions', 'chat_completions'],
         default_base_url: {
           gemini_generate_content: 'https://generativelanguage.googleapis.com',
+          gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global',
           chat_completions: 'https://generativelanguage.googleapis.com/v1beta/openai',
         },
+      },
+      {
+        id: 'vertex_service_account',
+        credential_kind: 'google_vertex_service_account',
+        transport_profile: 'standard',
+        api_formats: ['gemini_interactions'],
+        default_base_url: { gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global' },
       },
     ],
     models: [],
@@ -1059,6 +1067,43 @@ describe('ProviderSettings list/detail navigation', () => {
     // address carries strictly more of what the hint was for: whether this
     // dialect wants a path suffix.
     expect(screen.getByPlaceholderText('https://generativelanguage.googleapis.com')).toBeInTheDocument()
+  })
+
+  it('explains the Vertex Interactions express-mode fields', async () => {
+    const user = userEvent.setup()
+    mockApi.listProviders.mockResolvedValue([
+      {
+        ...makeProvider('google-1', 'Vertex Gemini'),
+        provider_type: 'google',
+        base_url: 'https://aiplatform.googleapis.com/v1beta1/locations/global',
+        api_format: 'gemini_interactions',
+      },
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user, 'Vertex Gemini')
+    expect(screen.getByText(i18n.t('settings.provider.apiFormatGeminiInteractionsHint'))).toBeInTheDocument()
+    expect(
+      screen.getByPlaceholderText('https://aiplatform.googleapis.com/v1beta1/locations/global'),
+    ).toBeInTheDocument()
+  })
+
+  it('renders a multiline credential editor for Vertex Service Accounts', async () => {
+    const user = userEvent.setup()
+    mockApi.listProviders.mockResolvedValue([
+      {
+        ...makeProvider('google-1', 'Vertex Service Account'),
+        provider_type: 'google',
+        credential_kind: 'google_vertex_service_account',
+        base_url: 'https://aiplatform.googleapis.com/v1beta1/locations/global',
+        api_format: 'gemini_interactions',
+      },
+    ])
+    render(<ProviderSettings />)
+    await openFirstProvider(user, 'Vertex Service Account')
+    const json = screen.getByLabelText(i18n.t('settings.provider.vertexServiceAccountJson'))
+    expect(json.tagName).toBe('TEXTAREA')
+    expect(json).toHaveAttribute('rows', '6')
+    expect(json).toHaveAttribute('placeholder', i18n.t('settings.provider.vertexServiceAccountPlaceholder'))
   })
 
   /**

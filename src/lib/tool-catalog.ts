@@ -68,7 +68,7 @@ export type TwinProperty =
   'ident' | 'fold' | 'reading' | 'readOnly' | 'interactive' | 'ask' | 'diff' | 'touches' | 'block'
 
 export interface ToolUi {
-  side: 'native' | 'hosted'
+  side: 'native' | 'hosted' | 'provider'
   /** The group of near tools this one belongs to; alone when absent. */
   twin?: string
   args: ToolArgsView
@@ -316,6 +316,25 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     result: 'own-block',
     block: 'web-search',
     differs: { ident: 'the block draws the query itself' },
+  },
+  // Vertex Gemini Interactions runs these on Google's side. They share the
+  // source-bearing web-search block, but remain distinct names in the
+  // transcript so the card says which provider capability ran.
+  google_search: {
+    side: 'provider',
+    twin: 'web-search',
+    args: 'own-block',
+    result: 'own-block',
+    block: 'web-search',
+    params: ['queries', 'search_type'],
+  },
+  url_context: {
+    side: 'provider',
+    twin: 'web-search',
+    args: 'own-block',
+    result: 'own-block',
+    block: 'web-search',
+    params: ['urls'],
   },
   WebSearch: {
     side: 'hosted',
