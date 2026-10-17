@@ -37,6 +37,10 @@ beforeEach(async () => {
   vi.clearAllMocks()
   await i18n.changeLanguage('en')
   mockApi.getPreference.mockResolvedValue({ key: 'auxiliary.model', value: null })
+  // The component chains `.catch` on the save: a mock returning `undefined`
+  // is an unhandled error the suite reports as a failure even when the
+  // assertion passes.
+  mockApi.setPreference.mockResolvedValue(null)
 })
 
 it('saves a chosen pair as a provider:model preference', async () => {
