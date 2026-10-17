@@ -20,6 +20,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
+import { AuxiliaryModelSettings } from './auxiliary-model-settings'
 import type {
   AssistantInfoResponse,
   AssistantUpdateRequest,
@@ -685,6 +686,7 @@ export function AssistantSettings() {
           same question — which model runs this — asked about a different kind
           of agent. */}
       <SubAgentSettings providers={providers} />
+      <AuxiliaryModelSettings providers={providers} />
       {confirmDialog}
     </SettingsPane>
   )

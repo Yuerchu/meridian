@@ -318,6 +318,8 @@ mod tests {
             "autoreview.model",
             "autoreview.allow_rules",
             "autoreview.enabled",
+            // Where every later summary, and so the whole transcript, is sent.
+            "auxiliary.model",
             "sandbox.enabled",
         ] {
             let args = serde_json::json!({ "request": { "key": key } });

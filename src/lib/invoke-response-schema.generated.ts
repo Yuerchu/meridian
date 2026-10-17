@@ -11116,6 +11116,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "ref",
       "id": 3
     },
+    "auxiliary.model": {
+      "kind": "ref",
+      "id": 3
+    },
     "codex.client_version": {
       "kind": "ref",
       "id": 2
