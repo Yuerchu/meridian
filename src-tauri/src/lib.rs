@@ -141,6 +141,19 @@ pub fn run() {
             // makes blocking here safe; core itself never blocks on a future.
             let services = tauri::async_runtime::block_on(bootstrap::bootstrap(data_dir, events))
                 .map_err(|error| std::io::Error::other(format!("bootstrap failed: {error}")))?;
+
+            // Registered immediately, before anything else. On Android the
+            // WebView is already loading on its own thread and can fire IPC at
+            // any moment — each command reaches Services through
+            // `app.state::<Services>()`, and Tauri panics if the state has not
+            // been `manage()`d yet. That panic crosses the JNI boundary where
+            // unwinding is not possible, turning it into a process-level
+            // SIGABRT. The bootstrap above is the only thing that has to
+            // finish first; everything below (configs, turn_starter, notices)
+            // is either not needed by the initial IPC calls or is guarded by
+            // its own OnceLock / async spawn.
+            app.manage(services.clone());
+
             // The stored configs are read on the same crossing: four awaits
             // inside the one `block_on`, not four crossings.
             #[cfg(not(target_os = "android"))]
@@ -161,7 +174,6 @@ pub fn run() {
             let _ = services
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
-            app.manage(services.clone());
             // Before anything that may have something to say, which is the
             // input method's start below.
             app.manage(system_notice::SystemNotices::to_window(app.handle().clone()));
