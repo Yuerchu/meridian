@@ -24,6 +24,19 @@ use meridian_core::tools;
 use meridian_core::turn::{TurnLease, TurnOrigin};
 use meridian_core::util::{now_ms, take_bytes_at_char_boundary};
 
+/// Where a conversation's title request goes, and what its ledger row names.
+///
+/// `model` is what the request asks for and `ledger_model` the configured id the
+/// row records — the same split the turn itself keeps.
+struct TitleWriter<'a> {
+    provider: &'a dyn provider::ChatProvider,
+    max_tokens: Option<i32>,
+    model: String,
+    provider_id: &'a str,
+    provider_name: &'a str,
+    ledger_model: &'a str,
+}
+
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
 /// Held for the whole turn rather than assembled at the switch, because by then
@@ -2066,18 +2079,67 @@ async fn chat_inner(
             titled_question,
             take_bytes_at_char_boundary(&last_assistant_text, 300)
         ))];
-        let title_params = ChatParams {
-            // Resolved with the turn (`agent::resolve_max_tokens`): an adapter that
-            // requires an output ceiling is not handed a request without one.
-            max_tokens: params.max_tokens,
-            model: params.model,
-            temperature: Some(0.3),
-            ..Default::default()
+        // Who writes it: the auxiliary model when one is chosen
+        // (`agent::auxiliary`), else the provider this turn already used.
+        // Chosen and unusable skips the title rather than quietly naming the
+        // conversation with the model the choice was made to avoid.
+        let auxiliary = match meridian_core::agent::auxiliary::configured(
+            secrets,
+            &services.db,
+            meridian_core::provider::codex_metadata::CodexRequestKind::Background,
+        )
+        .await
+        .and_then(|found| {
+            found
+                .map(|auxiliary| {
+                    provider::registry::create_provider(auxiliary.resolved.wire()).map(|built| (auxiliary, built))
+                })
+                .transpose()
+        }) {
+            Ok(found) => Some(found),
+            Err(error) => {
+                tracing::warn!(error = %error, "no title: the auxiliary model cannot be used");
+                None
+            }
         };
+        let writer = auxiliary.as_ref().map(|found| match found {
+            Some((auxiliary, built)) => TitleWriter {
+                provider: built.as_ref(),
+                max_tokens: auxiliary.turn.params.max_tokens,
+                model: auxiliary.turn.params.model.clone(),
+                provider_id: &auxiliary.resolved.provider_id,
+                provider_name: &auxiliary.resolved.provider_name,
+                ledger_model: &auxiliary.resolved.model,
+            },
+            None => TitleWriter {
+                provider: provider.as_ref(),
+                // Resolved with the turn (`agent::resolve_max_tokens`): an adapter that
+                // requires an output ceiling is not handed a request without one.
+                max_tokens: params.max_tokens,
+                model: params.model.clone(),
+                provider_id: &resolved.provider_id,
+                provider_name: &resolved.provider_name,
+                ledger_model: &model,
+            },
+        });
         // `chat_with_tools` with an empty list, for the usage `chat` throws
         // away. Naming a conversation is small and constant, but it happens on
         // every first exchange and used to appear on no bill at all.
-        if let Ok(answer) = provider.chat_with_tools(title_messages, Vec::new(), title_params).await {
+        if let Some(writer) = writer
+            && let Ok(answer) = writer
+                .provider
+                .chat_with_tools(
+                    title_messages,
+                    Vec::new(),
+                    ChatParams {
+                        max_tokens: writer.max_tokens,
+                        model: writer.model.clone(),
+                        temperature: Some(0.3),
+                        ..Default::default()
+                    },
+                )
+                .await
+        {
             let title = answer.text.trim().trim_matches('"').trim_matches('\'').to_string();
             let title_usage = answer.usage;
             if !title.is_empty() {
@@ -2096,9 +2158,9 @@ async fn chat_inner(
                                 message_id: &assistant_msg_id,
                                 conversation_id: &conversation_id,
                                 turn_id: None,
-                                provider_id: Some(&resolved.provider_id),
-                                provider_name: Some(&resolved.provider_name),
-                                model_id: Some(&model),
+                                provider_id: Some(writer.provider_id),
+                                provider_name: Some(writer.provider_name),
+                                model_id: Some(writer.ledger_model),
                                 usage: db::models::message::MessageUsage {
                                     input_tokens: usage.prompt_tokens,
                                     output_tokens: usage.completion_tokens,

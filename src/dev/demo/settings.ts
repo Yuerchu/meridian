@@ -896,6 +896,7 @@ export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: Pre
     'autoreview.deny_rules': '禁止删除项目外的文件。',
     'autoreview.environment': null,
     'approvals.ttl_minutes': 30,
+    'auxiliary.model': { provider_id: PROVIDER.anthropic, model_id: 'claude-haiku-5' },
     'sub_agent.explore.model': { provider_id: PROVIDER.anthropic, model_id: 'claude-haiku-5' },
     'sub_agent.agent.model': null,
     'codex.client_version': null,

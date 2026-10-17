@@ -428,6 +428,7 @@ export type PreferenceKey =
   | 'autoreview.deny_rules'
   | 'autoreview.environment'
   | 'approvals.ttl_minutes'
+  | 'auxiliary.model'
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
   | 'codex.client_version'
@@ -465,6 +466,7 @@ export interface PreferenceInfoValueByKey {
   'autoreview.deny_rules': string | null
   'autoreview.environment': string | null
   'approvals.ttl_minutes': number | null
+  'auxiliary.model': PreferenceModelSelectionInfoResponse | null
   'sub_agent.explore.model': PreferenceModelSelectionInfoResponse | null
   'sub_agent.agent.model': PreferenceModelSelectionInfoResponse | null
   /**
@@ -497,6 +499,7 @@ export interface PreferenceUpdateValueByKey {
   'autoreview.deny_rules': string
   'autoreview.environment': string
   'approvals.ttl_minutes': number
+  'auxiliary.model': PreferenceModelSelectionRequest | null
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null

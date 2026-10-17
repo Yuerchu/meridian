@@ -64,6 +64,10 @@ pub enum PreferenceKey {
     AutoReviewEnvironment,
     #[serde(rename = "approvals.ttl_minutes")]
     ApprovalsTtlMinutes,
+    /// `agent::auxiliary`: the model compaction and titles use instead of the
+    /// conversation's own.
+    #[serde(rename = "auxiliary.model")]
+    AuxiliaryModel,
     #[serde(rename = "sub_agent.explore.model")]
     SubAgentExploreModel,
     #[serde(rename = "sub_agent.agent.model")]
@@ -89,6 +93,7 @@ impl PreferenceKey {
             Self::AutoReviewDenyRules => "autoreview.deny_rules",
             Self::AutoReviewEnvironment => "autoreview.environment",
             Self::ApprovalsTtlMinutes => "approvals.ttl_minutes",
+            Self::AuxiliaryModel => "auxiliary.model",
             Self::SubAgentExploreModel => "sub_agent.explore.model",
             Self::SubAgentAgentModel => "sub_agent.agent.model",
             Self::CodexClientVersion => "codex.client_version",
@@ -108,6 +113,9 @@ impl PreferenceKey {
                 | Self::AutoReviewAllowRules
                 | Self::AutoReviewDenyRules
                 | Self::AutoReviewEnvironment
+                // Pointing it at another provider sends every later summary
+                // there — the whole transcript — so it is set on the machine.
+                | Self::AuxiliaryModel
         )
     }
 }
@@ -215,6 +223,10 @@ pub enum PreferenceUpdateRequest {
     AutoReviewEnvironment { value: String },
     #[serde(rename = "approvals.ttl_minutes")]
     ApprovalsTtlMinutes { value: u64 },
+    #[serde(rename = "auxiliary.model")]
+    AuxiliaryModel {
+        value: RequiredNullable<PreferenceModelSelectionRequest>,
+    },
     #[serde(rename = "sub_agent.explore.model")]
     SubAgentExploreModel {
         value: RequiredNullable<PreferenceModelSelectionRequest>,
@@ -261,6 +273,8 @@ pub enum PreferenceInfoResponse {
     AutoReviewEnvironment(Option<String>),
     #[serde(rename = "approvals.ttl_minutes")]
     ApprovalsTtlMinutes(Option<u64>),
+    #[serde(rename = "auxiliary.model")]
+    AuxiliaryModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "sub_agent.explore.model")]
     SubAgentExploreModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "sub_agent.agent.model")]
@@ -383,6 +397,7 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         PreferenceKey::AutoReviewDenyRules => PreferenceInfoResponse::AutoReviewDenyRules(raw),
         PreferenceKey::AutoReviewEnvironment => PreferenceInfoResponse::AutoReviewEnvironment(raw),
         PreferenceKey::ApprovalsTtlMinutes => PreferenceInfoResponse::ApprovalsTtlMinutes(parse_ttl(raw)?),
+        PreferenceKey::AuxiliaryModel => PreferenceInfoResponse::AuxiliaryModel(parse_model_selection(key, raw)?),
         PreferenceKey::SubAgentExploreModel => {
             PreferenceInfoResponse::SubAgentExploreModel(parse_model_selection(key, raw)?)
         }
@@ -436,6 +451,10 @@ impl PreferenceUpdateRequest {
                 validate_ttl(value)?;
                 (PreferenceKey::ApprovalsTtlMinutes, Some(value.to_string()))
             }
+            Self::AuxiliaryModel { value } => (
+                PreferenceKey::AuxiliaryModel,
+                encode_model_selection(PreferenceKey::AuxiliaryModel, value.0)?,
+            ),
             Self::SubAgentExploreModel { value } => (
                 PreferenceKey::SubAgentExploreModel,
                 encode_model_selection(PreferenceKey::SubAgentExploreModel, value.0)?,
@@ -527,6 +546,7 @@ mod tests {
         for key in [
             "voice.download_url",
             "autoreview.model",
+            "auxiliary.model",
             "sub_agent.explore.model",
             "sub_agent.agent.model",
         ] {
