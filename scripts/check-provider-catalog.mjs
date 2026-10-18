@@ -50,10 +50,10 @@ const SCHEMA_SNAPSHOT_REL = 'src-tauri/crates/core/schema.snapshot.sql'
  * 认它,好让目录能提前描述它——但只要还没有 auth option 用它,这个名字就只是
  * 一个保留字。
  */
-const TRANSPORT_PROFILES = ['standard', 'chatgpt_codex']
+const TRANSPORT_PROFILES = ['standard', 'chatgpt_codex', 'local_native']
 
 /** credential_kind 的合法取值。 */
-const CREDENTIAL_KINDS = ['api_key', 'google_vertex_service_account', 'codex_cli', 'chatgpt_oauth']
+const CREDENTIAL_KINDS = ['api_key', 'google_vertex_service_account', 'codex_cli', 'chatgpt_oauth', 'none']
 
 /**
  * transport_profile 与 credential_kind 的合法搭配。
@@ -66,6 +66,7 @@ const CREDENTIAL_KINDS = ['api_key', 'google_vertex_service_account', 'codex_cli
 const CREDENTIALS_BY_TRANSPORT = {
   standard: ['api_key', 'google_vertex_service_account'],
   chatgpt_codex: ['codex_cli', 'chatgpt_oauth'],
+  local_native: ['none'],
 }
 
 function read(rel) {

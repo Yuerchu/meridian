@@ -3554,6 +3554,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "litert-lm"
+version = "0.1.0"
+dependencies = [
+ "libloading 0.8.9",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "lock_api"
 version = "0.4.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3747,6 +3759,7 @@ version = "0.3.0"
 dependencies = [
  "age",
  "anyhow",
+ "async-stream",
  "async-trait",
  "base64 0.22.1",
  "bigdecimal",
@@ -3771,6 +3784,7 @@ dependencies = [
  "keyring",
  "libc",
  "libsqlite3-sys",
+ "litert-lm",
  "mime_guess",
  "ndk-context",
  "os_info",
