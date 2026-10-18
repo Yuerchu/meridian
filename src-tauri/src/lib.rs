@@ -42,6 +42,32 @@ use tauri::{Emitter, Manager};
 /// never know about.
 pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
+/// The value `manage()` will hold, published the moment bootstrap returns.
+///
+/// On Android the WebView loads on its own thread and can fire IPC before
+/// `setup` has finished — the activity creates it, not the setup callback.
+/// `app.state::<Services>()` panics until `manage()` has run, and that panic
+/// crosses the JNI boundary, where unwinding is impossible: the process dies
+/// with SIGABRT before the window ever draws. Moving `manage()` up (#138) only
+/// shrank the window; this closes it. A command that arrives first waits here
+/// for bootstrap instead of panicking, and gets the real service a moment later.
+static SERVICES_SLOT: std::sync::Mutex<Option<Services>> = std::sync::Mutex::new(None);
+static SERVICES_READY: std::sync::Condvar = std::sync::Condvar::new();
+
+/// How long an IPC that beat `setup` will wait for bootstrap before giving up.
+///
+/// Bootstrap opens the database and builds the registries; it does not call
+/// out to the network, so a wait this long means it is not coming back rather
+/// than that it is slow.
+const SERVICES_WAIT: std::time::Duration = std::time::Duration::from_secs(30);
+
+fn publish_services(services: Services) {
+    if let Ok(mut slot) = SERVICES_SLOT.lock() {
+        *slot = Some(services);
+        SERVICES_READY.notify_all();
+    }
+}
+
 /// Reaching the services from a handle.
 ///
 /// The handle is a service locator and nothing else here, so this is the one
@@ -53,7 +79,26 @@ pub(crate) trait ServicesExt {
 
 impl ServicesExt for tauri::AppHandle {
     fn services(&self) -> Services {
-        self.state::<Services>().inner().clone()
+        if let Some(services) = self.try_state::<Services>() {
+            return services.inner().clone();
+        }
+        // Setup has not reached `manage()` yet. See `SERVICES_SLOT`.
+        let deadline = std::time::Instant::now() + SERVICES_WAIT;
+        let mut slot = SERVICES_SLOT.lock().unwrap_or_else(|e| e.into_inner());
+        loop {
+            if let Some(services) = slot.as_ref() {
+                return services.clone();
+            }
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            if remaining.is_zero() {
+                drop(slot);
+                panic!("Services were still not registered {SERVICES_WAIT:?} after an IPC asked for them");
+            }
+            slot = SERVICES_READY
+                .wait_timeout(slot, remaining)
+                .unwrap_or_else(|e| e.into_inner())
+                .0;
+        }
     }
 }
 
@@ -142,17 +187,18 @@ pub fn run() {
             let services = tauri::async_runtime::block_on(bootstrap::bootstrap(data_dir, events))
                 .map_err(|error| std::io::Error::other(format!("bootstrap failed: {error}")))?;
 
-            // Registered immediately, before anything else. On Android the
-            // WebView is already loading on its own thread and can fire IPC at
-            // any moment — each command reaches Services through
-            // `app.state::<Services>()`, and Tauri panics if the state has not
-            // been `manage()`d yet. That panic crosses the JNI boundary where
-            // unwinding is not possible, turning it into a process-level
-            // SIGABRT. The bootstrap above is the only thing that has to
-            // finish first; everything below (configs, turn_starter, notices)
-            // is either not needed by the initial IPC calls or is guarded by
-            // its own OnceLock / async spawn.
+            // Registered immediately, before anything else, and published
+            // first: an IPC that arrived during the bootstrap above is parked
+            // on `SERVICES_SLOT` and wakes here. `manage()` alone would leave
+            // it panicking — see the note on the slot.
+            publish_services(services.clone());
             app.manage(services.clone());
+            // The front end asks for its notices on mount, before anything a
+            // person does — the same early IPC that reaches Services reaches
+            // this, and a missing state is the same SIGABRT. It only needs the
+            // handle, so it is registered right here rather than below the
+            // config reads.
+            app.manage(system_notice::SystemNotices::to_window(app.handle().clone()));
 
             // The stored configs are read on the same crossing: four awaits
             // inside the one `block_on`, not four crossings.
@@ -174,9 +220,6 @@ pub fn run() {
             let _ = services
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
-            // Before anything that may have something to say, which is the
-            // input method's start below.
-            app.manage(system_notice::SystemNotices::to_window(app.handle().clone()));
 
             {
                 let services = services.clone();
