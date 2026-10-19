@@ -159,6 +159,9 @@ export function foldKindOf(tool: ToolCallDisplay): FoldKind | null {
   // the command is still running. Folded into "ran N commands" it would read
   // as done — the one thing it is not.
   if (startsInBackground(tool)) return null
+  // A read that came back with a picture is not "viewed N files": the picture
+  // is the thing to look at, and a badge would keep it out of the DOM.
+  if (tool.media !== undefined && tool.media.length > 0) return null
   return toolUi(tool.tool_name)?.fold ?? null
 }
 

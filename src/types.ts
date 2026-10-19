@@ -1328,6 +1328,8 @@ export interface ToolCallDisplay {
    *  Preferred over the diff derived from the arguments when present: it
    *  carries the file's pre-overwrite text and each hunk's line. */
   diffs?: ToolCallDiffInfoResponse[]
+  /** Files the tool returned beside `result`. Absent when there were none. */
+  media?: ToolMediaResponse[]
 }
 
 /** One hunk of the diff a hosted agent reported. `old_text` is null for a
@@ -1830,6 +1832,13 @@ export interface ConversationExportRequest {
   outputPath: string | null
 }
 
+export interface MediaFileExportRequest {
+  conversationId: string
+  /** A `file://` URI from a tool row's media of this conversation. */
+  uri: string
+  outputPath: string
+}
+
 export interface ConversationExportResponse {
   path: string
 }
@@ -1998,6 +2007,9 @@ export interface MessageInfoResponse {
   /** Frozen context bound to this branch. The raw body is fetched separately
    *  and never travels in an ordinary transcript snapshot. */
   context_items: MessageContextInfoResponse[]
+  /** Pictures and other files a tool returned beside `content`, on a tool
+   *  row; empty everywhere else. `content` is then only the text part. */
+  tool_media: ToolMediaResponse[]
 }
 
 /** A transcript row after the front end has derived its renderable blocks. */
@@ -2984,6 +2996,16 @@ export interface LogSettingsResponse {
 
 export type ToolOutcome = 'success' | 'denied' | 'error'
 
+/** A file a tool returned beside its text result. `url` is a `file://` URI
+ *  inside the conversation's attachment directory; the model read `result`,
+ *  never this. */
+export interface ToolMediaResponse {
+  kind: 'image' | 'video' | 'audio' | 'file'
+  url: string
+  mime_type: string
+  name: string | null
+}
+
 export type ChatStopReason =
   'end_turn' | 'error' | 'loop_detected' | 'cancelled' | 'max_tokens' | 'max_turn_requests' | 'refusal'
 
@@ -3024,6 +3046,7 @@ export type ChatStreamEvent =
       call_id: string
       result: string
       outcome: ToolOutcome
+      media: ToolMediaResponse[]
       message_id: string
       conversation_id: string
     }

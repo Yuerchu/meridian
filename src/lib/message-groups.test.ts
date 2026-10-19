@@ -35,6 +35,7 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
     auto_review: null,
     tool_diffs: null,
     context_items: [],
+    tool_media: [],
     ...over,
   }
 }
@@ -495,5 +496,11 @@ describe('foldKindOf — a command still running in the background', () => {
   it('does not fold one started in the background, ours or Claude Code’s', () => {
     expect(foldKindOf(call('run_command', { command: 'npm run dev', run_in_background: true }))).toBeNull()
     expect(foldKindOf(call('Bash', { command: 'npm run dev', run_in_background: true }))).toBeNull()
+  })
+
+  it('does not fold a read that returned media', () => {
+    const media = [{ kind: 'image' as const, url: 'file:///data/files/c/a.png', mime_type: 'image/png', name: null }]
+    expect(foldKindOf({ ...call('read_file', { path: 'a.png' }), media })).toBeNull()
+    expect(foldKindOf({ ...call('read_file', { path: 'a.png' }), media: [] })).toBe('files')
   })
 })

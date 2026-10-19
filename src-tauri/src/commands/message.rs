@@ -416,6 +416,10 @@ pub struct MessageInfoResponse {
     /// Descriptors only. Raw file snapshots and command output stay behind the
     /// provider/preview boundary.
     pub context_items: Vec<MessageContextInfoResponse>,
+    /// Pictures and other files a tool returned beside `content`, on a tool
+    /// row; empty everywhere else. `content` is then only the text — the
+    /// stored envelope never crosses the boundary as a string.
+    pub tool_media: Vec<meridian_core::agent::tool_media::ToolMediaResponse>,
 }
 
 /// One hunk of the diff a hosted agent reported. `old_text` is null for a file
@@ -556,10 +560,14 @@ impl TryFrom<message_entity::Model> for MessageInfoResponse {
         // Context rows carry frozen memory and other injected background. The
         // transcript needs their ids to preserve the branch shape, not their
         // private prompt body.
-        let content = if role == db::models::message::MessageRole::Context {
-            String::new()
-        } else {
-            row.content
+        let (content, tool_media) = match role {
+            db::models::message::MessageRole::Context => (String::new(), Vec::new()),
+            db::models::message::MessageRole::Tool => {
+                let view = meridian_core::agent::tool_media::view(&row.content, row.schema_version)
+                    .map_err(|error| format!("tool message {}: {error}", row.id))?;
+                (view.text, view.media)
+            }
+            _ => (row.content, Vec::new()),
         };
         Ok(Self {
             id: row.id,
@@ -589,6 +597,7 @@ impl TryFrom<message_entity::Model> for MessageInfoResponse {
             auto_review,
             tool_diffs,
             context_items: Vec::new(),
+            tool_media,
         })
     }
 }
@@ -706,6 +715,34 @@ pub struct ConversationExportRequest {
     pub format: ConversationExportFormat,
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     pub output_path: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaFileExportRequest {
+    pub conversation_id: String,
+    /// A `file://` URI from a tool row's media of this conversation.
+    pub uri: String,
+    pub output_path: String,
+}
+
+/// Copy a file a tool returned out of the conversation's attachment directory
+/// to where the user chose. The source is held to that directory exactly like
+/// a tool row is: a URI naming anything else is refused, not copied.
+#[tauri::command]
+pub async fn export_media_file(app: tauri::AppHandle, request: MediaFileExportRequest) -> Result<(), String> {
+    let MediaFileExportRequest {
+        conversation_id,
+        uri,
+        output_path,
+    } = request;
+    let files_root = meridian_core::files::files_dir(&app.services().paths.data_dir);
+    let source = meridian_core::files::resolve_conversation_file(&uri, &files_root, &conversation_id)
+        .ok_or("the file is not one of this conversation's attachments")?;
+    tokio::fs::copy(&source, &output_path)
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("could not save the file: {e}"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -1665,7 +1702,12 @@ pub async fn export_conversation(
                     }
                 }
                 db::models::message::MessageRole::Tool => {
-                    obj["content"] = serde_json::json!(m.content);
+                    // The text and a count: a training file is no place for
+                    // a path into this machine's attachment directory.
+                    obj["content"] = serde_json::json!(meridian_core::agent::tool_media::result_text(
+                        &m.content,
+                        m.schema_version
+                    ));
                     let cid = m
                         .tool_call_id
                         .as_ref()

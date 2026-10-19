@@ -1691,7 +1691,12 @@ async fn chat_inner(
     )
     .await?;
     let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
-    resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref())?;
+    resolve_file_uris_in_messages(
+        &mut chat_messages,
+        files_root.as_deref(),
+        &conversation_id,
+        supports_images,
+    )?;
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
@@ -1970,6 +1975,7 @@ async fn chat_inner(
             approval_rule: engine::ApprovalRule::ByReach { accept_edits },
             withheld: engine::WithheldWording::Explained,
             files_root,
+            supports_images,
             stickers: Some(engine::StickerRendering {
                 db: services.db.clone(),
                 data_dir: services.paths.data_dir.clone(),

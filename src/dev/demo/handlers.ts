@@ -145,6 +145,7 @@ function settleFixtureApproval(backend: DemoBackend, approvalId: string, content
       call_id: pending.provider_call_id,
       result: content,
       outcome: denied ? 'denied' : 'success',
+      media: [],
       message_id: pending.assistant_message_id,
       conversation_id: conversationId,
     })

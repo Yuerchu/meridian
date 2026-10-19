@@ -483,6 +483,7 @@ mod tests {
             // a second, worse spelling of it.
             "upload_file_bytes",
             "export_conversation",
+            "export_media_file",
             "export_logs",
             "import_emojis",
             "voice_import_model",

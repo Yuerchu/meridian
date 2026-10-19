@@ -82,6 +82,7 @@ import { ChatSource, ChatSources } from '@/components/base'
 
 import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
+import { MediaResult } from './media-result'
 import { CopyButton } from '@/components/ui/copy-button'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { ApprovalEscalation, ApprovalRetryKind, AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
@@ -2531,9 +2532,12 @@ export function ToolCallBlock({
   // own and ignore this one. An answer that was refused opens it too: the
   // reason is in the footer, and a shut panel is a reason nobody reads.
   const answerFailed = data.answer_error !== undefined
+  // A picture the tool made is what the call was for; shut away behind its
+  // label, nobody would see it arrive. Open by default, closable as any.
+  const media = data.media ?? []
   const expansion = usePanelExpansion(
     data.call_id,
-    !isCompleted || answerFailed,
+    !isCompleted || answerFailed || media.length > 0,
     data.status === 'pending' || answerFailed,
   )
   const presentation = useContext(ChatToolPresentationContext)
@@ -2775,6 +2779,13 @@ export function ToolCallBlock({
               ) : (
                 <ToolResult toolName={data.tool_name} result={output.body} args={parsedArgs} callId={data.call_id} />
               )}
+            </div>
+          )}
+          {/* Beside the text, whatever view drew it: media never travels
+              inside `result`, so no result view could have drawn it. */}
+          {media.length > 0 && (
+            <div data-slot="tool-media" className="border-t border-border-button-default/50">
+              <MediaResult media={media} />
             </div>
           )}
         </ChatToolPanelBody>

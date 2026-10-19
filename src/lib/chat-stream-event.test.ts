@@ -42,6 +42,7 @@ const validEvents: ChatStreamEvent[] = [
     call_id: 'call-1',
     result: 'contents',
     outcome: 'success',
+    media: [],
     message_id: 'm1',
     conversation_id: 'c1',
   },
@@ -392,5 +393,40 @@ describe('tool_call_diff', () => {
     expect(() =>
       parseChatStreamEvent({ ...base, diffs: [{ path: 'a', old_text: null, new_text: 'b', line: 1, extra: 1 }] }),
     ).toThrow()
+  })
+})
+
+describe('tool_result', () => {
+  const base = {
+    type: 'tool_result',
+    call_id: 'call-1',
+    result: 'drew it',
+    outcome: 'success',
+    message_id: 'm1',
+    conversation_id: 'c1',
+  }
+  const image = { kind: 'image', url: 'file:///C:/data/files/c1/a.png', mime_type: 'image/png', name: null }
+
+  it('requires media, even when there is none', () => {
+    expect(() => parseChatStreamEvent(base)).toThrow('tool_result event is missing required field: media')
+  })
+
+  it('parses a result carrying media', () => {
+    const event = { ...base, media: [image, { ...image, kind: 'video', mime_type: 'video/mp4', name: 'clip.mp4' }] }
+    expect(parseChatStreamEvent(event)).toEqual(event)
+  })
+
+  it('rejects a media item with an unknown kind, a missing nullable key, an extra key or a non-file url', () => {
+    expect(() => parseChatStreamEvent({ ...base, media: [{ ...image, kind: 'model' }] })).toThrow(
+      'tool_result event.media[0].kind must be one of',
+    )
+    const { name: _name, ...nameless } = image
+    expect(() => parseChatStreamEvent({ ...base, media: [nameless] })).toThrow(
+      'tool_result event.media[0] is missing required field: name',
+    )
+    expect(() => parseChatStreamEvent({ ...base, media: [{ ...image, size: 1 }] })).toThrow()
+    expect(() => parseChatStreamEvent({ ...base, media: [{ ...image, url: 'https://x/a.png' }] })).toThrow(
+      'tool_result event.media[0].url must be a file:// URI',
+    )
   })
 })

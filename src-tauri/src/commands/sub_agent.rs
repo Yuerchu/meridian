@@ -528,6 +528,7 @@ impl DesktopSubAgents {
                 },
                 withheld: engine::WithheldWording::Explained,
                 files_root: self.files_root.clone(),
+                supports_images: turn_params.caps.supports_images,
                 stickers: None,
                 // A sub-agent's conversation is one turn old. There is nothing
                 // behind it that could have been cut off.

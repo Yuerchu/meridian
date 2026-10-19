@@ -125,6 +125,7 @@ describe('global user-command events', () => {
           call_id: 'call-1',
           result: 'done',
           outcome: 'future',
+          media: [],
           message_id: 'message-1',
           conversation_id: 'conversation-1',
         },
