@@ -25,10 +25,11 @@ import type {
   ToolCallDiffInfoResponse,
   TodoInfoResponse,
   ToolCallDisplay,
+  ToolMediaResponse,
   TurnInfoResponse,
   TurnTrigger,
 } from '@/types'
-import { requireAcpSessionNotice, requireToolCallDiffs } from '@/lib/chat-stream-event'
+import { requireAcpSessionNotice, requireToolCallDiffs, requireToolMedia } from '@/lib/chat-stream-event'
 import { mergeAcpNotice } from '@/lib/acp-notices'
 import { TURN_TRIGGERS } from '@/lib/turn-trigger'
 import { usePlanReviewStore, type PlanReviewEventInfo } from '@/stores/plan-review-store'
@@ -254,6 +255,7 @@ const MESSAGE_RESPONSE_KEYS = [
   'auto_review',
   'tool_diffs',
   'context_items',
+  'tool_media',
 ] as const
 
 function requireNullableString(value: unknown, label: string): void {
@@ -410,6 +412,10 @@ function validateSnapshotContracts(
       if (!callIds.has(callId)) delete reviews[callId]
     }
     validateContextItems(message)
+    requireToolMedia(message.tool_media, 'message.tool_media')
+    if (message.role !== 'tool' && message.tool_media.length > 0) {
+      throw new Error('only tool messages may carry tool_media')
+    }
   }
   for (const turn of turns) {
     if (!TURN_STATUSES.has(turn.status)) throw new Error(`unknown turn status: ${turn.status}`)
@@ -591,6 +597,7 @@ export function hydrateBlocks(
               : undefined,
             auto_review: reviewed[tc.id],
             diffs: diffed[tc.id],
+            media: toolMsg?.tool_media.length ? toolMsg.tool_media : undefined,
           },
         })
         if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
@@ -736,7 +743,7 @@ function keepAnswered(local: MessageViewModel, fresh: MessageViewModel): Message
     const was = answered[at].data
     return {
       ...b,
-      data: { ...b.data, status: was.status, result: was.result, approval_id: undefined },
+      data: { ...b.data, status: was.status, result: was.result, media: was.media, approval_id: undefined },
     }
   })
   return carried ? { ...fresh, _blocks: blocks } : fresh
@@ -748,7 +755,13 @@ function keepAnswered(local: MessageViewModel, fresh: MessageViewModel): Message
 function sameStoredFields(a: MessageViewModel, b: MessageViewModel): boolean {
   for (const key of Object.keys(b) as (keyof MessageViewModel)[]) {
     if (key === '_blocks') continue
-    if (key === 'tool_calls' || key === 'auto_review' || key === 'tool_diffs' || key === 'context_items') {
+    if (
+      key === 'tool_calls' ||
+      key === 'auto_review' ||
+      key === 'tool_diffs' ||
+      key === 'context_items' ||
+      key === 'tool_media'
+    ) {
       if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) return false
       continue
     }
@@ -1322,7 +1335,14 @@ export interface ConversationStore {
    *  conversation events cannot do this: the sub-agent's tool result is emitted
    *  on its own conversation, which the parent's session never sees. */
   resolveNestedApproval: (convId: string, approvalId: string) => void
-  handleToolResult: (convId: string, messageId: string, callId: string, result: string, outcome?: string) => void
+  handleToolResult: (
+    convId: string,
+    messageId: string,
+    callId: string,
+    result: string,
+    outcome?: string,
+    media?: ToolMediaResponse[],
+  ) => void
   /** A tool call the automatic reviewer decided instead of the user. Arrives
    *  for calls that were never drawn as pending — nobody was asked — so it is
    *  the only event that will ever say why one of them was refused. */
@@ -1830,6 +1850,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           auto_review: null,
           tool_diffs: null,
           context_items: [],
+          tool_media: [],
         })
       }),
     )
@@ -1879,6 +1900,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           auto_review: null,
           tool_diffs: null,
           context_items: [],
+          tool_media: [],
         })
       }),
     )
@@ -2211,7 +2233,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  handleToolResult: (convId, messageId, callId, result, outcome) => {
+  handleToolResult: (convId, messageId, callId, result, outcome, media) => {
     set(
       produce((state: ConversationStore) => {
         // Ahead of the session check, like the queueing in `handleToolApproval`
@@ -2257,6 +2279,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           }
           card.data.status = status
           card.data.result = result
+          card.data.media = media?.length ? media : undefined
           card.data.approval_id = undefined
           // The checklist bar tracks the arguments of the last successful call;
           // a rejected one left the stored list untouched.

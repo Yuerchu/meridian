@@ -139,6 +139,9 @@ macro_rules! with_all_commands {
             local commands::message => export_conversation(
                 request: $crate::commands::message::ConversationExportRequest,
             ),
+            local commands::message => export_media_file(
+                request: $crate::commands::message::MediaFileExportRequest,
+            ),
             local commands::message => upload_file(
                 request: $crate::commands::message::MessageFileUploadRequest,
             ),

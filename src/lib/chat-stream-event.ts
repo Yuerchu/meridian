@@ -138,6 +138,22 @@ export function requireToolCallDiffs(value: unknown, label: string): void {
   }
 }
 
+const TOOL_MEDIA_KINDS = ['image', 'video', 'audio', 'file'] as const
+
+/** The files a tool returned beside its text: every key present, `kind` one
+ *  of ours, `url` a `file://` URI. Shared by the live `tool_result` and the
+ *  snapshot's `tool_media`. */
+export function requireToolMedia(value: unknown, label: string): void {
+  if (!Array.isArray(value)) throw new Error(`${label} must be an array`)
+  for (const [index, item] of value.entries()) {
+    const media = requireShape(item, ['kind', 'url', 'mime_type', 'name'], [], `${label}[${index}]`)
+    requireClosedString(media.kind, TOOL_MEDIA_KINDS, `${label}[${index}].kind`)
+    requireStringFields(media, ['url', 'mime_type'], `${label}[${index}]`)
+    if (!(media.url as string).startsWith('file://')) throw new Error(`${label}[${index}].url must be a file:// URI`)
+    requireNullableString(media, 'name', `${label}[${index}]`)
+  }
+}
+
 function requireStringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value)) throw new Error(`${label} must be an array`)
   for (const [index, item] of value.entries()) requireString(item, `${label}[${index}]`)
@@ -305,12 +321,13 @@ export function parseChatStreamEvent(value: unknown): ChatStreamEvent {
     case 'tool_result': {
       const event = requireShape(
         value,
-        ['type', 'call_id', 'result', 'outcome', 'message_id', 'conversation_id'],
+        ['type', 'call_id', 'result', 'outcome', 'media', 'message_id', 'conversation_id'],
         [],
         'tool_result event',
       )
       requireStringFields(event, ['type', 'call_id', 'result', 'message_id', 'conversation_id'], 'tool_result event')
       requireClosedString(event.outcome, ['success', 'denied', 'error'], 'tool_result event.outcome')
+      requireToolMedia(event.media, 'tool_result event.media')
       break
     }
     case 'tool_approval_req': {

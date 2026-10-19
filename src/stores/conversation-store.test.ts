@@ -93,6 +93,7 @@ function msg(id: string, over: Partial<MessageViewModel> = {}): MessageViewModel
     auto_review: null,
     tool_diffs: null,
     context_items: [],
+    tool_media: [],
     ...over,
   }
 }
@@ -278,6 +279,20 @@ describe('hydrateBlocks', () => {
   it('reads a call with a matching tool row as completed', () => {
     const out = hydrateBlocks([caller('a', 'c1'), answer('t', 'c1', 'the result')])
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'completed', result: 'the result' })
+  })
+
+  it("carries a tool row's media onto its card, and refuses media on any other row", () => {
+    const media = [{ kind: 'image' as const, url: 'file:///data/files/c/a.png', mime_type: 'image/png', name: null }]
+    const out = hydrateBlocks([caller('a', 'c1'), { ...answer('t', 'c1', 'drew it'), tool_media: media }])
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ result: 'drew it', media })
+    expect(callBlocks(hydrateBlocks([caller('a', 'c1'), answer('t', 'c1')]), 'a')[0]!.media).toBeUndefined()
+    expect(() => hydrateBlocks([{ ...caller('a', 'c1'), tool_media: media }])).toThrow(/only tool messages/)
+    expect(() =>
+      hydrateBlocks([
+        caller('a', 'c1'),
+        { ...answer('t', 'c1'), tool_media: [{ ...media[0], kind: 'model' }] as never },
+      ]),
+    ).toThrow(/message\.tool_media\[0\]\.kind/)
   })
 
   it.each([
@@ -823,6 +838,15 @@ describe('live approval events', () => {
 
     store().handleToolResult(CONV, 'a1', '0', 'second result')
     expect(cards().map((c) => c.result)).toEqual(['first result', 'second result'])
+  })
+
+  it("puts a result's media on the card it answers", () => {
+    const media = [{ kind: 'video' as const, url: 'file:///data/files/c/a.mp4', mime_type: 'video/mp4', name: 'a.mp4' }]
+    store().handleToolCall(CONV, 'a1', '0', 'mcp__gen__video', '{}')
+    store().handleToolCall(CONV, 'a1', '1', 'read_file', '{}')
+    store().handleToolResult(CONV, 'a1', '0', 'made it', 'success', media)
+    store().handleToolResult(CONV, 'a1', '1', 'text', 'success', [])
+    expect(cards().map((c) => c.media)).toEqual([media, undefined])
   })
 
   it('retires only the approval the answered card was holding', () => {

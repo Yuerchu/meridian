@@ -57,6 +57,7 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
     auto_review: null,
     tool_diffs: null,
     context_items: [],
+    tool_media: [],
     ...over,
   }
 }

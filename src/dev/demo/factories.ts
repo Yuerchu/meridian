@@ -72,6 +72,7 @@ export function message(
     auto_review: null,
     tool_diffs: null,
     context_items: [],
+    tool_media: [],
     ...over,
   }
 }

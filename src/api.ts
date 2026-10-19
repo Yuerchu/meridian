@@ -59,6 +59,7 @@ import type {
   ConversationSnapshotResponse,
   ConversationSteerRequest,
   ConversationExportRequest,
+  MediaFileExportRequest,
   ConversationExportResponse,
   ConversationTitleUpdateRequest,
   CustomToolInfoResponse,
@@ -338,6 +339,10 @@ export const api = {
 
   exportConversation: (request: ConversationExportRequest) =>
     invoke<ConversationExportResponse>('export_conversation', { request }),
+
+  /** Copies a file a tool returned out of the conversation's attachment
+   *  directory. Local only: the file is on the host, not the client. */
+  exportMediaFile: (request: MediaFileExportRequest) => invoke<void>('export_media_file', { request }),
 
   uploadFile: (request: MessageFileUploadRequest) => invoke<UploadFileResponse>('upload_file', { request }),
 

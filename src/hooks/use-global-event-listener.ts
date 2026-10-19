@@ -273,7 +273,7 @@ export function useGlobalEventListener() {
       // message_id as well as call_id: provider call ids repeat, so the pair is
       // what identifies a card.
       if (p.type === 'tool_result') {
-        store.handleToolResult(convId, p.message_id, p.call_id, p.result, p.outcome)
+        store.handleToolResult(convId, p.message_id, p.call_id, p.result, p.outcome, p.media)
         return
       }
 

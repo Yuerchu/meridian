@@ -164,6 +164,7 @@ export function startReplay(
       call_id: callId,
       result: content,
       outcome,
+      media: [],
       message_id: row.id,
       conversation_id: conversationId,
     })

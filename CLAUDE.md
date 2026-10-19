@@ -88,6 +88,7 @@ A new decision about one subsystem goes into that subsystem's file.
 | [`acp.md`](.claude/rules/acp.md) | `acp/` | hosting Claude Code, elicitation, sessions and resume, import, the tool bridge |
 | [`prompt-queue.md`](.claude/rules/prompt-queue.md) | `queued_prompts`, `agent::queue`, steering | follow-up vs interject, claims, holds, in-doubt delivery |
 | [`background-tasks.md`](.claude/rules/background-tasks.md) | `crate::background`, `run_in_background`, `background_tasks` | the same sandbox path, the notice as a debt, wake vs no wake, the claim |
+| [`media-generation.md`](.claude/rules/media-generation.md) | `agent::tool_media`, `Tool::execute_rich`, MCP content blocks, how a tool row reaches each adapter, `media-result.tsx` | media in tool results: the version-3 envelope, the conversation directory, per-dialect wire shapes, typed media in IPC |
 | [`plan-documents.md`](.claude/rules/plan-documents.md) | plan mode, `plan_documents`, the review page | durable plan documents |
 | [`hook-gates.md`](.claude/rules/hook-gates.md) | `hooks/`, the `meridian-plan-gate` plugin | the loopback review gates |
 | [`container.md`](.claude/rules/container.md) | `crate::container`, sandbox settings, a hosted agent in Docker | container execution, cancellation, no host fallback |
