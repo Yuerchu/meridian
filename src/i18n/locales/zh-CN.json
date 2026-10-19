@@ -502,7 +502,7 @@
   "settings.usage.kpi.output": "输出 token",
   "settings.usage.kpi.cacheRate": "缓存命中率",
   "settings.usage.kpi.replies": "共 {{count}} 条回复",
-  "settings.usage.kpi.cacheRateNote": "按 {{counted}} 条报告了输入 token 的回复计算，共 {{count}} 条回复",
+  "settings.usage.kpi.cacheRateNote": "按 {{counted}} 条明确报告缓存读取用量的回复计算，共 {{count}} 条回复",
   "settings.usage.unpriced": "有 {{count}} 条回复的用量或价格不完整；标有 ≥ 的金额只包含已计价部分。",
   "settings.usage.estimated": "有 {{count}} 条回复因历史价格快照缺失，按当前服务商/模型价格估算；标有 ≈ 的金额为估算值。",
   "settings.usage.partialEstimate": "有 {{estimated}} 条回复使用当前价格估算，且 {{unpriced}} 条的用量或价格仍不完整；标有 ≈ 的金额为不完整估算。",

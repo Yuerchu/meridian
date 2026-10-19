@@ -114,6 +114,9 @@ pub struct UsageBucketInfoResponse {
     pub cache_write_tokens: i64,
     pub reported_input_tokens: i64,
     pub reported_input_cache_read_tokens: i64,
+    pub cache_reported_input_tokens: i64,
+    pub cache_reported_input_cache_read_tokens: i64,
+    pub cache_reported_input_messages: i64,
     pub input_cost: Decimal,
     pub output_cost: Decimal,
     pub cache_cost: Decimal,
@@ -145,6 +148,9 @@ impl From<UsageBucket> for UsageBucketInfoResponse {
             cache_write_tokens: bucket.cache_write_tokens,
             reported_input_tokens: bucket.reported_input_tokens,
             reported_input_cache_read_tokens: bucket.reported_input_cache_read_tokens,
+            cache_reported_input_tokens: bucket.cache_reported_input_tokens,
+            cache_reported_input_cache_read_tokens: bucket.cache_reported_input_cache_read_tokens,
+            cache_reported_input_messages: bucket.cache_reported_input_messages,
             input_cost: bucket.input_cost,
             output_cost: bucket.output_cost,
             cache_cost: bucket.cache_cost,
@@ -322,6 +328,9 @@ mod tests {
             cache_write_tokens: 9,
             reported_input_tokens: 18,
             reported_input_cache_read_tokens: 19,
+            cache_reported_input_tokens: 20,
+            cache_reported_input_cache_read_tokens: 21,
+            cache_reported_input_messages: 22,
             input_cost: "0.1".parse().unwrap(),
             output_cost: "0.2".parse().unwrap(),
             cache_cost: "0.3".parse().unwrap(),
@@ -339,10 +348,13 @@ mod tests {
         assert_eq!(value["total_cost"], "1");
         assert_eq!(value["tool_cost"], "0.4");
         assert_eq!(value["unpriced_messages"], 15);
-        assert_eq!(value.as_object().unwrap().len(), 26);
+        assert_eq!(value.as_object().unwrap().len(), 29);
         assert_eq!(value["missing_input_messages"], 16);
         assert_eq!(value["reported_input_tokens"], 18);
         assert_eq!(value["reported_input_cache_read_tokens"], 19);
+        assert_eq!(value["cache_reported_input_tokens"], 20);
+        assert_eq!(value["cache_reported_input_cache_read_tokens"], 21);
+        assert_eq!(value["cache_reported_input_messages"], 22);
     }
 
     #[test]

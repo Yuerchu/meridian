@@ -2849,9 +2849,15 @@ export interface UsageBucketInfoResponse {
   output_tokens: number
   cache_read_tokens: number
   cache_write_tokens: number
-  /** Prompt tokens over the replies that reported one; the hit rate's denominator. */
+  /** Prompt tokens over replies that explicitly reported cache-read usage. */
+  cache_reported_input_tokens: number
+  /** Cache hits over those same cache-reporting replies. */
+  cache_reported_input_cache_read_tokens: number
+  /** Replies included in the cache-read hit-rate calculation. */
+  cache_reported_input_messages: number
+  /** Prompt tokens over the replies that reported one; the input-coverage denominator. */
   reported_input_tokens: number
-  /** Cache hits over those same replies; the hit rate's numerator. */
+  /** Cache hits over replies that reported a prompt, preserving the legacy coverage metric. */
   reported_input_cache_read_tokens: number
   /** Already-priced uncached prompt cost, computed by the backend. */
   input_cost: DecimalString

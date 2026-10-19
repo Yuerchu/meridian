@@ -10513,6 +10513,24 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "number"
           }
         },
+        "cache_reported_input_cache_read_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "cache_reported_input_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "cache_reported_input_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
         "cache_write_tokens": {
           "optional": false,
           "schema": {

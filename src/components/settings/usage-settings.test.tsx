@@ -31,6 +31,9 @@ function bucket(over: Partial<UsageBucketInfoResponse> = {}): UsageBucketInfoRes
     cache_write_tokens: 0,
     reported_input_tokens: 1_000,
     reported_input_cache_read_tokens: 250,
+    cache_reported_input_tokens: 1_000,
+    cache_reported_input_cache_read_tokens: 250,
+    cache_reported_input_messages: 4,
     input_cost: decimal('0.5'),
     output_cost: decimal('0.75'),
     cache_cost: decimal('0.2'),
@@ -273,6 +276,9 @@ it('shows a dash for the hit rate rather than dividing by nothing', async () => 
         cache_read_tokens: 0,
         reported_input_tokens: 0,
         reported_input_cache_read_tokens: 0,
+        cache_reported_input_tokens: 0,
+        cache_reported_input_cache_read_tokens: 0,
+        cache_reported_input_messages: 0,
       }),
     ],
   })
@@ -294,6 +300,9 @@ it('does not present a cache-hit rate as exact when prompt usage is incomplete',
         missing_input_messages: 1,
         reported_input_tokens: 0,
         reported_input_cache_read_tokens: 0,
+        cache_reported_input_tokens: 0,
+        cache_reported_input_cache_read_tokens: 0,
+        cache_reported_input_messages: 0,
       }),
     ],
   })
@@ -807,10 +816,10 @@ it('shows the pressed heatmap cell when the browser does not focus it', async ()
 
 /**
  * Three replies that failed before the provider reported anything used to hide
- * the hit rate of the other two hundred and fifty. The rate is now read off the
- * replies that reported a prompt, and says how many those were.
+ * the hit rate of the other two hundred and fifty. The rate is now read off
+ * replies that reported cache-read usage, and says how many those were.
  */
-it('reads the hit rate off the replies that reported a prompt', async () => {
+it('reads the hit rate off the replies that reported cache-read usage', async () => {
   serve({
     total: [
       bucket({
@@ -821,13 +830,57 @@ it('reads the hit rate off the replies that reported a prompt', async () => {
         cache_read_tokens: 1_300,
         reported_input_tokens: 1_000,
         reported_input_cache_read_tokens: 400,
+        cache_reported_input_tokens: 1_000,
+        cache_reported_input_cache_read_tokens: 400,
+        cache_reported_input_messages: 250,
       }),
     ],
   })
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
   expect(await screen.findByText('40.0%', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
-  expect(screen.getByText('Over the 250 replies that reported input tokens, of 253')).toBeInTheDocument()
+  expect(screen.getByText('Over the 250 replies with reported cache-read usage, of 253')).toBeInTheDocument()
+})
+
+it('does not turn missing cache usage into a zero-percent hit rate', async () => {
+  serve({
+    total: [
+      bucket({
+        messages: 1,
+        input_tokens: 1_000,
+        cache_read_tokens: 0,
+        reported_input_tokens: 1_000,
+        reported_input_cache_read_tokens: 0,
+        cache_reported_input_tokens: 0,
+        cache_reported_input_cache_read_tokens: 0,
+        cache_reported_input_messages: 0,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText('—', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
+  expect(screen.getByText('Over the 0 replies with reported cache-read usage, of 1')).toBeInTheDocument()
+})
+
+it('keeps an explicitly reported zero cache read as zero percent', async () => {
+  serve({
+    total: [
+      bucket({
+        messages: 1,
+        input_tokens: 1_000,
+        cache_read_tokens: 0,
+        reported_input_tokens: 1_000,
+        reported_input_cache_read_tokens: 0,
+        cache_reported_input_tokens: 1_000,
+        cache_reported_input_cache_read_tokens: 0,
+        cache_reported_input_messages: 1,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText('0.0%', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
 })
 
 /** A count with no way to the rows it counts is a number nobody can act on. */
