@@ -513,7 +513,7 @@
   "settings.usage.kpi.output": "Output tokens",
   "settings.usage.kpi.cacheRate": "Cache hit rate",
   "settings.usage.kpi.replies": "{{count}} replies",
-  "settings.usage.kpi.cacheRateNote": "Over the {{counted}} replies that reported input tokens, of {{count}}",
+  "settings.usage.kpi.cacheRateNote": "Over the {{counted}} replies with reported cache-read usage, of {{count}}",
   "settings.usage.unpriced": "{{count}} replies have incomplete usage or pricing. Amounts marked ≥ include only the priced portion.",
   "settings.usage.estimated": "{{count}} replies use current provider/model prices because historical snapshots are unavailable. Amounts marked ≈ are estimates.",
   "settings.usage.partialEstimate": "{{estimated}} replies use current-price estimates, and {{unpriced}} still have incomplete usage or pricing. Amounts marked ≈ are incomplete estimates.",

@@ -241,6 +241,9 @@ const EMPTY_TOTAL: UsageBucketInfoResponse = {
   cache_write_tokens: 0,
   reported_input_tokens: 0,
   reported_input_cache_read_tokens: 0,
+  cache_reported_input_tokens: 0,
+  cache_reported_input_cache_read_tokens: 0,
+  cache_reported_input_messages: 0,
   input_cost: ZERO_DECIMAL,
   output_cost: ZERO_DECIMAL,
   cache_cost: ZERO_DECIMAL,
@@ -345,16 +348,14 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             value: compact.format(total.cache_read_tokens),
           })
       : t('settings.usage.kpi.inputNote', { value: compact.format(total.cache_read_tokens) })
-  // Of the prompt tokens that were sent, how many the upstream already had —
-  // over the replies that reported a prompt, and only those. This used to be
-  // withheld whenever any reply was incomplete, so three empty failed rounds
-  // hid the rate of the other two hundred and fifty; and the totals cannot be
-  // divided instead, because a reply with no prompt count contributes its
-  // cache hits to both sides. Zero prompt tokens is not a 0% hit rate — it is
-  // no data — so the card shows a dash rather than a number nobody earned.
+  // Of the prompt tokens whose cache-read usage the upstream reported, how
+  // many were already cached. A missing cache-read field is unknown rather
+  // than a zero hit, so it contributes to billing but not this rate.
   const hitRate =
-    total.reported_input_tokens > 0 ? total.reported_input_cache_read_tokens / total.reported_input_tokens : null
-  const hitRateCounted = total.messages - total.missing_input_messages
+    total.cache_reported_input_tokens > 0
+      ? total.cache_reported_input_cache_read_tokens / total.cache_reported_input_tokens
+      : null
+  const hitRateCounted = total.cache_reported_input_messages
   const hasGaps = total.unpriced_messages > 0 || total.incomplete_token_usage_messages > 0
   const [gapsOpen, setGapsOpen] = useState(false)
 
@@ -430,7 +431,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             <Kpi
               title={t('settings.usage.kpi.cacheRate')}
               note={
-                total.missing_input_messages > 0
+                hitRateCounted < total.messages
                   ? t('settings.usage.kpi.cacheRateNote', { counted: hitRateCounted, count: total.messages })
                   : t('settings.usage.kpi.replies', { count: total.messages })
               }
@@ -1099,6 +1100,12 @@ function conversationRows(
       cache_write_tokens: matches.reduce((sum, row) => sum + row.cache_write_tokens, 0),
       reported_input_tokens: matches.reduce((sum, row) => sum + row.reported_input_tokens, 0),
       reported_input_cache_read_tokens: matches.reduce((sum, row) => sum + row.reported_input_cache_read_tokens, 0),
+      cache_reported_input_tokens: matches.reduce((sum, row) => sum + row.cache_reported_input_tokens, 0),
+      cache_reported_input_cache_read_tokens: matches.reduce(
+        (sum, row) => sum + row.cache_reported_input_cache_read_tokens,
+        0,
+      ),
+      cache_reported_input_messages: matches.reduce((sum, row) => sum + row.cache_reported_input_messages, 0),
       input_cost: sumDecimals(matches.map((row) => row.input_cost)),
       output_cost: sumDecimals(matches.map((row) => row.output_cost)),
       cache_cost: sumDecimals(matches.map((row) => row.cache_cost)),
