@@ -100,7 +100,6 @@ function ModelConfigEditor({
   const [caps, setCaps] = useState<ProviderCapabilitiesInfoResponse | null>(null)
   const [localInfo, setLocalInfo] = useState<LocalModelInfoResponse | null>(null)
   const [capsError, setCapsError] = useState<string | null>(null)
-  const [capabilitiesReady, setCapabilitiesReady] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -115,7 +114,6 @@ function ModelConfigEditor({
         setCaps(nextCaps)
         setLocalInfo(nextLocal)
         setCapsError(null)
-        setCapabilitiesReady(true)
       })
       .catch((reason) => {
         if (!cancelled) setCapsError(String(reason))
@@ -356,7 +354,7 @@ function ModelConfigEditor({
 
   const handleSave = async () => {
     if (saving) return
-    if (apiFormat === 'litert_lm' && (!capabilitiesReady || localInfo === null || capsError !== null)) {
+    if (apiFormat === 'litert_lm' && (caps === null || localInfo === null || capsError !== null)) {
       setPriceError(t('settings.localModel.capabilitiesError'))
       return
     }

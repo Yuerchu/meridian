@@ -176,6 +176,7 @@ function ProviderEditor({
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [icon, setIcon] = useState(provider.icon)
   const [codexRequestShape, setCodexRequestShape] = useState(provider.codex_request_shape)
+  // 可编辑草稿随 ProviderEditor 的 provider.id key 重建，不能由 prop 覆盖未保存的选择。
   const [localBackend, setLocalBackend] = useState<LocalInferenceBackend | null>(provider.local_backend)
   /**
    * The Codex release this install claims to be.

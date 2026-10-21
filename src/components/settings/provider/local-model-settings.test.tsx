@@ -51,6 +51,30 @@ it('inspects the chosen file and reports a backend without claiming hardware val
   expect(screen.getByText(i18n.t('settings.localModel.notDeclared'))).toBeInTheDocument()
 })
 
+it('reuses the number formatter until the locale changes', async () => {
+  const user = userEvent.setup()
+  const NativeNumberFormat = Intl.NumberFormat
+  const formatter = vi.spyOn(Intl, 'NumberFormat').mockImplementation(function (...args) {
+    return new NativeNumberFormat(...args)
+  })
+  try {
+    const { rerender } = render(panel())
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
+    await screen.findByText('custom-12b-gpu.litertlm')
+    const callsFor = (locale: string) => formatter.mock.calls.filter((args) => args.length === 1 && args[0] === locale)
+    expect(callsFor('zh-CN')).toHaveLength(1)
+    rerender(panel())
+    expect(callsFor('zh-CN')).toHaveLength(1)
+    await act(async () => {
+      await i18n.changeLanguage('en')
+    })
+    expect(callsFor('en')).toHaveLength(1)
+    expect(screen.getByText(i18n.t('settings.localModel.sampler'))).toBeInTheDocument()
+  } finally {
+    formatter.mockRestore()
+  }
+})
+
 it('backend selection is returned to the provider draft, not saved through a separate command', async () => {
   const user = userEvent.setup()
   const onChange = vi.fn()

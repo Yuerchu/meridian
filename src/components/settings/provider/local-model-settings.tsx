@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button } from '@/components/base'
 import { api } from '@/api'
@@ -18,6 +18,8 @@ export function LocalModelSettings({
   onBackendChange: (value: LocalInferenceBackend) => void
 }) {
   const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const formatter = useMemo(() => new Intl.NumberFormat(locale), [locale])
   const [info, setInfo] = useState<LocalModelInfoResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
@@ -35,9 +37,7 @@ export function LocalModelSettings({
     { value: 'npu', label: 'NPU' },
   ]
   const number = (value: number | null) =>
-    value === null
-      ? t('settings.localModel.unavailable')
-      : new Intl.NumberFormat(i18n.resolvedLanguage ?? i18n.language).format(value)
+    value === null ? t('settings.localModel.unavailable') : formatter.format(value)
   const list = (value: number[] | null) =>
     value === null ? t('settings.localModel.unavailable') : value.map(number).join(', ')
   const inspect = async () => {

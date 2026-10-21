@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ProviderSettings } from '.'
+import { ProviderPage } from './provider-page'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
@@ -289,6 +290,39 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(
       await screen.findByRole('button', { name: new RegExp(i18n.t('settings.localModel.backend')) }),
     ).toHaveTextContent('GPU')
+  })
+
+  it('keeps a local backend draft editable and resets it for a different provider', async () => {
+    const user = userEvent.setup()
+    const local: ProviderInfoResponse = {
+      ...makeProvider('local-1', 'First local model'),
+      provider_type: 'litert_lm',
+      api_format: 'litert_lm',
+      base_url: 'C:/Models/first.litertlm',
+      catalog_id: 'litert_lm',
+      credential_kind: 'none',
+      transport_profile: 'local_native',
+      local_backend: 'auto',
+    }
+    mockApi.listProviders.mockResolvedValue([
+      local,
+      { ...local, id: 'local-2', name: 'Second local model', local_backend: 'cpu' },
+    ])
+    const page = (providerId: string) => (
+      <ProviderPage providerId={providerId} onOpenModel={vi.fn()} onDeleted={vi.fn()} />
+    )
+    const { rerender } = render(page('local-1'))
+    const backendName = new RegExp(i18n.t('settings.localModel.backend'))
+    await user.click(await screen.findByRole('button', { name: backendName }))
+    await user.click(await screen.findByRole('option', { name: 'GPU' }))
+    expect(screen.getByRole('button', { name: backendName })).toHaveTextContent('GPU')
+    expect(mockApi.updateProvider).not.toHaveBeenCalled()
+    expect(local.local_backend).toBe('auto')
+    rerender(page('local-1'))
+    expect(screen.getByRole('button', { name: backendName })).toHaveTextContent('GPU')
+    rerender(page('local-2'))
+    await screen.findByRole('heading', { name: 'Second local model' })
+    expect(screen.getByRole('button', { name: backendName })).toHaveTextContent('CPU')
   })
 
   it('the first click can open the second provider', async () => {
