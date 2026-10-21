@@ -13,7 +13,9 @@ use meridian_core::db::sea::ops::{
 };
 use meridian_core::db::types::SqlBool;
 use meridian_core::decimal::Decimal;
-use meridian_core::provider::registry::{ApiFormat, CredentialKind, ProviderType, TransportProfile};
+use meridian_core::provider::registry::{
+    ApiFormat, CredentialKind, LocalInferenceBackend, ProviderType, TransportProfile,
+};
 use meridian_core::provider::{ServerToolKind, ThinkingStyle};
 use meridian_core::secrets::{SecretName, SecretScope};
 use meridian_core::util::now_ms;
@@ -404,6 +406,7 @@ pub struct ProviderCreateRequest {
     api_format: RequiredNullable<ApiFormat>,
     catalog_id: RequiredNullable<String>,
     auth_option: RequiredNullable<String>,
+    local_backend: RequiredNullable<LocalInferenceBackend>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -425,6 +428,8 @@ pub struct ProviderUpdateRequest {
     /// values, so there is no third state to distinguish and absent means
     /// "leave it alone" with nothing to be confused with.
     codex_request_shape: Option<bool>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    local_backend: Option<RequiredNullable<LocalInferenceBackend>>,
 }
 
 /// A patch key with three states: absent, null, or a value.
@@ -507,6 +512,7 @@ pub async fn create_provider(
         api_format,
         catalog_id,
         auth_option,
+        local_backend,
     } = request;
     let provider_type = provider_type.as_str().to_owned();
     let api_format = api_format.0.map(|format| format.as_str().to_owned());
@@ -597,6 +603,7 @@ pub async fn create_provider(
             // Likewise: a new row is an ordinary one until somebody says
             // the address behind it is a relay for a Codex backend.
             codex_request_shape: SqlBool::FALSE,
+            local_backend: local_backend.0,
         }
     };
     services
@@ -696,6 +703,7 @@ pub async fn update_provider(
                 catalog_id,
                 icon: icon.clone(),
                 codex_request_shape: request.codex_request_shape.map(SqlBool::from),
+                local_backend: request.local_backend.as_ref().map(|value| value.0),
                 ..Default::default()
             };
             update_provider_unless_plan_barrier(tx, &request.id, &conversation_ids, changeset, should_clear_cache)
@@ -1036,7 +1044,17 @@ pub async fn get_provider_capabilities(
         &transport_profile,
         &model_id,
     )?;
+    let local_info = meridian_core::provider::local_model::apply_capabilities(
+        &services.db,
+        Some(&provider_id),
+        &provider_type,
+        &mut caps,
+    )
+    .await?;
     meridian_core::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref())?;
+    if local_info.is_some() {
+        meridian_core::provider::local_model::narrow_to_adapter(&mut caps);
+    }
     // After the model's own patch, not before: the shape decides what this
     // adapter is able to put on the wire, and no per-model correction can hand
     // back a field the request will not carry. A temperature slider that
@@ -1070,6 +1088,7 @@ mod response_contract_tests {
                     transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
                     icon: None,
                     codex_request_shape: db::types::SqlBool::FALSE,
+                    local_backend: None,
                 },
             )
             .await?;
@@ -1095,7 +1114,8 @@ mod response_contract_tests {
             "baseUrl": "https://api.openai.com",
             "apiFormat": null,
             "catalogId": null,
-            "authOption": null
+            "authOption": null,
+            "localBackend": null
         });
         assert!(serde_json::from_value::<ProviderCreateRequest>(create.clone()).is_ok());
         create.as_object_mut().unwrap().remove("catalogId");
@@ -1121,6 +1141,74 @@ mod response_contract_tests {
                 "futureField": true
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn local_backend_patch_preserves_absent_null_and_explicit_values() {
+        let omitted: ProviderUpdateRequest = serde_json::from_value(serde_json::json!({"id":"p1"})).unwrap();
+        assert!(omitted.local_backend.is_none());
+        let cleared: ProviderUpdateRequest =
+            serde_json::from_value(serde_json::json!({"id":"p1","localBackend":null})).unwrap();
+        assert!(matches!(cleared.local_backend, Some(RequiredNullable(None))));
+        let gpu: ProviderUpdateRequest =
+            serde_json::from_value(serde_json::json!({"id":"p1","localBackend":"gpu"})).unwrap();
+        assert!(matches!(
+            gpu.local_backend,
+            Some(RequiredNullable(Some(LocalInferenceBackend::Gpu)))
+        ));
+        assert!(
+            serde_json::from_value::<ProviderUpdateRequest>(serde_json::json!({"id":"p1","localBackend":"future"}))
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn hardware_change_uses_the_same_plan_review_barrier() {
+        let sea = db::sea::sea_test_db().await;
+        seed_provider_with_pending_review(&sea).await;
+        sea.write(async |tx| {
+            provider_ops::update_provider(
+                tx,
+                "provider-1",
+                ProviderChangeset {
+                    provider_type: Some(ProviderType::LitertLm),
+                    api_format: Some(ApiFormat::LitertLm),
+                    credential_kind: Some(CredentialKind::None),
+                    transport_profile: Some(TransportProfile::LocalNative),
+                    local_backend: Some(Some(LocalInferenceBackend::Auto)),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .await
+        .unwrap();
+        let conversations = sorted_conversation_ids(&sea).await.unwrap();
+        let result = sea
+            .write(async |tx| {
+                update_provider_unless_plan_barrier(
+                    tx,
+                    "provider-1",
+                    &conversations,
+                    ProviderChangeset {
+                        local_backend: Some(Some(LocalInferenceBackend::Gpu)),
+                        ..Default::default()
+                    },
+                    false,
+                )
+                .await
+            })
+            .await
+            .unwrap();
+        assert!(matches!(result, GuardedProviderMutation::PlanReviewBarrier));
+        assert_eq!(
+            provider_ops::get_provider(&sea, "provider-1")
+                .await
+                .unwrap()
+                .unwrap()
+                .local_backend,
+            Some(LocalInferenceBackend::Auto)
         );
     }
 
@@ -1189,6 +1277,7 @@ mod response_contract_tests {
                 transport_profile: TransportProfile::Standard,
                 icon: None,
                 codex_request_shape: SqlBool::FALSE,
+                local_backend: None,
             };
             provider_ops::create_provider(tx, row).await?;
             cached_ops::replace_models(tx, "provider-1", &[("m".into(), "M".into())], 1).await

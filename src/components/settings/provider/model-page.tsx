@@ -26,6 +26,7 @@ import type {
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
   ModelProfileInfoResponse,
+  LocalModelInfoResponse,
   PriceTier,
   ProviderCapabilitiesInfoResponse,
   ProviderCapabilityOverrides,
@@ -97,12 +98,29 @@ function ModelConfigEditor({
     maxOutput: useRef<HTMLInputElement>(null),
   } satisfies Record<LimitField, React.RefObject<HTMLInputElement | null>>
   const [caps, setCaps] = useState<ProviderCapabilitiesInfoResponse | null>(null)
+  const [localInfo, setLocalInfo] = useState<LocalModelInfoResponse | null>(null)
+  const [capsError, setCapsError] = useState<string | null>(null)
 
   useEffect(() => {
-    api
-      .getProviderCapabilities({ providerId, modelId })
-      .then(setCaps)
-      .catch(() => {})
+    let cancelled = false
+    Promise.all([
+      api.getProviderCapabilities({ providerId, modelId }),
+      apiFormat === 'litert_lm'
+        ? api.getProviderLocalModelInfo({ providerId, forceRefresh: false })
+        : Promise.resolve(null),
+    ])
+      .then(([nextCaps, nextLocal]) => {
+        if (cancelled) return
+        setCaps(nextCaps)
+        setLocalInfo(nextLocal)
+        setCapsError(null)
+      })
+      .catch((reason) => {
+        if (!cancelled) setCapsError(String(reason))
+      })
+    return () => {
+      cancelled = true
+    }
   }, [providerId, modelId, apiFormat])
 
   // The window, the prices and the capability patch describe the *model*, so
@@ -336,6 +354,10 @@ function ModelConfigEditor({
 
   const handleSave = async () => {
     if (saving) return
+    if (apiFormat === 'litert_lm' && (caps === null || localInfo === null || capsError !== null)) {
+      setPriceError(t('settings.localModel.capabilitiesError'))
+      return
+    }
     const refuse = (message: string, fields: PriceField[]) => {
       setPriceError(message)
       setInvalidLimits(new Set())
@@ -364,7 +386,7 @@ function ModelConfigEditor({
     for (const [field, raw, optional] of [
       ['contextWindow', contextWindow, false],
       ['compactThreshold', compactThreshold, false],
-      ['maxOutput', maxOutput, true],
+      ['maxOutput', maxOutput, apiFormat !== 'litert_lm'],
     ] as const) {
       const blank = raw.trim() === ''
       const value = optional && blank ? null : parseTokenCount(raw)
@@ -381,6 +403,18 @@ function ModelConfigEditor({
         return
       }
       limits[field] = value
+    }
+    if (localInfo !== null && typeof limits.contextWindow === 'number') {
+      const maximum = localInfo.max_context_tokens
+      if (
+        (maximum !== null &&
+          (limits.contextWindow > maximum || (!localInfo.is_dynamic_context && limits.contextWindow !== maximum))) ||
+        (typeof limits.maxOutput === 'number' && limits.maxOutput > limits.contextWindow)
+      ) {
+        setPriceError(t('settings.localModel.budgetError'))
+        setInvalidLimits(new Set(['contextWindow', 'maxOutput']))
+        return
+      }
     }
     const parsed: Partial<Record<PriceField, DecimalString | null>> = {}
     for (const [field, raw] of [
@@ -524,6 +558,32 @@ function ModelConfigEditor({
   // the aiming and leave the desktop exactly as it was.
   const form = (
     <div data-slot="model-config-editor" className="space-y-2">
+      {apiFormat === 'litert_lm' && capsError !== null && (
+        <Alert status="danger" role="alert">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>{t('settings.localModel.capabilitiesError')}</Alert.Title>
+            <Alert.Description>{capsError}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
+      {localInfo !== null && (
+        <SettingsRow label={t('settings.localModel.context')} description={t('settings.localModel.contextHint')}>
+          <p className="text-body-regular text-text-secondary">
+            {localInfo.max_context_tokens === null
+              ? t('settings.localModel.unavailable')
+              : localInfo.max_context_tokens.toLocaleString()}{' '}
+            ·{' '}
+            {t(
+              localInfo.max_context_tokens === null
+                ? 'settings.localModel.unavailable'
+                : localInfo.is_dynamic_context
+                  ? 'settings.localModel.dynamic'
+                  : 'settings.localModel.static',
+            )}
+          </p>
+        </SettingsRow>
+      )}
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField isRequired isInvalid={invalidLimits.has('contextWindow')}>
           <Label isRequired>{t('settings.model.contextWindow')}</Label>
@@ -554,8 +614,8 @@ function ModelConfigEditor({
           />
         </TextField>
       </div>
-      <TextField isInvalid={invalidLimits.has('maxOutput')}>
-        <Label>{t('settings.model.maxOutput')}</Label>
+      <TextField isInvalid={invalidLimits.has('maxOutput')} isRequired={apiFormat === 'litert_lm'}>
+        <Label isRequired={apiFormat === 'litert_lm'}>{t('settings.model.maxOutput')}</Label>
         <Input
           ref={limitRefs.maxOutput}
           name={`modelMaxOutput-${modelId}`}

@@ -1,3 +1,4 @@
+import { demoLocalModel } from './local-model'
 import { decimal } from '@/lib/decimal'
 import type {
   AssistantCreateRequest,
@@ -17,6 +18,8 @@ import type {
   PendingApprovalInfoResponse,
   PreferenceKey,
   ProviderCreateRequest,
+  LocalModelInspectRequest,
+  ProviderLocalModelInfoReadRequest,
   ProviderInfoResponse,
   ProviderUpdateRequest,
   QueuedPromptCreateRequest,
@@ -67,6 +70,11 @@ function field<T>(args: DemoArgs, key: string): T {
 /** What the demo provider's model list names: every configured model, plus two
  *  more for Anthropic so the picker has something to add. */
 function demoProviderModels(state: DemoBackend['state'], id: string): { id: string; name: string }[] {
+  const provider = state.providers.find((row) => row.id === id) ?? null
+  if (provider !== null && provider.provider_type === 'litert_lm' && provider.local_backend !== null) {
+    const info = demoLocalModel(provider.base_url, provider.local_backend)
+    return [{ id: info.file_name, name: info.file_name }]
+  }
   const configured = state.modelConfigs.filter((m) => m.provider_id === id).map((m) => m.model_id)
   const extra = id === 'demo-provider-anthropic' ? ['claude-opus-5', 'claude-sonnet-5-preview'] : []
   return [...configured, ...extra].map((model) => ({ id: model, name: model }))
@@ -882,6 +890,17 @@ const projects: Record<string, DemoHandler> = {
 
 const providers: Record<string, DemoHandler> = {
   list_providers: (_args, { state }) => state.providers,
+  inspect_local_model: (args) => {
+    const req = request<LocalModelInspectRequest>(args)
+    return demoLocalModel(req.modelPath, req.backend)
+  },
+  get_provider_local_model_info: (args, { state }) => {
+    const req = request<ProviderLocalModelInfoReadRequest>(args)
+    const provider = state.providers.find((row) => row.id === req.providerId) ?? null
+    if (provider === null || provider.provider_type !== 'litert_lm' || provider.local_backend === null)
+      throw 'demo: provider is not a configured local model'
+    return demoLocalModel(provider.base_url, provider.local_backend)
+  },
   list_provider_catalog: () => buildCatalog(),
   codex_auth_status: () => ({
     logged_in: false,
@@ -905,10 +924,11 @@ const providers: Record<string, DemoHandler> = {
       updated_at: now,
       api_format: req.apiFormat ?? 'chat_completions',
       catalog_id: req.catalogId,
-      credential_kind: 'api_key',
-      transport_profile: 'standard',
+      credential_kind: req.providerType === 'litert_lm' ? 'none' : 'api_key',
+      transport_profile: req.providerType === 'litert_lm' ? 'local_native' : 'standard',
       icon: null,
       codex_request_shape: false,
+      local_backend: req.localBackend,
     }
     state.providers.push(row)
     return row
@@ -917,7 +937,9 @@ const providers: Record<string, DemoHandler> = {
     const req = request<ProviderUpdateRequest>(args)
     const row = state.providers.find((p) => p.id === req.id)
     if (!row) throw 'provider not found'
+    const previousType = row.provider_type
     snakePatch(row, req)
+    if (row.provider_type !== previousType) row.catalog_id = null
     row.updated_at = Date.now()
     return row
   },
@@ -937,7 +959,27 @@ const providers: Record<string, DemoHandler> = {
   // As if a fetch had already been made: the cache holds what it would return.
   list_cached_provider_models: (args, { state }) =>
     demoProviderModels(state, request<{ providerId: string }>(args).providerId),
-  get_provider_capabilities: () => CAPABILITIES,
+  get_provider_capabilities: (args, { state }) => {
+    const provider = state.providers.find((row) => row.id === request<{ providerId: string }>(args).providerId) ?? null
+    if (provider === null) throw 'demo: provider not found'
+    if (provider.provider_type !== 'litert_lm') return CAPABILITIES
+    if (provider.local_backend === null) throw 'demo: missing local backend'
+    const info = demoLocalModel(provider.base_url, provider.local_backend)
+    return {
+      ...CAPABILITIES,
+      supports_tools: info.supports_function_calling,
+      supports_streaming_tools: info.supports_function_calling,
+      supports_thinking: info.supports_thinking,
+      supports_images: false,
+      supports_pdf: false,
+      supports_temperature: false,
+      supports_top_p: false,
+      max_temperature: null,
+      max_context_tokens: null,
+      max_output_tokens: null,
+      server_tools: [],
+    }
+  },
   get_provider_balance: (args) =>
     field(args, 'providerId') === 'demo-provider-deepseek'
       ? {

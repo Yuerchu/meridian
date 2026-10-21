@@ -42,6 +42,9 @@ import type {
   UserCommandResultReadRequest,
   UserCommandResultResponse,
   CodexAuthStatusResponse,
+  LocalModelInfoResponse,
+  LocalModelInspectRequest,
+  ProviderLocalModelInfoReadRequest,
   ContextInfoResponse,
   ConversationAcceptEditsUpdateRequest,
   ConversationAssistantUpdateRequest,
@@ -508,6 +511,12 @@ export const api = {
 
   // Providers
   listProviders: () => invoke<ProviderListResponse>('list_providers'),
+
+  inspectLocalModel: (request: LocalModelInspectRequest) =>
+    invoke<LocalModelInfoResponse>('inspect_local_model', { request }),
+
+  getProviderLocalModelInfo: (request: ProviderLocalModelInfoReadRequest) =>
+    invoke<LocalModelInfoResponse>('get_provider_local_model_info', { request }),
 
   /** The shipped vendor catalog. Compiled into the binary, so it never changes
    *  within a run — callers may cache it for the lifetime of the process. */

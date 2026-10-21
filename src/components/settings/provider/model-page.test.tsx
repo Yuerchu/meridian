@@ -1,16 +1,19 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
 import i18n from '@/i18n'
 import { parseTokenCount, safeThreshold } from './capabilities'
 import { ModelPage } from './model-page'
+import { demoLocalModel } from '@/dev/demo/local-model'
+import type { ProviderCapabilitiesInfoResponse } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
     getModelConfig: vi.fn(),
     listModelProfiles: vi.fn(),
     getProviderCapabilities: vi.fn(),
+    getProviderLocalModelInfo: vi.fn(),
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
   },
@@ -58,12 +61,12 @@ const EXISTING = {
   updated_at: 0,
 } as never
 
-function renderPage(confirm = vi.fn().mockResolvedValue(true), onDeleted = vi.fn()) {
+function renderPage(confirm = vi.fn().mockResolvedValue(true), onDeleted = vi.fn(), apiFormat = 'chat_completions') {
   render(
     <ModelPage
       providerId="p1"
       modelId="m1"
-      apiFormat="chat_completions"
+      apiFormat={apiFormat}
       onSaved={() => {}}
       onDeleted={onDeleted}
       confirm={confirm}
@@ -193,6 +196,44 @@ describe('ModelPage', () => {
     await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
     expect(mockApi.saveModelConfig.mock.calls[0][0].profile.context_window).toBe(200000)
     expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('common.saved'))
+  })
+
+  it('blocks a local save until both capability reads succeed, then permits it', async () => {
+    const user = userEvent.setup()
+    let complete: (value: ProviderCapabilitiesInfoResponse) => void = () => {
+      throw new Error('capability lookup did not start')
+    }
+    mockApi.getProviderCapabilities.mockReturnValueOnce(
+      new Promise((resolve) => {
+        complete = resolve
+      }),
+    )
+    mockApi.getProviderLocalModelInfo.mockResolvedValueOnce({
+      ...demoLocalModel('C:/Models/custom.litertlm', 'gpu'),
+      max_context_tokens: null,
+    })
+    renderPage(vi.fn().mockResolvedValue(true), vi.fn(), 'litert_lm')
+    const output = await screen.findByRole('textbox', { name: new RegExp(i18n.t('settings.model.maxOutput')) })
+    await user.type(output, '32')
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('settings.localModel.capabilitiesError'))
+    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    await act(async () => {
+      complete({ supported_efforts: [], server_tools: [], max_context_tokens: null, max_output_tokens: null } as never)
+    })
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
+  })
+
+  it('refuses a local save when metadata inspection fails', async () => {
+    const user = userEvent.setup()
+    mockApi.getProviderCapabilities.mockResolvedValueOnce({ supported_efforts: [], server_tools: [] } as never)
+    mockApi.getProviderLocalModelInfo.mockRejectedValueOnce(new Error('model file changed'))
+    renderPage(vi.fn().mockResolvedValue(true), vi.fn(), 'litert_lm')
+    await screen.findByText('Error: model file changed')
+    await user.type(screen.getByRole('textbox', { name: new RegExp(i18n.t('settings.model.maxOutput')) }), '32')
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
   })
 
   it('parses token counts strictly', () => {

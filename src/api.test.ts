@@ -453,6 +453,7 @@ describe('api', () => {
         apiFormat: null,
         catalogId: null,
         authOption: null,
+        localBackend: null,
       })
       expect(mockInvoke).toHaveBeenCalledWith('create_provider', {
         request: {
@@ -462,6 +463,7 @@ describe('api', () => {
           apiFormat: null,
           catalogId: null,
           authOption: null,
+          localBackend: null,
         },
       })
     })
@@ -478,6 +480,7 @@ describe('api', () => {
         apiFormat: 'responses',
         catalogId: 'openai',
         authOption: null,
+        localBackend: null,
       })
       expect(mockInvoke).toHaveBeenCalledWith('create_provider', {
         request: {
@@ -487,6 +490,7 @@ describe('api', () => {
           apiFormat: 'responses',
           catalogId: 'openai',
           authOption: null,
+          localBackend: null,
         },
       })
     })

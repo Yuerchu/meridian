@@ -52,6 +52,7 @@ export function buildProviders(now: number): ProviderInfoResponse[] {
     transport_profile: 'standard' as const,
     icon: null,
     codex_request_shape: false,
+    local_backend: null,
   }
   return [
     {
@@ -123,6 +124,29 @@ export function buildCatalog(): ProviderCatalogEntryInfoResponse[] {
     entry('openai', 'openai', 'OpenAI', 'https://api.openai.com/v1', false, ['gpt-5.6', 'gpt-5.6-mini']),
     entry('xai', 'xai', 'xAI', 'https://api.x.ai/v1', false, ['grok-4.6']),
     entry('google', 'google', 'Google', 'https://generativelanguage.googleapis.com', false, ['gemini-3-pro']),
+    {
+      id: 'litert_lm',
+      provider_type: 'litert_lm',
+      name: 'LiteRT-LM (On-Device)',
+      icon: 'litert',
+      balance: false,
+      websites: {
+        official: 'https://ai.google.dev/edge/litert-lm',
+        api_key: null,
+        docs: 'https://ai.google.dev/edge/litert-lm/overview',
+        models: null,
+      },
+      auth: [
+        {
+          id: 'local',
+          credential_kind: 'none',
+          transport_profile: 'local_native',
+          api_formats: ['litert_lm'],
+          default_base_url: { litert_lm: 'local://' },
+        },
+      ],
+      models: [],
+    },
   ]
 }
 

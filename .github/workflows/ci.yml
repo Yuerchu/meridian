@@ -105,6 +105,10 @@ jobs:
 
       - run: pnpm install
 
+      - name: Prepare pinned LiteRT-LM runtime
+        if: matrix.os == 'windows-latest'
+        run: pnpm litert:fetch && pnpm litert:check
+
       # Style gates run on the Linux leg only: they are platform-independent,
       # and a Windows minute costs twice a Linux one.
       - name: Prettier check

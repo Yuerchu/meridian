@@ -156,6 +156,13 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   workspace_git_diff: { args: { request: { conversationId: CONV.rich, relPath: null } } },
   open_in_editor: { args: { request: { conversationId: CONV.rich, relPath: 'README.md', line: null } }, reject: true },
   list_providers: {},
+  inspect_local_model: {
+    args: { request: { modelPath: 'C:/Models/custom-gpu.litertlm', backend: 'auto', forceRefresh: true } },
+  },
+  get_provider_local_model_info: {
+    args: { request: { providerId: PROVIDER.anthropic, forceRefresh: false } },
+    reject: true,
+  },
   list_provider_catalog: {},
   codex_auth_status: {},
   create_provider: {
@@ -167,6 +174,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         apiFormat: null,
         catalogId: null,
         authOption: null,
+        localBackend: null,
       },
     },
   },

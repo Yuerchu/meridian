@@ -544,6 +544,13 @@ const RAW_TABLES: RawTable[] = [
         '0',
         '请求体与请求头是否照 Codex 原样发；只有 Responses 适配器读它（迁移 63）',
       ],
+      [
+        'local_backend',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        'LiteRT 的 auto/cpu/gpu/npu 选择；其他供应商为 NULL，自动只遵循模型推荐、不静默回退（SeaORM 迁移 6）',
+      ],
     ],
     rels: [
       '<code>assistants.provider_id</code>、<code>messages.provider_id</code> → <b>SET NULL</b>。',

@@ -82,3 +82,14 @@ Modifications made:
     to the same review model
   - integrated the workflow with Meridian's transcript, attention queue,
     remote client and mobile navigation
+
+---
+
+LiteRT-LM 0.18.0
+Copyright The Google AI Edge Authors
+Licensed under the Apache License, Version 2.0
+https://github.com/google-ai-edge/LiteRT-LM
+
+The Windows build bundles the unmodified, SHA-256-pinned runtime from the
+litert-lm-api distribution, including its DirectX compiler runtime files.
+The LiteRT-LM license is supplied as litert-lm-LICENSE.txt beside the application.

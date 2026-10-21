@@ -6,7 +6,8 @@
       "resources/onnxruntime_providers_shared.dll": "./",
       "resources/litert-lm.dll": "./",
       "resources/dxcompiler.dll": "./",
-      "resources/dxil.dll": "./"
+      "resources/dxil.dll": "./",
+      "resources/litert-lm-LICENSE.txt": "./"
     }
   }
 }

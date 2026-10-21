@@ -161,15 +161,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "create_skill": {
       "kind": "ref",
-      "id": 121
+      "id": 122
     },
     "create_tool_preset": {
       "kind": "ref",
-      "id": 123
+      "id": 124
     },
     "decide_plan_review": {
       "kind": "ref",
-      "id": 124
+      "id": 125
     },
     "delete_assistant": {
       "kind": "null"
@@ -218,14 +218,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "delete_voice_corpus": {
       "kind": "ref",
-      "id": 125
+      "id": 126
     },
     "deny_tool_call": {
       "kind": "null"
     },
     "discard_plan_review_draft": {
       "kind": "ref",
-      "id": 126
+      "id": 127
     },
     "disconnect_mcp_server": {
       "kind": "null"
@@ -235,145 +235,149 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "download_ime_rime_ice": {
       "kind": "ref",
-      "id": 144
+      "id": 145
     },
     "export_conversation": {
       "kind": "ref",
-      "id": 145
+      "id": 146
     },
     "export_logs": {
       "kind": "ref",
-      "id": 146
+      "id": 147
     },
     "export_media_file": {
       "kind": "null"
     },
     "export_voice_corpus": {
       "kind": "ref",
-      "id": 147
+      "id": 148
     },
     "fetch_provider_models": {
       "kind": "ref",
-      "id": 148
+      "id": 149
     },
     "forget_all_ime_learning": {
       "kind": "ref",
-      "id": 150
+      "id": 151
     },
     "forget_ime_learned_word": {
       "kind": "ref",
-      "id": 150
+      "id": 151
     },
     "forget_memory_subject": {
       "kind": "number"
     },
     "forget_voice_sender": {
       "kind": "ref",
-      "id": 153
+      "id": 154
     },
     "get_active_todo_list": {
       "kind": "ref",
-      "id": 154
+      "id": 155
     },
     "get_android_ime_status": {
       "kind": "ref",
-      "id": 161
+      "id": 162
     },
     "get_app_info": {
       "kind": "ref",
-      "id": 162
+      "id": 163
     },
     "get_composer_draft": {
       "kind": "ref",
-      "id": 164
+      "id": 165
     },
     "get_context_info": {
       "kind": "ref",
-      "id": 171
+      "id": 172
     },
     "get_emoji_file_url": {
       "kind": "string"
     },
     "get_hooks_config": {
       "kind": "ref",
-      "id": 173
+      "id": 174
     },
     "get_hooks_status": {
       "kind": "ref",
-      "id": 174
+      "id": 175
     },
     "get_ime_config": {
       "kind": "ref",
-      "id": 175
+      "id": 176
     },
     "get_ime_learning": {
       "kind": "ref",
-      "id": 150
+      "id": 151
     },
     "get_ime_lm_status": {
       "kind": "ref",
-      "id": 178
+      "id": 179
     },
     "get_ime_status": {
       "kind": "ref",
-      "id": 181
+      "id": 182
     },
     "get_listen_addresses": {
       "kind": "ref",
-      "id": 182
+      "id": 183
     },
     "get_listen_config": {
       "kind": "ref",
-      "id": 183
+      "id": 184
     },
     "get_listen_status": {
       "kind": "ref",
-      "id": 184
+      "id": 185
     },
     "get_log_settings": {
       "kind": "ref",
-      "id": 185
+      "id": 186
     },
     "get_manage_storage_status": {
       "kind": "boolean"
     },
     "get_model_config": {
       "kind": "ref",
-      "id": 188
+      "id": 189
     },
     "get_onebot_config": {
       "kind": "ref",
-      "id": 201
+      "id": 202
     },
     "get_onebot_status": {
       "kind": "ref",
-      "id": 203
+      "id": 204
     },
     "get_plan_review": {
       "kind": "ref",
-      "id": 126
+      "id": 127
     },
     "get_plan_review_delivery": {
       "kind": "ref",
-      "id": 133
+      "id": 134
     },
     "get_platform": {
       "kind": "ref",
-      "id": 163
+      "id": 164
     },
     "get_preference": {
       "kind": "preference"
     },
     "get_provider_balance": {
       "kind": "ref",
-      "id": 204
+      "id": 205
     },
     "get_provider_capabilities": {
       "kind": "ref",
-      "id": 208
+      "id": 209
     },
     "get_provider_key_exists": {
       "kind": "boolean"
+    },
+    "get_provider_local_model_info": {
+      "kind": "ref",
+      "id": 213
     },
     "get_secret": {
       "kind": "ref",
@@ -387,171 +391,175 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "get_user_command_result": {
       "kind": "ref",
-      "id": 212
+      "id": 227
     },
     "get_voice_send_readiness": {
       "kind": "ref",
-      "id": 216
+      "id": 231
     },
     "get_window_insets": {
       "kind": "ref",
-      "id": 217
+      "id": 232
     },
     "import_emojis": {
       "kind": "ref",
-      "id": 218
+      "id": 233
     },
     "import_ime_lm": {
       "kind": "ref",
-      "id": 178
+      "id": 179
     },
     "import_staged_ime_dictionaries": {
       "kind": "ref",
-      "id": 219
+      "id": 234
+    },
+    "inspect_local_model": {
+      "kind": "ref",
+      "id": 213
     },
     "journal_blame": {
       "kind": "ref",
-      "id": 220
+      "id": 235
     },
     "journal_file_history": {
       "kind": "ref",
-      "id": 225
+      "id": 240
     },
     "journal_version_content": {
       "kind": "ref",
-      "id": 229
+      "id": 244
     },
     "list_all_memories": {
       "kind": "ref",
-      "id": 230
+      "id": 245
     },
     "list_all_tool_names": {
       "kind": "ref",
-      "id": 237
+      "id": 252
     },
     "list_assistant_emoji_packs": {
       "kind": "ref",
-      "id": 241
+      "id": 256
     },
     "list_assistants": {
       "kind": "ref",
-      "id": 242
+      "id": 257
     },
     "list_background_tasks": {
       "kind": "ref",
-      "id": 243
+      "id": 258
     },
     "list_cached_provider_models": {
       "kind": "ref",
-      "id": 148
+      "id": 149
     },
     "list_conversations": {
       "kind": "ref",
-      "id": 248
+      "id": 263
     },
     "list_conversations_by_project": {
       "kind": "ref",
-      "id": 248
+      "id": 263
     },
     "list_custom_tools": {
       "kind": "ref",
-      "id": 249
+      "id": 264
     },
     "list_emoji_packs": {
       "kind": "ref",
-      "id": 241
+      "id": 256
     },
     "list_emojis": {
       "kind": "ref",
-      "id": 218
+      "id": 233
     },
     "list_ime_dictionaries": {
       "kind": "ref",
-      "id": 250
+      "id": 265
     },
     "list_log_files": {
       "kind": "ref",
-      "id": 258
+      "id": 273
     },
     "list_mcp_connection_statuses": {
       "kind": "ref",
-      "id": 260
+      "id": 275
     },
     "list_mcp_servers": {
       "kind": "ref",
-      "id": 263
+      "id": 278
     },
     "list_mcp_tools": {
       "kind": "ref",
-      "id": 264
+      "id": 279
     },
     "list_memories": {
       "kind": "ref",
-      "id": 230
+      "id": 245
     },
     "list_memory_subjects": {
       "kind": "ref",
-      "id": 266
+      "id": 281
     },
     "list_memory_trash": {
       "kind": "ref",
-      "id": 230
+      "id": 245
     },
     "list_model_configs": {
       "kind": "ref",
-      "id": 268
+      "id": 283
     },
     "list_model_profiles": {
       "kind": "ref",
-      "id": 269
+      "id": 284
     },
     "list_plan_revisions": {
       "kind": "ref",
-      "id": 270
+      "id": 285
     },
     "list_projects": {
       "kind": "ref",
-      "id": 271
+      "id": 286
     },
     "list_provider_catalog": {
       "kind": "ref",
-      "id": 272
+      "id": 287
     },
     "list_providers": {
       "kind": "ref",
-      "id": 281
+      "id": 296
     },
     "list_saf_roots": {
       "kind": "ref",
-      "id": 282
+      "id": 297
     },
     "list_skill_bindings": {
       "kind": "ref",
-      "id": 284
+      "id": 299
     },
     "list_skills": {
       "kind": "ref",
-      "id": 285
+      "id": 300
     },
     "list_system_notices": {
       "kind": "ref",
-      "id": 286
+      "id": 301
     },
     "list_tool_categories": {
       "kind": "ref",
-      "id": 292
+      "id": 307
     },
     "list_tool_presets": {
       "kind": "ref",
-      "id": 294
+      "id": 309
     },
     "list_voice_corpus": {
       "kind": "ref",
-      "id": 295
+      "id": 310
     },
     "memory_enums": {
       "kind": "ref",
-      "id": 298
+      "id": 313
     },
     "open_android_ime_settings": {
       "kind": "null"
@@ -565,18 +573,18 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "pick_saf_directory": {
       "kind": "ref",
-      "id": 282
+      "id": 297
     },
     "purge_memories": {
       "kind": "number"
     },
     "queue_enqueue": {
       "kind": "ref",
-      "id": 303
+      "id": 318
     },
     "queue_list": {
       "kind": "ref",
-      "id": 305
+      "id": 320
     },
     "queue_release": {
       "kind": "null"
@@ -595,42 +603,42 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "read_background_task_output": {
       "kind": "ref",
-      "id": 306
+      "id": 321
     },
     "read_logs": {
       "kind": "ref",
-      "id": 307
+      "id": 322
     },
     "read_message_context_item": {
       "kind": "ref",
-      "id": 313
+      "id": 328
     },
     "refresh_ime_memory_hints": {
       "kind": "ref",
-      "id": 314
+      "id": 329
     },
     "regenerate_hooks_token": {
       "kind": "string"
     },
     "regenerate_listen_token": {
       "kind": "ref",
-      "id": 183
+      "id": 184
     },
     "register_ime": {
       "kind": "ref",
-      "id": 181
+      "id": 182
     },
     "remove_ime_dictionary": {
       "kind": "ref",
-      "id": 250
+      "id": 265
     },
     "remove_ime_lm": {
       "kind": "ref",
-      "id": 178
+      "id": 179
     },
     "remove_saf_root": {
       "kind": "ref",
-      "id": 282
+      "id": 297
     },
     "rename_emoji": {
       "kind": "ref",
@@ -641,14 +649,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "rescan_skills": {
       "kind": "ref",
-      "id": 285
+      "id": 300
     },
     "resolve_file_name": {
       "kind": "string"
     },
     "resolve_plan_file_conflict": {
       "kind": "ref",
-      "id": 134
+      "id": 135
     },
     "respond_to_ask": {
       "kind": "null"
@@ -658,7 +666,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "run_user_command": {
       "kind": "ref",
-      "id": 213
+      "id": 228
     },
     "save_composer_draft": {
       "kind": "ref",
@@ -666,42 +674,42 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "save_hooks_config": {
       "kind": "ref",
-      "id": 173
+      "id": 174
     },
     "save_ime_config": {
       "kind": "ref",
-      "id": 175
+      "id": 176
     },
     "save_listen_config": {
       "kind": "ref",
-      "id": 184
+      "id": 185
     },
     "save_memory": {
       "kind": "ref",
-      "id": 231
+      "id": 246
     },
     "save_memory_scoped": {
       "kind": "ref",
-      "id": 231
+      "id": 246
     },
     "save_model_config": {
       "kind": "ref",
-      "id": 189
+      "id": 190
     },
     "save_onebot_config": {
       "kind": "null"
     },
     "save_plan_review_draft": {
       "kind": "ref",
-      "id": 315
+      "id": 330
     },
     "search_conversations": {
       "kind": "ref",
-      "id": 316
+      "id": 331
     },
     "search_emojis": {
       "kind": "ref",
-      "id": 218
+      "id": 233
     },
     "set_conversation_accept_edits": {
       "kind": "null"
@@ -720,11 +728,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "set_ime_dictionary_enabled": {
       "kind": "ref",
-      "id": 250
+      "id": 265
     },
     "set_ime_profile_enabled": {
       "kind": "ref",
-      "id": 181
+      "id": 182
     },
     "set_log_level": {
       "kind": "null"
@@ -746,7 +754,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "set_skill_binding": {
       "kind": "ref",
-      "id": 284
+      "id": 299
     },
     "set_voice_optout": {
       "kind": "null"
@@ -756,18 +764,18 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "stage_ime_dictionary": {
       "kind": "ref",
-      "id": 319
+      "id": 334
     },
     "start_hooks": {
       "kind": "null"
     },
     "start_ime_host": {
       "kind": "ref",
-      "id": 181
+      "id": 182
     },
     "start_listen": {
       "kind": "ref",
-      "id": 184
+      "id": 185
     },
     "start_onebot": {
       "kind": "null"
@@ -777,7 +785,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "stop_background_task": {
       "kind": "ref",
-      "id": 244
+      "id": 259
     },
     "stop_chat": {
       "kind": "null"
@@ -787,11 +795,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "stop_ime_host": {
       "kind": "ref",
-      "id": 181
+      "id": 182
     },
     "stop_listen": {
       "kind": "ref",
-      "id": 184
+      "id": 185
     },
     "stop_onebot": {
       "kind": "null"
@@ -805,7 +813,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "take_launch_request": {
       "kind": "ref",
-      "id": 322
+      "id": 337
     },
     "take_photo": {
       "kind": "ref",
@@ -839,7 +847,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "update_memory": {
       "kind": "ref",
-      "id": 231
+      "id": 246
     },
     "update_project": {
       "kind": "ref",
@@ -851,27 +859,27 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "update_skill": {
       "kind": "ref",
-      "id": 121
+      "id": 122
     },
     "update_tool_preset": {
       "kind": "ref",
-      "id": 123
+      "id": 124
     },
     "upload_file": {
       "kind": "ref",
-      "id": 324
+      "id": 339
     },
     "upload_file_bytes": {
       "kind": "ref",
-      "id": 324
+      "id": 339
     },
     "usage_gaps": {
       "kind": "ref",
-      "id": 329
+      "id": 344
     },
     "usage_report": {
       "kind": "ref",
-      "id": 333
+      "id": 348
     },
     "voice_cancel_download": {
       "kind": "null"
@@ -887,11 +895,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "voice_import_model": {
       "kind": "ref",
-      "id": 335
+      "id": 350
     },
     "voice_model_status": {
       "kind": "ref",
-      "id": 335
+      "id": 350
     },
     "voice_prewarm": {
       "kind": "null"
@@ -907,43 +915,43 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "voice_stop_and_transcribe": {
       "kind": "ref",
-      "id": 336
+      "id": 351
     },
     "voice_transcribe_pcm": {
       "kind": "ref",
-      "id": 336
+      "id": 351
     },
     "workspace_git_diff": {
       "kind": "ref",
-      "id": 338
+      "id": 353
     },
     "workspace_git_status": {
       "kind": "ref",
-      "id": 339
+      "id": 354
     },
     "workspace_probe_ref": {
       "kind": "ref",
-      "id": 346
+      "id": 361
     },
     "workspace_read_file": {
       "kind": "ref",
-      "id": 348
+      "id": 363
     },
     "workspace_resolve_ref": {
       "kind": "ref",
-      "id": 349
+      "id": 364
     },
     "workspace_root": {
       "kind": "ref",
-      "id": 350
+      "id": 365
     },
     "workspace_suggest_refs": {
       "kind": "ref",
-      "id": 355
+      "id": 370
     },
     "workspace_tree": {
       "kind": "ref",
-      "id": 357
+      "id": 372
     }
   },
   "definitions": [
@@ -4454,6 +4462,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "boolean"
           }
         },
+        "local_backend": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 119
+          }
+        },
         "name": {
           "optional": false,
           "schema": {
@@ -4464,7 +4479,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 119
+            "id": 120
           }
         },
         "sort_order": {
@@ -4477,7 +4492,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 120
+            "id": 121
           }
         },
         "updated_at": {
@@ -4540,6 +4555,30 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "none"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "auto"
+        },
+        {
+          "kind": "literal",
+          "value": "cpu"
+        },
+        {
+          "kind": "literal",
+          "value": "gpu"
+        },
+        {
+          "kind": "literal",
+          "value": "npu"
         }
       ]
     },
@@ -4652,7 +4691,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 122
+            "id": 123
           }
         },
         "updated_at": {
@@ -4819,49 +4858,49 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 127
+            "id": 128
           }
         },
         "delivery": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 133
+            "id": 134
           }
         },
         "document": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 134
+            "id": 135
           }
         },
         "draft": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 137
+            "id": 138
           }
         },
         "parent_revision": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 140
+            "id": 141
           }
         },
         "review": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 143
+            "id": 144
           }
         },
         "submitted_revision": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 141
+            "id": 142
           }
         }
       },
@@ -4871,7 +4910,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 128
+        "id": 129
       }
     },
     {
@@ -4881,7 +4920,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 129
+            "id": 130
           }
         },
         "body": {
@@ -4918,7 +4957,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 132
+            "id": 133
           }
         },
         "updated_at": {
@@ -4935,11 +4974,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 130
+          "id": 131
         },
         {
           "kind": "ref",
-          "id": 131
+          "id": 132
         }
       ]
     },
@@ -5098,7 +5137,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 135
+            "id": 136
           }
         },
         "head_revision_id": {
@@ -5118,7 +5157,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 136
+            "id": 137
           }
         },
         "updated_at": {
@@ -5250,7 +5289,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 138
+            "id": 139
           }
         },
         "review_id": {
@@ -5263,7 +5302,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 139
+            "id": 140
           }
         },
         "source_text": {
@@ -5303,11 +5342,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 130
+          "id": 131
         },
         {
           "kind": "ref",
-          "id": 131
+          "id": 132
         }
       ]
     },
@@ -5319,7 +5358,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 141
+          "id": 142
         }
       ]
     },
@@ -5337,7 +5376,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 142
+            "id": 143
           }
         },
         "content_markdown": {
@@ -5618,7 +5657,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 149
+        "id": 150
       }
     },
     {
@@ -5658,7 +5697,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 151
+            "id": 152
           }
         }
       },
@@ -5668,7 +5707,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 152
+        "id": 153
       }
     },
     {
@@ -5734,7 +5773,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 155
+          "id": 156
         }
       ]
     },
@@ -5745,14 +5784,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 156
+            "id": 157
           }
         },
         "list": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 159
+            "id": 160
           }
         }
       },
@@ -5762,7 +5801,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 157
+        "id": 158
       }
     },
     {
@@ -5808,7 +5847,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 158
+            "id": 159
           }
         }
       },
@@ -5856,7 +5895,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 160
+            "id": 161
           }
         },
         "title": {
@@ -5930,7 +5969,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 163
+            "id": 164
           }
         },
         "tauriVersion": {
@@ -5981,7 +6020,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 165
+          "id": 166
         }
       ]
     },
@@ -5992,7 +6031,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 166
+            "id": 167
           }
         },
         "body": {
@@ -6012,7 +6051,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 168
+            "id": 169
           }
         },
         "revision": {
@@ -6025,7 +6064,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 170
+            "id": 171
           }
         },
         "updated_at": {
@@ -6041,7 +6080,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 167
+        "id": 168
       }
     },
     {
@@ -6072,7 +6111,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 169
+        "id": 170
       }
     },
     {
@@ -6132,7 +6171,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 172
+            "id": 173
           }
         },
         "compact_threshold": {
@@ -6324,14 +6363,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 176
+            "id": 177
           }
         },
         "scheme": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 177
+            "id": 178
           }
         }
       },
@@ -6381,7 +6420,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 179
+            "id": 180
           }
         },
         "dir": {
@@ -6403,7 +6442,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 180
+        "id": 181
       }
     },
     {
@@ -6626,14 +6665,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 186
+            "id": 187
           }
         },
         "levels": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 187
+            "id": 188
           }
         },
         "maxFileBytes": {
@@ -6676,7 +6715,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 186
+        "id": 187
       }
     },
     {
@@ -6687,7 +6726,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 189
+          "id": 190
         }
       ]
     },
@@ -6718,7 +6757,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 190
+            "id": 191
           }
         },
         "id": {
@@ -6757,14 +6796,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 191
+            "id": 192
           }
         },
         "profile": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 193
+            "id": 194
           }
         },
         "provider_id": {
@@ -6784,7 +6823,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 200
+            "id": 201
           }
         },
         "updated_at": {
@@ -6831,7 +6870,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 191
+            "id": 192
           }
         },
         "server_tool_price": {
@@ -6848,7 +6887,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 192
+        "id": 193
       }
     },
     {
@@ -6910,7 +6949,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 194
+            "id": 195
           }
         },
         "compact_threshold": {
@@ -6974,7 +7013,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 191
+            "id": 192
           }
         },
         "updated_at": {
@@ -6994,7 +7033,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 195
+          "id": 196
         }
       ]
     },
@@ -7105,14 +7144,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": true,
           "schema": {
             "kind": "ref",
-            "id": 196
+            "id": 197
           }
         },
         "supported_efforts": {
           "optional": true,
           "schema": {
             "kind": "ref",
-            "id": 198
+            "id": 199
           }
         },
         "supports_fast": {
@@ -7214,7 +7253,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 197
+        "id": 198
       }
     },
     {
@@ -7246,7 +7285,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 199
+        "id": 200
       }
     },
     {
@@ -7286,7 +7325,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 196
+          "id": 197
         }
       ]
     },
@@ -7310,7 +7349,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 202
+            "id": 203
           }
         },
         "assistant_id": {
@@ -7423,7 +7462,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 205
+          "id": 206
         }
       ]
     },
@@ -7434,7 +7473,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 206
+            "id": 207
           }
         },
         "is_available": {
@@ -7450,7 +7489,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 207
+        "id": 208
       }
     },
     {
@@ -7492,14 +7531,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 209
+            "id": 210
           }
         },
         "default_verbosity": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 210
+            "id": 211
           }
         },
         "max_context_tokens": {
@@ -7527,14 +7566,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 196
+            "id": 197
           }
         },
         "supported_efforts": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 198
+            "id": 199
           }
         },
         "supports_fast": {
@@ -7601,7 +7640,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 211
+            "id": 212
           }
         }
       },
@@ -7689,6 +7728,137 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       ]
     },
     {
+      "kind": "object",
+      "fields": {
+        "embedding_dimension": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "embedding_signature_lengths": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 214
+          }
+        },
+        "file_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "file_size_bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "is_dynamic_context": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 215
+          }
+        },
+        "max_context_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "max_vision_token_budget": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "min_runtime_version": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "modalities": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 216
+          }
+        },
+        "requested_backend": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 222
+          }
+        },
+        "resolved_backend": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 223
+          }
+        },
+        "revision": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "runtime_version": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "sampler_defaults": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 224
+          }
+        },
+        "supports_function_calling": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "supports_speculative_decoding": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "supports_thinking": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "vision_signature_lengths": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 214
+          }
+        }
+      },
+      "additional": null
+    },
+    {
       "kind": "union",
       "variants": [
         {
@@ -7696,7 +7866,251 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 213
+          "id": 203
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "unknown"
+        },
+        {
+          "kind": "literal",
+          "value": "llm"
+        },
+        {
+          "kind": "literal",
+          "value": "embedding"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 217
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "modality": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 218
+          }
+        },
+        "npu_brand": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 219
+          }
+        },
+        "preferred_backends": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 220
+          }
+        },
+        "soc_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "video"
+        },
+        {
+          "kind": "literal",
+          "value": "audio"
+        },
+        {
+          "kind": "literal",
+          "value": "text"
+        },
+        {
+          "kind": "literal",
+          "value": "vision"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "qualcomm"
+        },
+        {
+          "kind": "literal",
+          "value": "google_tensor"
+        },
+        {
+          "kind": "literal",
+          "value": "mediatek"
+        },
+        {
+          "kind": "literal",
+          "value": "intel"
+        },
+        {
+          "kind": "literal",
+          "value": "samsung"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 221
+      }
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "cpu"
+        },
+        {
+          "kind": "literal",
+          "value": "gpu"
+        },
+        {
+          "kind": "literal",
+          "value": "npu"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "auto"
+        },
+        {
+          "kind": "literal",
+          "value": "cpu"
+        },
+        {
+          "kind": "literal",
+          "value": "gpu"
+        },
+        {
+          "kind": "literal",
+          "value": "npu"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "cpu"
+        },
+        {
+          "kind": "literal",
+          "value": "gpu"
+        },
+        {
+          "kind": "literal",
+          "value": "npu"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 225
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "sampler_type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 226
+          }
+        },
+        "temperature": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "top_k": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "top_p": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "top_k"
+        },
+        {
+          "kind": "literal",
+          "value": "top_p"
+        },
+        {
+          "kind": "literal",
+          "value": "greedy"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 228
         }
       ]
     },
@@ -7763,14 +8177,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 214
+            "id": 229
           }
         },
         "status": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 215
+            "id": 230
           }
         },
         "stderr": {
@@ -7942,7 +8356,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 144
+        "id": 145
       }
     },
     {
@@ -7965,7 +8379,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 221
+            "id": 236
           }
         },
         "truncated": {
@@ -7981,7 +8395,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 222
+        "id": 237
       }
     },
     {
@@ -8004,7 +8418,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 223
+            "id": 238
           }
         },
         "model_id": {
@@ -8018,7 +8432,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 224
+            "id": 239
           }
         },
         "start_line": {
@@ -8112,7 +8526,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 226
+        "id": 241
       }
     },
     {
@@ -8175,14 +8589,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 227
+            "id": 242
           }
         },
         "origin": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 224
+            "id": 239
           }
         },
         "project_id": {
@@ -8202,7 +8616,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 228
+            "id": 243
           }
         },
         "tool_name": {
@@ -8304,7 +8718,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 231
+        "id": 246
       }
     },
     {
@@ -8333,7 +8747,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 232
+            "id": 247
           }
         },
         "id": {
@@ -8352,14 +8766,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 233
+            "id": 248
           }
         },
         "origin": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 234
+            "id": 249
           }
         },
         "scope_id": {
@@ -8372,7 +8786,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 235
+            "id": 250
           }
         },
         "source_session_id": {
@@ -8399,7 +8813,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 236
+            "id": 251
           }
         }
       },
@@ -8513,7 +8927,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 238
+        "id": 253
       }
     },
     {
@@ -8549,7 +8963,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 239
+            "id": 254
           }
         },
         "server_name": {
@@ -8563,7 +8977,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 240
+            "id": 255
           }
         }
       },
@@ -8624,7 +9038,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 244
+        "id": 259
       }
     },
     {
@@ -8681,7 +9095,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 245
+            "id": 260
           }
         },
         "notified": {
@@ -8706,7 +9120,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 246
+            "id": 261
           }
         },
         "started_at": {
@@ -8719,7 +9133,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 247
+            "id": 262
           }
         }
       },
@@ -8794,7 +9208,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 251
+        "id": 266
       }
     },
     {
@@ -8847,7 +9261,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 252
+            "id": 267
           }
         }
       },
@@ -8858,23 +9272,23 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 253
+          "id": 268
         },
         {
           "kind": "ref",
-          "id": 254
+          "id": 269
         },
         {
           "kind": "ref",
-          "id": 255
+          "id": 270
         },
         {
           "kind": "ref",
-          "id": 256
+          "id": 271
         },
         {
           "kind": "ref",
-          "id": 257
+          "id": 272
         }
       ]
     },
@@ -8965,7 +9379,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 259
+        "id": 274
       }
     },
     {
@@ -8990,7 +9404,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 261
+        "id": 276
       }
     },
     {
@@ -9006,7 +9420,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 262
+            "id": 277
           }
         },
         "tool_count": {
@@ -9046,7 +9460,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 265
+        "id": 280
       }
     },
     {
@@ -9095,7 +9509,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 267
+        "id": 282
       }
     },
     {
@@ -9151,21 +9565,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 189
+        "id": 190
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 193
+        "id": 194
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 141
+        "id": 142
       }
     },
     {
@@ -9179,7 +9593,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 273
+        "id": 288
       }
     },
     {
@@ -9189,7 +9603,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 274
+            "id": 289
           }
         },
         "balance": {
@@ -9214,7 +9628,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 278
+            "id": 293
           }
         },
         "name": {
@@ -9227,14 +9641,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 119
+            "id": 120
           }
         },
         "websites": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 280
+            "id": 295
           }
         }
       },
@@ -9244,7 +9658,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 275
+        "id": 290
       }
     },
     {
@@ -9254,7 +9668,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 276
+            "id": 291
           }
         },
         "credential_kind": {
@@ -9268,7 +9682,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 277
+            "id": 292
           }
         },
         "id": {
@@ -9281,7 +9695,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 120
+            "id": 121
           }
         }
       },
@@ -9340,7 +9754,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 279
+        "id": 294
       }
     },
     {
@@ -9407,7 +9821,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 283
+        "id": 298
       }
     },
     {
@@ -9444,14 +9858,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 121
+        "id": 122
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 287
+        "id": 302
       }
     },
     {
@@ -9461,7 +9875,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 288
+            "id": 303
           }
         },
         "finished_at": {
@@ -9500,7 +9914,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 289
+            "id": 304
           }
         },
         "kind": {
@@ -9514,7 +9928,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 291
+            "id": 306
           }
         },
         "upgraded": {
@@ -9530,7 +9944,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 290
+        "id": 305
       }
     },
     {
@@ -9572,7 +9986,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 293
+        "id": 308
       }
     },
     {
@@ -9623,14 +10037,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 123
+        "id": 124
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 296
+        "id": 311
       }
     },
     {
@@ -9658,7 +10072,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 297
+            "id": 312
           }
         },
         "last_captured_at": {
@@ -9696,28 +10110,28 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 299
+            "id": 314
           }
         },
         "origins": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 300
+            "id": 315
           }
         },
         "scopes": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 301
+            "id": 316
           }
         },
         "visibilities": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 302
+            "id": 317
           }
         }
       },
@@ -9727,28 +10141,28 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 233
+        "id": 248
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 234
+        "id": 249
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 235
+        "id": 250
       }
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 236
+        "id": 251
       }
     },
     {
@@ -9776,7 +10190,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 304
+            "id": 319
           }
         },
         "dispatched_at": {
@@ -9853,7 +10267,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 303
+        "id": 318
       }
     },
     {
@@ -9881,7 +10295,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 244
+            "id": 259
           }
         },
         "total_bytes": {
@@ -9900,7 +10314,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 308
+            "id": 323
           }
         },
         "filesScanned": {
@@ -9914,7 +10328,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 312
+            "id": 327
           }
         },
         "scanTruncated": {
@@ -9930,7 +10344,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 309
+        "id": 324
       }
     },
     {
@@ -9940,7 +10354,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 310
+            "id": 325
           }
         },
         "fields": {
@@ -9961,7 +10375,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 311
+            "id": 326
           }
         },
         "line": {
@@ -10059,7 +10473,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 310
+          "id": 325
         }
       ]
     },
@@ -10134,7 +10548,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 317
+        "id": 332
       }
     },
     {
@@ -10156,7 +10570,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 318
+            "id": 333
           }
         },
         "snippet": {
@@ -10195,7 +10609,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 320
+            "id": 335
           }
         },
         "staging_id": {
@@ -10211,7 +10625,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 321
+        "id": 336
       }
     },
     {
@@ -10247,7 +10661,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 323
+          "id": 338
         }
       ]
     },
@@ -10269,11 +10683,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 325
+          "id": 340
         },
         {
           "kind": "ref",
-          "id": 327
+          "id": 342
         }
       ]
     },
@@ -10284,7 +10698,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 326
+            "id": 341
           }
         },
         "type": {
@@ -10316,7 +10730,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 328
+            "id": 343
           }
         },
         "type": {
@@ -10360,7 +10774,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 330
+            "id": 345
           }
         },
         "total": {
@@ -10376,7 +10790,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 331
+        "id": 346
       }
     },
     {
@@ -10386,7 +10800,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 332
+            "id": 347
           }
         },
         "content_chars": {
@@ -10495,7 +10909,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 334
+        "id": 349
       }
     },
     {
@@ -10723,7 +11137,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 337
+            "id": 352
           }
         },
         "text": {
@@ -10775,15 +11189,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 340
+          "id": 355
         },
         {
           "kind": "ref",
-          "id": 344
+          "id": 359
         },
         {
           "kind": "ref",
-          "id": 345
+          "id": 360
         }
       ]
     },
@@ -10801,7 +11215,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 341
+            "id": 356
           }
         },
         "state": {
@@ -10818,7 +11232,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 342
+        "id": 357
       }
     },
     {
@@ -10841,7 +11255,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 343
+            "id": 358
           }
         }
       },
@@ -10909,7 +11323,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 347
+            "id": 362
           }
         },
         "path": {
@@ -10989,7 +11403,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 347
+            "id": 362
           }
         },
         "line_count": {
@@ -11038,19 +11452,19 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 351
+          "id": 366
         },
         {
           "kind": "ref",
-          "id": 352
+          "id": 367
         },
         {
           "kind": "ref",
-          "id": 353
+          "id": 368
         },
         {
           "kind": "ref",
-          "id": 354
+          "id": 369
         }
       ]
     },
@@ -11134,7 +11548,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 356
+        "id": 371
       }
     },
     {
@@ -11165,7 +11579,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 358
+        "id": 373
       }
     },
     {
@@ -11265,4 +11679,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 256
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 258

@@ -97,11 +97,23 @@ fn guard_preference(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
 ///
 /// `None` / JSON null is "do not change", which is what the frontend sends
 /// for every field it is not editing — so presence of the key is not enough.
-fn guard_provider_update(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
+fn guard_provider_mutation(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
+    if cmd == "create_provider" {
+        let request = args.get("request").ok_or("create_provider requires a request object")?;
+        if request.get("providerType").and_then(serde_json::Value::as_str) == Some("litert_lm")
+            || field_is_set(request, "local_backend")
+        {
+            return Err("configure local model files and inference hardware on the host machine".into());
+        }
+        return Ok(());
+    }
     if cmd != "update_provider" {
         return Ok(());
     }
     let request = args.get("request").ok_or("update_provider requires a request object")?;
+    if request.get("localBackend").is_some() {
+        return Err("`localBackend` configures this machine's inference hardware; change it there".into());
+    }
     for name in ["base_url", "provider_type", "api_format"] {
         if field_is_set(request, name) {
             return Err(format!(
@@ -197,7 +209,7 @@ macro_rules! make_dispatch {
             // Before the table, not inside it: what this refuses is an argument
             // to a command that is otherwise perfectly reachable.
             guard_preference(cmd, args)?;
-            guard_provider_update(cmd, args)?;
+            guard_provider_mutation(cmd, args)?;
             $(
                 $(#[$attr])*
                 if cmd == stringify!($name) {
@@ -372,6 +384,35 @@ mod tests {
     }
 
     #[test]
+    fn remote_cannot_set_or_clear_hardware_or_create_a_local_provider() {
+        for value in [
+            serde_json::json!("auto"),
+            serde_json::json!("gpu"),
+            serde_json::json!("npu"),
+            serde_json::Value::Null,
+        ] {
+            let args = serde_json::json!({"request": {"id":"p1", "localBackend":value}});
+            assert!(guard_provider_mutation("update_provider", &args).is_err());
+        }
+        assert!(
+            guard_provider_mutation(
+                "create_provider",
+                &serde_json::json!({"request": {"providerType":"litert_lm", "localBackend":"auto"}})
+            )
+            .is_err()
+        );
+        assert!(
+            guard_provider_mutation(
+                "create_provider",
+                &serde_json::json!({"request": {"providerType":"openai", "localBackend":null}})
+            )
+            .is_ok()
+        );
+        assert!(LOCAL_ONLY.contains(&"inspect_local_model"));
+        assert!(!LOCAL_ONLY.contains(&"get_provider_local_model_info"));
+    }
+
+    #[test]
     fn a_remote_caller_cannot_repoint_a_provider() {
         for (field, value) in [
             ("baseUrl", serde_json::json!("https://evil.example")),
@@ -380,21 +421,21 @@ mod tests {
         ] {
             let args = serde_json::json!({ "request": { field: value } });
             assert!(
-                guard_provider_update("update_provider", &args).is_err(),
+                guard_provider_mutation("update_provider", &args).is_err(),
                 "{field} should be refused"
             );
         }
         // snake_case is not a second spelling the guard recognises. The exact
         // command-argument validator rejects it before dispatch instead.
         let snake = serde_json::json!({ "request": { "base_url": "https://evil.example" } });
-        assert!(guard_provider_update("update_provider", &snake).is_ok());
+        assert!(guard_provider_mutation("update_provider", &snake).is_ok());
         let request = snake.get("request").unwrap();
         assert!(validate_args(request, &["base_url"]).is_err());
         let rename = serde_json::json!({
             "request": { "id": "p1", "name": "Work", "baseUrl": null, "providerType": null }
         });
-        assert!(guard_provider_update("update_provider", &rename).is_ok());
-        assert!(guard_provider_update("chat", &serde_json::json!({ "request": { "baseUrl": "https://x" } })).is_ok());
+        assert!(guard_provider_mutation("update_provider", &rename).is_ok());
+        assert!(guard_provider_mutation("chat", &serde_json::json!({ "request": { "baseUrl": "https://x" } })).is_ok());
     }
 
     #[test]
@@ -484,6 +525,7 @@ mod tests {
             "upload_file_bytes",
             "export_conversation",
             "export_media_file",
+            "inspect_local_model",
             "export_logs",
             "import_emojis",
             "voice_import_model",

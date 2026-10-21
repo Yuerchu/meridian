@@ -36,6 +36,8 @@ temp/
 # not be redistributed on its own, so neither the archives nor the extracted
 # files (or the licence copies beside them) are committed.
 .cache/fonts/
+.cache/litert-runtime/
+.cache/scripts/
 public/fonts/
 
 # Playwright visual regression: run output and the HTML report. The baselines

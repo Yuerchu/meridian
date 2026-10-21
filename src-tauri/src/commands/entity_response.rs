@@ -856,6 +856,7 @@ pub struct ProviderInfoResponse {
     /// own — see migration 63. Meaningful only where `api_format` is
     /// `responses`; the settings page offers it nowhere else.
     pub codex_request_shape: bool,
+    pub local_backend: Option<meridian_core::provider::registry::LocalInferenceBackend>,
 }
 
 impl TryFrom<provider::Model> for ProviderInfoResponse {
@@ -870,6 +871,7 @@ impl TryFrom<provider::Model> for ProviderInfoResponse {
             row.transport_profile.as_str(),
             row.credential_kind.as_str(),
         )?;
+        meridian_core::provider::registry::validate_local_backend(row.provider_type, row.local_backend)?;
         Ok(Self {
             id: row.id,
             name: row.name,
@@ -885,6 +887,7 @@ impl TryFrom<provider::Model> for ProviderInfoResponse {
             transport_profile: row.transport_profile,
             icon: row.icon,
             codex_request_shape: row.codex_request_shape.get(),
+            local_backend: row.local_backend,
         })
     }
 }
