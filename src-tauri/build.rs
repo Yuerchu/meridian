@@ -317,42 +317,44 @@ fn profile_dir() -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Stage LiteRT-LM DLLs from a known location into `resources/`.
-///
-/// The DLLs come from the Python `litert-lm` package (v0.17.0+), which bundles
-/// a self-contained `litert-lm.dll` with GPU acceleration statically linked.
-/// Windows needs three files: `litert-lm.dll`, `dxcompiler.dll`, `dxil.dll`.
-///
-/// Set `LITERT_LM_STAGE_DIR` to a directory containing the DLLs. When unset,
-/// staging is skipped and the app runs without on-device LLM support.
+/// 暂存清单锁定的运行库；缺失或指纹错误必须先执行 pnpm litert:fetch。
 fn stage_litert_runtime() {
+    println!("cargo:rerun-if-env-changed=LITERT_LM_STAGE_DIR");
+    println!("cargo:rerun-if-changed=crates/litert-lm/runtime-manifest.json");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
-
-    const LITERT_DLLS: [&str; 3] = ["litert-lm.dll", "dxcompiler.dll", "dxil.dll"];
-
-    let staged = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("resources");
-    let _ = std::fs::create_dir_all(&staged);
-
-    let stage_path = std::env::var("LITERT_LM_STAGE_DIR").ok().map(PathBuf::from);
-
-    for name in LITERT_DLLS {
-        let to = staged.join(name);
-        if let Some(ref dir) = stage_path {
-            let from = dir.join(name);
-            if from.exists() && !is_current(&from, &to) {
-                if let Err(e) = std::fs::copy(&from, &to) {
-                    println!("cargo:warning=could not stage {name}: {e}");
-                }
-                continue;
-            }
-        }
-        if !to.exists() {
-            let _ = std::fs::write(&to, []);
+    let manifest = litert_lm::runtime::manifest();
+    let platform = manifest
+        .platforms
+        .get("windows-x86_64")
+        .expect("missing Windows runtime pin");
+    let resources = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("resources");
+    let source = std::env::var("LITERT_LM_STAGE_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| resources.clone());
+    litert_lm::runtime::verify_runtime(&source.join(&platform.library))
+        .unwrap_or_else(|error| panic!("{error}; run pnpm litert:fetch before building"));
+    std::fs::create_dir_all(&resources).expect("could not create runtime resources directory");
+    for file in &platform.files {
+        let from = source.join(&file.to);
+        println!("cargo:rerun-if-changed={}", from.display());
+        let to = resources.join(&file.to);
+        if from != to {
+            std::fs::copy(&from, &to).unwrap_or_else(|error| panic!("could not stage {}: {error}", from.display()));
         }
     }
-    println!("cargo:rerun-if-env-changed=LITERT_LM_STAGE_DIR");
+    let profile = profile_dir().expect("could not locate runtime profile directory");
+    if litert_lm::runtime::verify_runtime(&profile.join(&platform.library)).is_err() {
+        for file in &platform.files {
+            std::fs::copy(resources.join(&file.to), profile.join(&file.to)).unwrap_or_else(|error| {
+                panic!(
+                    "could not stage {} beside the executable: {error}; stop the running app first",
+                    file.to
+                )
+            });
+        }
+    }
 }
 
 fn is_current(from: &Path, to: &Path) -> bool {

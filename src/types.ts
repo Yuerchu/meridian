@@ -224,6 +224,7 @@ export interface ProviderCreateRequest {
   apiFormat: ProviderApiFormat | null
   catalogId: string | null
   authOption: string | null
+  localBackend: LocalInferenceBackend | null
 }
 
 export interface ProviderUpdateRequest {
@@ -250,6 +251,7 @@ export interface ProviderUpdateRequest {
    * be confused with.
    */
   codexRequestShape?: boolean
+  localBackend?: LocalInferenceBackend | null
 }
 
 export interface ProviderKeyUpdateRequest {
@@ -2083,6 +2085,60 @@ export type ProviderCredentialKind =
 export type ProviderTransportProfile = 'standard' | 'chatgpt_codex' | 'local_native'
 export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google' | 'litert_lm'
 
+export type LocalInferenceBackend = 'auto' | 'cpu' | 'gpu' | 'npu'
+export type LocalModelBackend = 'cpu' | 'gpu' | 'npu'
+export type LocalModelKind = 'unknown' | 'llm' | 'embedding'
+export type LocalModelModality = 'text' | 'vision' | 'audio' | 'video'
+export type LocalModelNpuBrand = 'qualcomm' | 'google_tensor' | 'mediatek' | 'intel' | 'samsung'
+export type LocalModelSamplerType = 'top_k' | 'top_p' | 'greedy'
+
+export interface LocalModelModalityInfoResponse {
+  modality: LocalModelModality
+  preferred_backends: LocalModelBackend[]
+  npu_brand: LocalModelNpuBrand | null
+  soc_name: string | null
+}
+
+export interface LocalModelSamplerInfoResponse {
+  sampler_type: LocalModelSamplerType
+  temperature: number
+  top_k: number
+  top_p: number
+}
+
+export interface LocalModelInfoResponse {
+  runtime_version: string
+  file_name: string
+  file_size_bytes: number
+  revision: string
+  requested_backend: LocalInferenceBackend
+  resolved_backend: LocalModelBackend | null
+  kind: LocalModelKind
+  modalities: LocalModelModalityInfoResponse[]
+  supports_thinking: boolean
+  supports_function_calling: boolean
+  supports_speculative_decoding: boolean
+  sampler_defaults: LocalModelSamplerInfoResponse | null
+  max_context_tokens: number | null
+  is_dynamic_context: boolean
+  max_vision_token_budget: number | null
+  vision_signature_lengths: number[] | null
+  embedding_signature_lengths: number[] | null
+  embedding_dimension: number | null
+  min_runtime_version: string | null
+}
+
+export interface LocalModelInspectRequest {
+  modelPath: string
+  backend: LocalInferenceBackend
+  forceRefresh: boolean
+}
+
+export interface ProviderLocalModelInfoReadRequest {
+  providerId: string
+  forceRefresh: boolean
+}
+
 export interface ProviderInfoResponse {
   id: string
   name: string
@@ -2138,6 +2194,7 @@ export interface ProviderInfoResponse {
    * settings page offers it nowhere else.
    */
   codex_request_shape: boolean
+  local_backend: LocalInferenceBackend | null
 }
 
 /**

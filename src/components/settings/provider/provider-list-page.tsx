@@ -70,6 +70,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
       apiFormat: format,
       catalogId: entry?.id ?? null,
       authOption: auth?.id ?? null,
+      localBackend: entry?.provider_type === 'litert_lm' ? 'auto' : null,
     })
     await refresh()
     onOpen(created.id)

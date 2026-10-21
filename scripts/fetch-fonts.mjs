@@ -14,20 +14,23 @@
 // A failed download or a hash mismatch exits non-zero: a build that silently
 // fell back to system fonts would look fine on the machine that made it.
 //
-// Zero dependencies. The zip reader below handles exactly what these four
-// archives use (stored or deflated entries, no zip64, no encryption) and
-// refuses anything else rather than guessing.
+// 零依赖；下载、哈希与 ZIP 定点提取复用 scripts/lib/pinned-download.mjs。
+// 只支持固定归档所需的 stored/deflate 条目，拒绝不认识的格式。
 //
 // Usage: node scripts/fetch-fonts.mjs
 
-import { createHash } from 'node:crypto'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
+import { mkdir, open, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { Readable, Transform } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
-import { createInflateRaw } from 'node:zlib'
+import {
+  ArtifactError as FontFetchError,
+  download,
+  sha256File,
+  readZipDirectory,
+  extractEntry,
+} from './lib/pinned-download.mjs'
+
+export { download } from './lib/pinned-download.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const cacheDir = path.join(root, '.cache', 'fonts')
@@ -143,14 +146,6 @@ MiSans, MiSans L3 — Copyright (c) Xiaomi Inc. This software uses MiSans.
 本软件使用了 MiSans 字体（小米公司版权所有），依据《MiSans 字体知识产权许可协议》使用，见 MiSans-License.pdf。
 `
 
-class FontFetchError extends Error {}
-
-async function sha256File(file) {
-  const hash = createHash('sha256')
-  await pipeline(createReadStream(file), hash)
-  return hash.digest('hex')
-}
-
 async function exists(file) {
   try {
     await stat(file)
@@ -158,73 +153,6 @@ async function exists(file) {
   } catch {
     return false
   }
-}
-
-/** A stream stage that hashes what passes through it. */
-function hashing(hash) {
-  return new Transform({
-    transform(chunk, _enc, done) {
-      hash.update(chunk)
-      done(null, chunk)
-    },
-  })
-}
-
-function mismatch(what, expected, actual) {
-  return new FontFetchError(`${what}: SHA-256 mismatch\n  expected ${expected}\n  actual   ${actual}`)
-}
-
-/** A failure that says nothing about the file: the connection or the server. */
-class TransientFetchError extends FontFetchError {}
-
-/**
- * Downloads with up to two more attempts, a few seconds apart, when the failure
- * is transient: a refused or dropped connection, a 5xx or a 429. MiSans comes
- * from hyperos.mi.com, and a CI run whose font cache had just been invalidated
- * lost its download there mid-stream once — a failed job about nothing in the
- * change. A 404 or a hash mismatch is not retried: it is the file that is
- * wrong, and asking again only delays saying so. After the last attempt the
- * error stands, as before; nothing falls back to system fonts.
- */
-export async function download(source, dest, { delays = [3000, 10000] } = {}) {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await downloadOnce(source, dest)
-    } catch (err) {
-      if (!(err instanceof TransientFetchError) || attempt >= delays.length) throw err
-      console.warn(`fonts: ${err.message}; trying again in ${delays[attempt] / 1000}s`)
-      await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
-    }
-  }
-}
-
-async function downloadOnce(source, dest) {
-  const part = `${dest}.part`
-  console.log(`fonts: downloading ${source.name} from ${source.url}`)
-  let response
-  try {
-    response = await fetch(source.url)
-  } catch (err) {
-    throw new TransientFetchError(`${source.name}: download failed: ${err.cause?.message ?? err.message}`)
-  }
-  if (!response.ok || !response.body) {
-    await response.body?.cancel()
-    const Failure = response.status >= 500 || response.status === 429 ? TransientFetchError : FontFetchError
-    throw new Failure(`${source.name}: download failed: HTTP ${response.status} ${response.statusText}`)
-  }
-  const hash = createHash('sha256')
-  try {
-    await pipeline(Readable.fromWeb(response.body), hashing(hash), createWriteStream(part))
-  } catch (err) {
-    await rm(part, { force: true })
-    throw new TransientFetchError(`${source.name}: download interrupted: ${err.message}`)
-  }
-  const actual = hash.digest('hex')
-  if (actual !== source.sha256) {
-    await rm(part, { force: true })
-    throw mismatch(`${source.name} (${source.url})`, source.sha256, actual)
-  }
-  await rename(part, dest)
 }
 
 /** Returns the cached archive, downloading it when absent or not the pinned bytes. */
@@ -238,87 +166,6 @@ async function ensureArchive(source) {
   }
   await download(source, dest)
   return dest
-}
-
-/**
- * Reads the central directory of a zip. Sizes and offsets come from here, not
- * from the local headers, because these archives set the data-descriptor flag
- * and leave the local sizes at zero.
- */
-async function readZipDirectory(handle, archiveName) {
-  const { size } = await handle.stat()
-  const tailLength = Math.min(size, 0xffff + 22)
-  const tail = Buffer.alloc(tailLength)
-  await handle.read(tail, 0, tailLength, size - tailLength)
-  let eocd = -1
-  for (let i = tailLength - 22; i >= 0; i--) {
-    if (tail.readUInt32LE(i) === 0x06054b50) {
-      eocd = i
-      break
-    }
-  }
-  if (eocd < 0) throw new FontFetchError(`${archiveName}: not a zip archive`)
-  const count = tail.readUInt16LE(eocd + 10)
-  const dirSize = tail.readUInt32LE(eocd + 12)
-  const dirOffset = tail.readUInt32LE(eocd + 16)
-  if (count === 0xffff || dirOffset === 0xffffffff) {
-    throw new FontFetchError(`${archiveName}: zip64 archives are not supported`)
-  }
-  const dir = Buffer.alloc(dirSize)
-  await handle.read(dir, 0, dirSize, dirOffset)
-  const entries = new Map()
-  let p = 0
-  for (let i = 0; i < count; i++) {
-    if (dir.readUInt32LE(p) !== 0x02014b50) throw new FontFetchError(`${archiveName}: corrupt central directory`)
-    const flags = dir.readUInt16LE(p + 8)
-    const method = dir.readUInt16LE(p + 10)
-    const compressedSize = dir.readUInt32LE(p + 20)
-    const uncompressedSize = dir.readUInt32LE(p + 24)
-    const nameLength = dir.readUInt16LE(p + 28)
-    const extraLength = dir.readUInt16LE(p + 30)
-    const commentLength = dir.readUInt16LE(p + 32)
-    const localOffset = dir.readUInt32LE(p + 42)
-    // Names are decoded as UTF-8 whether or not bit 11 says so: macOS's
-    // archiver writes UTF-8 without setting it, which is how MiSans's
-    // `可变字体` directory arrives.
-    const name = dir.toString('utf8', p + 46, p + 46 + nameLength)
-    entries.set(name, { flags, method, compressedSize, uncompressedSize, localOffset })
-    p += 46 + nameLength + extraLength + commentLength
-  }
-  return entries
-}
-
-async function extractEntry(archive, archiveName, entries, handle, item) {
-  const entry = entries.get(item.entry)
-  if (!entry) throw new FontFetchError(`${archiveName}: no entry named ${item.entry}`)
-  if (entry.flags & 0x1) throw new FontFetchError(`${archiveName}: ${item.entry} is encrypted`)
-  if (entry.method !== 0 && entry.method !== 8) {
-    throw new FontFetchError(`${archiveName}: ${item.entry} uses unsupported compression method ${entry.method}`)
-  }
-  const local = Buffer.alloc(30)
-  await handle.read(local, 0, 30, entry.localOffset)
-  if (local.readUInt32LE(0) !== 0x04034b50) throw new FontFetchError(`${archiveName}: corrupt local header`)
-  const dataStart = entry.localOffset + 30 + local.readUInt16LE(26) + local.readUInt16LE(28)
-
-  const dest = path.join(outDir, item.to)
-  const part = `${dest}.part`
-  await mkdir(path.dirname(dest), { recursive: true })
-  const hash = createHash('sha256')
-  const stages = [createReadStream(archive, { start: dataStart, end: dataStart + entry.compressedSize - 1 })]
-  if (entry.method === 8) stages.push(createInflateRaw())
-  stages.push(hashing(hash), createWriteStream(part))
-  try {
-    await pipeline(...stages)
-  } catch (err) {
-    await rm(part, { force: true })
-    throw new FontFetchError(`${archiveName}: extracting ${item.entry} failed: ${err.message}`)
-  }
-  const actual = hash.digest('hex')
-  if (actual !== item.sha256) {
-    await rm(part, { force: true })
-    throw mismatch(`${archiveName}: ${item.entry}`, item.sha256, actual)
-  }
-  await rename(part, dest)
 }
 
 /** True when every output of a source is already present with its pinned hash. */
@@ -348,7 +195,7 @@ async function fetchSource(source) {
     for (const item of source.extract) {
       const dest = path.join(outDir, item.to)
       if ((await exists(dest)) && (await sha256File(dest)) === item.sha256) continue
-      await extractEntry(archive, source.file, entries, handle, item)
+      await extractEntry(archive, source.file, entries, handle, item, outDir)
     }
   } finally {
     await handle.close()

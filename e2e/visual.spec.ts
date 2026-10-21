@@ -4,6 +4,7 @@ import {
   openApp,
   openConversation,
   openSettings,
+  openLocalModel,
   parkPointer,
   scrollTranscriptToTop,
   settle,
@@ -206,6 +207,25 @@ const scenes: Scene[] = [
       await openSettings(page, '服务商')
       await page.getByRole('button', { name: 'Anthropic' }).click()
       await expect(page.getByRole('grid', { name: '模型' })).toBeVisible()
+    },
+  },
+  {
+    name: 'settings-local-model',
+    narrow: true,
+    arrange: async (page) => {
+      await openLocalModel(page)
+      await page
+        .locator('[data-slot="settings-scroller"]')
+        .evaluate((element) => element.scrollTo({ top: 0, behavior: 'instant' }))
+    },
+  },
+  {
+    name: 'settings-local-model-capabilities',
+    narrow: true,
+    arrange: async (page) => {
+      await openLocalModel(page)
+      await page.getByText('最低运行库版本', { exact: true }).scrollIntoViewIfNeeded()
+      await expect(page.getByText('0.17.0', { exact: true })).toBeVisible()
     },
   },
   {

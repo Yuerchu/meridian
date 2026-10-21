@@ -121,3 +121,32 @@ export async function parkPointer(page: Page): Promise<void> {
   const width = page.viewportSize()?.width ?? 1280
   await page.mouse.move(width - 1, 0)
 }
+
+export async function openLocalModel(page: Page): Promise<void> {
+  await openSettings(page, '服务商')
+  await page.getByRole('button', { name: '添加服务商' }).click()
+  await page.locator('input[name^="providerName-"]').fill('本地推理')
+  await page.getByRole('button', { name: /类型/ }).click()
+  await page.getByRole('option', { name: 'LiteRT-LM (On-Device)', exact: true }).click()
+  await page.locator('input[name^="providerModelPath-"]').fill('C:/Models/demo-12b-gpu.litertlm')
+  await page.getByRole('button', { name: '检查模型', exact: true }).click()
+  await expect(page.getByText('demo-12b-gpu.litertlm', { exact: true })).toBeVisible()
+  await expect(page.getByText('0.18.0', { exact: true })).toBeAttached()
+  await page.getByRole('button', { name: '保存', exact: true }).click()
+  await expect(page.getByRole('heading', { name: '本地推理', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: '获取模型列表', exact: true }).click()
+  await expect(page.getByRole('row', { name: 'demo-12b-gpu.litertlm', exact: true })).toBeVisible()
+  const backendOverflow = await page.getByRole('button', { name: /文本推理后端/ }).evaluate((element) => {
+    const row = element.closest('[data-slot="settings-row"]')
+    if (row === null) throw new Error('backend has no settings row')
+    return element.getBoundingClientRect().right - row.getBoundingClientRect().right
+  })
+  expect(backendOverflow).toBeLessThanOrEqual(1)
+  const viewport = page.viewportSize()
+  if (viewport === null) throw new Error('visual tests require an explicit viewport')
+  if (viewport.width < 768) {
+    const samplerLabel = await page.getByText('默认采样（只读）', { exact: true }).boundingBox()
+    if (samplerLabel === null) throw new Error('sampler label is missing')
+    expect(samplerLabel.width).toBeGreaterThan(100)
+  }
+}

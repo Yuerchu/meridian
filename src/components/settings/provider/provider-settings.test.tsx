@@ -21,6 +21,8 @@ vi.mock('@/api', () => ({
     getModelConfig: vi.fn(),
     listModelProfiles: vi.fn(),
     getProviderCapabilities: vi.fn(),
+    inspectLocalModel: vi.fn(),
+    getProviderLocalModelInfo: vi.fn(),
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
     setProviderKey: vi.fn(),
@@ -47,6 +49,7 @@ function makeProvider(id: string, name: string): ProviderInfoResponse {
     transport_profile: 'standard',
     icon: null,
     codex_request_shape: false,
+    local_backend: null,
   }
 }
 
@@ -110,6 +113,24 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
         transport_profile: 'standard',
         api_formats: ['gemini_interactions'],
         default_base_url: { gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global' },
+      },
+    ],
+    models: [],
+  },
+  {
+    id: 'litert_lm',
+    provider_type: 'litert_lm',
+    name: 'LiteRT-LM (On-Device)',
+    icon: 'litert',
+    balance: false,
+    websites: { official: null, api_key: null, docs: null, models: null },
+    auth: [
+      {
+        id: 'local',
+        credential_kind: 'none',
+        transport_profile: 'local_native',
+        api_formats: ['litert_lm'],
+        default_base_url: { litert_lm: 'local://' },
       },
     ],
     models: [],
@@ -235,6 +256,41 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(screen.queryByText(i18n.t('common.back'))).not.toBeInTheDocument()
   })
 
+  it('saves the local backend with the provider and restores it on reopening', async () => {
+    const user = userEvent.setup()
+    let stored: ProviderInfoResponse = {
+      ...makeProvider('local', 'Local model'),
+      provider_type: 'litert_lm',
+      api_format: 'litert_lm',
+      base_url: 'C:/Models/custom.litertlm',
+      catalog_id: 'litert_lm',
+      credential_kind: 'none',
+      transport_profile: 'local_native',
+      local_backend: 'auto',
+    }
+    mockApi.listProviders.mockImplementation(async () => [stored])
+    mockApi.updateProvider.mockImplementation(async (request) => {
+      if (request.localBackend !== null && typeof request.localBackend === 'string')
+        stored = { ...stored, local_backend: request.localBackend }
+      return stored
+    })
+    render(<ProviderSettings />)
+    await user.click(await screen.findByRole('button', { name: 'Local model' }))
+    await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.localModel.backend')) }))
+    await user.click(await screen.findByRole('option', { name: 'GPU' }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() =>
+      expect(mockApi.updateProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'local', localBackend: 'gpu' }),
+      ),
+    )
+    await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
+    await user.click(await screen.findByRole('button', { name: 'Local model' }))
+    expect(
+      await screen.findByRole('button', { name: new RegExp(i18n.t('settings.localModel.backend')) }),
+    ).toHaveTextContent('GPU')
+  })
+
   it('the first click can open the second provider', async () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
@@ -302,6 +358,7 @@ describe('ProviderSettings list/detail navigation', () => {
       apiFormat: 'chat_completions',
       catalogId: 'openai',
       authOption: 'api_key',
+      localBackend: null,
     })
   })
 

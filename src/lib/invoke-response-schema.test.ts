@@ -1,5 +1,6 @@
 import { INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT, invokeResponseSchemaDocument } from './invoke-response-schema.generated'
 import { assertInvokeResponse } from './invoke-response-schema'
+import { demoLocalModel } from '@/dev/demo/local-model'
 
 function validate(command: string, value: unknown, args?: Record<string, unknown>) {
   assertInvokeResponse(command, args, value)
@@ -7,9 +8,22 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(256)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(256)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(258)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(258)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
+  })
+
+  it('validates local model metadata and nested native enum boundaries', () => {
+    const info = demoLocalModel('C:/Models/test.litertlm', 'gpu')
+    expect(() => validate('inspect_local_model', info)).not.toThrow()
+    expect(() => validate('get_provider_local_model_info', info)).not.toThrow()
+    expect(() => validate('inspect_local_model', { ...info, resolved_backend: 'guessed' })).toThrow()
+    expect(() =>
+      validate('inspect_local_model', { ...info, modalities: [{ ...info.modalities[0], npu_brand: 'future-vendor' }] }),
+    ).toThrow()
+    expect(() => validate('inspect_local_model', { ...info, raw_metadata: '{}' })).toThrow()
+    const { runtime_version: _version, ...missingVersion } = info
+    expect(() => validate('inspect_local_model', missingVersion)).toThrow()
   })
 
   // A rebuilt queue takes its times and escalation kinds from this answer, so

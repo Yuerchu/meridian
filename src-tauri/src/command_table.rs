@@ -165,6 +165,12 @@ macro_rules! with_all_commands {
             // answer, and the reply carries no credential material.
             async commands::provider => codex_auth_status(),
             async commands::provider => list_providers(),
+            local commands::local_model => inspect_local_model(
+                request: $crate::commands::local_model::LocalModelInspectRequest,
+            ),
+            async commands::local_model => get_provider_local_model_info(
+                request: $crate::commands::local_model::ProviderLocalModelInfoReadRequest,
+            ),
             async commands::provider => create_provider(
                 request: $crate::commands::provider::ProviderCreateRequest,
             ),

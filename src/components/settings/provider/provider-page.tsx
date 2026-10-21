@@ -48,8 +48,11 @@ import {
   usesVertexServiceAccount,
 } from './catalog'
 import { isPriced } from './pricing'
+import { LocalModelSettings } from './local-model-settings'
+import { isRemote } from '@/lib/transport'
 import type {
   DecimalString,
+  LocalInferenceBackend,
   ModelConfigInfoResponse,
   ProviderInfoResponse,
   ProviderBalanceInfoResponse,
@@ -173,6 +176,7 @@ function ProviderEditor({
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [icon, setIcon] = useState(provider.icon)
   const [codexRequestShape, setCodexRequestShape] = useState(provider.codex_request_shape)
+  const [localBackend, setLocalBackend] = useState<LocalInferenceBackend | null>(provider.local_backend)
   /**
    * The Codex release this install claims to be.
    *
@@ -192,6 +196,7 @@ function ProviderEditor({
     apiFormat: provider.api_format || 'chat_completions',
     icon: provider.icon,
     codexRequestShape: provider.codex_request_shape,
+    localBackend: provider.local_backend,
   }))
   const [apiKey, setApiKey] = useState('')
   const { confirm, confirmDialog } = useConfirm()
@@ -233,6 +238,7 @@ function ProviderEditor({
     apiFormat !== savedDraft.apiFormat ||
     icon !== savedDraft.icon ||
     codexRequestShape !== savedDraft.codexRequestShape ||
+    localBackend !== savedDraft.localBackend ||
     (offersCodexRequestShapeFor(apiFormat, provider) &&
       codexRequestShape &&
       codexClientVersion.trim() !== savedCodexClientVersion.trim())
@@ -336,14 +342,21 @@ function ProviderEditor({
       // offer — a Codex login on an Anthropic row answers to no adapter. The
       // save restates the resolved option's credentials so the row cannot hold
       // that combination; when nothing changed this writes back what is there.
+      const resolvedAuth = activeAuth ?? null
       await api.updateProvider({
         id: provider.id,
         name,
-        providerType,
-        baseUrl,
-        apiFormat,
-        credentialKind: activeAuth?.credential_kind,
-        transportProfile: activeAuth?.transport_profile,
+        ...(isRemote
+          ? {}
+          : {
+              providerType,
+              baseUrl,
+              apiFormat,
+              localBackend,
+              ...(resolvedAuth === null
+                ? {}
+                : { credentialKind: resolvedAuth.credential_kind, transportProfile: resolvedAuth.transport_profile }),
+            }),
         // Sent on every save, `null` included: null is the picker's own default
         // entry — "derive the mark from the vendor" — and omitting it would mean
         // "leave the logo alone", so choosing that entry would do nothing.
@@ -362,6 +375,7 @@ function ProviderEditor({
         apiFormat,
         icon,
         codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
+        localBackend,
       })
       // After the row, and only where the field was on screen: a save from a page
       // that never showed it must not clear somebody else's override. `null` is
@@ -392,6 +406,7 @@ function ProviderEditor({
     apiFormat,
     icon,
     codexRequestShape,
+    localBackend,
     codexClientVersion,
     offersCodexRequestShape,
     activeAuth,
@@ -410,6 +425,7 @@ function ProviderEditor({
       // the first one listed is the recommendation.
       const nextFormat = formatsFor(nextAuth)[0] ?? 'chat_completions'
       setProviderType(next)
+      setLocalBackend(next === 'litert_lm' ? 'auto' : null)
       setBaseUrl((current) => {
         // Only replace an address the user never touched. Anything they typed —
         // a relay, a self-hosted endpoint — survives a change of vendor, which
@@ -777,6 +793,7 @@ function ProviderEditor({
               value={providerType}
               options={typeOptions}
               onChange={handleProviderTypeChange}
+              disabled={isRemote}
               triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
             />
           )}
@@ -799,6 +816,7 @@ function ProviderEditor({
                   label: t(authMethodLabel(a.credential_kind)),
                 }))}
                 onChange={handleAuthOptionChange}
+                disabled={isRemote}
                 triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
@@ -817,22 +835,25 @@ function ProviderEditor({
                 <Input
                   aria-labelledby={labelId}
                   name={`providerModelPath-${provider.id}`}
+                  disabled={isRemote}
                   spellCheck={false}
                   value={baseUrl === 'local://' ? '' : baseUrl}
                   onChange={(e) => setBaseUrl(e.target.value)}
                   placeholder={t('settings.provider.modelPathPlaceholder')}
                   fieldClassName="w-full"
                 />
-                <Button
-                  size="small"
-                  variant="secondary"
-                  onPress={async () => {
-                    const file = await pickModelFile()
-                    if (file) setBaseUrl(file)
-                  }}
-                >
-                  {t('settings.provider.browseModel')}
-                </Button>
+                {!isRemote && (
+                  <Button
+                    size="small"
+                    variant="secondary"
+                    onPress={async () => {
+                      const file = await pickModelFile()
+                      if (file) setBaseUrl(file)
+                    }}
+                  >
+                    {t('settings.provider.browseModel')}
+                  </Button>
+                )}
               </div>
             )}
           </SettingsRow>
@@ -846,6 +867,7 @@ function ProviderEditor({
               <Input
                 aria-labelledby={labelId}
                 name={`providerBaseUrl-${provider.id}`}
+                disabled={isRemote}
                 type="url"
                 inputMode="url"
                 spellCheck={false}
@@ -878,6 +900,7 @@ function ProviderEditor({
                     : formatOptions.filter((option) => formatsFor(activeAuth).includes(option.value))
                 }
                 onChange={handleApiFormatChange}
+                disabled={isRemote}
                 triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
@@ -923,6 +946,15 @@ function ProviderEditor({
               />
             )}
           </SettingsRow>
+        )}
+        {providerType === 'litert_lm' && (
+          <LocalModelSettings
+            key={`${provider.id}:${baseUrl}:${localBackend}`}
+            providerId={provider.id}
+            modelPath={baseUrl}
+            backend={localBackend}
+            onBackendChange={setLocalBackend}
+          />
         )}
       </SettingsCard>
 
@@ -1126,6 +1158,9 @@ function ProviderEditor({
           children in a card, and the table is its own card already — a box
           inside a box is what the page grammar exists to stop. */}
       <div data-slot="provider-models" className="flex w-full flex-col gap-2">
+        {providerType === 'litert_lm' && (
+          <p className="px-3 text-caption-1-regular text-text-secondary">{t('settings.localModel.aliasesHint')}</p>
+        )}
         <div data-slot="provider-models-header" className="flex items-center justify-between gap-2">
           <SettingsSectionLabel data-slot="provider-models-label" className="w-auto min-w-0 truncate">
             {t('settings.provider.models')}

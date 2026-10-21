@@ -3558,8 +3558,10 @@ name = "litert-lm"
 version = "0.1.0"
 dependencies = [
  "libloading 0.8.9",
+ "semver",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "thiserror 2.0.21",
  "tracing",
  "uuid",
@@ -3722,6 +3724,7 @@ dependencies = [
  "futures",
  "futures-util",
  "jni",
+ "litert-lm",
  "meridian-core",
  "meridian-ime-config",
  "meridian-ime-dict",

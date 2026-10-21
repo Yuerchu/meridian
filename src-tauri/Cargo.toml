@@ -49,6 +49,7 @@ path = "src/main.rs"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+litert-lm = { path = "crates/litert-lm" }
 
 [dependencies]
 meridian-core = { path = "crates/core" }

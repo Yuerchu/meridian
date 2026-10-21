@@ -23,6 +23,7 @@ pub mod hooks;
 #[cfg(any(windows, target_os = "android"))]
 pub mod ime;
 pub mod journal;
+pub mod local_model;
 pub mod logs;
 pub mod mcp;
 pub mod memory;
