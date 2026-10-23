@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：294
+- 事务根（非测试）：297
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -15,7 +15,7 @@
 
 ## ops 模块的事务连通分量
 
-- 29 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
+- 30 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_price model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
 - 1 个：custom_tool
 - 1 个：journal
 - 1 个：mcp_server
@@ -173,6 +173,9 @@
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_applied` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_conflict` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `reconcile_document_inner` | sea-write | plan_review |
+| `src-tauri/crates/core/src/provider/models_dev.rs` › `apply` | sea-write | model_price, model_profile |
+| `src-tauri/crates/core/src/provider/models_dev.rs` › `fill_one` | sea-write | model_price, model_profile |
+| `src-tauri/crates/core/src/provider/models_dev.rs` › `sync_once` | sea-write | preference |
 | `src-tauri/crates/core/src/sandbox.rs` › `load` | sea-read | — |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |
 | `src-tauri/crates/core/src/tools/memory.rs` › `execute` | sea-write | memory |

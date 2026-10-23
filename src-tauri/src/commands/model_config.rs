@@ -531,6 +531,21 @@ pub async fn save_model_config(
         .await
         .map_err(|error| error.to_string())?;
     let (row, saved_profile, count) = finish_guarded_model_config_mutation(guarded)?;
+    // A save is when prices are looked at, and the daily pass would leave a
+    // blank on screen for up to a day. This only fills rates nobody typed
+    // (see `provider::models_dev`), and does nothing when the snapshot is not
+    // in memory yet.
+    meridian_core::provider::models_dev::fill_for_config(
+        &services.db,
+        &services.models_dev,
+        &row.provider_id,
+        &row.model_id,
+    )
+    .await;
+    let saved_profile = profile_ops::get(&services.db, &row.profile_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .unwrap_or(saved_profile);
     ModelConfigInfoResponse::from_rows(row, saved_profile, count)
 }
 
