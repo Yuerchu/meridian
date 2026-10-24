@@ -44,7 +44,7 @@ const ASSISTANT: AssistantInfoResponse = {
   created_at: 0,
   updated_at: 0,
   context_limit: 0,
-  compact_keep_recent: 0,
+  compact_keep_recent_tokens: 0,
   enabled_tools: null,
   thinking_enabled: false,
   thinking_budget: null,

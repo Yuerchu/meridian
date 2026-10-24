@@ -221,6 +221,8 @@ import type {
   ToolPresetUpdateRequest,
   UsageReportRequest,
   UsageBucketListResponse,
+  UsageCacheMissInfoResponse,
+  UsageCacheMissRequest,
   UsageGapListRequest,
   UsageGapListResponse,
   UploadFileResponse,
@@ -1052,4 +1054,7 @@ export const api = {
   usageReport: (request: UsageReportRequest) => invoke<UsageBucketListResponse>('usage_report', { request }),
   /** The replies behind the page's two "incomplete" warnings, newest first. */
   usageGaps: (request: UsageGapListRequest) => invoke<UsageGapListResponse>('usage_gaps', { request }),
+  /** Prompt tokens that were in the previous request but billed again. */
+  usageCacheMisses: (request: UsageCacheMissRequest) =>
+    invoke<UsageCacheMissInfoResponse>('usage_cache_misses', { request }),
 }

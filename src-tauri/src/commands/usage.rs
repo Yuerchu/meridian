@@ -1,7 +1,8 @@
 use crate::ServicesExt;
 use meridian_core::agent::pricing::BillingMode as CoreBillingMode;
 use meridian_core::db::sea::ops::usage::{
-    UsageBucket, UsageDimension as CoreUsageDimension, UsageFilter as CoreUsageFilter, UsageGap, gaps, report,
+    UsageBucket, UsageDimension as CoreUsageDimension, UsageFilter as CoreUsageFilter, UsageGap, cache_misses, gaps,
+    report,
 };
 use meridian_core::decimal::Decimal;
 use meridian_core::turn::TurnOrigin as CoreTurnOrigin;
@@ -190,6 +191,58 @@ pub async fn usage_report(
         .read(async |tx| report(tx, dimension, &filter).await)
         .await
         .map(|buckets| buckets.into_iter().map(Into::into).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// The same window and origin as a report, without a dimension: a miss is a
+/// property of one request relative to the one before it.
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UsageCacheMissRequest {
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub since_ms: Option<i64>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub until_ms: Option<i64>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub origin: Option<TurnOrigin>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub conversation_id: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UsageCacheMissInfoResponse {
+    pub missed_tokens: i64,
+    pub missed_cost: Decimal,
+    pub miss_count: i64,
+    pub measured_messages: i64,
+    pub has_unpriced_misses: bool,
+}
+
+/// Prompt tokens that were in the previous request but billed again instead of
+/// read from cache.
+#[tauri::command]
+pub async fn usage_cache_misses(
+    app: tauri::AppHandle,
+    request: UsageCacheMissRequest,
+) -> Result<UsageCacheMissInfoResponse, String> {
+    let services = app.services();
+    let filter = CoreUsageFilter {
+        since_ms: request.since_ms,
+        until_ms: request.until_ms,
+        origin: request.origin.map(Into::into),
+        conversation_id: request.conversation_id,
+    };
+    services
+        .db
+        .read(async |tx| cache_misses(tx, &filter).await)
+        .await
+        .map(|totals| UsageCacheMissInfoResponse {
+            missed_tokens: totals.missed_tokens,
+            missed_cost: totals.missed_cost,
+            miss_count: totals.miss_count,
+            measured_messages: totals.measured_messages,
+            has_unpriced_misses: totals.has_unpriced_misses,
+        })
         .map_err(|e| e.to_string())
 }
 

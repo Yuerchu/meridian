@@ -518,6 +518,7 @@ impl DesktopSubAgents {
                 cancel: cancel.clone(),
                 keep_recent: self.keep_recent,
                 context_limit: turn_params.context_limit,
+                warm: None,
                 // Both kinds go through reach. `Explore` differs by never
                 // inheriting the standing yes — not by refusing everything,
                 // which would stop it reading a file: `read_file` declares
@@ -820,7 +821,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
             context_limit: 200_000,
-            compact_keep_recent: 10,
+            compact_keep_recent_tokens: 20_000,
             enabled_tools: enabled.map(|json| meridian_core::db::types::Json::decode(json).unwrap()),
             thinking_enabled: meridian_core::db::types::SqlBool::FALSE,
             thinking_budget: None,
@@ -884,7 +885,7 @@ mod tests {
         assert_eq!(child.provider_id.as_deref(), Some("p2"));
         // What describes the assistant rather than the model stays put.
         assert_eq!(child.temperature, Some(0.7));
-        assert_eq!(child.compact_keep_recent, 10);
+        assert_eq!(child.compact_keep_recent_tokens, 20_000);
     }
 
     #[test]

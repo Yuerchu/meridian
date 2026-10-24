@@ -174,7 +174,7 @@ pub async fn create_assistant(
         // window". A number here would outrank the window the model is
         // configured with, and nobody chose it.
         context_limit: 0,
-        compact_keep_recent: 10,
+        compact_keep_recent_tokens: 20_000,
         enabled_tools: None,
         thinking_enabled: SqlBool::FALSE,
         thinking_budget: None,
@@ -310,7 +310,7 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             context_limit: 0,
-            compact_keep_recent: 10,
+            compact_keep_recent_tokens: 20_000,
             enabled_tools: None,
             thinking_enabled: SqlBool::FALSE,
             thinking_budget: None,

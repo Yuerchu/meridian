@@ -195,8 +195,11 @@ A new decision about one subsystem goes into that subsystem's file.
   Stickers are the worked example: `agent::freeze_sticker_parts` records what
   each one was known as when its message entered the backend, and rendering
   reads only that. Known violators, to be removed rather than copied:
-  `microcompact`, `trim_to_context_limit`, `cap_user_provided_context`, and
-  `<sent_at>` rendered in today's local zone.
+  `trim_to_context_limit`, `cap_user_provided_context`, and `<sent_at>` rendered
+  in today's local zone. (`microcompact` was removed in 2026-10;
+  `trim_to_context_limit` now runs only as the emergency floor beneath
+  compaction, and `prune_tool_results` is gated on the history being over half
+  the window.)
 - **Memory is frozen into the history, then only what changed is sent.** The
   block used to be rebuilt every turn and injected *between* the history and the
   new message without ever being stored — so each turn's payload diverged from

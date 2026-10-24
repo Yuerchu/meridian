@@ -71,10 +71,10 @@ text. Generation (phases 1 and 2) builds on exactly this.
 - **Every reader that is not a provider sees text and a count.**
   `tool_media::result_text` (`"captured [+1 media]"`) for the excerpt, the
   automatic reviewer's projection, compaction input and the SFT export;
-  `message_text` for in-request messages. `microcompact` and tool-result
-  pruning turn an old `ToolParts` message into that text — the most expensive
-  thing to keep resending, and an envelope cut by characters is a request the
-  provider refuses. Redaction scans a `ToolParts` envelope part by part, like a
+  `message_text` for in-request messages. tool-result pruning turns an old
+  `ToolParts` message into that text once the history passes half the window —
+  the most expensive thing to keep resending, and an envelope cut by characters
+  is a request the provider refuses. Redaction scans a `ToolParts` envelope part by part, like a
   user's attachments, so its base64 is not read as text.
 
 - **The window is shown typed media, never the envelope.**

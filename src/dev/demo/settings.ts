@@ -252,7 +252,7 @@ export function buildAssistants(now: number): AssistantInfoResponse[] {
     created_at: ago(60 * 24 * 90, now),
     updated_at: ago(60 * 24 * 7, now),
     context_limit: 200_000,
-    compact_keep_recent: 6,
+    compact_keep_recent_tokens: 20_000,
     enabled_tools: null,
     thinking_enabled: true,
     thinking_budget: null,
