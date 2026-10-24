@@ -2059,7 +2059,7 @@ export interface AssistantInfoResponse {
   created_at: number
   updated_at: number
   context_limit: number
-  compact_keep_recent: number
+  compact_keep_recent_tokens: number
   enabled_tools: string[] | null
   thinking_enabled: boolean
   thinking_budget: number | null
@@ -2872,6 +2872,27 @@ export interface UsageGapListResponse {
   /** Every gap in the filter; `items` is the newest of them. */
   total: number
   items: UsageGapInfoResponse[]
+}
+
+/** `usage_cache_misses`'s filter: the same window and origin as a report. */
+export interface UsageCacheMissRequest {
+  sinceMs: number | null
+  untilMs: number | null
+  origin: TurnOrigin | null
+  conversationId: string | null
+}
+
+/**
+ * Prompt tokens that were in the previous request but billed again instead of
+ * read from cache. `missed_cost` is a lower bound when `has_unpriced_misses`.
+ */
+export interface UsageCacheMissInfoResponse {
+  missed_tokens: number
+  missed_cost: DecimalString
+  miss_count: number
+  /** Replies a comparison was possible for; zero means nothing to compare. */
+  measured_messages: number
+  has_unpriced_misses: boolean
 }
 
 export type TurnOrigin =

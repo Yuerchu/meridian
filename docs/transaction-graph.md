@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：297
+- 事务根（非测试）：299
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -56,6 +56,7 @@
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `scene_text` | sea-read | conversation, message |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `wrap` | sea-read | preference |
 | `src-tauri/crates/core/src/agent/auxiliary.rs` › `configured` | sea-read | preference |
+| `src-tauri/crates/core/src/agent/cache_warmer.rs` › `warm_once` | sea-write | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/codex_install.rs` › `installation_id` | sea-write | preference |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-read | conversation, message, message_context_item |
@@ -207,7 +208,7 @@
 | `src-tauri/crates/meridiand/src/apply.rs` › `claim_data_dir` | sea-write | preference, provider |
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
-| `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/board.rs` › `board_task_move` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `board_task_update` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `create` | sea-write | board_task, project |
@@ -319,6 +320,7 @@
 | `src-tauri/src/commands/tool_system.rs` › `delete_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
+| `src-tauri/src/commands/usage.rs` › `usage_cache_misses` | sea-read | usage |
 | `src-tauri/src/commands/usage.rs` › `usage_gaps` | sea-read | model_config, usage |
 | `src-tauri/src/commands/usage.rs` › `usage_report` | sea-read | model_config, usage |
 | `src-tauri/src/commands/user_command.rs` › `get_user_command_result` | sea-read | message, message_context_item |

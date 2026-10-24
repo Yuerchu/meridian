@@ -7,9 +7,9 @@ use meridian_core::agent::engine;
 use meridian_core::agent::turn_record;
 use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_context_items, do_compact,
-    file_access_prompt, instruction_budget, load_project_instructions, microcompact, persist_todo_injection,
-    persisted_user_message, plan_todo_injection, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages,
-    trailing_with_memory, trim_to_context_limit,
+    file_access_prompt, instruction_budget, load_project_instructions, persist_todo_injection, persisted_user_message,
+    plan_todo_injection, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages, trailing_with_memory,
+    trim_to_context_limit,
 };
 use meridian_core::db;
 use meridian_core::db::entity::assistant;
@@ -1182,7 +1182,10 @@ async fn chat_inner(
     // Before the field is taken out of `resolved`: the wire borrows the whole
     // row, so moving anything out of it first makes this a borrow of a
     // partially moved value.
-    let provider = provider::registry::create_provider(resolved.wire())?;
+    // Kept as an `Arc` rather than a `Box`: the cache warmer replays through
+    // the same adapter after this turn's own request has gone out, which
+    // outlives the borrow the turn loop takes.
+    let provider: Arc<dyn provider::ChatProvider> = Arc::from(provider::registry::create_provider(resolved.wire())?);
     let model = resolved.model.clone();
 
     // Needed before the tool set is assembled, unlike the other two prefs which
@@ -1393,7 +1396,11 @@ async fn chat_inner(
     let tool_defs = turn.tool_defs;
     let offered = turn.offered;
     let system_prompt = turn.system_prompt;
-    let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+    let keep_recent = assistant
+        .as_ref()
+        .map(|a| a.compact_keep_recent_tokens.max(0) as usize)
+        // domain-default: migration m0007 gives the column this default; a row without one is absent configuration, not an unknown limit.
+        .unwrap_or(20_000);
     let auto_compact = assistant
         .as_ref()
         .map(|a| a.auto_compact_enabled.get())
@@ -1558,7 +1565,11 @@ async fn chat_inner(
             &stored_context_items,
         )?;
         budget.update_estimate(&pre_msgs);
-        if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
+        // `keep_recent` is a token budget now, so the old "more than twice the
+        // kept message count" guard no longer describes anything. Two rows is
+        // the least `do_compact` can split: something to summarise and an
+        // anchor to keep.
+        if budget.needs_compact() && ctx.path.len() > 2 {
             services
                 .events
                 .emit_compact_start(&CompactStartEvent {
@@ -1697,8 +1708,11 @@ async fn chat_inner(
         &conversation_id,
         supports_images,
     )?;
-    microcompact(&mut chat_messages, &budget, keep_recent);
-    trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+    // History is not rewritten here any more. Compaction is the one place that
+    // replaces it wholesale, and the trim below is its emergency floor: a
+    // per-turn pass over the tail is what used to break the cached prefix at a
+    // moving boundary on every request.
+    trim_to_context_limit(&mut chat_messages, context_limit, keep_recent, &budget.counter);
 
     let params = turn_params.params;
 
@@ -1969,6 +1983,22 @@ async fn chat_inner(
             cancel: cancel.clone(),
             keep_recent,
             context_limit,
+            // Streaming lifecycle only: the timer dies with the turn. `ttl_for`
+            // returns `None` for an upstream whose entry lifetime nobody
+            // documents, and an unknown lifetime is not a licence to guess.
+            warm: meridian_core::agent::cache_warmer::ttl_for(&resolved.provider_type).map(|ttl| {
+                meridian_core::agent::cache_warmer::WarmSeed {
+                    provider: Arc::clone(&provider),
+                    db: services.db.clone(),
+                    ttl,
+                    prices: None,
+                    provider_id: Some(resolved.provider_id.clone()),
+                    provider_name: Some(resolved.provider_name.clone()),
+                    model_id: Some(resolved.model.clone()),
+                    conversation_id: conversation_id.clone(),
+                    turn_id: turn_id.clone(),
+                }
+            }),
             // Where the call would land decides whether to ask, and a standing
             // yes to project edits can answer it. The other runner asks on the
             // declared permission alone -- see the drift list.

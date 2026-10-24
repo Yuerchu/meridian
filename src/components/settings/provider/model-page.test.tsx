@@ -16,6 +16,7 @@ vi.mock('@/api', () => ({
     getProviderLocalModelInfo: vi.fn(),
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
+    listAssistants: vi.fn(),
   },
 }))
 
@@ -89,6 +90,7 @@ describe('ModelPage', () => {
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('none'))
     mockApi.saveModelConfig.mockResolvedValue(EXISTING)
     mockApi.deleteModelConfig.mockResolvedValue(undefined)
+    mockApi.listAssistants.mockResolvedValue([])
   })
 
   it('shows a load error with retry instead of an empty editor', async () => {
@@ -234,6 +236,49 @@ describe('ModelPage', () => {
     await user.type(screen.getByRole('textbox', { name: new RegExp(i18n.t('settings.model.maxOutput')) }), '32')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+  })
+
+  it('refuses a window that leaves a bound assistant unsupported', async () => {
+    const user = userEvent.setup()
+    mockApi.listAssistants.mockResolvedValue([
+      {
+        name: 'Elegy',
+        provider_id: 'p1',
+        model_id: 'm1',
+        context_limit: 300_000,
+        thinking_enabled: false,
+        max_tokens: null,
+      } as never,
+    ])
+    renderPage()
+
+    const window = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
+    await user.clear(window)
+    await user.type(window, '250000')
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      i18n.t('settings.model.boundAssistantContext', { name: 'Elegy', limit: 300_000, window: 250_000 }),
+    )
+    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+  })
+
+  it('saves an unrelated edit while a bound assistant is already over the window', async () => {
+    const user = userEvent.setup()
+    mockApi.listAssistants.mockResolvedValue([
+      {
+        name: 'Elegy',
+        provider_id: 'p1',
+        model_id: 'm1',
+        context_limit: 1_000_000,
+        thinking_enabled: false,
+        max_tokens: null,
+      } as never,
+    ])
+    renderPage()
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
   })
 
   it('parses token counts strictly', () => {

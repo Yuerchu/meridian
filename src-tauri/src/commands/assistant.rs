@@ -6,7 +6,8 @@ use meridian_core::db::entity::assistant::AssistantChangeset;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
 use meridian_core::db::sea::ops::{
-    assistant as assistant_ops, conversation as conversation_ops, plan_review as plan_review_ops,
+    assistant as assistant_ops, conversation as conversation_ops, model_config as config_ops,
+    plan_review as plan_review_ops,
 };
 use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::util::{double_option, now_ms};
@@ -43,6 +44,43 @@ async fn assistant_barrier<T>(
     Ok(None)
 }
 
+fn patched_optional<T: Clone>(patch: &Option<Option<T>>, current: &Option<T>) -> Option<T> {
+    match patch {
+        Some(value) => value.clone(),
+        None => current.clone(),
+    }
+}
+
+/// An assistant override may only narrow the bound model's window. Composer
+/// model switches still go through `context_limit_for_turn`; this is the
+/// settings-side half of that lock.
+async fn refuse_if_assistant_exceeds_model(
+    tx: &WriteTx,
+    existing: &assistant::Model,
+    changeset: &AssistantChangeset,
+) -> Result<(), DbErr> {
+    let context_limit = changeset.context_limit.unwrap_or(existing.context_limit);
+    if context_limit <= 0 {
+        return Ok(());
+    }
+    let Some(provider_id) = patched_optional(&changeset.provider_id, &existing.provider_id) else {
+        return Ok(());
+    };
+    let Some(model_id) = patched_optional(&changeset.model_id, &existing.model_id) else {
+        return Ok(());
+    };
+    let Some((_, profile)) = config_ops::get_with_profile(tx, &provider_id, &model_id).await? else {
+        return Ok(());
+    };
+    if context_limit > profile.context_window {
+        return Err(DbErr::Custom(format!(
+            "Assistant '{}' cannot keep a context limit of {context_limit}: model '{model_id}' has a window of {}. Lower the assistant's context limit to {} or less, or raise the model window.",
+            existing.name, profile.context_window, profile.context_window
+        )));
+    }
+    Ok(())
+}
+
 async fn update_assistant_unless_plan_barrier(
     tx: &WriteTx,
     assistant_id: &str,
@@ -52,6 +90,10 @@ async fn update_assistant_unless_plan_barrier(
     if let Some(refused) = assistant_barrier(tx, assistant_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
+    let existing = assistant_ops::get_assistant(tx, assistant_id)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound(format!("assistant `{assistant_id}`")))?;
+    refuse_if_assistant_exceeds_model(tx, &existing, &changeset).await?;
     assistant_ops::update_assistant(tx, assistant_id, changeset)
         .await
         .map(GuardedAssistantMutation::Applied)
@@ -132,7 +174,7 @@ pub async fn create_assistant(
         // window". A number here would outrank the window the model is
         // configured with, and nobody chose it.
         context_limit: 0,
-        compact_keep_recent: 10,
+        compact_keep_recent_tokens: 20_000,
         enabled_tools: None,
         thinking_enabled: SqlBool::FALSE,
         thinking_budget: None,
@@ -268,13 +310,56 @@ mod tests {
             created_at: 1,
             updated_at: 1,
             context_limit: 0,
-            compact_keep_recent: 10,
+            compact_keep_recent_tokens: 20_000,
             enabled_tools: None,
             thinking_enabled: SqlBool::FALSE,
             thinking_budget: None,
             tool_preset_id: None,
             auto_compact_enabled: SqlBool::FALSE,
         }
+    }
+
+    /// The provider and model profile the assistant lock reads.
+    async fn seed_bound_model(db: &Db, context_window: i32) {
+        use meridian_core::db::sea::ops::model_config::{FlatModelConfig, seed_flat};
+
+        db.write(async |tx| {
+            db::sea::ops::provider::create_provider(
+                tx,
+                db::entity::provider::Model {
+                    id: "p1".into(),
+                    name: "Gemma".into(),
+                    provider_type: meridian_core::provider::registry::ProviderType::Openai,
+                    base_url: "https://example.invalid".into(),
+                    is_enabled: SqlBool::TRUE,
+                    sort_order: 0,
+                    created_at: 1,
+                    updated_at: 1,
+                    api_format: meridian_core::provider::registry::ApiFormat::ChatCompletions,
+                    catalog_id: None,
+                    credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
+                    transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
+                    icon: None,
+                    codex_request_shape: SqlBool::FALSE,
+                    local_backend: None,
+                },
+            )
+            .await?;
+            seed_flat(
+                tx,
+                &FlatModelConfig {
+                    model_id: "gemma",
+                    context_window,
+                    compact_threshold: context_window / 10 * 7,
+                    max_output_tokens: Some(32_768),
+                    ..Default::default()
+                },
+            )
+            .await?;
+            Ok::<_, db::sea::DbErr>(())
+        })
+        .await
+        .unwrap();
     }
 
     #[tokio::test]
@@ -368,5 +453,105 @@ mod tests {
         };
         let response = AssistantInfoResponse::from(row);
         assert_eq!((response.enabled_tools, response.thinking_enabled), (None, true));
+    }
+
+    #[tokio::test]
+    async fn an_assistant_context_override_cannot_exceed_the_bound_model() {
+        let db = db::sea::sea_test_db().await;
+        seed_bound_model(&db, 128_000).await;
+        let mut row = assistant_row("assistant-1");
+        row.provider_id = Some("p1".into());
+        row.model_id = Some("gemma".into());
+        row.context_limit = 0;
+        db.write(async |tx| assistant_ops::create_assistant(tx, row).await)
+            .await
+            .unwrap();
+
+        let refused = db
+            .write(async |tx| {
+                update_assistant_unless_plan_barrier(
+                    tx,
+                    "assistant-1",
+                    &[],
+                    AssistantChangeset {
+                        context_limit: Some(1_000_000),
+                        updated_at: Some(2),
+                        ..Default::default()
+                    },
+                )
+                .await
+            })
+            .await
+            .unwrap_err();
+        let message = refused.to_string();
+        assert!(message.contains("1000000"), "{message}");
+        assert!(message.contains("128000"), "{message}");
+        let stored = assistant_ops::get_assistant(&db, "assistant-1").await.unwrap().unwrap();
+        assert_eq!(stored.context_limit, 0);
+
+        let applied = db
+            .write(async |tx| {
+                update_assistant_unless_plan_barrier(
+                    tx,
+                    "assistant-1",
+                    &[],
+                    AssistantChangeset {
+                        context_limit: Some(64_000),
+                        updated_at: Some(3),
+                        ..Default::default()
+                    },
+                )
+                .await
+            })
+            .await
+            .unwrap();
+        let GuardedAssistantMutation::Applied(row) = applied else {
+            panic!("a narrower override is allowed: {applied:?}");
+        };
+        assert_eq!(row.context_limit, 64_000);
+    }
+
+    /// The settings page sends provider, model and limit on every save, so an
+    /// override that is already too large stays too large through an unrelated
+    /// edit. Refused rather than left in place: the assistant page is where the
+    /// number gets lowered, and nothing may write a row past its model's window.
+    #[tokio::test]
+    async fn an_edit_that_leaves_an_assistant_over_the_model_window_is_refused() {
+        let db = db::sea::sea_test_db().await;
+        seed_bound_model(&db, 128_000).await;
+        let mut row = assistant_row("assistant-1");
+        row.provider_id = Some("p1".into());
+        row.model_id = Some("gemma".into());
+        row.context_limit = 1_000_000;
+        db.write(async |tx| assistant_ops::create_assistant(tx, row).await)
+            .await
+            .unwrap();
+
+        let refused = db
+            .write(async |tx| {
+                update_assistant_unless_plan_barrier(
+                    tx,
+                    "assistant-1",
+                    &[],
+                    AssistantChangeset {
+                        name: Some("Renamed".into()),
+                        provider_id: Some(Some("p1".into())),
+                        model_id: Some(Some("gemma".into())),
+                        context_limit: Some(1_000_000),
+                        updated_at: Some(2),
+                        ..Default::default()
+                    },
+                )
+                .await
+            })
+            .await
+            .unwrap_err();
+        let message = refused.to_string();
+        assert!(message.contains("1000000"), "{message}");
+        assert!(message.contains("Nova"), "{message}");
+
+        let stored = assistant_ops::get_assistant(&db, "assistant-1").await.unwrap().unwrap();
+        assert_eq!(stored.name, "Nova");
+        assert_eq!(stored.context_limit, 1_000_000);
     }
 }

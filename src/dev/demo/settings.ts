@@ -29,6 +29,7 @@ import type {
   ToolCategoryInfoResponse,
   ToolPresetInfoResponse,
   UsageBucketInfoResponse,
+  UsageCacheMissInfoResponse,
   UsageDimension,
   VoiceCorpusSessionInfoResponse,
 } from '@/types'
@@ -252,7 +253,7 @@ export function buildAssistants(now: number): AssistantInfoResponse[] {
     created_at: ago(60 * 24 * 90, now),
     updated_at: ago(60 * 24 * 7, now),
     context_limit: 200_000,
-    compact_keep_recent: 6,
+    compact_keep_recent_tokens: 20_000,
     enabled_tools: null,
     thinking_enabled: true,
     thinking_budget: null,
@@ -703,10 +704,30 @@ export function usageBuckets(dimension: UsageDimension, now: number): UsageBucke
     case 'source':
       return [bucket('desktop', 'desktop', 380, 3_000_000, 390_000, 2_400_000, ['2.1', '5.85', '0.8', '8.75'])]
     case 'kind':
+      // The six billed roles, summing to the `total` bucket above: the usage
+      // page now draws one row per request type, and a fixture that does not
+      // add up would make the table and the KPI cards disagree on screen.
       return [
-        bucket('assistant', null, 390, 3_000_000, 395_000, 2_450_000, ['2.1', '5.95', '0.8', '8.85']),
-        bucket('auto_review', null, 22, 120_400, 7_300, 30_000, ['0.0402', '0.0845', '0.0124', '0.1371']),
+        bucket('assistant', null, 368, 2_932_000, 391_000, 2_395_000, ['1.9760', '5.9000', '0.7350', '8.6110']),
+        bucket('auto_review', null, 14, 120_400, 7_300, 30_000, ['0.1200', '0.1000', '0.0300', '0.2500']),
+        bucket('compaction', null, 8, 30_000, 2_000, 25_000, ['0.0200', '0.0200', '0.0200', '0.0600']),
+        bucket('title', null, 10, 20_000, 1_000, 15_000, ['0.0120', '0.0100', '0.0124', '0.0344']),
+        bucket('extraction', null, 4, 10_000, 1_000, 10_000, ['0.0080', '0.0045', '0.0100', '0.0225']),
+        bucket('cache_warm', null, 8, 8_000, 0, 5_000, ['0.0042', '0', '0.0050', '0.0092']),
       ]
+  }
+}
+
+/** Prompt tokens the next reply paid for again instead of reading from cache,
+ *  which is what the usage page's wasted block draws. Every figure here is
+ *  already priced by the backend; the front end never multiplies one out. */
+export function usageCacheMisses(): UsageCacheMissInfoResponse {
+  return {
+    missed_tokens: 41_280,
+    missed_cost: decimal('0.0864'),
+    miss_count: 37,
+    measured_messages: 393,
+    has_unpriced_misses: false,
   }
 }
 

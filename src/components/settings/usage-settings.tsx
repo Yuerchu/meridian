@@ -27,7 +27,7 @@ import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { UsageGapsSheet } from './usage-gaps-sheet'
-import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
+import type { UsageBucketInfoResponse, UsageCacheMissInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 import { HOUR_COUNT, rankByTokens, weekdayHourGrid } from '@/lib/usage-charts'
 
@@ -217,6 +217,10 @@ interface Report {
   days: UsageBucketInfoResponse[]
   providers: UsageBucketInfoResponse[]
   models: UsageBucketInfoResponse[]
+  /** One bucket per `role`: answering the user, reviewing, titling, summing up. */
+  kinds: UsageBucketInfoResponse[]
+  /** Prompt tokens the previous request carried and this one billed again. */
+  misses: UsageCacheMissInfoResponse
   /** Replies per weekday × hour, Monday first. */
   activity: number[][]
   rows: UsageBucketInfoResponse[]
@@ -257,6 +261,146 @@ const EMPTY_TOTAL: UsageBucketInfoResponse = {
   unpriced_messages: 0,
 }
 
+/**
+ * One row per request role.
+ *
+ * Compaction, titling, auto-review and extraction are requests the app made on
+ * its own behalf. Their prompts are not the transcript's prefix, so their hit
+ * rate is structurally near zero and says nothing about the conversation's —
+ * averaging them into one number is what made the KPI look worse than the
+ * turns it was meant to describe.
+ */
+function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const percent = useMemo(
+    () => new Intl.NumberFormat(locale, { style: 'percent', minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    [locale],
+  )
+  const rows = useMemo(
+    () =>
+      kinds.filter((kind) => kind.messages > 0).sort((a, b) => b.messages - a.messages || a.key.localeCompare(b.key)),
+    [kinds],
+  )
+  const columns = useMemo<DataGridColumn<UsageBucketInfoResponse>[]>(
+    () => [
+      {
+        id: 'role',
+        header: t('settings.usage.byRequestType.role'),
+        isRowHeader: true,
+        cell: (row) => (
+          <span className="block truncate text-body-regular">{row.label ?? t(`settings.usage.kind.${row.key}`)}</span>
+        ),
+      },
+      {
+        id: 'hitRate',
+        header: t('settings.usage.kpi.cacheRate'),
+        align: 'end',
+        headerClassName: 'w-24 whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        cell: (row) =>
+          row.cache_reported_input_tokens > 0
+            ? percent.format(row.cache_reported_input_cache_read_tokens / row.cache_reported_input_tokens)
+            : '—',
+      },
+      {
+        id: 'replies',
+        header: t('settings.usage.byRequestType.replies'),
+        align: 'end',
+        headerClassName: 'w-20 whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        cell: (row) => compact.format(row.messages),
+      },
+      {
+        id: 'tokens',
+        header: t('settings.usage.tokenColumn'),
+        align: 'end',
+        headerClassName: 'w-24 whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
+      },
+      {
+        id: 'cost',
+        header: t('settings.usage.kpi.cost'),
+        align: 'end',
+        pinned: 'end',
+        headerClassName: 'w-28 whitespace-nowrap',
+        cellClassName: 'whitespace-nowrap text-body-regular tabular-nums',
+        cell: (row) => displayedCost(row, t, locale),
+      },
+    ],
+    [compact, locale, percent, t],
+  )
+
+  if (rows.length === 0) return null
+  return (
+    <ChartCard title={t('settings.usage.byRequestType.title')}>
+      <DataGrid<UsageBucketInfoResponse>
+        aria-label={t('settings.usage.byRequestType.title')}
+        variant="secondary"
+        columns={columns}
+        data={rows}
+        getRowId={(row) => `kind:${row.key}`}
+        contentClassName="min-w-lg table-fixed"
+        scrollContainerClassName="overflow-x-auto overscroll-contain"
+      />
+    </ChartCard>
+  )
+}
+
+const EMPTY_MISSES: UsageCacheMissInfoResponse = {
+  missed_tokens: 0,
+  missed_cost: ZERO_DECIMAL,
+  miss_count: 0,
+  measured_messages: 0,
+  has_unpriced_misses: false,
+}
+
+/**
+ * What the cache failed to save: prompt tokens the previous request carried
+ * and this one paid full price for again. `measured_messages` is how many
+ * replies a comparison was possible for — zero means the window has nothing
+ * to compare, which is not the same as a perfect prefix.
+ */
+function CacheMisses({ misses }: { misses: UsageCacheMissInfoResponse }) {
+  const { t, i18n } = useTranslation()
+  const locale = i18n.resolvedLanguage ?? i18n.language
+  const compact = useMemo(
+    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
+    [locale],
+  )
+  if (misses.measured_messages === 0) return null
+  const qualifier: CostQualifier = misses.has_unpriced_misses ? 'lower_bound' : 'exact'
+  return (
+    <ChartCard title={t('settings.usage.cacheMisses.title')}>
+      <div className="grid grid-cols-1 gap-3 @sm/pane:grid-cols-3">
+        <Kpi title={t('settings.usage.cacheMisses.tokens')}>
+          <KPI.Value data-slot="cache-missed-tokens" className="block truncate">
+            {compact.format(misses.missed_tokens)}
+          </KPI.Value>
+        </Kpi>
+        <Kpi title={t('settings.usage.cacheMisses.cost')}>
+          <KPI.Value data-slot="cache-missed-cost" className="block truncate">
+            {formatCostAmount(misses.missed_cost, qualifier, locale)}
+          </KPI.Value>
+        </Kpi>
+        <Kpi title={t('settings.usage.cacheMisses.count')}>
+          <KPI.Value data-slot="cache-missed-count" className="block truncate">
+            {compact.format(misses.miss_count)}
+          </KPI.Value>
+        </Kpi>
+      </div>
+      <p className="text-caption-1-regular text-text-secondary">
+        {t('settings.usage.cacheMisses.note', { measured: misses.measured_messages })}
+      </p>
+    </ChartCard>
+  )
+}
+
 export function UsageSettings({ onOpenConversation }: { onOpenConversation: (conversationId: string) => void }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -291,7 +435,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       origin,
       conversationId: null,
     })
-    // Six groupings in flight together. They are independent queries over the
+    // Seven groupings in flight together. They are independent queries over the
     // same table, and running them in series would show the page filling in one
     // chart at a time.
     Promise.all([
@@ -300,9 +444,11 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       api.usageReport(request('provider')),
       api.usageReport(request('model')),
       api.usageReport(request('hour')),
+      api.usageReport(request('kind')),
       api.usageReport(request(breakdown)),
+      api.usageCacheMisses({ sinceMs, untilMs: null, origin, conversationId: null }),
     ])
-      .then(([total, days, providers, models, hours, rows]) => {
+      .then(([total, days, providers, models, hours, kinds, rows, misses]) => {
         if (cancelled) return
         // Projected here rather than during render: a malformed hour key is a
         // broken contract, and thrown from here it becomes the page's error
@@ -313,6 +459,8 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           days,
           providers,
           models,
+          kinds,
+          misses,
           activity,
           rows,
           rowsDimension: breakdown,
@@ -348,14 +496,20 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             value: compact.format(total.cache_read_tokens),
           })
       : t('settings.usage.kpi.inputNote', { value: compact.format(total.cache_read_tokens) })
+  // The KPI is the conversation's hit rate, not the page's. Title generation,
+  // auto-review, compaction and extraction each send a prompt that is not the
+  // transcript's prefix, so by construction they never hit; averaging them in
+  // understates the number a person is actually asking about. The table below
+  // gives every role its own row.
+  const assistantKind = report?.kinds.find((kind) => kind.key === 'assistant') ?? total
   // Of the prompt tokens whose cache-read usage the upstream reported, how
   // many were already cached. A missing cache-read field is unknown rather
   // than a zero hit, so it contributes to billing but not this rate.
   const hitRate =
-    total.cache_reported_input_tokens > 0
-      ? total.cache_reported_input_cache_read_tokens / total.cache_reported_input_tokens
+    assistantKind.cache_reported_input_tokens > 0
+      ? assistantKind.cache_reported_input_cache_read_tokens / assistantKind.cache_reported_input_tokens
       : null
-  const hitRateCounted = total.cache_reported_input_messages
+  const hitRateCounted = assistantKind.cache_reported_input_messages
   const hasGaps = total.unpriced_messages > 0 || total.incomplete_token_usage_messages > 0
   const [gapsOpen, setGapsOpen] = useState(false)
 
@@ -429,11 +583,14 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               </KPI.Value>
             </Kpi>
             <Kpi
-              title={t('settings.usage.kpi.cacheRate')}
+              title={t('settings.usage.kpi.cacheRateAssistant')}
               note={
-                hitRateCounted < total.messages
-                  ? t('settings.usage.kpi.cacheRateNote', { counted: hitRateCounted, count: total.messages })
-                  : t('settings.usage.kpi.replies', { count: total.messages })
+                hitRateCounted < assistantKind.messages
+                  ? t('settings.usage.kpi.cacheRateNote', {
+                      counted: hitRateCounted,
+                      count: assistantKind.messages,
+                    })
+                  : t('settings.usage.kpi.replies', { count: assistantKind.messages })
               }
             >
               <KPI.Value data-slot="cache-rate" className="block truncate">
@@ -441,6 +598,10 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               </KPI.Value>
             </Kpi>
           </div>
+
+          <RequestTypeTable kinds={report?.kinds ?? []} />
+
+          <CacheMisses misses={report?.misses ?? EMPTY_MISSES} />
 
           {localQualifier !== 'exact' && (
             <p

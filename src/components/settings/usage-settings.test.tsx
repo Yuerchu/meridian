@@ -9,7 +9,7 @@ import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
-vi.mock('@/api', () => ({ api: { usageReport: vi.fn(), usageGaps: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { usageReport: vi.fn(), usageGaps: vi.fn(), usageCacheMisses: vi.fn() } }))
 
 const mockApi = vi.mocked(api)
 const onOpenConversation = vi.fn()
@@ -63,6 +63,13 @@ async function chartCard(title: string): Promise<HTMLElement> {
 
 beforeEach(async () => {
   vi.clearAllMocks()
+  mockApi.usageCacheMisses.mockResolvedValue({
+    missed_tokens: 0,
+    missed_cost: decimal('0'),
+    miss_count: 0,
+    measured_messages: 0,
+    has_unpriced_misses: false,
+  })
   await i18n.changeLanguage('en')
 })
 
@@ -840,6 +847,72 @@ it('reads the hit rate off the replies that reported cache-read usage', async ()
 
   expect(await screen.findByText('40.0%', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
   expect(screen.getByText('Over the 250 replies with reported cache-read usage, of 253')).toBeInTheDocument()
+})
+
+/**
+ * Titling, review, compaction and extraction each send a prompt that is not the
+ * transcript's prefix, so their hit rate is structurally near zero. Averaging
+ * them into one number understates the conversation's own rate.
+ */
+it('reads the KPI off the conversation rather than off side requests', async () => {
+  serve({
+    total: [
+      bucket({
+        messages: 10,
+        cache_reported_input_tokens: 1_000,
+        cache_reported_input_cache_read_tokens: 200,
+      }),
+    ],
+    kind: [
+      bucket({
+        key: 'assistant',
+        label: null,
+        messages: 8,
+        cache_reported_input_tokens: 900,
+        cache_reported_input_cache_read_tokens: 450,
+        cache_reported_input_messages: 8,
+      }),
+      bucket({
+        key: 'title',
+        label: null,
+        messages: 2,
+        cache_reported_input_tokens: 100,
+        cache_reported_input_cache_read_tokens: 0,
+        cache_reported_input_messages: 2,
+      }),
+    ],
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  // 450/900, not the 200/1,000 the total would give.
+  expect(await screen.findByText('50.0%', { selector: '[data-slot="cache-rate"]' })).toBeInTheDocument()
+
+  const card = await chartCard('By request type')
+  expect(within(card).getByText('Answering you')).toBeInTheDocument()
+  expect(within(card).getByText('Titles')).toBeInTheDocument()
+})
+
+it('reports what a broken prefix cost instead of only the hit rate', async () => {
+  serve({ total: [bucket()] })
+  mockApi.usageCacheMisses.mockResolvedValue({
+    missed_tokens: 12_000,
+    missed_cost: decimal('0.03'),
+    miss_count: 2,
+    measured_messages: 9,
+    has_unpriced_misses: false,
+  })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText(/Compared across 9 replies/)).toBeInTheDocument()
+  expect(screen.getByText('2', { selector: '[data-slot="cache-missed-count"]' })).toBeInTheDocument()
+})
+
+it('hides the miss card when there is nothing to compare', async () => {
+  serve({ total: [bucket()] })
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+
+  expect(await screen.findByText('1.50', { selector: '[data-slot="cost-total"]' })).toBeInTheDocument()
+  expect(screen.queryByText('Cache misses')).not.toBeInTheDocument()
 })
 
 it('does not turn missing cache usage into a zero-percent hit rate', async () => {

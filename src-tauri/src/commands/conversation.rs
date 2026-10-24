@@ -57,7 +57,11 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
                 Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
                 None => None,
             };
-            let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+            let keep_recent = assistant
+                .as_ref()
+                .map(|a| a.compact_keep_recent_tokens.max(0) as usize)
+                // domain-default: migration m0007 gives the column this default; a row without one is absent configuration, not an unknown limit.
+                .unwrap_or(20_000);
             // Summarised by the model that wrote the transcript, and against
             // that model's window.
             Ok::<_, db::sea::DbErr>(Ok((conv.pin_model(assistant), keep_recent)))
@@ -1155,7 +1159,7 @@ mod tests {
             created_at: 1000,
             updated_at: 1000,
             context_limit: 128_000,
-            compact_keep_recent: 10,
+            compact_keep_recent_tokens: 10,
             enabled_tools: None,
             thinking_enabled: db::types::SqlBool::FALSE,
             thinking_budget: None,

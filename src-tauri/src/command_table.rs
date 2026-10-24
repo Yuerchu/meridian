@@ -304,6 +304,9 @@ macro_rules! with_all_commands {
             async commands::usage => usage_gaps(
                 request: $crate::commands::usage::UsageGapListRequest,
             ),
+            async commands::usage => usage_cache_misses(
+                request: $crate::commands::usage::UsageCacheMissRequest,
+            ),
 
             async commands::preference => get_preference(
                 request: $crate::commands::preference::PreferenceReadRequest,
