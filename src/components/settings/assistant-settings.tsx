@@ -6,6 +6,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Description,
   Disclosure,
   DisclosureGroup,
   Input,
@@ -33,6 +34,7 @@ import type {
 } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+import { boundAssistantConflicts } from '@/lib/assistant-model-lock'
 import { titleIfTruncated } from '@/lib/truncation'
 
 /** An assistant's window override as the field shows it: `0` is "none", so the
@@ -65,6 +67,8 @@ function AssistantEditor({
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
+  const [boundWindow, setBoundWindow] = useState<number | null>(null)
+  const [supportsThinking, setSupportsThinking] = useState<boolean | null>(null)
   const [saved, markSaved] = useTemporaryFlag()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
@@ -130,6 +134,49 @@ function AssistantEditor({
   }, [providerId])
 
   useEffect(() => {
+    if (!providerId || !modelId) {
+      setBoundWindow(null)
+      setSupportsThinking(null)
+      return
+    }
+    let cancelled = false
+    // Switching models must not leave the previous model's ceiling on screen
+    // for a beat: a save that lands in that beat would be judged against it.
+    setBoundWindow(null)
+    setSupportsThinking(null)
+    // Two reads answer two different questions. The window comes from the
+    // model's stored profile first; capabilities only decide thinking. A local
+    // model's capability read fails whenever its file does, and that must not
+    // take the profile's window down with it — that window is the whole lock.
+    void Promise.allSettled([
+      api.getModelConfig({ providerId, modelId }),
+      api.getProviderCapabilities({ providerId, modelId }),
+    ]).then(([config, caps]) => {
+      if (cancelled) return
+      setBoundWindow(
+        (config.status === 'fulfilled' ? config.value?.profile.context_window : null) ??
+          (caps.status === 'fulfilled' ? caps.value.max_context_tokens : null) ??
+          null,
+      )
+      setSupportsThinking(caps.status === 'fulfilled' ? caps.value.supports_thinking : null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [providerId, modelId])
+
+  const parsedContextLimit = contextLimit.trim() === '' ? 0 : Number.parseInt(contextLimit, 10)
+  const draftContextLimit = Number.isFinite(parsedContextLimit) ? parsedContextLimit : 0
+  const modelConflicts = boundAssistantConflicts({
+    contextLimit: draftContextLimit,
+    thinkingEnabled,
+    maxTokens: null,
+    modelWindow: boundWindow,
+    maxOutput: null,
+    supportsThinking,
+  })
+
+  useEffect(() => {
     api.listAllToolNames().then(setAllTools)
     api.listEmojiPacks().then(setAllPacks)
     api.listToolPresets().then(setToolPresets)
@@ -144,6 +191,14 @@ function AssistantEditor({
     const enabledTools = toolMode === 'custom' ? [...selectedTools] : null
     const toolPresetId = toolMode === 'preset' && selectedPresetId ? selectedPresetId : null
     setSaveError(null)
+    if (modelConflicts.includes('context') && boundWindow !== null) {
+      setSaveError(t('settings.assistant.contextLimitExceedsModel', { window: boundWindow }))
+      return
+    }
+    if (modelConflicts.includes('thinking')) {
+      setSaveError(t('settings.assistant.thinkingUnsupported'))
+      return
+    }
     try {
       await onSave(assistant.id, {
         name,
@@ -152,8 +207,9 @@ function AssistantEditor({
         modelId: modelId.trim() || null,
         temperature: temperature ? parseFloat(temperature) : null,
         // Blank is "no override", which the backend stores as 0 and resolves
-        // to the model's own window.
-        contextLimit: contextLimit ? parseInt(contextLimit) : 0,
+        // to the model's own window. The same parse the guard used, so the
+        // number saved is the number that was checked.
+        contextLimit: draftContextLimit,
         enabledTools,
         thinkingEnabled,
         thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
@@ -226,7 +282,7 @@ function AssistantEditor({
             step={0.1}
           />
         </TextField>
-        <TextField type="number">
+        <TextField type="number" isInvalid={modelConflicts.includes('context')}>
           <Label>{t('settings.assistant.contextLimit')}</Label>
           <Input
             name={`assistantContextLimit-${assistant.id}`}
@@ -235,6 +291,16 @@ function AssistantEditor({
             onChange={(e) => setContextLimit(e.target.value)}
             placeholder={t('settings.assistant.contextLimitFromModel')}
           />
+          {boundWindow !== null && (
+            <Description
+              data-slot="assistant-context-cap"
+              className={modelConflicts.includes('context') ? 'text-status-danger' : undefined}
+            >
+              {modelConflicts.includes('context')
+                ? t('settings.assistant.contextLimitExceedsModel', { window: boundWindow })
+                : t('settings.assistant.contextLimitCap', { window: boundWindow })}
+            </Description>
+          )}
         </TextField>
       </div>
 
@@ -256,6 +322,11 @@ function AssistantEditor({
             {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
+        {modelConflicts.includes('thinking') && (
+          <p data-slot="assistant-thinking-unsupported" className="text-caption-1-regular text-status-danger">
+            {t('settings.assistant.thinkingUnsupported')}
+          </p>
+        )}
         {thinkingEnabled && (
           <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
             <Input

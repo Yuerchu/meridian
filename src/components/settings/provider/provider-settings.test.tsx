@@ -26,6 +26,7 @@ vi.mock('@/api', () => ({
     getProviderLocalModelInfo: vi.fn(),
     saveModelConfig: vi.fn(),
     deleteModelConfig: vi.fn(),
+    listAssistants: vi.fn(),
     setProviderKey: vi.fn(),
     getPreference: vi.fn(),
     setPreference: vi.fn(),
@@ -246,6 +247,7 @@ describe('ProviderSettings list/detail navigation', () => {
     mockApi.listCachedProviderModels.mockResolvedValue([])
     mockApi.fetchProviderModels.mockResolvedValue([])
     mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
+    mockApi.listAssistants.mockResolvedValue([])
     mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
     mockApi.setPreference.mockResolvedValue(undefined)
   })
@@ -1247,6 +1249,7 @@ describe('ProviderPage failure paths and cached models', () => {
     mockApi.listCachedProviderModels.mockResolvedValue([])
     mockApi.listModelConfigs.mockResolvedValue([])
     mockApi.fetchProviderModels.mockResolvedValue([])
+    mockApi.listAssistants.mockResolvedValue([])
     mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
     mockApi.setPreference.mockResolvedValue(undefined)
   })

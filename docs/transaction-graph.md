@@ -207,7 +207,7 @@
 | `src-tauri/crates/meridiand/src/apply.rs` › `claim_data_dir` | sea-write | preference, provider |
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
-| `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, plan_review |
+| `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/board.rs` › `board_task_move` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `board_task_update` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `create` | sea-write | board_task, project |

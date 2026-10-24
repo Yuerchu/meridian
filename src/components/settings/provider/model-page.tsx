@@ -12,6 +12,7 @@ import {
   ToggleButton,
 } from '@/components/base'
 import { api } from '@/api'
+import { assistantsWithModelConflicts } from '@/lib/assistant-model-lock'
 import { assertDecimal38_18 } from '@/lib/decimal'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -486,6 +487,65 @@ function ModelConfigEditor({
     setPriceError(null)
     setInvalidPrices(new Set())
     setInvalidLimits(new Set())
+    // Only the fields that decide whether a bound assistant still fits. Editing
+    // a price must not be refused for a mismatch this save does not touch.
+    const limitsChanged =
+      !existing ||
+      limits.contextWindow !== existing.profile.context_window ||
+      (limits.maxOutput ?? null) !== existing.profile.max_output_tokens ||
+      triTo(capThinking) !== existing.profile.capability_overrides?.supports_thinking
+    if (limitsChanged) {
+      let assistants
+      try {
+        assistants = await api.listAssistants()
+      } catch (error) {
+        setPriceError(error instanceof Error ? error.message : t('settings.model.boundAssistantsLoadError'))
+        return
+      }
+      const savedThinking =
+        capThinking === 'off' ? false : capThinking === 'on' ? true : (caps?.supports_thinking ?? null)
+      const conflicting = assistantsWithModelConflicts(assistants, providerId, modelId, {
+        contextWindow: limits.contextWindow!,
+        maxOutput: limits.maxOutput ?? null,
+        supportsThinking: savedThinking,
+      })
+      if (conflicting.length > 0) {
+        const shown = conflicting.slice(0, 3)
+        const details = shown.flatMap(({ assistant, conflicts }) =>
+          conflicts.map((conflict) => {
+            if (conflict === 'context') {
+              return t('settings.model.boundAssistantContext', {
+                name: assistant.name,
+                limit: assistant.context_limit,
+                window: limits.contextWindow!,
+              })
+            }
+            if (conflict === 'output') {
+              // Both are set: boundAssistantConflicts only names this when the
+              // assistant has an override and the model has a maximum.
+              return t('settings.model.boundAssistantOutput', {
+                name: assistant.name,
+                limit: assistant.max_tokens!,
+                max: limits.maxOutput!,
+              })
+            }
+            return t('settings.model.boundAssistantThinking', { name: assistant.name })
+          }),
+        )
+        if (conflicting.length > shown.length) {
+          details.push(t('settings.model.boundAssistantsMore', { remaining: conflicting.length - shown.length }))
+        }
+        setPriceError(
+          t('settings.model.boundAssistantsRefused', {
+            details: details.join(t('settings.model.boundAssistantSeparator')),
+          }),
+        )
+        setInvalidLimits(new Set(['contextWindow']))
+        limitRefs.contextWindow.current?.scrollIntoView({ block: 'center' })
+        limitRefs.contextWindow.current?.focus()
+        return
+      }
+    }
     setSaving(true)
     try {
       await onSave({
