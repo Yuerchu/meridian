@@ -40,6 +40,7 @@ import {
   buildToolCategories,
   buildToolNames,
   usageBuckets,
+  usageCacheMisses,
 } from './settings'
 import { DEMO_ROOT, PLAN_REVIEW_ID, PROJECT_MERIDIAN } from './conversations'
 import { answerReplay, isReplaying, startReplay, stopReplay, tailOf } from './stream'
@@ -1010,6 +1011,7 @@ const providers: Record<string, DemoHandler> = {
   usage_report: (args, { state }) => usageBuckets(request<{ dimension: UsageDimension }>(args).dimension, state.now),
   // The fixture's total has nothing unpriced or incomplete, so its list is empty.
   usage_gaps: () => ({ total: 0, items: [] }),
+  usage_cache_misses: () => usageCacheMisses(),
 }
 
 const assistants: Record<string, DemoHandler> = {
