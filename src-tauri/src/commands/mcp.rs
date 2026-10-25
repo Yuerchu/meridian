@@ -18,18 +18,21 @@ pub struct McpServerToolInfoResponse {
     pub name: String,
     pub description: String,
     pub input_schema: serde_json::Value,
+    pub enabled: bool,
+    pub definition_tokens: usize,
 }
 
-impl From<mcp::McpToolDef> for McpServerToolInfoResponse {
-    fn from(value: mcp::McpToolDef) -> Self {
-        Self {
-            server_id: value.server_id,
-            server_name: value.server_name,
-            qualified_name: value.qualified_name,
-            name: value.name,
-            description: value.description,
-            input_schema: value.input_schema,
-        }
+fn tool_response(value: mcp::McpToolDef, enabled: bool) -> McpServerToolInfoResponse {
+    let definition_tokens = mcp::definition_tokens(&value.qualified_name, &value.description, &value.input_schema);
+    McpServerToolInfoResponse {
+        server_id: value.server_id,
+        server_name: value.server_name,
+        qualified_name: value.qualified_name,
+        name: value.name,
+        description: value.description,
+        input_schema: value.input_schema,
+        enabled,
+        definition_tokens,
     }
 }
 
@@ -162,6 +165,7 @@ pub async fn create_mcp_server(
         // not something a server should opt into merely by existing. The
         // user turns it on once they know the configuration works.
         is_enabled: SqlBool::FALSE,
+        disabled_tools: Json(Vec::new()),
         sort_order: 0,
         created_at: now,
         updated_at: now,
@@ -189,6 +193,7 @@ pub async fn update_mcp_server(
         url: request.url,
         headers: request.headers.map(|headers| headers.map(Json)),
         is_enabled: request.is_enabled.map(SqlBool::from),
+        disabled_tools: None,
         updated_at: Some(now_ms()),
     };
     let row = services
@@ -243,7 +248,64 @@ pub async fn list_mcp_tools(
         Some(sid) => registry.tools_for_server(&sid),
         None => registry.tools().as_ref().clone(),
     };
-    Ok(tools.into_iter().map(Into::into).collect())
+    Ok(tools
+        .into_iter()
+        .map(|tool| {
+            let enabled = registry.is_tool_enabled(&tool.server_id, &tool.name);
+            tool_response(tool, enabled)
+        })
+        .collect())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct McpToolEnabledUpdateRequest {
+    server_id: String,
+    tool_name: String,
+    enabled: bool,
+}
+
+/// Turn one of a server's tools on or off. The name is the server's own, not
+/// the `mcp__…` qualified form. Writes first, then the live snapshot, so a
+/// failed save cannot leave the model seeing a tool the row still offers.
+#[tauri::command]
+pub async fn set_mcp_tool_enabled(
+    app: tauri::AppHandle,
+    request: McpToolEnabledUpdateRequest,
+) -> Result<McpServerInfoResponse, String> {
+    if request.tool_name.is_empty() {
+        return Err("tool name is empty".into());
+    }
+    let services = app.services();
+    let row = services
+        .db
+        .write(async |tx| {
+            let server = mcp_server_ops::get_mcp_server(tx, &request.server_id)
+                .await?
+                .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
+            let mut names = server.disabled_tools.0.clone();
+            if request.enabled {
+                names.retain(|name| name != &request.tool_name);
+            } else if !names.iter().any(|name| name == &request.tool_name) {
+                names.push(request.tool_name.clone());
+            }
+            mcp_server_ops::update_mcp_server(
+                tx,
+                &request.server_id,
+                McpServerChangeset {
+                    disabled_tools: Some(Json(names)),
+                    updated_at: Some(now_ms()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    services
+        .mcp
+        .set_tool_enabled(&request.server_id, &request.tool_name, request.enabled);
+    Ok(row.into())
 }
 
 /// Whether each server is actually connected.
@@ -287,6 +349,9 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<McpToolListRes
         .collect();
 
     for t in mcp_tools.iter() {
+        if !services.mcp.is_tool_enabled(&t.server_id, &t.name) {
+            continue;
+        }
         result.push(McpToolInfoResponse {
             name: t.qualified_name.clone(),
             description: t.description.clone(),

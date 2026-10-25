@@ -737,6 +737,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "set_log_level": {
       "kind": "null"
     },
+    "set_mcp_tool_enabled": {
+      "kind": "ref",
+      "id": 110
+    },
     "set_memory_subject_flags": {
       "kind": "null"
     },
@@ -9470,10 +9474,22 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
+        "definition_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
         "description": {
           "optional": false,
           "schema": {
             "kind": "string"
+          }
+        },
+        "enabled": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
           }
         },
         "input_schema": {
@@ -11719,4 +11735,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 259
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 260

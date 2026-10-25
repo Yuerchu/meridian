@@ -86,6 +86,8 @@ export interface DemoState {
   assistants: AssistantInfoResponse[]
   mcpServers: McpServerInfoResponse[]
   mcpConnected: Set<string>
+  /** Server id → tool names the model is not offered. */
+  mcpDisabledTools: Record<string, string[]>
   customTools: CustomToolInfoResponse[]
   toolPresets: ToolPresetInfoResponse[]
   skills: SkillInfoResponse[]
@@ -357,6 +359,7 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     assistants: buildAssistants(now),
     mcpServers: buildMcpServers(now),
     mcpConnected: new Set(['demo-mcp-filesystem', 'demo-mcp-github']),
+    mcpDisabledTools: { 'demo-mcp-github': ['create_pull_request'] },
     customTools: buildCustomTools(now),
     toolPresets: buildToolPresets(now),
     skills: buildSkills(now),

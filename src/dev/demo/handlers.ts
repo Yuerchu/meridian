@@ -10,6 +10,7 @@ import type {
   ComposerDraftUpsertRequest,
   ConversationInfoResponse,
   McpServerCreateRequest,
+  McpToolEnabledUpdateRequest,
   McpServerUpdateRequest,
   MemoryInfoResponse,
   MemoryScopedUpsertRequest,
@@ -1135,11 +1136,27 @@ const mcp: Record<string, DemoHandler> = {
   },
   list_mcp_tools: (args, { state }) => {
     const serverId = field<string | null>(args, 'serverId')
-    return buildMcpTools().filter(
-      (t) =>
-        state.mcpConnected.has(t.server_id) &&
-        (serverId === null || serverId === undefined || t.server_id === serverId),
-    )
+    return buildMcpTools()
+      .filter(
+        (t) =>
+          state.mcpConnected.has(t.server_id) &&
+          (serverId === null || serverId === undefined || t.server_id === serverId),
+      )
+      .map((t) => ({
+        ...t,
+        enabled: !(state.mcpDisabledTools[t.server_id] ?? []).includes(t.name),
+      }))
+  },
+  set_mcp_tool_enabled: (args, { state }) => {
+    const req = request<McpToolEnabledUpdateRequest>(args)
+    const row = state.mcpServers.find((s) => s.id === req.serverId)
+    if (!row) throw 'server not found'
+    const current = new Set(state.mcpDisabledTools[req.serverId] ?? [])
+    if (req.enabled) current.delete(req.toolName)
+    else current.add(req.toolName)
+    state.mcpDisabledTools[req.serverId] = [...current]
+    row.updated_at = Date.now()
+    return row
   },
   list_mcp_connection_statuses: (_args, { state }) =>
     state.mcpServers

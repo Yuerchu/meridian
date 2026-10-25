@@ -118,6 +118,7 @@ import type {
   LogSettingsResponse,
   McpConnectionStatusListResponse,
   McpServerCreateRequest,
+  McpToolEnabledUpdateRequest,
   McpServerInfoResponse,
   McpServerListResponse,
   McpServerUpdateRequest,
@@ -768,6 +769,9 @@ export const api = {
   deleteMcpServer: (id: string) => invoke<void>('delete_mcp_server', { id }),
 
   connectMcpServer: (id: string) => invoke<void>('connect_mcp_server', { id }),
+
+  setMcpToolEnabled: (request: McpToolEnabledUpdateRequest) =>
+    invoke<McpServerInfoResponse>('set_mcp_tool_enabled', { request }),
 
   disconnectMcpServer: (id: string) => invoke<void>('disconnect_mcp_server', { id }),
 

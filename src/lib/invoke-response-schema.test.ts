@@ -8,8 +8,8 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(259)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(259)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(260)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(260)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 
@@ -174,6 +174,8 @@ describe('invoke response schema', () => {
       name: 'search',
       description: 'Search docs',
       input_schema: { type: 'object', properties: { query: { type: 'string' } } },
+      enabled: true,
+      definition_tokens: 120,
     }
     expect(() => validate('list_mcp_tools', [tool])).not.toThrow()
     expect(() => validate('list_mcp_tools', [{ ...tool, input_schema: { value: undefined } }])).toThrow(

@@ -1,13 +1,15 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowInDownDashedPanel, Plug } from '@keyline-icons/react/two-tone'
 import { Alert, Button } from '@/components/base'
 import { api } from '@/api'
-import type { McpConnectionStatusInfoResponse, McpServerInfoResponse } from '@/types'
+import type { McpConnectionStatusInfoResponse, McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
 import { cx } from '@/utils/cx'
 import { SettingsAddRow, SettingsCard, SettingsLinkRow, SettingsSkeleton, SettingsTag } from '../primitives'
 import { SettingsPage } from '../settings-page'
 import { useSettingsResume } from '../settings-stack'
+import { ContextMeter } from './context-meter'
+import { formatDefinitionTokens } from './format'
 
 /**
  * Every MCP server, and the way into one.
@@ -32,6 +34,8 @@ export function McpServerListPage({
   const { t } = useTranslation()
   const [servers, setServers] = useState<McpServerInfoResponse[]>([])
   const [statuses, setStatuses] = useState<McpConnectionStatusInfoResponse[]>([])
+  const [tools, setTools] = useState<McpServerToolInfoResponse[]>([])
+  const [hotId, setHotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -40,9 +44,14 @@ export function McpServerListPage({
   const refresh = useCallback(async () => {
     setLoadError(null)
     try {
-      const [list, status] = await Promise.all([api.listMcpServers(), api.listMcpConnectionStatuses()])
+      const [list, status, listed] = await Promise.all([
+        api.listMcpServers(),
+        api.listMcpConnectionStatuses(),
+        api.listMcpTools(),
+      ])
       setServers(list)
       setStatuses(status)
+      setTools(listed)
     } catch (reason) {
       setLoadError(String(reason))
     } finally {
@@ -57,6 +66,21 @@ export function McpServerListPage({
   }, [refresh])
 
   useSettingsResume(() => void refresh())
+
+  const meter = useMemo(() => {
+    const enabled = tools.filter((tool) => tool.enabled)
+    if (enabled.length === 0) return null
+    const byServer = new Map<string, { name: string; tokens: number }>()
+    for (const tool of enabled) {
+      const current = byServer.get(tool.server_id) ?? { name: tool.server_name, tokens: 0 }
+      current.tokens += tool.definition_tokens
+      byServer.set(tool.server_id, current)
+    }
+    return {
+      toolCount: enabled.length,
+      segments: [...byServer.entries()].map(([id, segment]) => ({ id, name: segment.name, tokens: segment.tokens })),
+    }
+  }, [tools])
 
   if (loading && servers.length === 0) return <SettingsSkeleton />
 
@@ -88,6 +112,11 @@ export function McpServerListPage({
           </Alert.Content>
         </Alert>
       )}
+      {meter && (
+        <SettingsCard data-slot="mcp-context-meter-card">
+          <ContextMeter segments={meter.segments} toolCount={meter.toolCount} hotId={hotId} />
+        </SettingsCard>
+      )}
       <SettingsCard data-slot="mcp-server-list">
         {servers.map((server) => {
           const status = statuses.find((candidate) => candidate.server_id === server.id)
@@ -98,6 +127,18 @@ export function McpServerListPage({
               ? t('settings.mcp.connecting')
               : t('settings.mcp.disconnected')
           const target = server.transport_type === 'streamablehttp' ? server.url : server.command
+          const serverTools = tools.filter((tool) => tool.server_id === server.id)
+          const enabledTools = serverTools.filter((tool) => tool.enabled)
+          const enabledTokens = enabledTools.reduce((sum, tool) => sum + tool.definition_tokens, 0)
+          const description = connected
+            ? serverTools.length > 0
+              ? t('settings.mcp.connectedToolShare', {
+                  on: enabledTools.length,
+                  total: serverTools.length,
+                  tokens: formatDefinitionTokens(enabledTokens),
+                })
+              : `${stateLabel} · ${t('settings.mcp.toolCount', { count: status?.tool_count ?? 0 })}`
+            : `${stateLabel}${target ? ` · ${target}` : ''}`
           return (
             <SettingsLinkRow
               key={server.id}
@@ -109,11 +150,11 @@ export function McpServerListPage({
                   {server.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
                 </SettingsTag>
               }
-              description={
-                connected
-                  ? `${stateLabel} · ${t('settings.mcp.toolCount', { count: status?.tool_count ?? 0 })}`
-                  : `${stateLabel}${target ? ` · ${target}` : ''}`
-              }
+              description={description}
+              onHoverStart={() => setHotId(server.id)}
+              onHoverEnd={() => setHotId((current) => (current === server.id ? null : current))}
+              onFocus={() => setHotId(server.id)}
+              onBlur={() => setHotId((current) => (current === server.id ? null : current))}
               onPress={() => onOpen(server.id)}
             />
           )

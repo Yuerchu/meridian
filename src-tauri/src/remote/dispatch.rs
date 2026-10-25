@@ -582,6 +582,7 @@ mod tests {
             "create_mcp_server",
             "update_mcp_server",
             "connect_mcp_server",
+            "set_mcp_tool_enabled",
             "create_custom_tool",
             "update_custom_tool",
             // Arbitrary URL, up to 1 GB written to disk.
