@@ -5,6 +5,7 @@ use crate::commands::entity_response::{McpServerInfoResponse, McpServerListRespo
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::db::entity::mcp_server;
 use meridian_core::db::entity::mcp_server::{McpServerChangeset, McpTransport};
+use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::ops::mcp_server as mcp_server_ops;
 use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::mcp;
@@ -282,7 +283,7 @@ pub async fn set_mcp_tool_enabled(
         .write(async |tx| {
             let server = mcp_server_ops::get_mcp_server(tx, &request.server_id)
                 .await?
-                .ok_or_else(|| sea_orm::DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
+                .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
             let mut names = server.disabled_tools.0.clone();
             if request.enabled {
                 names.retain(|name| name != &request.tool_name);
