@@ -1615,6 +1615,13 @@ const RAW_TABLES: RawTable[] = [
       ['url', 'TEXT', ['NULL'], 'NULL', 'HTTP 类传输的地址'],
       ['headers', 'TEXT', ['NULL'], 'NULL', 'JSON 对象（迁移 9）'],
       ['is_enabled', 'INTEGER', ['NN'], '0', '「启动时自动连接」（迁移 24 改的默认与语义）'],
+      [
+        'disabled_tools',
+        'TEXT',
+        ['NN'],
+        "'[]'",
+        'JSON 字符串数组：关掉的工具短名（服务器自己报的 <code>name</code>，不是 <code>mcp__…</code>）。缺席=开。迁移 m0008。',
+      ],
       ['sort_order', 'INTEGER', ['NN'], '0', ''],
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
@@ -1622,6 +1629,7 @@ const RAW_TABLES: RawTable[] = [
     rules: [
       "<code>transport_type='stdio'</code> ⇒ <code>command</code> 必填、<code>url</code> 无意义；HTTP 类反之。数据库不校验。",
       'MCP 工具定义带着用户自己的服务器名和参数 schema，因此<b>群聊会话一律不下发</b>（<code>qq_tools.rs</code>）。',
+      '<code>disabled_tools</code> 过滤的是 registry 交给模型的定义，不是 <code>tools/list</code> 的目录；关掉的工具设置页仍列着，只是开关是关的。',
     ],
   },
   {

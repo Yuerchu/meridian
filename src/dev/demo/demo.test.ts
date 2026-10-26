@@ -250,6 +250,9 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   update_mcp_server: { args: { request: { id: 'demo-mcp-sqlite', isEnabled: true } } },
   delete_mcp_server: { args: { id: 'demo-mcp-sqlite' } },
   connect_mcp_server: { args: { id: 'demo-mcp-sqlite' } },
+  set_mcp_tool_enabled: {
+    args: { request: { serverId: 'demo-mcp-github', toolName: 'create_pull_request', enabled: false } },
+  },
   disconnect_mcp_server: { args: { id: 'demo-mcp-github' } },
   list_mcp_tools: { args: { serverId: null } },
   list_mcp_connection_statuses: {},

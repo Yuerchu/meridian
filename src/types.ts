@@ -170,6 +170,12 @@ export interface McpServerUpdateRequest {
   isEnabled?: boolean
 }
 
+export interface McpToolEnabledUpdateRequest {
+  serverId: string
+  toolName: string
+  enabled: boolean
+}
+
 export interface MemoryUpsertRequest {
   projectId: string
   key: string
@@ -2295,6 +2301,8 @@ export interface McpServerToolInfoResponse {
   name: string
   description: string
   input_schema: JsonValue
+  enabled: boolean
+  definition_tokens: number
 }
 
 export type McpServerToolListResponse = McpServerToolInfoResponse[]

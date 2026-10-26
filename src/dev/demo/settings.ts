@@ -335,20 +335,28 @@ export function buildMcpServers(now: number): McpServerInfoResponse[] {
 }
 
 export function buildMcpTools(): McpServerToolInfoResponse[] {
-  const tool = (serverId: string, server: string, name: string, description: string): McpServerToolInfoResponse => ({
+  const tool = (
+    serverId: string,
+    server: string,
+    name: string,
+    description: string,
+    tokens: number,
+  ): McpServerToolInfoResponse => ({
     server_id: serverId,
     server_name: server,
     qualified_name: `mcp__${server}__${name}`,
     name,
     description,
     input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+    enabled: true,
+    definition_tokens: tokens,
   })
   return [
-    tool('demo-mcp-filesystem', 'filesystem', 'read_text_file', 'Read a text file from the allowed directories.'),
-    tool('demo-mcp-filesystem', 'filesystem', 'list_directory', 'List entries of a directory.'),
-    tool('demo-mcp-filesystem', 'filesystem', 'search_files', 'Search files by glob pattern.'),
-    tool('demo-mcp-github', 'github', 'get_issue', 'Get a single issue by number.'),
-    tool('demo-mcp-github', 'github', 'create_pull_request', 'Open a pull request.'),
+    tool('demo-mcp-filesystem', 'filesystem', 'read_text_file', 'Read a text file from the allowed directories.', 420),
+    tool('demo-mcp-filesystem', 'filesystem', 'list_directory', 'List entries of a directory.', 280),
+    tool('demo-mcp-filesystem', 'filesystem', 'search_files', 'Search files by glob pattern.', 360),
+    tool('demo-mcp-github', 'github', 'get_issue', 'Get a single issue by number.', 310),
+    tool('demo-mcp-github', 'github', 'create_pull_request', 'Open a pull request.', 640),
   ]
 }
 

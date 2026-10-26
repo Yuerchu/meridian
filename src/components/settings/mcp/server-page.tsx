@@ -8,6 +8,7 @@ import { parseStringArrayText } from '@/lib/strict-json'
 import { api } from '@/api'
 import type { McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
 import { SavedHint, SettingsCard, SettingsRow, SettingsSection, SettingsSkeleton } from '../primitives'
+import { formatDefinitionTokens } from './format'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft, type SettingsStack } from '../settings-stack'
 import { KeyValueEditor } from './key-value-editor'
@@ -266,6 +267,21 @@ function McpServerEditor({
     [server.id, autoConnect],
   )
 
+  const handleToggleTool = useCallback(
+    async (toolName: string, next: boolean) => {
+      const previous = tools
+      setTools((current) => current.map((tool) => (tool.name === toolName ? { ...tool, enabled: next } : tool)))
+      setError(null)
+      try {
+        await api.setMcpToolEnabled({ serverId: server.id, toolName, enabled: next })
+      } catch (reason) {
+        setTools(previous)
+        setError(String(reason))
+      }
+    },
+    [server.id, tools],
+  )
+
   const handleDelete = useCallback(async () => {
     if (!(await confirm({ body: t('settings.confirmDelete.mcpServer'), confirmLabel: t('common.delete') }))) return
     setDeleting(true)
@@ -460,33 +476,52 @@ function McpServerEditor({
       )}
 
       {/* settings-tools.tsx lists a server's tools as its own rows: the name
-          you would call it by, what it does underneath. */}
+          you would call it by, what it does underneath. The switch is the
+          catalogue filter — off means the definition never enters the prefix. */}
       {tools.length > 0 && (
-        <SettingsSection label={t('settings.mcp.toolsWithCount', { count: tools.length })} data-slot="mcp-tools">
-          {tools.map((tool) => (
-            <div
-              key={tool.qualified_name}
-              data-slot="mcp-tool-row"
-              className="flex w-full flex-col border-b border-separator-border py-2.5 pr-2.5 last:border-b-0"
-            >
-              <p
-                data-slot="mcp-tool-name"
-                onPointerEnter={titleIfTruncated}
-                className="truncate font-mono text-body-medium text-text-primary"
+        <SettingsSection
+          label={t('settings.mcp.toolsSection', {
+            on: tools.filter((tool) => tool.enabled).length,
+            total: tools.length,
+            tokens: formatDefinitionTokens(
+              tools.filter((tool) => tool.enabled).reduce((sum, tool) => sum + tool.definition_tokens, 0),
+            ),
+          })}
+          data-slot="mcp-tools"
+        >
+          {tools.map((tool) => {
+            const description = [
+              tool.description.split('\n')[0],
+              t('settings.mcp.toolTokenCount', { tokens: formatDefinitionTokens(tool.definition_tokens) }),
+            ]
+              .filter(Boolean)
+              .join(' · ')
+            return (
+              <SettingsRow
+                key={tool.qualified_name}
+                data-slot="mcp-tool-row"
+                label={
+                  <span
+                    data-slot="mcp-tool-name"
+                    onPointerEnter={titleIfTruncated}
+                    className="block truncate font-mono"
+                  >
+                    {tool.name}
+                  </span>
+                }
+                description={description}
               >
-                {tool.name}
-              </p>
-              {tool.description && (
-                <p
-                  data-slot="mcp-tool-description"
-                  onPointerEnter={titleIfTruncated}
-                  className="line-clamp-2 text-body-2-regular text-text-secondary"
-                >
-                  {tool.description}
-                </p>
-              )}
-            </div>
-          ))}
+                {({ labelId, descriptionId }) => (
+                  <Switch
+                    aria-labelledby={labelId}
+                    aria-describedby={descriptionId}
+                    isSelected={tool.enabled}
+                    onChange={(next) => void handleToggleTool(tool.name, next)}
+                  />
+                )}
+              </SettingsRow>
+            )
+          })}
         </SettingsSection>
       )}
 

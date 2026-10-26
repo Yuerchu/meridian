@@ -328,6 +328,9 @@ macro_rules! with_all_commands {
             ),
             async commands::mcp => delete_mcp_server(id: String),
             local commands::mcp => connect_mcp_server(id: String),
+            local commands::mcp => set_mcp_tool_enabled(
+                request: $crate::commands::mcp::McpToolEnabledUpdateRequest,
+            ),
             async commands::mcp => disconnect_mcp_server(id: String),
             async commands::mcp => list_mcp_tools(server_id: Option<String>),
             async commands::mcp => list_mcp_connection_statuses(),
@@ -879,6 +882,9 @@ mod tests {
         }));
         rejects_unknown::<crate::commands::mcp::McpServerUpdateRequest>(serde_json::json!({
             "id": "server-1", "futureField": true
+        }));
+        rejects_unknown::<crate::commands::mcp::McpToolEnabledUpdateRequest>(serde_json::json!({
+            "serverId": "server-1", "toolName": "list", "enabled": true, "futureField": true
         }));
         assert!(
             serde_json::from_value::<crate::commands::mcp::McpServerUpdateRequest>(

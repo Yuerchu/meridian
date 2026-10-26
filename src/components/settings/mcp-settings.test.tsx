@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { api } from '@/api'
 import i18n from '@/i18n'
 import { resizeViewportTo } from '@/test/viewport'
-import type { McpServerInfoResponse } from '@/types'
+import type { McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
 import { McpSettings } from './mcp-settings'
 
 vi.mock('@/api', () => ({
@@ -16,6 +16,7 @@ vi.mock('@/api', () => ({
     deleteMcpServer: vi.fn(),
     updateMcpServer: vi.fn(),
     connectMcpServer: vi.fn(),
+    setMcpToolEnabled: vi.fn(),
     disconnectMcpServer: vi.fn(),
   },
 }))
@@ -55,6 +56,7 @@ describe('McpSettings pages', () => {
     mockApi.listMcpConnectionStatuses.mockResolvedValue([])
     mockApi.updateMcpServer.mockResolvedValue(undefined as never)
     mockApi.deleteMcpServer.mockResolvedValue(undefined as never)
+    mockApi.setMcpToolEnabled.mockResolvedValue(undefined as never)
   })
 
   it('lists servers as rows of one card, name and transport on one line', async () => {
@@ -140,4 +142,63 @@ describe('McpSettings pages', () => {
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Local tools' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Remote tools' })).toBeInTheDocument()
   })
+
+  it('draws a context meter and per-server share when tools are connected', async () => {
+    mockApi.listMcpConnectionStatuses.mockResolvedValue([
+      { server_id: 'stdio-server', state: 'connected', tool_count: 2 },
+    ])
+    mockApi.listMcpTools.mockResolvedValue([
+      makeTool('stdio-server', 'Local tools', 'read', true, 400),
+      makeTool('stdio-server', 'Local tools', 'write', false, 600),
+    ])
+    const { container } = render(<McpSettings />)
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-slot="mcp-context-meter"]')).toBeTruthy()
+    })
+    expect(container.querySelector('[data-slot="mcp-context-meter"]')).toHaveTextContent('1 tool')
+    expect(screen.getByRole('button', { name: 'Local tools' })).toHaveAccessibleDescription(/1\/2/)
+  })
+
+  it('toggles a tool immediately and rolls back when the write fails', async () => {
+    const user = userEvent.setup()
+    mockApi.listMcpConnectionStatuses.mockResolvedValue([
+      { server_id: 'stdio-server', state: 'connected', tool_count: 1 },
+    ])
+    mockApi.listMcpTools.mockResolvedValue([makeTool('stdio-server', 'Local tools', 'read', true, 400)])
+    mockApi.setMcpToolEnabled.mockRejectedValueOnce('disk full')
+    render(<McpSettings />)
+
+    await user.click(await screen.findByRole('button', { name: 'Local tools' }))
+    const toggle = await screen.findByRole('switch', { name: 'read' })
+    expect(toggle).toBeChecked()
+    await user.click(toggle)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
+    expect(toggle).toBeChecked()
+    expect(mockApi.setMcpToolEnabled).toHaveBeenCalledWith({
+      serverId: 'stdio-server',
+      toolName: 'read',
+      enabled: false,
+    })
+  })
 })
+
+function makeTool(
+  serverId: string,
+  serverName: string,
+  name: string,
+  enabled: boolean,
+  tokens: number,
+): McpServerToolInfoResponse {
+  return {
+    server_id: serverId,
+    server_name: serverName,
+    qualified_name: `mcp__${serverName}__${name}`,
+    name,
+    description: `${name} a path`,
+    input_schema: { type: 'object' },
+    enabled,
+    definition_tokens: tokens,
+  }
+}
