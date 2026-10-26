@@ -310,8 +310,7 @@ mod tests {
     const ROOT: &str =
         "---\nname: rime_ice\nversion: \"1\"\nimport_tables:\n  - cn_dicts/8105\n  - cn_dicts/base\n...\n";
     const TABLE: &str = "---\nname: 8105\n...\n你\tni\t100\n";
-    const ENGLISH_ROOT: &str =
-        "---\nname: melt_eng\nversion: \"1\"\nimport_tables:\n  - en_dicts/en\n...\n";
+    const ENGLISH_ROOT: &str = "---\nname: melt_eng\nversion: \"1\"\nimport_tables:\n  - en_dicts/en\n...\n";
     const ENGLISH: &str = "---\nname: en\n...\nhello\thello\t1\n";
 
     fn zip_of(path: &Path, files: &[(&str, &str)]) {
@@ -347,10 +346,7 @@ mod tests {
         let paths: Vec<&str> = staged.roots.iter().map(|r| r.path.as_str()).collect();
         assert_eq!(
             paths,
-            [
-                "rime-ice-main/rime_ice.dict.yaml",
-                "rime-ice-main/melt_eng.dict.yaml"
-            ],
+            ["rime-ice-main/rime_ice.dict.yaml", "rime-ice-main/melt_eng.dict.yaml"],
             "imported tables are not roots; the one importing most comes first"
         );
         assert_eq!(staged.roots[0].name.as_deref(), Some("rime_ice"));

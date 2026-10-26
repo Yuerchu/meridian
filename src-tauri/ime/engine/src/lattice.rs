@@ -279,10 +279,13 @@ pub(crate) mod testutil {
         dict_set_files(&[("test", rows)])
     }
 
+    /// `(file name, rows)` for [`dict_set_files`].
+    pub type DictFileRows<'a> = (&'a str, &'a [(&'a str, &'a str, u32)]);
+
     /// Several `.mdict` files in one set. Latin prefix scans run only on a
     /// file whose sampled entries are unspaced ASCII, so completions tests
     /// put English in a file of its own.
-    pub fn dict_set_files(files: &[(&str, &[(&str, &str, u32)])]) -> (tempfile::TempDir, DictSet) {
+    pub fn dict_set_files(files: &[DictFileRows<'_>]) -> (tempfile::TempDir, DictSet) {
         let dir = tempfile::tempdir().unwrap();
         let mut set = DictSet::new();
         for (name, rows) in files {
@@ -302,7 +305,7 @@ pub(crate) mod testutil {
         (dir, Engine::new(Arc::new(set)))
     }
 
-    pub fn engine_files(files: &[(&str, &[(&str, &str, u32)])]) -> (tempfile::TempDir, Engine) {
+    pub fn engine_files(files: &[DictFileRows<'_>]) -> (tempfile::TempDir, Engine) {
         let (dir, set) = dict_set_files(files);
         (dir, Engine::new(Arc::new(set)))
     }

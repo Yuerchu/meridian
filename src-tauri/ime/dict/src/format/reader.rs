@@ -606,9 +606,7 @@ mod tests {
         assert!(!DictFile::open(&mixed).unwrap().is_latin());
 
         let empty = dir.path().join("empty.mdict");
-        DictWriter::new()
-            .write(&empty, &meta(), &SyllableTable::new())
-            .unwrap();
+        DictWriter::new().write(&empty, &meta(), &SyllableTable::new()).unwrap();
         assert!(!DictFile::open(&empty).unwrap().is_latin());
     }
 }

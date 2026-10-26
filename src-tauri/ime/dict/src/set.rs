@@ -683,10 +683,7 @@ mod tests {
             e_rows.push((format!("e a{i:03}"), format!("恶{i}"), 1));
         }
         e_rows.push(("example".into(), "example".into(), 1));
-        let borrowed: Vec<(&str, &str, u32)> = e_rows
-            .iter()
-            .map(|(c, t, f)| (c.as_str(), t.as_str(), *f))
-            .collect();
+        let borrowed: Vec<(&str, &str, u32)> = e_rows.iter().map(|(c, t, f)| (c.as_str(), t.as_str(), *f)).collect();
         let mixed = file(dir.path(), "mixed", &borrowed);
         assert!(!mixed.is_latin(), "a file that also holds 恶 is not latin");
         let mut mixed_set = DictSet::new();
@@ -705,11 +702,7 @@ mod tests {
         let chinese = file(
             dir.path(),
             "cn",
-            &[
-                ("e", "恶", 1000),
-                ("e xiang", "恶心", 100),
-                ("xin", "心", 400),
-            ],
+            &[("e", "恶", 1000), ("e xiang", "恶心", 100), ("xin", "心", 400)],
         );
         let latin = file(
             dir.path(),
@@ -732,7 +725,10 @@ mod tests {
         );
         let e_hits = set.lookup_latin("e", &limits);
         let e = texts(&e_hits);
-        assert!(e.contains(&"each") || e.contains(&"example") || e.contains(&"exam"), "{e:?}");
+        assert!(
+            e.contains(&"each") || e.contains(&"example") || e.contains(&"exam"),
+            "{e:?}"
+        );
         assert!(!e.iter().any(|t| t.contains('恶')), "{e:?}");
 
         set.set_user_words(&[UserWord {
@@ -742,6 +738,9 @@ mod tests {
         }]);
         let ex_user = set.lookup_latin("ex", &limits);
         let ex = texts(&ex_user);
-        assert!(ex.contains(&"examples"), "user latin words join the prefix scan: {ex:?}");
+        assert!(
+            ex.contains(&"examples"),
+            "user latin words join the prefix scan: {ex:?}"
+        );
     }
 }

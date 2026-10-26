@@ -599,8 +599,7 @@ pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<Vec<ImeDicti
         let english_path = archive::rime_ice_english_root(&staged);
         let result = chinese_path.and_then(|chinese_path| {
             let english_path = english_path?;
-            let chinese =
-                dictionary::import(&dirs, &chinese_path, license.clone(), None).map(report_into)?;
+            let chinese = dictionary::import(&dirs, &chinese_path, license.clone(), None).map(report_into)?;
             let english = dictionary::import(&dirs, &english_path, license, None).map(report_into)?;
             Ok(vec![chinese, english])
         });

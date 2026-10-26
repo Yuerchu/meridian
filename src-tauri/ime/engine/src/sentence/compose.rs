@@ -111,26 +111,20 @@ pub fn query(
     let mut full = full_words(&lattice, learner, context.hints);
     rerank(engine, scheme, keys, context, &mut readings, &mut full);
     let chinese_holds = chinese_holds_slot(&full, &lattice);
-    let (latin, has_exact) = latin_prefix(keys)
+    let (candidates, has_exact) = latin_prefix(keys)
         .map(|prefix| latin_group(prefix, lattice.len, engine.dicts(), engine.limits(), !chinese_holds))
         .unwrap_or((Vec::new(), false));
-    let latin_confident = !chinese_holds && has_exact;
-    let preedit = if latin_confident {
+    let latin = LatinOffer {
+        candidates,
+        chinese_holds,
+        confident: !chinese_holds && has_exact,
+    };
+    let preedit = if latin.confident {
         undivided_latin_preedit(keys)
     } else {
         parser.preedit(keys, &segmentation)
     };
-    let candidates = assemble(
-        keys,
-        &lattice,
-        &readings,
-        &full,
-        learner,
-        context.hints,
-        latin,
-        chinese_holds,
-        latin_confident,
-    );
+    let candidates = assemble(keys, &lattice, &readings, &full, learner, context.hints, latin);
     Query {
         keys: keys.to_string(),
         segmentation,
@@ -414,6 +408,15 @@ fn undivided_latin_preedit(keys: &str) -> Vec<PreeditSegment> {
     }]
 }
 
+/// Latin candidates plus the two ranking flags `assemble` needs.
+struct LatinOffer {
+    candidates: Vec<Candidate>,
+    /// Chinese already occupies the first slot.
+    chinese_holds: bool,
+    /// Exact latin dict match covering the whole input: skip 分词.
+    confident: bool,
+}
+
 fn assemble(
     keys: &str,
     lattice: &Lattice,
@@ -421,9 +424,7 @@ fn assemble(
     full: &[FullWord<'_>],
     learner: &dyn Learner,
     hints: &[String],
-    latin: Vec<Candidate>,
-    chinese_holds: bool,
-    latin_confident: bool,
+    latin: LatinOffer,
 ) -> Vec<Candidate> {
     let len = lattice.len;
     let mut out = Vec::new();
@@ -433,8 +434,8 @@ fn assemble(
     //    `example` beats the 简拼 sentence 恶心啊没跑了. When it does
     //    (`nihao` → 你好, `nihaox` → 你好, `nihaoma` → 你好吗), latin
     //    follows those words.
-    if !chinese_holds {
-        for c in latin {
+    if !latin.chinese_holds {
+        for c in latin.candidates {
             push_unique(&mut out, &mut seen, c);
         }
         for w in full {
@@ -444,14 +445,14 @@ fn assemble(
         for w in full {
             push_unique(&mut out, &mut seen, word_candidate(w.hit, w.score, len));
         }
-        for c in latin {
+        for c in latin.candidates {
             push_unique(&mut out, &mut seen, c);
         }
     }
 
     // A known English word is not pinyin: skip the 简拼 sentences and the
     // prefix characters those syllables would offer (`pe ni s` → 配额你是).
-    if !latin_confident {
+    if !latin.confident {
         // c. Sentence readings; a one-word reading is that word, already above.
         for r in readings.iter().filter(|r| r.words.len() >= 2).take(SENTENCE_READINGS) {
             let candidate = Candidate {
@@ -754,7 +755,7 @@ mod tests {
         let q = ask(&engine, "nihao", &MemoryLearner::new());
         assert_eq!(texts(&q)[0], "你好", "{:?}", texts(&q));
         assert!(
-            !texts(&q).iter().any(|t| *t == "nihao"),
+            !texts(&q).contains(&"nihao"),
             "raw pinyin is not offered after a Chinese word: {:?}",
             texts(&q)
         );
@@ -793,7 +794,9 @@ mod tests {
         let q = ask(&engine, "xi'an", &MemoryLearner::new());
         assert_eq!(texts(&q)[0], "西安", "{:?}", texts(&q));
         assert!(
-            !texts(&q).iter().any(|t| t.contains('\'') || *t == "xian" || *t == "xi'an"),
+            !texts(&q)
+                .iter()
+                .any(|t| t.contains('\'') || *t == "xian" || *t == "xi'an"),
             "apostrophe keys are 西安, not typed latin: {:?}",
             texts(&q)
         );
