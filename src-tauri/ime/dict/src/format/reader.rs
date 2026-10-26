@@ -109,6 +109,23 @@ impl DictFile {
         (self.entr.len() / EntryRec::SIZE) as u64
     }
 
+    /// `true` when sampled entries are unspaced ASCII: a latin file, whose
+    /// prefix range scan is safe. A Chinese file's FST is keyed by syllables
+    /// (`e xiang`, `an jing`); scanning it for a short latin prefix spends
+    /// the key budget on those codes and never reaches `example`. Sampling
+    /// first, middle and last is three mmap reads; an empty file is not latin.
+    pub fn is_latin(&self) -> bool {
+        let n = self.entry_count();
+        if n == 0 {
+            return false;
+        }
+        let last = n.saturating_sub(1) as u32;
+        [0u32, (n / 2) as u32, last].iter().all(|&id| {
+            self.entry(id)
+                .is_some_and(|e| e.text.is_ascii() && !e.code.as_bytes().contains(&b' '))
+        })
+    }
+
     pub fn code_count(&self) -> u64 {
         (self.post.len() / CodeRec::SIZE) as u64
     }
@@ -398,6 +415,7 @@ mod tests {
         assert_eq!(d.lookup("ni")[0].code, "ni");
         assert_eq!(d.lookup("ni")[0].syllables, 1);
         assert!(d.lookup("nihao").is_empty());
+        assert!(!d.is_latin(), "spaced Chinese codes are not a latin file");
 
         let prefix: Vec<_> = d.lookup_prefix("ni h", 2, 100).iter().map(|e| e.text).collect();
         assert_eq!(prefix, vec!["你好", "你很"], "three-syllable code is filtered out");
@@ -435,6 +453,22 @@ mod tests {
         assert!(of("中华").is_empty(), "not a word, so not a key");
         assert!(of("中国人民").is_empty(), "nothing longer");
         assert!(of("国").is_empty(), "a word's middle is not its start");
+    }
+
+    #[test]
+    fn ascii_continuations_index_stems_longer_than_six_chars() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("en.mdict");
+        let mut w = DictWriter::new();
+        w.add("example", "example", 10);
+        w.add("examples", "examples", 5);
+        w.add("exam", "exam", 8);
+        w.write(&path, &meta(), &SyllableTable::new()).unwrap();
+        let d = DictFile::open(&path).unwrap();
+        let of = |t: &str| d.lookup_continuations(t).iter().map(|e| e.text).collect::<Vec<_>>();
+        assert_eq!(of("example"), vec!["examples"]);
+        assert_eq!(of("exam"), vec!["example", "examples"]);
+        assert!(of("examples").is_empty());
     }
 
     #[test]
@@ -551,5 +585,30 @@ mod tests {
 
         std::fs::write(&path, b"short").unwrap();
         assert!(matches!(DictFile::open(&path), Err(DictError::BadMagic)));
+    }
+
+    #[test]
+    fn is_latin_samples_first_middle_and_last() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("en.mdict");
+        let mut w = DictWriter::new();
+        w.add("example", "example", 1);
+        w.add("github", "GitHub", 1);
+        w.add("hello", "hello", 1);
+        w.write(&path, &meta(), &SyllableTable::new()).unwrap();
+        assert!(DictFile::open(&path).unwrap().is_latin());
+
+        let mixed = dir.path().join("mixed.mdict");
+        let mut w = DictWriter::new();
+        w.add("e", "恶", 1);
+        w.add("example", "example", 1);
+        w.write(&mixed, &meta(), &SyllableTable::new()).unwrap();
+        assert!(!DictFile::open(&mixed).unwrap().is_latin());
+
+        let empty = dir.path().join("empty.mdict");
+        DictWriter::new()
+            .write(&empty, &meta(), &SyllableTable::new())
+            .unwrap();
+        assert!(!DictFile::open(&empty).unwrap().is_latin());
     }
 }

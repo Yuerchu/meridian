@@ -28,9 +28,10 @@ pub const MAX_DOWNLOAD_BYTES: u64 = 512 << 20;
 /// A header is at the top; this is far more than any has.
 const HEADER_BYTES: u64 = 64 * 1024;
 
-/// rime-ice, the dictionary to start with, and its root in that archive.
+/// rime-ice, the dictionary to start with, and its roots in that archive.
 pub const RIME_ICE_URL: &str = "https://github.com/iDvel/rime-ice/archive/refs/heads/main.zip";
 pub const RIME_ICE_ROOT: &str = "rime-ice-main/rime_ice.dict.yaml";
+pub const RIME_ICE_ENGLISH: &str = "rime-ice-main/melt_eng.dict.yaml";
 pub const RIME_ICE_LICENSE: &str = "GPL-3.0-only";
 
 /// A dictionary nothing else in the staged files imports.
@@ -253,6 +254,20 @@ pub fn root_path(staged: &Staged, chosen: &str) -> Result<PathBuf, String> {
     Ok(staged.base.join(chosen))
 }
 
+/// The English root in a staged rime-ice archive: the path GitHub uses, or
+/// any root whose header name is `melt_eng` if that path is absent.
+pub fn rime_ice_english_root(staged: &Staged) -> Result<PathBuf, String> {
+    if staged.roots.iter().any(|r| r.path == RIME_ICE_ENGLISH) {
+        return root_path(staged, RIME_ICE_ENGLISH);
+    }
+    staged
+        .roots
+        .iter()
+        .find(|r| r.name.as_deref() == Some("melt_eng"))
+        .map(|r| staged.base.join(&r.path))
+        .ok_or_else(|| "the rime-ice archive has no English dictionary (melt_eng)".into())
+}
+
 /// Downloads `url` to `dest`, refusing more than [`MAX_DOWNLOAD_BYTES`].
 pub async fn download(url: &str, dest: &Path) -> Result<(), String> {
     use futures_util::StreamExt;
@@ -295,7 +310,9 @@ mod tests {
     const ROOT: &str =
         "---\nname: rime_ice\nversion: \"1\"\nimport_tables:\n  - cn_dicts/8105\n  - cn_dicts/base\n...\n";
     const TABLE: &str = "---\nname: 8105\n...\n你\tni\t100\n";
-    const ENGLISH: &str = "---\nname: melt_eng\n...\nhello\thello\t1\n";
+    const ENGLISH_ROOT: &str =
+        "---\nname: melt_eng\nversion: \"1\"\nimport_tables:\n  - en_dicts/en\n...\n";
+    const ENGLISH: &str = "---\nname: en\n...\nhello\thello\t1\n";
 
     fn zip_of(path: &Path, files: &[(&str, &str)]) {
         let mut w = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
@@ -314,7 +331,8 @@ mod tests {
                 ("rime-ice-main/rime_ice.dict.yaml", ROOT),
                 ("rime-ice-main/cn_dicts/8105.dict.yaml", TABLE),
                 ("rime-ice-main/cn_dicts/base.dict.yaml", TABLE),
-                ("rime-ice-main/en_dicts/melt_eng.dict.yaml", ENGLISH),
+                ("rime-ice-main/melt_eng.dict.yaml", ENGLISH_ROOT),
+                ("rime-ice-main/en_dicts/en.dict.yaml", ENGLISH),
                 ("rime-ice-main/README.md", "not a dictionary"),
             ],
         );
@@ -331,7 +349,7 @@ mod tests {
             paths,
             [
                 "rime-ice-main/rime_ice.dict.yaml",
-                "rime-ice-main/en_dicts/melt_eng.dict.yaml"
+                "rime-ice-main/melt_eng.dict.yaml"
             ],
             "imported tables are not roots; the one importing most comes first"
         );
@@ -342,8 +360,54 @@ mod tests {
             "only dictionaries are unpacked"
         );
         assert_eq!(staged.roots[0].path, RIME_ICE_ROOT);
+        assert_eq!(
+            rime_ice_english_root(&staged).unwrap(),
+            staged.base.join(RIME_ICE_ENGLISH)
+        );
         staged.cleanup();
         assert!(!tmp.path().join("scratch/a").exists());
+    }
+
+    #[test]
+    fn english_root_falls_back_to_the_melt_eng_name() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = tmp.path().join("alt.zip");
+        zip_of(
+            &zip,
+            &[
+                ("rime-ice-main/rime_ice.dict.yaml", ROOT),
+                ("rime-ice-main/cn_dicts/8105.dict.yaml", TABLE),
+                ("rime-ice-main/cn_dicts/base.dict.yaml", TABLE),
+                ("rime-ice-main/en_dicts/melt_eng.dict.yaml", ENGLISH_ROOT),
+                ("rime-ice-main/en_dicts/en.dict.yaml", ENGLISH),
+            ],
+        );
+        let staged = stage(&zip, &tmp.path().join("scratch"), "alt".into()).unwrap();
+        assert!(
+            !staged.roots.iter().any(|r| r.path == RIME_ICE_ENGLISH),
+            "the GitHub path is absent"
+        );
+        let path = rime_ice_english_root(&staged).unwrap();
+        assert_eq!(path, staged.base.join("rime-ice-main/en_dicts/melt_eng.dict.yaml"));
+        staged.cleanup();
+    }
+
+    #[test]
+    fn english_root_is_required() {
+        let tmp = tempfile::tempdir().unwrap();
+        let zip = tmp.path().join("cn.zip");
+        zip_of(
+            &zip,
+            &[
+                ("rime-ice-main/rime_ice.dict.yaml", ROOT),
+                ("rime-ice-main/cn_dicts/8105.dict.yaml", TABLE),
+                ("rime-ice-main/cn_dicts/base.dict.yaml", TABLE),
+            ],
+        );
+        let staged = stage(&zip, &tmp.path().join("scratch"), "cn".into()).unwrap();
+        let err = rime_ice_english_root(&staged).unwrap_err();
+        assert!(err.contains("melt_eng"), "{err}");
+        staged.cleanup();
     }
 
     #[test]

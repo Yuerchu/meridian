@@ -65,8 +65,12 @@ rather than one because the boundaries are the design.
   versions. The importer reads the YAML header's `columns` rather than
   assuming them: rime-ice's `tencent` table is `text weight` with no code, and
   the prototype, assuming `text code weight`, filed half its dictionary under
-  the code `100`. Codes are validated against the syllable table; an ASCII-only
-  text (`A A`, the capital-letter rows) is refused rather than filed under `a`.
+  the code `100`. Chinese codes are validated against the syllable table. ASCII
+  text is a latin word: the code is lowercased letters and digits (punctuation
+  stripped), and a single-letter dump (`A A`) or a code with fewer than two
+  letters or digits after stripping (`C++` → `c`) is still skipped so it cannot
+  occupy a pinyin syllable. That is what lets rime-ice's `melt_eng` in; Chinese
+  rows are unchanged, so `IMPORTER_VERSION` stays.
   An `import_tables` name is the file's own say and is kept inside the
   dictionary's directory — no `..`, no absolute path, and the canonical path
   checked again for a link pointing out — because an archive's header would
@@ -171,7 +175,9 @@ rather than one because the boundaries are the design.
   (`UserNgram::followers`, at least `MIN_PERSONAL_COUNT`), then the rest of
   the dictionary words it begins — after 中国, 人 and 队 from 中国人 and 中国队 —
   which `.mdict` format 2 indexes for this (`PRFX`/`PRPO`/`PRID`, keyed by a
-  text that is itself a word, capped at `CONTINUATION_CAP`). The list answers
+  text that is itself a word, capped at `CONTINUATION_CAP`). Chinese prefixes
+  stop at `CONTINUATION_MAX_PREFIX_CHARS` (6); ASCII walks every proper
+  prefix, because `example` → `examples` is already 7. The list answers
   four bare keys and nothing else: Up and Down move, Tab takes, Esc closes;
   every other key closes it and then means what it always means, which is
   what leaves letters and digits alone. On Windows a key the DLL does not eat
@@ -280,7 +286,23 @@ rather than one because the boundaries are the design.
   nobody's to delete. Choosing matters: rime-ice's
   archive holds an English and a radical table beside the Chinese root.
   `download_ime_rime_ice` fetches the rime-ice repository archive on request
-  and imports its Chinese root; dictionaries are still imported, never shipped.
+  and imports its Chinese root and `melt_eng`; dictionaries are still imported,
+  never shipped. Existing installs re-click download (Chinese is a cache hit).
+- **Latin in a Chinese session is a dictionary lookup, not a mode.** Shift
+  English stays passthrough. Unpunctuated lowercase keys of two or more
+  letters (`example`, not `xi'an`) ask the latin files for an exact word and
+  a few completions, and offer the typed keys themselves when no dictionary
+  row matches. That group goes first unless Chinese already holds the slot:
+  a Chinese word covers the whole input (`nihao` → 你好), or complete
+  Chinese spans cover all but at most one leftover key (`nihaox` still
+  你好, `nihaoma` still 你好吗). `example` as six 简拼 slots is incomplete
+  initials, so `example` leads. A latin dictionary row covering the whole
+  key string is high confidence: the preedit is those keys as one syllable
+  (`penis`, not `pe ni s`) and the 简拼 sentence and prefix readings stay
+  off the bar. An unknown spelling still segments, because it may be
+  Chinese the dictionaries have not seen as English. Prefix scans run only
+  on files whose sampled entries are unspaced ASCII, so a short prefix
+  cannot spend its key budget on `e …` / `an jing` in the Chinese FST.
 - **`meridian-ime` is the harness.** `type "nihao<space>"` replays a key
   script through the same `Session` the host runs, `lookup` ranks candidates
   against the imported dictionaries and says how long it took, `bench` scores

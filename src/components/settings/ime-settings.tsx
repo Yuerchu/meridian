@@ -290,7 +290,7 @@ export function ImeSettings() {
     setDownloading(true)
     setReports([])
     try {
-      setReports([await api.downloadImeRimeIce()])
+      setReports(await api.downloadImeRimeIce())
       setDictionaries(await api.listImeDictionaries())
     } catch (err) {
       setError(String(err))

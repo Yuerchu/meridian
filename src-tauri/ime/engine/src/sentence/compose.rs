@@ -9,16 +9,31 @@
 //! when the character frequencies add up higher than the word's: a reading
 //! with fewer words is a reading the dictionary vouches for more.
 //!
-//! The candidate list is then assembled in a fixed order — words covering the
-//! whole input, the best sentence readings, then words for a prefix of the
-//! input — deduplicated by text, and finally anything the person chose for
-//! exactly these keys before is moved to the front. A syllable no dictionary
-//! knows simply has no span, so an input can have no full-coverage candidate
-//! at all; there is no placeholder for it in the MVP.
+//! The candidate list is then assembled in a fixed order — latin exact /
+//! typed / completions when the keys are unpunctuated lowercase ASCII,
+//! words covering the whole input, the best sentence readings, then words
+//! for a prefix of the input — deduplicated by text, and finally anything
+//! the person chose for exactly these keys before is moved to the front.
+//! Latin goes first only when Chinese does not already hold the slot: no
+//! Chinese word covers the whole input, and complete Chinese spans cover
+//! fewer than all-but-one keys. `example` is six 简拼 slots (a sentence of
+//! incomplete initials, not a word), so the English word leads; `nihao`
+//! has 你好, and `nihaox` still has 你好 covering five of six keys, both of
+//! which stay first. A syllable no dictionary knows simply has no span, so
+//! an input can have no full-coverage candidate at all; the typed keys
+//! themselves are offered as latin when they qualify and Chinese does not
+//! hold the slot.
+//!
+//! A latin dictionary row that matches the whole key string is high
+//! confidence: the preedit is those keys as one syllable (`penis`, not
+//! `pe ni s`), and the 简拼 sentence / prefix readings are withheld. An
+//! unknown spelling still segments, because it may be Chinese the
+//! dictionaries have not seen as English.
 
 use std::collections::{HashMap, HashSet};
 
-use meridian_ime_dict::Hit;
+use meridian_ime_dict::{DictSet, Hit, LookupLimits};
+use meridian_ime_proto::{PreeditKind, PreeditSegment};
 
 use crate::lattice::{Lattice, MAX_HITS_PER_INCOMPLETE_SPAN, MAX_HITS_PER_SPAN, SpanCache, build_lattice};
 use crate::learn::{Context, Learner, SENTENCE_START};
@@ -43,6 +58,8 @@ pub const RERANK_MIX: f64 = 0.5;
 pub const RERANK_WORDS: usize = 8;
 /// Cap on the candidate list.
 pub const MAX_CANDIDATES: usize = 200;
+/// Completions from a latin prefix scan, after the exact row and the typed keys.
+const LATIN_COMPLETIONS: usize = 8;
 /// Added to a word of two or more characters that one of the person's memory
 /// hints contains. Roughly what a word earns from being committed a dozen
 /// times: enough to lift it over a near neighbour, not over a clearly more
@@ -89,12 +106,31 @@ pub fn query(
     let parser = scheme.parser(engine.table());
     let dag = parser.build_dag(keys);
     let segmentation = parser.segment(keys);
-    let preedit = parser.preedit(keys, &segmentation);
     let lattice = build_lattice(&dag, engine.dicts(), engine.limits(), cache);
     let mut readings = search(&lattice, learner, WORD_COUNT_PENALTY);
     let mut full = full_words(&lattice, learner, context.hints);
     rerank(engine, scheme, keys, context, &mut readings, &mut full);
-    let candidates = assemble(keys, &lattice, &readings, &full, learner, context.hints);
+    let chinese_holds = chinese_holds_slot(&full, &lattice);
+    let (latin, has_exact) = latin_prefix(keys)
+        .map(|prefix| latin_group(prefix, lattice.len, engine.dicts(), engine.limits(), !chinese_holds))
+        .unwrap_or((Vec::new(), false));
+    let latin_confident = !chinese_holds && has_exact;
+    let preedit = if latin_confident {
+        undivided_latin_preedit(keys)
+    } else {
+        parser.preedit(keys, &segmentation)
+    };
+    let candidates = assemble(
+        keys,
+        &lattice,
+        &readings,
+        &full,
+        learner,
+        context.hints,
+        latin,
+        chinese_holds,
+        latin_confident,
+    );
     Query {
         keys: keys.to_string(),
         segmentation,
@@ -282,6 +318,102 @@ fn by_score_desc(a: f64, b: f64) -> std::cmp::Ordering {
     b.partial_cmp(&a).unwrap_or(std::cmp::Ordering::Equal)
 }
 
+/// How far a path of *complete* Chinese spans reaches from the start.
+/// Incomplete spans are 简拼 / a trailing initial (`x` of `nihaox`) and do
+/// not count: those are what made `example` look like 恶心啊没跑了.
+fn furthest_chinese_complete(lattice: &Lattice) -> usize {
+    let n = lattice.len;
+    let mut reach = vec![false; n + 1];
+    reach[0] = true;
+    for start in 0..n {
+        if !reach[start] {
+            continue;
+        }
+        for span in &lattice.spans[start] {
+            if span.incomplete() {
+                continue;
+            }
+            if span.hits.iter().any(|h| !h.text.is_ascii()) {
+                reach[span.end] = true;
+            }
+        }
+    }
+    (0..=n).rev().find(|&i| reach[i]).unwrap_or(0)
+}
+
+/// Chinese keeps the first slot: a word covers the whole input, or complete
+/// Chinese spans cover all but at most one leftover key (`nihaox` → 你好).
+/// `example`'s complete cover is the one-key 恶, so latin leads.
+fn chinese_holds_slot(full: &[FullWord<'_>], lattice: &Lattice) -> bool {
+    if full.iter().any(|w| !w.hit.text.is_ascii()) {
+        return true;
+    }
+    let covered = furthest_chinese_complete(lattice);
+    covered >= 2 && covered + 1 >= lattice.len
+}
+
+/// Unpunctuated lowercase ASCII of two or more letters: a latin word the
+/// person may be typing. An apostrophe is a pinyin syllable boundary
+/// (`xi'an` is 西安), and a single letter stays the Chinese syllable (`e` → 恶).
+fn latin_prefix(keys: &str) -> Option<&str> {
+    if keys.len() < 2 {
+        return None;
+    }
+    if !keys.bytes().all(|b| b.is_ascii_lowercase()) {
+        return None;
+    }
+    if keys.contains('\'') {
+        return None;
+    }
+    Some(keys)
+}
+
+fn latin_group(
+    prefix: &str,
+    consumed: usize,
+    dicts: &DictSet,
+    limits: &LookupLimits,
+    include_raw: bool,
+) -> (Vec<Candidate>, bool) {
+    let hits = dicts.lookup_latin(prefix, limits);
+    let mut exact = Vec::new();
+    let mut completions = Vec::new();
+    for hit in hits {
+        if hit.code == prefix {
+            exact.push(hit);
+        } else {
+            completions.push(hit);
+        }
+    }
+    completions.truncate(LATIN_COMPLETIONS);
+    let has_exact = !exact.is_empty();
+    let mut out = Vec::new();
+    for hit in &exact {
+        out.push(word_candidate(hit, hit.log_prob, consumed));
+    }
+    if include_raw && !has_exact {
+        out.push(Candidate {
+            text: prefix.to_string(),
+            score: 0.0,
+            source: CandidateSource::Dict,
+            words: vec![(prefix.to_string(), prefix.to_string())],
+            consumed,
+        });
+    }
+    for hit in &completions {
+        out.push(word_candidate(hit, hit.log_prob, consumed));
+    }
+    (out, has_exact)
+}
+
+/// One undivided syllable: a known English word is not pinyin.
+fn undivided_latin_preedit(keys: &str) -> Vec<PreeditSegment> {
+    vec![PreeditSegment {
+        text: keys.to_string(),
+        kind: PreeditKind::Syllable,
+    }]
+}
+
 fn assemble(
     keys: &str,
     lattice: &Lattice,
@@ -289,48 +421,69 @@ fn assemble(
     full: &[FullWord<'_>],
     learner: &dyn Learner,
     hints: &[String],
+    latin: Vec<Candidate>,
+    chinese_holds: bool,
+    latin_confident: bool,
 ) -> Vec<Candidate> {
     let len = lattice.len;
     let mut out = Vec::new();
     let mut seen = HashSet::new();
 
-    // a. Words covering the whole input, as `full_words` and the reranker
-    //    left them.
-    for w in full {
-        push_unique(&mut out, &mut seen, word_candidate(w.hit, w.score, len));
+    // a. Latin first when Chinese does not already hold the slot, so
+    //    `example` beats the 简拼 sentence 恶心啊没跑了. When it does
+    //    (`nihao` → 你好, `nihaox` → 你好, `nihaoma` → 你好吗), latin
+    //    follows those words.
+    if !chinese_holds {
+        for c in latin {
+            push_unique(&mut out, &mut seen, c);
+        }
+        for w in full {
+            push_unique(&mut out, &mut seen, word_candidate(w.hit, w.score, len));
+        }
+    } else {
+        for w in full {
+            push_unique(&mut out, &mut seen, word_candidate(w.hit, w.score, len));
+        }
+        for c in latin {
+            push_unique(&mut out, &mut seen, c);
+        }
     }
 
-    // b. Sentence readings; a one-word reading is that word, already above.
-    for r in readings.iter().filter(|r| r.words.len() >= 2).take(SENTENCE_READINGS) {
-        let candidate = Candidate {
-            text: r.text(),
-            score: r.score,
-            source: CandidateSource::Sentence,
-            words: r.words.clone(),
-            consumed: len,
-        };
-        push_unique(&mut out, &mut seen, candidate);
-    }
+    // A known English word is not pinyin: skip the 简拼 sentences and the
+    // prefix characters those syllables would offer (`pe ni s` → 配额你是).
+    if !latin_confident {
+        // c. Sentence readings; a one-word reading is that word, already above.
+        for r in readings.iter().filter(|r| r.words.len() >= 2).take(SENTENCE_READINGS) {
+            let candidate = Candidate {
+                text: r.text(),
+                score: r.score,
+                source: CandidateSource::Sentence,
+                words: r.words.clone(),
+                consumed: len,
+            };
+            push_unique(&mut out, &mut seen, candidate);
+        }
 
-    // c. Words for a prefix of the input, longest first.
-    let mut prefix: Vec<(usize, f64, &Hit)> = lattice
-        .prefix_spans()
-        .flat_map(|span| {
-            span.hits.iter().map(move |h| {
-                (
-                    span.end,
-                    h.log_prob + weight_bonus(learner, &h.text) + context_bonus(&h.text, hints),
-                    h,
-                )
+        // d. Words for a prefix of the input, longest first.
+        let mut prefix: Vec<(usize, f64, &Hit)> = lattice
+            .prefix_spans()
+            .flat_map(|span| {
+                span.hits.iter().map(move |h| {
+                    (
+                        span.end,
+                        h.log_prob + weight_bonus(learner, &h.text) + context_bonus(&h.text, hints),
+                        h,
+                    )
+                })
             })
-        })
-        .collect();
-    prefix.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| by_score_desc(a.1, b.1)));
-    for (end, score, hit) in prefix {
-        push_unique(&mut out, &mut seen, word_candidate(hit, score, end));
+            .collect();
+        prefix.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| by_score_desc(a.1, b.1)));
+        for (end, score, hit) in prefix {
+            push_unique(&mut out, &mut seen, word_candidate(hit, score, end));
+        }
     }
 
-    // d. What the person chose for exactly these keys goes first.
+    // e. What the person chose for exactly these keys goes first.
     let mut ranked: Vec<(u32, Candidate)> = out
         .into_iter()
         .map(|c| (learner.choice_weight(keys, &c.text), c))
@@ -343,11 +496,40 @@ fn assemble(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lattice::testutil::{NIHAO_ROWS, engine};
+    use crate::lattice::testutil::{NIHAO_ROWS, engine, engine_files};
     use crate::learn::{MemoryLearner, UserNgram};
     use crate::scheme::{PinyinScheme, SchemeParser};
     use meridian_ime_dict::UserWord;
     use std::collections::HashMap;
+
+    /// 恶/心/啊/没/跑/了 so `example` as 简拼 is a sentence, not a full word.
+    const JIANPIN_ROWS: &[(&str, &str, u32)] = &[
+        ("e", "恶", 500),
+        ("xin", "心", 400),
+        ("a", "啊", 300),
+        ("mei", "没", 200),
+        ("pao", "跑", 150),
+        ("le", "了", 600),
+        ("xi an", "西安", 800),
+        ("can", "惨", 700),
+        ("ni", "你", 800),
+        ("shi", "是", 700),
+        ("shi", "使", 80),
+        ("pei", "配", 100),
+        ("piao", "票", 60),
+        ("ke", "客", 50),
+    ];
+
+    const LATIN_ROWS: &[(&str, &str, u32)] = &[
+        ("example", "example", 10),
+        ("exam", "exam", 8),
+        ("examples", "examples", 5),
+        ("github", "GitHub", 3),
+        ("hello", "hello", 20),
+        ("penis", "penis", 4),
+        ("can", "can", 1),
+        ("canada", "Canada", 1),
+    ];
 
     fn texts(q: &Query) -> Vec<&str> {
         q.candidates.iter().map(|c| c.text.as_str()).collect()
@@ -531,8 +713,90 @@ mod tests {
         assert_eq!(q.preedit.len(), 1);
         assert_eq!(q.preedit[0].text, "nihao1");
         let q = ask(&engine, "hello", &MemoryLearner::new());
-        assert!(q.candidates.iter().all(|c| c.consumed < 5));
+        assert_eq!(q.candidates[0].text, "hello", "{:?}", texts(&q));
+        assert_eq!(q.candidates[0].consumed, 5, "typed latin consumes the whole input");
+        assert!(
+            q.preedit.iter().any(|s| s.kind == PreeditKind::Separator),
+            "an unknown spelling is still 分词: {:?}",
+            q.preedit
+        );
         assert!(ask(&engine, "", &MemoryLearner::new()).candidates.is_empty());
+    }
+
+    /// Found on the device: `penis` led, but the preedit was still `pe ni s`
+    /// and the bar still offered 配额你是. A dictionary exact match covering
+    /// the whole input is not pinyin.
+    #[test]
+    fn a_known_english_word_is_not_segmented_as_pinyin() {
+        let (_dir, engine) = engine_files(&[("cn", JIANPIN_ROWS), ("en", LATIN_ROWS)]);
+        let learner = MemoryLearner::new();
+        for keys in ["example", "penis", "hello", "exam", "github"] {
+            let q = ask(&engine, keys, &learner);
+            assert!(
+                q.candidates[0].text.eq_ignore_ascii_case(keys),
+                "{keys}: {:?}",
+                texts(&q)
+            );
+            assert_eq!(q.preedit.len(), 1, "{keys}: {:?}", q.preedit);
+            assert_eq!(q.preedit[0].text, keys, "{keys}");
+            assert_eq!(q.preedit[0].kind, PreeditKind::Syllable, "{keys}");
+            assert!(
+                texts(&q).iter().all(|t| t.is_ascii()),
+                "{keys} still has Chinese 分词 readings: {:?}",
+                texts(&q)
+            );
+        }
+    }
+
+    #[test]
+    fn a_full_chinese_word_still_leads_nihao() {
+        let (_dir, engine) = engine_files(&[("cn", NIHAO_ROWS), ("en", LATIN_ROWS)]);
+        let q = ask(&engine, "nihao", &MemoryLearner::new());
+        assert_eq!(texts(&q)[0], "你好", "{:?}", texts(&q));
+        assert!(
+            !texts(&q).iter().any(|t| *t == "nihao"),
+            "raw pinyin is not offered after a Chinese word: {:?}",
+            texts(&q)
+        );
+    }
+
+    #[test]
+    fn latin_completions_need_a_latin_file() {
+        let (_dir, engine) = engine_files(&[("cn", JIANPIN_ROWS), ("en", LATIN_ROWS)]);
+        let q = ask(&engine, "exam", &MemoryLearner::new());
+        let offered = texts(&q);
+        assert_eq!(offered[0], "exam", "{offered:?}");
+        assert_eq!(q.preedit[0].text, "exam");
+        assert!(offered.contains(&"example"), "completion missing: {offered:?}");
+        let q = ask(&engine, "github", &MemoryLearner::new());
+        assert_eq!(q.candidates[0].text, "GitHub", "{:?}", texts(&q));
+        assert!(
+            texts(&q).iter().filter(|t| t.eq_ignore_ascii_case("github")).count() == 1,
+            "exact GitHub is not duplicated as github: {:?}",
+            texts(&q)
+        );
+    }
+
+    #[test]
+    fn can_keeps_the_chinese_word_then_latin() {
+        let (_dir, engine) = engine_files(&[("cn", JIANPIN_ROWS), ("en", LATIN_ROWS)]);
+        let q = ask(&engine, "can", &MemoryLearner::new());
+        let offered = texts(&q);
+        assert_eq!(offered[0], "惨", "{offered:?}");
+        assert!(offered.contains(&"can"), "{offered:?}");
+        assert!(offered.contains(&"Canada"), "{offered:?}");
+    }
+
+    #[test]
+    fn apostrophe_is_not_raw_latin() {
+        let (_dir, engine) = engine_files(&[("cn", JIANPIN_ROWS), ("en", LATIN_ROWS)]);
+        let q = ask(&engine, "xi'an", &MemoryLearner::new());
+        assert_eq!(texts(&q)[0], "西安", "{:?}", texts(&q));
+        assert!(
+            !texts(&q).iter().any(|t| t.contains('\'') || *t == "xian" || *t == "xi'an"),
+            "apostrophe keys are 西安, not typed latin: {:?}",
+            texts(&q)
+        );
     }
 
     #[test]

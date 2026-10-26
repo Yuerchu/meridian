@@ -29,8 +29,9 @@ impl Columns {
 pub enum Skip {
     Malformed,
     EmptyText,
-    /// The text is nothing but ASCII: rime-ice carries `A A` rows (text A, code A) for typing
-    /// capitals, which under a lowercased code would file "A" under `a`.
+    /// ASCII that is not a latin word: rime-ice's `A A` capital dumps (text A, code A)
+    /// would file "A" under the syllable `a`, and a row whose code has fewer than two
+    /// letters or digits after stripping punctuation (`C++` → `c`) is the same class.
     AsciiText,
     InvalidSyllable,
     UnspacedCode,
@@ -68,7 +69,19 @@ pub fn parse_row<'a>(line: &'a str, cols: &Columns, table: &SyllableTable) -> Ro
         return Row::Skip(Skip::EmptyText);
     }
     if text.is_ascii() {
-        return Row::Skip(Skip::AsciiText);
+        if is_single_ascii_letter(text) {
+            return Row::Skip(Skip::AsciiText);
+        }
+        let Some(code) = normalize_latin_code(code) else {
+            return Row::Skip(Skip::AsciiText);
+        };
+        let (weight, bad_weight) = parse_row_weight(cols, &fields);
+        return Row::Entry {
+            text,
+            code,
+            weight,
+            bad_weight,
+        };
     }
     let code = normalize_code(code);
     if code.is_empty() {
@@ -82,19 +95,42 @@ pub fn parse_row<'a>(line: &'a str, cols: &Columns, table: &SyllableTable) -> Ro
             Skip::InvalidSyllable
         });
     }
-    let (weight, bad_weight) = match cols.weight.and_then(|i| fields.get(i)) {
-        None => (1, false),
-        Some(raw) => match parse_weight(raw.trim()) {
-            Some(w) => (w, false),
-            None => (0, true),
-        },
-    };
+    let (weight, bad_weight) = parse_row_weight(cols, &fields);
     Row::Entry {
         text,
         code,
         weight,
         bad_weight,
     }
+}
+
+fn parse_row_weight(cols: &Columns, fields: &[&str]) -> (u32, bool) {
+    match cols.weight.and_then(|i| fields.get(i)) {
+        None => (1, false),
+        Some(raw) => match parse_weight(raw.trim()) {
+            Some(w) => (w, false),
+            None => (0, true),
+        },
+    }
+}
+
+/// rime-ice's `A A` rows: one Latin letter, which would otherwise land under
+/// the pinyin syllable of the same name.
+fn is_single_ascii_letter(text: &str) -> bool {
+    let mut chars = text.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic()) && chars.next().is_none()
+}
+
+/// Lowercased letters and digits of `code`, punctuation dropped. Shorter than
+/// two characters is not a word (`C++` → `c`).
+fn normalize_latin_code(code: &str) -> Option<String> {
+    let mut out = String::with_capacity(code.len());
+    for c in code.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        }
+    }
+    (out.len() >= 2).then_some(out)
 }
 
 /// A weight as Rime writes it: an integer usually, occasionally a float.
