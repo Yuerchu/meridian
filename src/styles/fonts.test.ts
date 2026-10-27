@@ -1,36 +1,27 @@
 import { readFileSync } from 'node:fs'
 
 /**
- * The font chain is four files agreeing on names, and every link fails
- * silently: a family nobody declared, a variable nobody reads, or a file the
- * fetch script never writes all end in the system font with no error anywhere.
+ * The font chain is three files agreeing on names, and every link fails
+ * silently: a variable nobody reads, or a later file that redefines
+ * `--font-sans`, all end in the system font with no error anywhere.
  * `css: false` means no test renders a glyph, so the text is what is checked.
  *
  *   theme.css         --font-sans: var(--font-inter), …   (vendored, not edited)
- *   fonts.css         --font-inter: 'Inter', 'MiSans', …  + the @font-face rules
- *   fetch-fonts.mjs   writes public/fonts/<file>          what the url()s point at
+ *   fonts.css         --font-inter: var(--font-inter-fallback)  + the OS stacks
  *   meridian.css      must not redefine --font-sans / --font-mono over the top
+ *
+ * A chosen family is prepended by `src/lib/fonts.tsx`; this file only pins the
+ * CSS default.
  */
 const read = (path: string) => readFileSync(path, 'utf8')
 const stripComments = (css: string) => css.replace(/\/\*[\s\S]*?\*\//g, '')
 
 const theme = stripComments(read('src/styles/theme.css'))
 const fonts = stripComments(read('src/styles/fonts.css'))
-const fetchScript = read('scripts/fetch-fonts.mjs')
 
-const unquote = (name: string) => name.trim().replace(/^['"]|['"]$/g, '')
-
-function declaredFaces(): { family: string; url: string }[] {
-  return [...fonts.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(([, body]) => ({
-    family: unquote(/font-family:\s*([^;]+);/.exec(body)?.[1] ?? ''),
-    url: /url\(\s*['"]?([^'")]+)['"]?\s*\)/.exec(body)?.[1] ?? '',
-  }))
-}
-
-function rootVariable(name: string): string[] {
+function rootVariable(name: string): string {
   const root = /:root\s*\{([^}]*)\}/.exec(fonts)?.[1] ?? ''
-  const value = new RegExp(`${name}:\\s*([^;]+);`).exec(root)?.[1]
-  return value ? value.split(',').map(unquote) : []
+  return new RegExp(`${name}:\\s*([^;]+);`).exec(root)?.[1]?.trim() ?? ''
 }
 
 describe('font chain', () => {
@@ -39,34 +30,19 @@ describe('font chain', () => {
     expect(theme).toMatch(/--font-mono:\s*var\(--font-mono-source\)/)
   })
 
-  it.each(['--font-inter', '--font-mono-source'])('every family in %s is declared by an @font-face', (name) => {
-    const families = rootVariable(name)
-    expect(families.length).toBeGreaterThan(0)
-    const declared = new Set(declaredFaces().map((face) => face.family))
-    for (const family of families) expect(declared).toContain(family)
+  it('ships no @font-face', () => {
+    expect(fonts).not.toMatch(/@font-face/)
   })
 
-  it('every @font-face url is a file the fetch script writes', () => {
-    const written = new Set([...fetchScript.matchAll(/\bto:\s*'([^']+)'/g)].map(([, to]) => `/fonts/${to}`))
-    for (const face of declaredFaces()) expect(written).toContain(face.url)
-  })
-
-  // A synthesised bold smears Maple's ligatures and a synthesised italic is a
-  // slanted upright, so code asks the browser to fake neither: every weight
-  // and style a code block uses has a face of its own.
-  it('the code face ships regular, bold and both italics, and Inter its italic', () => {
-    const faces = [...fonts.matchAll(/@font-face\s*\{([^}]*)\}/g)].map(([, body]) => ({
-      family: unquote(/font-family:\s*([^;]+);/.exec(body)?.[1] ?? ''),
-      weight: /font-weight:\s*([^;]+);/.exec(body)?.[1]?.trim(),
-      style: /font-style:\s*([^;]+);/.exec(body)?.[1]?.trim(),
-    }))
-    const of = (family: string) =>
-      faces
-        .filter((face) => face.family === family)
-        .map((face) => `${face.weight}/${face.style}`)
-        .sort()
-    expect(of('Maple Mono NF CN')).toEqual(['400/italic', '400/normal', '700/italic', '700/normal'])
-    expect(of('Inter')).toEqual(['100 900/italic', '100 900/normal'])
+  it('the product stacks are the fallback variables, generic family last', () => {
+    expect(rootVariable('--font-inter')).toBe('var(--font-inter-fallback)')
+    expect(rootVariable('--font-mono-source')).toBe('var(--font-mono-source-fallback)')
+    const sans = rootVariable('--font-inter-fallback')
+    const mono = rootVariable('--font-mono-source-fallback')
+    expect(sans).toMatch(/sans-serif\s*$/)
+    expect(mono).toMatch(/monospace\s*$/)
+    expect(sans).toMatch(/system-ui/)
+    expect(mono).toMatch(/ui-monospace/)
   })
 
   it('nothing after theme.css replaces --font-sans or --font-mono outright', () => {

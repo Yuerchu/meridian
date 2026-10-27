@@ -164,6 +164,7 @@ import type {
   PlanRevisionListRequest,
   PlanRevisionListResponse,
   PlatformInfoResponse,
+  FontFamilyListResponse,
   PreferenceInfoResponse,
   PreferenceKey,
   PreferenceReadRequest,
@@ -739,6 +740,7 @@ export const api = {
 
   // Platform / Android file access
   getPlatform: () => invoke<PlatformInfoResponse>('get_platform'),
+  listSystemFonts: () => invoke<FontFamilyListResponse>('list_system_fonts'),
 
   getWindowInsets: () => invoke<WindowInsetsInfoResponse>('get_window_insets'),
   takeLaunchRequest: () => invoke<LaunchRequestInfoResponse | null>('take_launch_request'),

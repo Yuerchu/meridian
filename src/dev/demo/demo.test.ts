@@ -282,6 +282,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   forget_memory_subject: { args: { subjectScopeId: 'onebot:10002' } },
   set_memory_subject_flags: { args: { request: { subjectScopeId: 'onebot:10002', isPinned: true, optedOut: null } } },
   get_platform: {},
+  list_system_fonts: {},
   get_window_insets: {},
   get_app_info: {},
   get_secret: { args: { request: { key: 'REMOTE_TOKEN' } } },

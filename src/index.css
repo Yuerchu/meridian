@@ -1,7 +1,7 @@
 /* boardui foundation: tailwindcss, theme tokens, typography, animations. */
 @import './styles/globals.css';
-/* The typefaces, and the `--font-inter` / `--font-mono-source` that theme.css
-   reads them through. */
+/* OS typeface stacks, and the `--font-inter` / `--font-mono-source` that
+   theme.css reads them through. */
 @import './styles/fonts.css';
 /* Meridian's own semantics on boardui primitives: fonts, status, bubbles,
    scrollbars, safe-area insets, the motion boardui does not ship. */

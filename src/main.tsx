@@ -5,6 +5,7 @@ import { MotionConfig } from 'motion/react'
 import { Button } from '@/components/base'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
+import { FontProvider } from './lib/fonts'
 import { ThemeProvider } from './lib/theme'
 import { isDemo } from './lib/transport'
 import i18n from './i18n'
@@ -85,9 +86,11 @@ if (isDev && window.location.hash.startsWith('#playground')) {
       <StrictMode>
         <AriaLocaleProvider>
           <ThemeProvider>
-            <MotionConfig reducedMotion="user">
-              <Playground />
-            </MotionConfig>
+            <FontProvider>
+              <MotionConfig reducedMotion="user">
+                <Playground />
+              </MotionConfig>
+            </FontProvider>
           </ThemeProvider>
         </AriaLocaleProvider>
       </StrictMode>,
@@ -99,11 +102,13 @@ if (isDev && window.location.hash.startsWith('#playground')) {
     <StrictMode>
       <AriaLocaleProvider>
         <ThemeProvider>
-          <MotionConfig reducedMotion="user">
-            <ErrorBoundary fallback={renderAppCrashFallback}>
-              <App />
-            </ErrorBoundary>
-          </MotionConfig>
+          <FontProvider>
+            <MotionConfig reducedMotion="user">
+              <ErrorBoundary fallback={renderAppCrashFallback}>
+                <App />
+              </ErrorBoundary>
+            </MotionConfig>
+          </FontProvider>
         </ThemeProvider>
       </AriaLocaleProvider>
     </StrictMode>,

@@ -2348,6 +2348,11 @@ export interface WindowInsetsInfoResponse {
 
 export type PlatformInfoResponse = 'android' | 'windows' | 'macos' | 'linux' | 'ios'
 
+/** Families installed on this device, for the settings font picker. */
+export interface FontFamilyListResponse {
+  families: string[]
+}
+
 /** A settings page something outside the window asked for: the keyboard's toolbar. */
 export type LaunchSettingsTab = 'ime'
 

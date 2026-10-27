@@ -1,19 +1,14 @@
-//! The keyboard's typeface, handed over by the app.
+//! The keyboard's typeface, copied out of the app assets when one is present.
 //!
-//! The Android keyboard runs in its own process and draws with MiSans, the
-//! app's font. The font is not in the APK a second time: it is 20 MB, its
-//! licence forbids subsetting it, and the app already carries it among its
-//! frontend assets, embedded in this library where the keyboard's process
-//! cannot read it. So the app writes it out once, to `ime/fonts/` under the
-//! data directory the keyboard reads, and the keyboard uses it when it is
-//! there and the system font until then. A stamp beside it names the app
-//! version that wrote it, so an upgrade writes it again and an ordinary
-//! start does not decompress 20 MB to find out nothing changed.
+//! The Android keyboard runs in its own process. `install` writes the asset to
+//! `ime/fonts/` under the data directory the keyboard reads, with a stamp naming
+//! the app version that wrote it. A missing asset is `Ok(false)` and the
+//! keyboard uses the system font.
 
 use std::io::Write;
 use std::path::Path;
 
-/// Where the frontend keeps it (`public/fonts`, fetched at build time).
+/// Path of the typeface inside the app assets.
 pub const ASSET: &str = "fonts/MiSansVF.ttf";
 /// Under the input method's data directory; the keyboard looks here.
 pub const FONT_DIR: &str = "fonts";
@@ -23,7 +18,7 @@ const STAMP_FILE: &str = "MiSansVF.ttf.version";
 /// Writes the font under `ime_dir/fonts` unless the stamp says this version
 /// already did. `asset` fetches it from the app's embedded assets. Returns
 /// whether it wrote anything; a missing asset writes nothing and is not an
-/// error (a build without fonts still has a keyboard).
+/// error.
 pub fn install(asset: impl FnOnce(&str) -> Option<Vec<u8>>, ime_dir: &Path, version: &str) -> std::io::Result<bool> {
     let dir = ime_dir.join(FONT_DIR);
     let font = dir.join(FONT_FILE);

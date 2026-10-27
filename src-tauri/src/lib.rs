@@ -4,6 +4,9 @@ mod command_table;
 #[cfg(target_os = "android")]
 mod android_bridge;
 mod commands;
+/// Installed font families for the settings picker. DirectWrite on Windows,
+/// a directory walk everywhere else.
+mod fonts;
 /// Meridian's side of the input method: the settings for the Windows text
 /// service and host, and for the Android keyboard (all separate binaries).
 #[cfg(any(windows, target_os = "android"))]
@@ -158,9 +161,9 @@ pub fn run() {
             }
             let data_dir = app.path().app_data_dir().expect("failed to resolve app data dir");
 
-            // The keyboard (process `:ime`) draws with the app's font, which only
-            // this process can read; see keyboard_font. `ime` is the input
-            // method's data directory, as meridian-ime-config names it.
+            // The keyboard (process `:ime`) draws with a typeface this process
+            // can copy out of the app assets; see keyboard_font. `ime` is the
+            // input method's data directory, as meridian-ime-config names it.
             #[cfg(target_os = "android")]
             {
                 let resolver = app.asset_resolver();

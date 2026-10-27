@@ -180,6 +180,7 @@ describe('commands that belong to this device', () => {
     ['delete_secret', true],
     ['get_platform', 'windows'],
     ['get_window_insets', { top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0 }],
+    ['list_system_fonts', { families: ['Segoe UI'] }],
     ['take_photo', 'file:///photo.jpg'],
   ])('%s never leaves the device', async (cmd, answer) => {
     const { invoke } = await loadRemote()

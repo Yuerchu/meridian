@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Trans, useTranslation } from 'react-i18next'
+import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Link, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
-import { openExternalUrl } from '@/lib/external-link'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useCopy } from '@/hooks/use-copy'
@@ -82,21 +81,6 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
         </div>
       </ItemCard.Action>
     </ItemCard>
-  )
-}
-
-const FONT_PAGES = {
-  inter: 'https://rsms.me/inter/',
-  misans: 'https://hyperos.mi.com/font/',
-  maple: 'https://github.com/subframe7536/maple-font',
-} as const
-
-/** A font's name, opening its home page in the browser — never in this WebView. */
-function FontLink({ url, children }: { url: string; children?: React.ReactNode }) {
-  return (
-    <Link className="text-caption-1-regular" onPress={() => void openExternalUrl(url)}>
-      {children}
-    </Link>
   )
 }
 
@@ -286,19 +270,6 @@ export function About() {
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>
         <p data-slot="about-footer-line">{t('settings.about.notice')}</p>
         <p data-slot="about-footer-line">{t('settings.about.grokBuildNotice')}</p>
-        {/* MiSans's licence requires the software to say it uses MiSans. The
-            licence texts ship beside the fonts, under fonts/licenses/. */}
-        <p data-slot="about-footer-line">
-          <Trans
-            i18nKey="settings.about.fonts"
-            components={{
-              inter: <FontLink url={FONT_PAGES.inter} />,
-              misans: <FontLink url={FONT_PAGES.misans} />,
-              maple: <FontLink url={FONT_PAGES.maple} />,
-            }}
-          />
-        </p>
-        <p data-slot="about-footer-line">{t('settings.about.fontsMiSansNotice')}</p>
       </div>
     </SettingsPane>
   )

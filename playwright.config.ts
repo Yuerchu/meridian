@@ -69,10 +69,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    // The font script is a no-op when `public/fonts/` is already hash-checked
-    // (~0.2s), and fetches from the publishers otherwise; without it the page
-    // would render in fallback fonts and every screenshot would be wrong.
-    command: `node scripts/fetch-fonts.mjs && pnpm exec vite --config e2e/vite.config.ts --port ${PORT} --strictPort`,
+    // Screenshots use whatever the OS will rasterise. Baselines are already
+    // per platform for that reason.
+    command: `pnpm exec vite --config e2e/vite.config.ts --port ${PORT} --strictPort`,
     url: `http://127.0.0.1:${PORT}/`,
     reuseExistingServer: !isCI,
     timeout: 180_000,

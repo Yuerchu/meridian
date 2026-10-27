@@ -4,8 +4,10 @@ import { Alert, Button, Input, Skeleton } from '@/components/base'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
+import { useAppFonts } from '@/lib/fonts'
 import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
+import { FontPicker } from './font-picker'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
 import { RemoteClientSettings } from './remote-client-settings'
@@ -31,6 +33,9 @@ export function GeneralSettings() {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
   const { theme, setTheme } = useAppTheme()
+  const { sans, mono, setSans, setMono } = useAppFonts()
+  const [fontFamilies, setFontFamilies] = useState<string[]>([])
+  const [fontListFailed, setFontListFailed] = useState(false)
   const [shell, setShell] = useState<ShellType>('bash')
   const [sandboxMode, setSandboxMode] = useState<SandboxMode>('auto')
   const [searchProvider, setSearchProvider] = useState<SearchProvider>('tavily')
@@ -79,6 +84,23 @@ export function GeneralSettings() {
   }, [prefsAttempt])
 
   useEffect(() => {
+    let cancelled = false
+    api
+      .listSystemFonts()
+      .then((res) => {
+        if (cancelled) return
+        setFontFamilies(res.families)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setFontListFailed(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
     const provider = SEARCH_PROVIDERS.find((p) => p.value === searchProvider)
     if (provider) {
       api
@@ -96,9 +118,9 @@ export function GeneralSettings() {
     api.setPreference({ key: 'shell', value }).catch((reason) => setPrefError(String(reason)))
   }
 
-  // Unlike the settings below, the theme is not a Tauri preference: it has to be
-  // readable before the first paint, so it lives in localStorage — see
-  // `src/lib/theme.tsx`.
+  // Unlike the settings below, the theme and the fonts are not Tauri
+  // preferences: they have to be readable before the first paint, so they
+  // live in localStorage — see `src/lib/theme.tsx` and `src/lib/fonts.tsx`.
   const themeOptions: { value: ThemePreference; label: string }[] = [
     { value: 'system', label: t('settings.general.themeSystem') },
     { value: 'light', label: t('settings.general.themeLight') },
@@ -180,6 +202,19 @@ export function GeneralSettings() {
 
         triggerClassName="max-w-xs"
       />
+
+      <div data-slot="general-fonts" className="space-y-3">
+        <FontPicker label={t('settings.general.fontUi')} value={sans} onChange={setSans} families={fontFamilies} />
+        <FontPicker label={t('settings.general.fontCode')} value={mono} onChange={setMono} families={fontFamilies} />
+        <p data-slot="general-font-hint" className="text-caption-1-regular text-text-secondary">
+          {t('settings.general.fontHint')}
+        </p>
+        {fontListFailed && (
+          <p data-slot="general-font-list-error" role="status" className="text-caption-1-regular text-text-secondary">
+            {t('settings.general.fontListError')}
+          </p>
+        )}
+      </div>
 
       {prefsState === 'loading' && (
         <div

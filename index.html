@@ -47,6 +47,29 @@
         }
       })()
     </script>
+    <!-- Same localStorage pattern as the theme: a chosen family has to be on
+         `<html>` before the first text paints. The keys, the 120-character
+         cap, and the rejected characters are the ones `src/lib/fonts.tsx`
+         uses — diverge here and a junk value would reach `font-family`.
+         The fallback lists live only in fonts.css; this writes
+         `"Family", var(--font-*-fallback)` so they cannot drift. -->
+    <script>
+      ;(function () {
+        try {
+          function apply(key, prop, fallbackVar) {
+            var stored = localStorage.getItem(key)
+            if (!stored) return
+            if (stored.length > 120) return
+            if (stored !== stored.trim()) return
+            if (stored.charAt(0) === '@') return
+            if (/["';{}\\\n\r]/.test(stored)) return
+            document.documentElement.style.setProperty(prop, '"' + stored + '", var(' + fallbackVar + ')')
+          }
+          apply('meridian-font-sans', '--font-inter', '--font-inter-fallback')
+          apply('meridian-font-mono', '--font-mono-source', '--font-mono-source-fallback')
+        } catch (e) {}
+      })()
+    </script>
     <!-- Painted before the stylesheet arrives, so the window does not flash the
          wrong colour on the way to the app. Both values are boardui's
          `--color-background-full` (styles/theme.css) — white light, neutral-925

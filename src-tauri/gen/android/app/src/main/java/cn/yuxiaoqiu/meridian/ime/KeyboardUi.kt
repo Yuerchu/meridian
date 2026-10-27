@@ -104,7 +104,7 @@ class KeyboardState {
   var tokens by mutableStateOf<Map<String, GridToken>>(emptyMap())
   var enterAction by mutableStateOf<Int?>(null)
   var menu by mutableStateOf<OpenMenu?>(null)
-  /** MiSans once the app has written it out; null is the system font. */
+  /** Typeface from disk when present; null is the system font. */
   var font by mutableStateOf<androidx.compose.ui.text.font.FontFamily?>(null)
   /** What the toolbar opened in place of the keys; null is the keys. */
   var panel by mutableStateOf<Panel?>(null)
@@ -248,7 +248,7 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
   val layerRows = rows(state.layer)
   val rowHeight = (if (landscape) 40.dp else 52.dp) * FULL_ROWS / layerRows.size
   var viewWidth by remember { mutableStateOf(0f) }
-  // Everything on the keyboard is drawn at 500, in MiSans when it is there.
+  // Everything on the keyboard is drawn at 500.
   val text = LocalTextStyle.current.merge(TextStyle(fontFamily = state.font, fontWeight = FontWeight.Medium))
   CompositionLocalProvider(LocalTextStyle provides text) {
   Box(
@@ -317,8 +317,8 @@ private fun CandidateBar(state: KeyboardState, actions: KeyboardActions) {
     if (preedit.isNotEmpty() || frame?.candidates?.isNotEmpty() == true) {
       Text(
         preedit,
-        // Its own height, not a fixed one: MiSans sits tall in its line, and the
-        // text scales with the system font size while a dp box would not.
+        // Its own height, not a fixed one: the typeface sits tall in its line,
+        // and the text scales with the system font size while a dp box would not.
         Modifier.fillMaxWidth().padding(start = 14.dp, top = 4.dp),
         fontSize = 13.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,

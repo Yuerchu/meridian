@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
 import i18n from '@/i18n'
+import { FontProvider } from '@/lib/fonts'
 import { GeneralSettings } from './general-settings'
 
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
@@ -15,10 +16,19 @@ vi.mock('@/api', () => ({
     setPreference: vi.fn(),
     getServiceKeyExists: vi.fn(),
     setServiceKey: vi.fn(),
+    listSystemFonts: vi.fn(),
   },
 }))
 
 const mockApi = vi.mocked(api)
+
+function renderGeneral() {
+  return render(
+    <FontProvider>
+      <GeneralSettings />
+    </FontProvider>,
+  )
+}
 
 describe('GeneralSettings', () => {
   beforeAll(async () => {
@@ -27,7 +37,9 @@ describe('GeneralSettings', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    localStorage.clear()
     mockApi.getServiceKeyExists.mockResolvedValue(false)
+    mockApi.listSystemFonts.mockResolvedValue({ families: ['Segoe UI'] })
   })
 
   it('waits for the stored settings rather than showing defaults as if they were them', async () => {
@@ -38,7 +50,9 @@ describe('GeneralSettings', () => {
           finish = () => resolve({ key, value: key === 'shell' ? 'powershell' : null } as never)
         }) as never,
     )
-    render(<GeneralSettings />)
+    // Keep the independent font listing from resolving after this test ends.
+    mockApi.listSystemFonts.mockReturnValue(new Promise(() => {}))
+    renderGeneral()
 
     expect(screen.getByRole('status', { name: i18n.t('common.loading') })).toBeInTheDocument()
     expect(screen.queryAllByText('Bash (Git Bash)')).toHaveLength(0)
@@ -48,7 +62,7 @@ describe('GeneralSettings', () => {
     const user = userEvent.setup()
     mockApi.getPreference.mockRejectedValueOnce('db locked')
     mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
-    render(<GeneralSettings />)
+    renderGeneral()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('settings.general.loadError'))
     expect(screen.queryAllByText('Bash (Git Bash)')).toHaveLength(0)
@@ -56,5 +70,14 @@ describe('GeneralSettings', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.retry') }))
     expect((await screen.findAllByText('Bash (Git Bash)')).length).toBeGreaterThan(0)
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('still lets the rest of the page load when listing fonts fails', async () => {
+    mockApi.listSystemFonts.mockRejectedValueOnce('denied')
+    mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
+    renderGeneral()
+
+    expect(await screen.findByText(i18n.t('settings.general.fontListError'))).toBeInTheDocument()
+    expect((await screen.findAllByText('Bash (Git Bash)')).length).toBeGreaterThan(0)
   })
 })
