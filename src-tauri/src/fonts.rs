@@ -234,52 +234,6 @@ fn family_from_sfnt_in_file(file: &mut std::fs::File, sfnt_offset: u64) -> Optio
     None
 }
 
-/// Family name from a complete sfnt / TTC buffer. Used by tests.
-#[cfg(any(not(windows), test))]
-pub(crate) fn family_from_sfnt(data: &[u8]) -> Option<String> {
-    if data.len() < 12 {
-        return None;
-    }
-    if &data[0..4] == b"ttcf" {
-        let num = read_u32(data, 8)? as usize;
-        if num == 0 {
-            return None;
-        }
-        let off = read_u32(data, 12)? as usize;
-        return family_from_sfnt_at_slice(data, off);
-    }
-    family_from_sfnt_at_slice(data, 0)
-}
-
-#[cfg(any(not(windows), test))]
-fn family_from_sfnt_at_slice(data: &[u8], sfnt_offset: usize) -> Option<String> {
-    let header = data.get(sfnt_offset..sfnt_offset + 12)?;
-    let tag = &header[0..4];
-    if tag != [0, 1, 0, 0] && tag != b"OTTO" && tag != b"true" && tag != b"typ1" {
-        return None;
-    }
-    let num_tables = u16::from_be_bytes(header[4..6].try_into().ok()?) as usize;
-    if num_tables == 0 || num_tables > MAX_TABLES {
-        return None;
-    }
-    let dir_start = sfnt_offset + 12;
-    let dir = data.get(dir_start..dir_start + num_tables * 16)?;
-    for i in 0..num_tables {
-        let rec = &dir[i * 16..];
-        if &rec[0..4] != b"name" {
-            continue;
-        }
-        let offset = u32::from_be_bytes(rec[8..12].try_into().ok()?) as usize;
-        let length = u32::from_be_bytes(rec[12..16].try_into().ok()?) as usize;
-        if length == 0 || length > MAX_NAME_TABLE {
-            return None;
-        }
-        let table = data.get(offset..offset + length)?;
-        return parse_name_table(table);
-    }
-    None
-}
-
 #[cfg(any(not(windows), test))]
 fn parse_name_table(data: &[u8]) -> Option<String> {
     if data.len() < 6 {
@@ -371,12 +325,6 @@ fn read_u16(data: &[u8], offset: usize) -> Option<u16> {
     Some(u16::from_be_bytes([bytes[0], bytes[1]]))
 }
 
-#[cfg(any(not(windows), test))]
-fn read_u32(data: &[u8], offset: usize) -> Option<u32> {
-    let bytes = data.get(offset..offset + 4)?;
-    Some(u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
-}
-
 fn is_safe_family_name(name: &str) -> bool {
     if name.is_empty() || name.chars().count() > 120 {
         return false;
@@ -461,16 +409,23 @@ mod tests {
         out
     }
 
+    fn family_from_bytes(bytes: &[u8]) -> Option<String> {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("x.ttf");
+        std::fs::write(&path, bytes).unwrap();
+        family_from_path(&path)
+    }
+
     #[test]
     fn name_id_16_wins_over_family() {
         let bytes = synthetic_ttf(&[("Family", 1), ("Typographic", 16)]);
-        assert_eq!(family_from_sfnt(&bytes).as_deref(), Some("Typographic"));
+        assert_eq!(family_from_bytes(&bytes).as_deref(), Some("Typographic"));
     }
 
     #[test]
     fn name_id_1_is_used_when_16_is_absent() {
         let bytes = synthetic_ttf(&[("Family", 1)]);
-        assert_eq!(family_from_sfnt(&bytes).as_deref(), Some("Family"));
+        assert_eq!(family_from_bytes(&bytes).as_deref(), Some("Family"));
     }
 
     #[test]
