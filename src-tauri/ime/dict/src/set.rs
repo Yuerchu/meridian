@@ -16,7 +16,9 @@
 //!
 //! The three lookups mirror `DictFile`'s, and [`DictSet::lookup_pattern`] is
 //! the one the engine's lattice calls: a span of syllables each of which is
-//! either complete or a prefix still being typed.
+//! either complete or a prefix still being typed. [`DictSet::lookup_latin`] is
+//! the extra path for mixed Chinese/English input: exact on every file,
+//! prefix range scan only on [`DictFile::is_latin`] files.
 
 use std::collections::HashMap;
 
@@ -269,6 +271,64 @@ impl DictSet {
                                 if matches_pattern(code, pattern) {
                                     acc.push(user_hit(code, text, *w, norm, i as SourceId));
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        acc.finish(limits.max_hits)
+    }
+
+    /// Hits whose text is ASCII under this unspaced prefix.
+    ///
+    /// Exact lookup runs on every source, then a prefix range scan on latin
+    /// files only. Scanning a Chinese FST for `e` / `an` / `ex` visits `e …`
+    /// and `an jing` first and exhausts [`LookupLimits::max_prefix_keys`]
+    /// before `example`. User words with an unspaced ASCII code join both.
+    pub fn lookup_latin(&self, prefix: &str, limits: &LookupLimits) -> Vec<Hit> {
+        if prefix.is_empty() {
+            return Vec::new();
+        }
+        let mut acc = Merger::default();
+        let norm = self.denominator;
+        for (i, s) in self.sources.iter().enumerate() {
+            match s {
+                Source::File(f) => {
+                    for e in f.lookup(prefix) {
+                        if e.text.is_ascii() {
+                            acc.push(hit_of(&e, i as SourceId, norm));
+                        }
+                    }
+                    if f.is_latin() {
+                        for e in f.lookup_prefix(prefix, 1, limits.max_prefix_keys) {
+                            if e.text.is_ascii() {
+                                acc.push(hit_of(&e, i as SourceId, norm));
+                            }
+                        }
+                    }
+                }
+                Source::User(u) => {
+                    if let Some(v) = u.by_code.get(prefix) {
+                        for (text, w) in v {
+                            if text.is_ascii() {
+                                acc.push(user_hit(prefix, text, *w, norm, i as SourceId));
+                            }
+                        }
+                    }
+                    let start = u.codes_sorted.partition_point(|c| c.as_str() < prefix);
+                    let mut keys = 0;
+                    for code in u.codes_sorted[start..].iter().take_while(|c| c.starts_with(prefix)) {
+                        keys += 1;
+                        if keys > limits.max_prefix_keys {
+                            break;
+                        }
+                        if code.contains(' ') || !code.is_ascii() {
+                            continue;
+                        }
+                        for (text, w) in &u.by_code[code] {
+                            if text.is_ascii() {
+                                acc.push(user_hit(code, text, *w, norm, i as SourceId));
                             }
                         }
                     }
@@ -613,5 +673,74 @@ mod tests {
         let empty = DictSet::new();
         assert!(empty.is_empty());
         assert!(empty.lookup("ni").is_empty());
+    }
+
+    #[test]
+    fn latin_prefix_scan_skips_chinese_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut e_rows: Vec<(String, String, u32)> = vec![("e".into(), "恶".into(), 1000)];
+        for i in 0..300 {
+            e_rows.push((format!("e a{i:03}"), format!("恶{i}"), 1));
+        }
+        e_rows.push(("example".into(), "example".into(), 1));
+        let borrowed: Vec<(&str, &str, u32)> = e_rows.iter().map(|(c, t, f)| (c.as_str(), t.as_str(), *f)).collect();
+        let mixed = file(dir.path(), "mixed", &borrowed);
+        assert!(!mixed.is_latin(), "a file that also holds 恶 is not latin");
+        let mut mixed_set = DictSet::new();
+        mixed_set.add_file(mixed);
+        let limits = LookupLimits::default();
+        assert!(
+            texts(&mixed_set.lookup_latin("ex", &limits)).is_empty(),
+            "prefix scan must not run on a mixed file, or the budget is spent on e …"
+        );
+        assert_eq!(
+            texts(&mixed_set.lookup_latin("example", &limits)),
+            vec!["example"],
+            "exact lookup still finds the latin word in a mixed file"
+        );
+
+        let chinese = file(
+            dir.path(),
+            "cn",
+            &[("e", "恶", 1000), ("e xiang", "恶心", 100), ("xin", "心", 400)],
+        );
+        let latin = file(
+            dir.path(),
+            "en",
+            &[("example", "example", 10), ("exam", "exam", 8), ("each", "each", 1)],
+        );
+        assert!(latin.is_latin());
+        assert!(!chinese.is_latin());
+        let mut set = DictSet::new();
+        set.add_file(chinese);
+        set.add_file(latin);
+        assert_eq!(texts(&set.lookup_latin("example", &limits)), vec!["example"]);
+        let ex_hits = set.lookup_latin("ex", &limits);
+        let ex = texts(&ex_hits);
+        assert!(ex.contains(&"example"), "{ex:?}");
+        assert!(ex.contains(&"exam"), "{ex:?}");
+        assert!(
+            !ex.iter().any(|t| t.contains('恶')),
+            "Chinese 恶 must not appear in a latin lookup: {ex:?}"
+        );
+        let e_hits = set.lookup_latin("e", &limits);
+        let e = texts(&e_hits);
+        assert!(
+            e.contains(&"each") || e.contains(&"example") || e.contains(&"exam"),
+            "{e:?}"
+        );
+        assert!(!e.iter().any(|t| t.contains('恶')), "{e:?}");
+
+        set.set_user_words(&[UserWord {
+            code: "examples".into(),
+            text: "examples".into(),
+            weight: 1,
+        }]);
+        let ex_user = set.lookup_latin("ex", &limits);
+        let ex = texts(&ex_user);
+        assert!(
+            ex.contains(&"examples"),
+            "user latin words join the prefix scan: {ex:?}"
+        );
     }
 }

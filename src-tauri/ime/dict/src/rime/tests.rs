@@ -135,18 +135,23 @@ fn invalid_syllables_and_unspaced_codes_are_counted_not_imported() {
     let f = &r.files[0];
     assert_eq!(f.rows, 8);
     assert_eq!(f.skipped.invalid_syllable, 0);
-    assert_eq!(f.skipped.ascii_text, 2, "B and hello are ASCII texts");
+    assert_eq!(
+        f.skipped.ascii_text, 1,
+        "B is a single-letter dump; hello is a latin word"
+    );
     assert_eq!(f.skipped.unspaced_code, 1, "nihao is refused, not segmented");
     assert_eq!(f.skipped.empty_text, 1);
     assert_eq!(f.skipped.malformed, 1);
-    assert_eq!(f.accepted, 3);
-    assert_eq!(r.accepted, 3);
+    assert_eq!(f.accepted, 4);
+    assert_eq!(r.accepted, 4);
     let d = DictFile::open(&r.output).unwrap();
+    assert_eq!(d.lookup("hello")[0].text, "hello");
     assert_eq!(d.lookup("lve")[0].text, "略");
     assert_eq!(d.lookup("nv")[0].text, "NÜ", "ü folds to v and the case is lowered");
     assert_eq!(d.lookup("ni hao")[0].text, "你好", "runs of spaces collapse");
     assert!(d.lookup("nihao").is_empty());
     assert!(d.lookup("lue").is_empty());
+    assert!(d.lookup("b").is_empty(), "single-letter B is not filed under b");
 }
 
 #[test]
@@ -246,7 +251,7 @@ fn cache_hit_reuses_existing_mdict() {
     let out = dir.path().join("out");
     let first = run(&root, &out).unwrap();
     assert!(!first.cache_hit);
-    assert_eq!(first.accepted, 2);
+    assert_eq!(first.accepted, 3);
     let written = std::fs::metadata(&first.output).unwrap().modified().unwrap();
 
     let second = run(&root, &out).unwrap();
@@ -254,7 +259,7 @@ fn cache_hit_reuses_existing_mdict() {
     assert_eq!(second.output, first.output);
     assert_eq!(second.cache_key, first.cache_key);
     assert_eq!(second.name, "root");
-    assert_eq!(second.accepted, 2, "counts come from the existing file's metadata");
+    assert_eq!(second.accepted, 3, "counts come from the existing file's metadata");
     assert!(second.files.is_empty());
     assert_eq!(second.skipped.total(), 0);
     assert_eq!(
@@ -277,20 +282,67 @@ fn no_usable_entries_is_an_error() {
     let dir = tempfile::tempdir().unwrap();
     let root = write(
         dir.path(),
-        "en.dict.yaml",
-        &(header("en", &[]) + "hello\thello\t100\nworld\tworld\t50\n"),
+        "letters.dict.yaml",
+        &(header("letters", &[]) + "A\tA\nB\tB\nC++\tC++\n"),
     );
     let out = dir.path().join("out");
     match run(&root, &out) {
         Err(ImportError::NoUsableEntries(r)) => {
             assert_eq!(r.accepted, 0);
-            assert_eq!(r.skipped.ascii_text, 2);
+            assert_eq!(r.skipped.ascii_text, 3);
             assert_eq!(r.files.len(), 1);
             assert!(!r.output.exists(), "nothing written");
         }
         other => panic!("expected NoUsableEntries, got {other:?}"),
     }
     assert!(!out.exists() || std::fs::read_dir(&out).unwrap().count() == 0);
+}
+
+#[test]
+fn latin_words_are_imported_and_single_letters_are_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = write(
+        dir.path(),
+        "melt_eng.dict.yaml",
+        &(header("melt_eng", &[])
+            + "A\tA\nA\taa\nhello\thello\nGitHub\tgithub\nhe'll\the'll\nexample\texample\nadd-on\tadd-on\nC++\tC++\n"),
+    );
+    let r = run(&root, &dir.path().join("out")).unwrap();
+    assert_eq!(r.skipped.ascii_text, 3, "A A, A under aa, and C++");
+    assert_eq!(r.accepted, 5);
+    let d = DictFile::open(&r.output).unwrap();
+    assert!(d.is_latin());
+    assert_eq!(d.lookup("hello")[0].text, "hello");
+    assert_eq!(d.lookup("github")[0].text, "GitHub");
+    assert_eq!(
+        d.lookup("hell")[0].text,
+        "he'll",
+        "punctuation is stripped from the code"
+    );
+    assert_eq!(d.lookup("example")[0].text, "example");
+    assert_eq!(d.lookup("addon")[0].text, "add-on");
+    assert!(d.lookup("a").is_empty());
+    assert!(
+        d.lookup("aa").is_empty(),
+        "single-letter text is skipped even with a longer code"
+    );
+    assert!(d.lookup("c").is_empty());
+}
+
+#[test]
+fn an_english_only_file_imports() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = write(
+        dir.path(),
+        "en.dict.yaml",
+        &(header("en", &[]) + "hello\thello\t100\nworld\tworld\t50\n"),
+    );
+    let r = run(&root, &dir.path().join("out")).unwrap();
+    assert_eq!(r.accepted, 2);
+    assert_eq!(r.skipped.ascii_text, 0);
+    let d = DictFile::open(&r.output).unwrap();
+    assert!(d.is_latin());
+    assert_eq!(d.lookup("hello")[0].freq, 100);
 }
 
 #[test]

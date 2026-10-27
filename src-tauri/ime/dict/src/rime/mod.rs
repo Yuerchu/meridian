@@ -8,11 +8,16 @@
 //! comments, flow lists — rather than a YAML crate that would accept a great
 //! deal more and pull in far more code than the four keys warrant.
 //!
-//! Every code is normalised (`normalize_code`) and then checked syllable by
-//! syllable against the [`SyllableTable`]; a row that fails is *counted* under
-//! the reason and dropped, never guessed at. In particular an unspaced code
-//! that could be cut into syllables (`nihao`) is refused rather than segmented:
-//! a wrong cut would file a word under a code nobody types, silently.
+//! Every Chinese code is normalised (`normalize_code`) and then checked
+//! syllable by syllable against the [`SyllableTable`]; a row that fails is
+//! *counted* under the reason and dropped, never guessed at. In particular an
+//! unspaced code that could be cut into syllables (`nihao`) is refused rather
+//! than segmented: a wrong cut would file a word under a code nobody types,
+//! silently. ASCII text is a latin word instead: the code is lowercased
+//! letters and digits (punctuation stripped), and a single-letter dump
+//! (`A A`) is still skipped so it cannot occupy the syllable `a`. That is
+//! what lets rime-ice's `melt_eng` in; Chinese rows are unchanged, so
+//! [`IMPORTER_VERSION`] stays.
 //!
 //! The output name carries the first sixteen hex digits of a [`cache_key`]
 //! over every file that went in, so an unchanged source is a cache hit and
@@ -87,7 +92,8 @@ pub struct SkipCounts {
     /// Weight present but unparsable; the row is kept with weight 0.
     pub bad_weight: u64,
     pub empty_text: u64,
-    /// The text is ASCII only (the `A A` rows), never a Chinese word.
+    /// ASCII that is not a latin word (the `A A` rows, or a code with no two
+    /// letters or digits left after stripping punctuation).
     pub ascii_text: u64,
     /// Fewer columns than the text or the code needs.
     pub malformed: u64,

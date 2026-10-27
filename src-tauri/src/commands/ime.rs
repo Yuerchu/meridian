@@ -575,10 +575,10 @@ pub async fn import_staged_ime_dictionaries(
     .map_err(|e| e.to_string())?
 }
 
-/// Downloads rime-ice from GitHub and imports its Chinese root, on the
-/// person's request: dictionaries are imported, never shipped.
+/// Downloads rime-ice from GitHub and imports its Chinese root and
+/// `melt_eng`, on the person's request: dictionaries are imported, never shipped.
 #[tauri::command]
-pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<ImeDictionaryImportReportResponse, String> {
+pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
     let dirs = bridge(&app).await.dirs;
     let writes = app.state::<AppIme>().dict_writes.clone();
     let scratch = scratch_root(&dirs);
@@ -594,8 +594,14 @@ pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<ImeDictionar
         let _ = std::fs::remove_file(&zip);
         let staged = staged?;
         let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
-        let result = archive::root_path(&staged, archive::RIME_ICE_ROOT).and_then(|path| {
-            dictionary::import(&dirs, &path, Some(archive::RIME_ICE_LICENSE.into()), None).map(report_into)
+        let license = Some(archive::RIME_ICE_LICENSE.into());
+        let chinese_path = archive::root_path(&staged, archive::RIME_ICE_ROOT);
+        let english_path = archive::rime_ice_english_root(&staged);
+        let result = chinese_path.and_then(|chinese_path| {
+            let english_path = english_path?;
+            let chinese = dictionary::import(&dirs, &chinese_path, license.clone(), None).map(report_into)?;
+            let english = dictionary::import(&dirs, &english_path, license, None).map(report_into)?;
+            Ok(vec![chinese, english])
         });
         staged.cleanup();
         result

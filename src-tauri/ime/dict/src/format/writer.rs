@@ -226,8 +226,15 @@ impl DictWriter {
 fn continuations(by_text: &HashMap<&str, (u32, u32)>) -> Result<Continuations, DictError> {
     let mut map: BTreeMap<&str, Vec<(u32, u32)>> = BTreeMap::new();
     for (&text, &(freq, id)) in by_text {
-        // Every char boundary strictly inside the text, up to the cap.
-        for (end, _) in text.char_indices().skip(1).take(CONTINUATION_MAX_PREFIX_CHARS) {
+        // Chinese stays at CONTINUATION_MAX_PREFIX_CHARS (中华人民共和).
+        // ASCII stems run longer: `example` → `examples` is 7 characters
+        // and would miss the cap of 6.
+        let prefix_limit = if text.is_ascii() {
+            text.chars().count().saturating_sub(1)
+        } else {
+            CONTINUATION_MAX_PREFIX_CHARS
+        };
+        for (end, _) in text.char_indices().skip(1).take(prefix_limit) {
             let prefix = &text[..end];
             if by_text.contains_key(prefix) {
                 map.entry(prefix).or_default().push((freq, id));

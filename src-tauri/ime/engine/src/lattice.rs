@@ -276,20 +276,37 @@ pub(crate) mod testutil {
 
     /// `rows` are `(code, text, frequency)`.
     pub fn dict_set(rows: &[(&str, &str, u32)]) -> (tempfile::TempDir, DictSet) {
+        dict_set_files(&[("test", rows)])
+    }
+
+    /// `(file name, rows)` for [`dict_set_files`].
+    pub type DictFileRows<'a> = (&'a str, &'a [(&'a str, &'a str, u32)]);
+
+    /// Several `.mdict` files in one set. Latin prefix scans run only on a
+    /// file whose sampled entries are unspaced ASCII, so completions tests
+    /// put English in a file of its own.
+    pub fn dict_set_files(files: &[DictFileRows<'_>]) -> (tempfile::TempDir, DictSet) {
         let dir = tempfile::tempdir().unwrap();
-        let mut w = DictWriter::new();
-        for (code, text, freq) in rows {
-            w.add(code, text, *freq);
-        }
-        let path = dir.path().join("test.mdict");
-        w.write(&path, &metadata("test"), &SyllableTable::new()).unwrap();
         let mut set = DictSet::new();
-        set.add_file(DictFile::open(&path).unwrap());
+        for (name, rows) in files {
+            let mut w = DictWriter::new();
+            for (code, text, freq) in *rows {
+                w.add(code, text, *freq);
+            }
+            let path = dir.path().join(format!("{name}.mdict"));
+            w.write(&path, &metadata(name), &SyllableTable::new()).unwrap();
+            set.add_file(DictFile::open(&path).unwrap());
+        }
         (dir, set)
     }
 
     pub fn engine(rows: &[(&str, &str, u32)]) -> (tempfile::TempDir, Engine) {
         let (dir, set) = dict_set(rows);
+        (dir, Engine::new(Arc::new(set)))
+    }
+
+    pub fn engine_files(files: &[DictFileRows<'_>]) -> (tempfile::TempDir, Engine) {
+        let (dir, set) = dict_set_files(files);
         (dir, Engine::new(Arc::new(set)))
     }
 

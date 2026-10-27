@@ -211,6 +211,24 @@ mod tests {
     }
 
     #[test]
+    fn an_english_word_is_followed_by_what_it_begins() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut w = DictWriter::new();
+        w.add("example", "example", 10);
+        w.add("examples", "examples", 5);
+        w.add("ni hao", "你好", 100);
+        let path = dir.path().join("t.mdict");
+        w.write(&path, &meta(), &SyllableTable::new()).unwrap();
+        let mut set = DictSet::new();
+        set.add_file(DictFile::open(&path).unwrap());
+        let e = Engine::new(Arc::new(set));
+        let p = e.predict(Context::after("example"), &MemoryLearner::new(), true, 5);
+        assert_eq!(texts(&p), vec!["s"]);
+        assert_eq!(p[0].word, "examples");
+        assert_eq!(p[0].source, PredictionSource::Dict);
+    }
+
+    #[test]
     fn a_follower_the_dictionary_also_offers_is_listed_once() {
         let dir = tempfile::tempdir().unwrap();
         let e = engine(dir.path(), &[]);

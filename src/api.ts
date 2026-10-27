@@ -896,8 +896,8 @@ export const api = {
   importStagedImeDictionaries: (request: ImeDictionaryStagedImportRequest) =>
     invoke<ImeDictionaryImportReportResponse[]>('import_staged_ime_dictionaries', { request }),
 
-  // Fetches rime-ice from GitHub and imports its Chinese root.
-  downloadImeRimeIce: () => invoke<ImeDictionaryImportReportResponse>('download_ime_rime_ice'),
+  // Fetches rime-ice from GitHub and imports its Chinese root and melt_eng.
+  downloadImeRimeIce: () => invoke<ImeDictionaryImportReportResponse[]>('download_ime_rime_ice'),
 
   // The Android keyboard's standing with the system, and the two system
   // screens that change it.
