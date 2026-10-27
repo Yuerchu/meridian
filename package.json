@@ -46,7 +46,7 @@
       "eslint --fix",
       "prettier --write"
     ],
-    "!(*.ts|*.tsx)": [
+    "!(*.ts|*.tsx|*.png|*.jpg|*.jpeg|*.gif|*.webp|*.ico)": [
       "prettier --write --ignore-unknown"
     ]
   },
