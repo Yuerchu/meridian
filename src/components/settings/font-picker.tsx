@@ -11,13 +11,13 @@ import {
   Popover as AriaPopover,
   type Key,
 } from 'react-aria-components'
+import { Label } from '@/components/base'
 import {
   MENU_ITEM,
   MENU_ITEM_ACTIVE,
   MENU_ITEMS_CONTAINER,
   MENU_POPOVER_SURFACE,
 } from '@/components/base/dropdown/menu-styles'
-import { Label } from '@/components/base/input/label'
 import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { isSafeFamilyName } from '@/lib/fonts'
 import { cx } from '@/utils/cx'

@@ -20,6 +20,7 @@ import {
   TextArea,
   TextField,
 } from '@/components/base'
+import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { Row, Section, Stage } from './shell'
 
 function TextFields() {
@@ -175,6 +176,9 @@ function Pickers() {
           </Select>
         ))}
       </div>
+      <Row label="ChevronDownSmall">
+        <ChevronDownSmall className="size-4 text-text-secondary" />
+      </Row>
     </Stage>
   )
 }
