@@ -22,10 +22,12 @@ pub struct OneBotConfigInfoResponse {
     pub voice_send_groups: Vec<String>,
     pub voice_tts_model: String,
     pub voice_tts_reference_id: String,
+    pub replies: onebot::ReplyBank,
+    pub reply_seeds: onebot::ReplySeeds,
 }
 
-impl From<onebot::OneBotConfig> for OneBotConfigInfoResponse {
-    fn from(config: onebot::OneBotConfig) -> Self {
+impl OneBotConfigInfoResponse {
+    fn from_saved(config: onebot::OneBotConfig, replies: onebot::ReplyBank) -> Self {
         Self {
             enabled: config.enabled,
             host: config.host,
@@ -39,6 +41,8 @@ impl From<onebot::OneBotConfig> for OneBotConfigInfoResponse {
             voice_send_groups: config.voice_send_groups,
             voice_tts_model: config.voice_tts_model,
             voice_tts_reference_id: config.voice_tts_reference_id,
+            replies,
+            reply_seeds: onebot::ReplyBank::seeds(),
         }
     }
 }
@@ -104,6 +108,7 @@ pub struct OneBotConfigUpdateRequest {
     pub voice_send_groups: Vec<String>,
     pub voice_tts_model: String,
     pub voice_tts_reference_id: String,
+    pub replies: onebot::ReplyBank,
 }
 
 impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
@@ -139,15 +144,18 @@ pub async fn get_onebot_status(app: tauri::AppHandle) -> Result<OneBotStatusInfo
 #[tauri::command]
 pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfoResponse, String> {
     let services = app.services();
-    onebot::load_config(&services.db).await.map(Into::into)
+    let config = onebot::load_config(&services.db).await?;
+    let replies = onebot::replies::load(&services.db).await?;
+    Ok(OneBotConfigInfoResponse::from_saved(config, replies))
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpdateRequest) -> Result<(), String> {
     let services = app.services();
+    let replies = request.replies.clone();
     let config = onebot::OneBotConfig::try_from(request)?;
-    onebot::save_config(&services.db, &config).await?;
+    onebot::save_settings(&services.db, &config, &replies).await?;
 
     // 语音策略立刻生效，不等重启。
     //
@@ -156,7 +164,7 @@ pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpda
     // 等在途采集归还 permit，然后才返回——所以这个命令返回时，"不再新增"是
     // 已经成立的事实。
     //
-    // 只有语音策略是热的。同一页上的 host / token / admin 仍然是启动快照,
+    // 热的是语音策略和回复措辞。同一页上的 host / token / admin 仍然是启动快照,
     // UI 的成功提示不能暗示它们也生效了。
     //
     // 失败要报出去。这一步读 opt-out 名单和钥匙串，两者都可能失败，而失败之后
@@ -227,7 +235,14 @@ mod tests {
             "voice_send_enabled": false,
             "voice_send_groups": [],
             "voice_tts_model": "",
-            "voice_tts_reference_id": ""
+            "voice_tts_reference_id": "",
+            "replies": {
+                "empty_reply": [],
+                "busy": [],
+                "server_error": [],
+                "ack_approved": [],
+                "ack_denied": []
+            }
         })
     }
 
@@ -253,6 +268,20 @@ mod tests {
         let mut unknown = request();
         unknown["legacy_field"] = json!(true);
         assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(unknown).is_err());
+
+        let mut missing_replies = request();
+        missing_replies.as_object_mut().unwrap().remove("replies");
+        assert!(
+            serde_json::from_value::<OneBotConfigUpdateRequest>(missing_replies).is_err(),
+            "replies must be present"
+        );
+
+        let mut extra_slot = request();
+        extra_slot["replies"]["oops"] = json!(["x"]);
+        assert!(
+            serde_json::from_value::<OneBotConfigUpdateRequest>(extra_slot).is_err(),
+            "unknown reply slots must fail"
+        );
     }
 
     #[test]

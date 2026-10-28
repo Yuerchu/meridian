@@ -510,6 +510,8 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   qq_set_group_card: plain('native'),
   qq_set_group_name: plain('native'),
   qq_send_group_notice: plain('native'),
+  qq_list_replies: plain('native'),
+  qq_manage_replies: plain('native'),
 }
 
 /**

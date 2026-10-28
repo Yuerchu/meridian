@@ -783,6 +783,20 @@ export function buildOneBotConfig(): OneBotConfigInfoResponse {
     voice_send_groups: ['123456'],
     voice_tts_model: 's2.1-pro',
     voice_tts_reference_id: 'demo-voice-ref',
+    replies: {
+      empty_reply: [],
+      busy: [],
+      server_error: [],
+      ack_approved: [],
+      ack_denied: [],
+    },
+    reply_seeds: {
+      empty_reply: '没搞明白你在说什么。',
+      busy: '这个对话正在电脑端处理，请等它结束后再发。',
+      server_error: '这边出了点问题。',
+      ack_approved: '已批准执行。',
+      ack_denied: '已拒绝，你写的理由会一并转达。',
+    },
   }
 }
 
