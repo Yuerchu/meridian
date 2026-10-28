@@ -24,7 +24,9 @@ export function DraftCard({
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
-  const [value, setValue] = useState('')
+  const draftId = `draft:${stage}`
+  const value = useBoardStore((s) => s.composerText[draftId] ?? '')
+  const setComposerText = useBoardStore((s) => s.setComposerText)
   // A worktree is made from a folder, so only a project with one can hold a card.
   const projects = useConversationStore((s) => s.projects).filter((p) => p.source_type === 'local' && p.path !== null)
   const remembered = typeof localStorage === 'undefined' ? null : localStorage.getItem(PROJECT_KEY)
@@ -44,6 +46,7 @@ export function DraftCard({
     try {
       await api.boardTaskCreate({ projectId, title, request: text, stage })
       if (typeof localStorage !== 'undefined') localStorage.setItem(PROJECT_KEY, projectId)
+      setComposerText(draftId, '')
       await useBoardStore.getState().load()
       onDone()
     } catch (err) {
@@ -80,7 +83,12 @@ export function DraftCard({
               </SelectItem>
             ))}
           </Select>
-          <PromptInput value={value} onValueChange={setValue} onSubmit={() => void create()} maxLines={6}>
+          <PromptInput
+            value={value}
+            onValueChange={(next) => setComposerText(draftId, next)}
+            onSubmit={() => void create()}
+            maxLines={6}
+          >
             <PromptInput.Shell className="flex items-end gap-1 rounded-2xl pr-1">
               <div className="min-w-0 flex-1">
                 <PromptInput.TextArea

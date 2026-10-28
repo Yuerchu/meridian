@@ -11,7 +11,6 @@
 //                            running, which is the person moving it
 // A failed or stopped turn holds its queue; sending a new turn does not
 // release it — what was queued behind a failure is the transcript's to decide.
-import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
@@ -67,7 +66,8 @@ function ComposerField({
 /** A card that has not started: choose the agent, and the first message starts it. */
 export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; onError: (error: string) => void }) {
   const { t } = useTranslation()
-  const [value, setValue] = useState('')
+  const value = useBoardStore((s) => s.composerText[task.id] ?? '')
+  const setComposerText = useBoardStore((s) => s.setComposerText)
   const agentKind = useBoardStore((s) => s.agentKind)
   const setAgentKind = useBoardStore((s) => s.setAgentKind)
 
@@ -84,7 +84,7 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
         contextRefs: null,
         conversationRefs: null,
       })
-      setValue('')
+      setComposerText(task.id, '')
       await useBoardStore.getState().load()
     } catch (err) {
       onError(t('board.error.start', { error: String(err) }))
@@ -107,7 +107,7 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
       </Segment>
       <ComposerField
         value={value}
-        setValue={setValue}
+        setValue={(next) => setComposerText(task.id, next)}
         placeholder={t('board.composer.idle')}
         running={false}
         onSend={(text) => void start(text)}
@@ -143,7 +143,8 @@ export function ConversationComposer({
   onError: (error: string) => void
 }) {
   const { t } = useTranslation()
-  const [value, setValue] = useState('')
+  const value = useBoardStore((s) => s.composerText[task.id] ?? '')
+  const setComposerText = useBoardStore((s) => s.setComposerText)
   const streaming = useConversationStore((s) => s.sessions[conversationId]?.streaming ?? false)
   const settings = useTurnSettings(conversationId)
   const { sendMessage } = useSendMessage(conversationId, {
@@ -177,7 +178,7 @@ export function ConversationComposer({
         }
         await sendMessage(text, true)
       }
-      setValue('')
+      setComposerText(task.id, '')
     } catch (err) {
       onError(t('board.error.send', { error: String(err) }))
     }
@@ -196,7 +197,7 @@ export function ConversationComposer({
   return (
     <ComposerField
       value={value}
-      setValue={setValue}
+      setValue={(next) => setComposerText(task.id, next)}
       placeholder={placeholderFor(t, state)}
       running={running}
       onSend={(text) => void send(text)}

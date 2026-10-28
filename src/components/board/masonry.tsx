@@ -7,7 +7,9 @@
 //
 // Lanes are dealt by position (i % n), not to the shortest lane: shortest-lane
 // would re-deal whenever a card changes height, which is exactly the movement
-// under the pointer this exists to remove.
+// under the pointer this exists to remove. Changing the lane count remounts a
+// card (it moves to another `CardList`); composer text is therefore kept in
+// the board store, not in the card.
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 

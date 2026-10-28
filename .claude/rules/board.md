@@ -62,7 +62,8 @@ this); otherwise it starts the next turn (`useSendMessage`). A failed or
 stopped turn holds its queue, and sending a new turn does not release it —
 what was queued behind a failure is the transcript's to decide. A card that
 has not started shows the agent choice (native / Claude Code, remembered per
-machine) and its first message starts it.
+machine) and its first message starts it. The typed text lives in the board
+store so a masonry remount (folding a column, resizing) does not throw it away.
 
 ## Worktrees
 
@@ -78,18 +79,21 @@ branch from git; a detached worktree shows "no branch yet".
   conversation exists that should work in a worktree and does not; a hosted
   card's failure closes the session, deletes the conversation, removes the
   worktree.
-- **The resolver** (`workspace::configured_dir_in`) answers a native card's
-  conversation with its worktree; once the worktree is removed it is an
-  error, never the project's path — every turn, queued prompt, `!` command and
-  panel refuses instead of drifting into the main checkout.
+- The resolver (`workspace::configured_dir_in`) answers a card's conversation
+  with its worktree, hosted or native; once the worktree is removed it is an
+  error, never the project's path and never a leftover `acp_sessions.cwd` —
+  every turn, queued prompt, `!` command and panel refuses instead of
+  drifting into the main checkout or a deleted directory.
 - **Removal** is manual and refuses uncommitted changes and commits no branch
   holds (`worktree::remove`); it takes the conversation's lease and closes a
   hosted adapter first (Windows will not delete a process's cwd). The card
-  moves to done.
+  moves to done. The board's "remove worktree" control is this write; "mark
+  done" only moves a card that already has no worktree.
 - **Deleting** a started card deletes its conversation too, and only once the
   worktree is gone; deleting a card's conversation alone, or a project whose
   cards still have worktrees, is refused. Each would leave a conversation the
-  resolver sends to the main checkout.
+  resolver sends to the main checkout. The board offers delete on cards with
+  no worktree.
 
 ## Sandbox: no `.git` write access
 
