@@ -353,6 +353,10 @@ macro_rules! with_all_commands {
 
             sync platform => get_platform(),
             local platform => get_window_insets(),
+            // This device's installed families. A remote client's WebView paints
+            // with the fonts on the phone, not the host's, so the picker lists
+            // here.
+            local fonts => list_system_fonts(),
             local platform => take_launch_request(),
             local platform => get_manage_storage_status(),
             local platform => request_manage_storage(),

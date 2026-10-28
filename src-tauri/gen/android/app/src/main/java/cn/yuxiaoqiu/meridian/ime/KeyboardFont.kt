@@ -10,11 +10,11 @@ import androidx.compose.ui.text.font.FontWeight
 import java.io.File
 
 /**
- * MiSans, the app's font, when the app has written it out for the keyboard
- * (src-tauri/src/keyboard_font.rs puts it at `dataDir/ime/fonts`); null means
- * the system font. The keyboard draws at 500 either way. A file that does not
- * load as a typeface is ignored rather than handed to Compose, where it would
- * fail while laying out a key — in the middle of somebody typing.
+ * Typeface from `dataDir/ime/fonts/MiSansVF.ttf` when that file is present
+ * (`keyboard_font.rs` writes it from the app assets); null is the system font.
+ * The keyboard draws at 500 either way. A file that does not load as a
+ * typeface is ignored rather than handed to Compose, where it would fail while
+ * laying out a key — in the middle of somebody typing.
  */
 fun keyboardFont(dataDir: File): FontFamily? {
   // Variation settings, which a variable font needs to be anything but its default weight.

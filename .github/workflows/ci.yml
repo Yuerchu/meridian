@@ -276,17 +276,6 @@ jobs:
 
       - run: pnpm install
 
-      # Same cache as release.yml: the fonts are not in git and the bundle
-      # imports them.
-      - name: Cache bundled font archives
-        uses: actions/cache@v4
-        with:
-          path: .cache/fonts
-          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
-
-      - name: Fetch bundled fonts
-        run: pnpm fonts
-
       # The same command Tauri's `beforeBuildCommand` runs, so this builds the
       # exact bundle a release packages — and ends, as that one does, with
       # `check-dist-no-demo`, which fails the build if fixture strings leaked.
@@ -335,17 +324,6 @@ jobs:
           cache: pnpm
 
       - run: pnpm install
-
-      - name: Cache bundled font archives
-        uses: actions/cache@v4
-        with:
-          path: .cache/fonts
-          key: fonts-${{ hashFiles('scripts/fetch-fonts.mjs') }}
-
-      # Without them the page falls back to system fonts and every screenshot
-      # is wrong, which is why the script fails rather than degrading.
-      - name: Fetch bundled fonts
-        run: pnpm fonts
 
       - name: Resolve the Playwright version
         id: playwright

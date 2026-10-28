@@ -77,9 +77,10 @@ those rules no selector can see, plus this app's own architecture.
   role says otherwise (theming.md's type table: title-1 page titles, title-2
   section headings, title-3 card titles, body default UI text, caption labels).
   The family is the role, the suffix is the weight.
-- **major** A font family named anywhere but `src/styles/fonts.css`. theme.css
-  reads `--font-inter` and `--font-mono-source`; fonts.css defines them and
-  `src/styles/fonts.test.ts` holds the chain together.
+- **major** A font family named anywhere but `src/styles/fonts.css`, except
+  the settings picker's preview (`style.fontFamily` of the listed name).
+  theme.css reads `--font-inter` and `--font-mono-source`; fonts.css defines
+  the OS stacks and `src/styles/fonts.test.ts` holds the chain together.
 - **major** An icon imported from anywhere but `@keyline-icons/react/two-tone`
   (or `/fill` for a solid glyph by meaning, like stop or a starred item).
   Brand marks and file-type icons are content, not icons, and are exempt. A

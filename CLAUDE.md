@@ -23,6 +23,7 @@ src-tauri/
     lib.rs                  # setup, tray, window, generate_handler!, APP_HANDLE
     commands/               # #[tauri::command] entry points
     platform.rs             # platform detection + Android storage commands
+    fonts.rs                # list_system_fonts: DirectWrite on Windows, a directory walk elsewhere
     android_bridge.rs       # the Java_* symbols MainActivity.kt calls back into
   crates/                   # git submodule: github.com/Yuerchu/meridian-core (Apache-2.0)
     core/                   # meridian-core: everything framework-free
@@ -309,14 +310,12 @@ installed file carries only the React Aria contract and its recorded patches
 with `--overwrite`. `pnpm boardui:drift` compares every listed file with the
 registry; it needs the network and fails without it.
 
-**The fonts are fetched, not checked in.** `predev` and `prebuild` run
-`scripts/fetch-fonts.mjs`, so the first `pnpm dev` (or `pnpm tauri dev`)
-downloads about 450 MB of publisher archives into `.cache/fonts/` and extracts
-the font files and their licences into `public/fonts/`. After that a run touches no network: a
-cached archive or extracted file whose sha256 matches is not fetched again.
-Offline with an empty cache, `dev` and `build` fail rather than start with
-system fonts — deliberately, since a fallback would look fine on the machine
-that produced it. `pnpm fonts` runs it on its own. Why they cannot be in git is
+**The UI uses fonts already on the device.** `src/styles/fonts.css` is the only
+place the stacks are named (`--font-inter` / `--font-mono-source`). Settings →
+General prepends a family from this machine; persistence is `localStorage` plus
+the pre-paint script in `index.html`, the same pattern as the theme.
+`list_system_fonts` is `local` because a Windows family name is useless on a
+phone. Visual baselines photograph whatever the OS has, per platform. Details
 under "Fonts" in "UI Conventions".
 
 **`pnpm dev` in a plain browser runs on demo data.** With no Tauri shell to

@@ -144,6 +144,7 @@ windows = { version = "0.62", features = [
     "Win32_UI_Shell",
     "Win32_UI_TextServices",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Graphics_DirectWrite",
 ] }
 
 # Dependencies are built without debug info in the dev profile. They are most of

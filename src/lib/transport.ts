@@ -27,9 +27,10 @@ export interface Transport {
  * everything else is being answered by a desktop across the room.
  *
  * These are about *this* hardware: the keyboard inset, the storage grant, the
- * camera, and where this device keeps its own secrets. Sending them to the host
- * would answer a question nobody asked — the host's keyboard is not up, the
- * host's camera is not the one being pointed at a receipt.
+ * camera, the fonts this WebView can paint, and where this device keeps its
+ * own secrets. Sending them to the host would answer a question nobody asked —
+ * the host's keyboard is not up, the host's camera is not the one being
+ * pointed at a receipt, and a Windows family name is useless on a phone.
  *
  * The server refuses them too (`local` in the command table), so this is not a
  * security boundary; it is the difference between "refused" and "answered by
@@ -38,6 +39,7 @@ export interface Transport {
 const LOCAL_COMMANDS = new Set([
   'get_platform',
   'get_window_insets',
+  'list_system_fonts',
   // What this device was launched to show.
   'take_launch_request',
   'get_manage_storage_status',

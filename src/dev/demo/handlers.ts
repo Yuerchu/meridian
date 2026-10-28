@@ -1267,6 +1267,9 @@ const memories: Record<string, DemoHandler> = {
 
 const system: Record<string, DemoHandler> = {
   get_platform: () => 'windows',
+  list_system_fonts: () => ({
+    families: ['Cascadia Code', 'Consolas', 'Microsoft YaHei UI', 'PingFang SC', 'Sarasa Gothic', 'Segoe UI'],
+  }),
   get_window_insets: () => ({ top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0 }),
   get_app_info: () => APP_INFO,
   get_secret: () => null,

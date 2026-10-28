@@ -6,7 +6,6 @@ paths:
   - "src-tauri/wix/**"
   - ".github/workflows/**"
   - "scripts/build-ime-android.mjs"
-  - "scripts/fetch-fonts.mjs"
   - "src-tauri/gen/android/app/build.gradle.kts"
   - "src-tauri/gen/android/build.gradle.kts"
 ---
