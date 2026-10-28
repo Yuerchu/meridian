@@ -42,6 +42,13 @@ interface BoardState {
    */
   composerText: Record<string, string>
   setComposerText: (id: string, value: string) => void
+  /**
+   * The project a draft will create under. Same remount as the text: a draft
+   * that kept its words and forgot its project would start in a different
+   * repository.
+   */
+  draftProjectId: Record<string, string>
+  setDraftProjectId: (id: string, projectId: string | null) => void
 }
 
 const AGENT_KIND_KEY = 'meridian.board.agentKind'
@@ -100,5 +107,14 @@ export const useBoardStore = create<BoardState>((set) => ({
         return { composerText: rest }
       }
       return { composerText: { ...composerText, [id]: value } }
+    }),
+  draftProjectId: {},
+  setDraftProjectId: (id, projectId) =>
+    set(({ draftProjectId }) => {
+      if (projectId === null) {
+        const { [id]: _dropped, ...rest } = draftProjectId
+        return { draftProjectId: rest }
+      }
+      return { draftProjectId: { ...draftProjectId, [id]: projectId } }
     }),
 }))

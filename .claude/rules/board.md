@@ -64,6 +64,9 @@ what was queued behind a failure is the transcript's to decide. A card that
 has not started shows the agent choice (native / Claude Code, remembered per
 machine) and its first message starts it. The typed text lives in the board
 store so a masonry remount (folding a column, resizing) does not throw it away.
+A draft's project selection lives there too: folding a column remounts the
+draft, and text without its project would create the card in a different
+repository.
 
 ## Worktrees
 
@@ -93,7 +96,11 @@ branch from git; a detached worktree shows "no branch yet".
   worktree is gone; deleting a card's conversation alone, or a project whose
   cards still have worktrees, is refused. Each would leave a conversation the
   resolver sends to the main checkout. The board offers delete on cards with
-  no worktree.
+  no worktree. After the rows go it emits `conversation-updated` as well as
+  `board-updated`, and the window that issued the delete refreshes the
+  sidebar and clears `activeId` if that conversation was open — the same
+  pairing the sidebar's own delete uses. `board-updated` alone only reloads
+  the cards.
 
 ## Sandbox: no `.git` write access
 

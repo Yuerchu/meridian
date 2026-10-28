@@ -792,8 +792,11 @@ const board: Record<string, DemoHandler> = {
   board_task_delete: (args, backend) => {
     const card = boardCard(backend.state, request<{ id: string }>(args).id)
     if (card.worktree_path !== null) throw "remove the card's worktree before deleting it"
-    if (card.conversation_id !== null) conversations.delete_conversation({ id: card.conversation_id }, backend)
+    const conversationId = card.conversation_id
+    if (conversationId !== null) conversations.delete_conversation({ id: conversationId }, backend)
     backend.state.boardTasks = backend.state.boardTasks.filter((t) => t.id !== card.id)
+    backend.emit('board-updated', { task_id: null })
+    if (conversationId !== null) backend.emit('conversation-updated', { conversation_id: conversationId })
     return null
   },
 }

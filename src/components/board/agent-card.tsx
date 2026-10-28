@@ -114,6 +114,22 @@ function StatusLine({ state }: { state: AgentState }) {
   )
 }
 
+function reloadBoard() {
+  return useBoardStore.getState().load()
+}
+
+/** After the card row is gone: reload the board, and if it had a conversation,
+ *  refresh the sidebar and leave that transcript if it is open. `board-updated`
+ *  only reloads cards; deleting the conversation does not announce itself. */
+export async function settleAfterCardDeleted(conversationId: string | null) {
+  await reloadBoard()
+  if (conversationId === null) return
+  await useConversationStore.getState().refreshConversations()
+  if (useConversationStore.getState().activeId === conversationId) {
+    useConversationStore.getState().setActiveId(null)
+  }
+}
+
 export interface AgentCardProps {
   task: BoardTaskInfoResponse
   state: AgentState
@@ -153,8 +169,6 @@ export function AgentCard({
     (expanded || state.kind === 'finished' || task.stage === 'done' || task.stage === 'review')
   const showDelete = task.worktree_path === null && (expanded || task.conversation_id === null)
 
-  const reload = () => useBoardStore.getState().load()
-
   const move = async (stage: 'review' | 'done') => {
     try {
       const { tasks } = useBoardStore.getState()
@@ -167,7 +181,7 @@ export function AgentCard({
   const removeWorktree = async () => {
     try {
       await api.boardTaskRemoveWorktree({ id: task.id })
-      await reload()
+      await reloadBoard()
     } catch (err) {
       onError(t('board.error.removeWorktree', { error: String(err) }))
     }
@@ -184,7 +198,7 @@ export function AgentCard({
     }
     try {
       await api.boardTaskDelete({ id: task.id })
-      await reload()
+      await settleAfterCardDeleted(task.conversation_id)
     } catch (err) {
       onError(t('board.error.delete', { error: String(err) }))
     }
