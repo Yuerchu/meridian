@@ -743,6 +743,7 @@ async fn assemble_system_prompt(
                     context_blocks,
                     session_tools: None,
                     command_shell,
+                    forbidden_effects: &[],
                 },
             )
             .await)

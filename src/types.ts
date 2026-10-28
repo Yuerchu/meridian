@@ -2447,6 +2447,24 @@ export interface VoiceSendReadinessInfoResponse {
   ready: boolean
 }
 
+/** Configurable QQ session copy. Empty arrays pick the matching seed. */
+export interface ReplyBank {
+  empty_reply: string[]
+  busy: string[]
+  server_error: string[]
+  ack_approved: string[]
+  ack_denied: string[]
+}
+
+/** Built-in fallbacks for each reply slot, returned on get. */
+export interface ReplySeeds {
+  empty_reply: string
+  busy: string
+  server_error: string
+  ack_approved: string
+  ack_denied: string
+}
+
 /** OneBot configuration returned by the host. */
 export interface OneBotConfigInfoResponse {
   enabled: boolean
@@ -2461,6 +2479,8 @@ export interface OneBotConfigInfoResponse {
   voice_send_groups: string[]
   voice_tts_model: string
   voice_tts_reference_id: string
+  replies: ReplyBank
+  reply_seeds: ReplySeeds
 }
 
 /** Complete OneBot settings accepted by the host. Nullable keys remain required. */
@@ -2477,6 +2497,7 @@ export interface OneBotConfigUpdateRequest {
   voice_send_groups: string[]
   voice_tts_model: string
   voice_tts_reference_id: string
+  replies: ReplyBank
 }
 
 export type EmojiPackKind = 'manual' | 'onebot'

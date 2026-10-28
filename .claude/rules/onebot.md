@@ -304,3 +304,51 @@ another file here — the index in `CLAUDE.md` says which.
   reaches `update_todos` in a private chat, so the frozen `todo|…` row (CLAUDE.md,
   "Memory is frozen into the history") is written on QQ too, after the memory row;
   a group sees only `OPEN_REGISTRY_TOOLS` and the planner is a no-op there.
+
+- **QQ withholds Interactive / ModeTransition / Delegate.** `ask_user` has nowhere
+  to draw a form, plan mode has nowhere to switch, and there is no sub-agent
+  port. `Modes::Fixed` and `sub_agents: None` already drop the last two;
+  `forbidden_effects` on `TurnConfigResolveRequest` (`QQ_FORBIDDEN_EFFECTS`)
+  strips `ask_user` after the session-tools splice so `PlanTransitions` cannot
+  put it back. MCP and custom tools stay. Desktop / hook / sub-agent rebuilds
+  pass `&[]`.
+
+- **Session copy lives in `preferences.onebot.replies`, not on the start snapshot.**
+  Host / token / `admin_users` still need a restart; the five slots
+  (`empty_reply`, `busy`, `server_error`, `ack_approved`, `ack_denied`) are
+  hot. Empty and missing slots pick the seed, so a 5xx is never silent. Corrupt
+  JSON on the send path does the same and logs; settings load and the manage
+  tool fail on invalid JSON. Session variants cannot contain `{e}` / `{error}` /
+  `{detail}`. Caps: 16 variants, 200 characters, no empty string. ≥2 variants
+  skip the last-used (process-local).
+
+- **4xx @ the speaker in a group and explain; 5xx is only the `server_error`
+  phrase in session.** The @ of `admin_users` who are in the group *is* the
+  report — the session line does not also say it was reported. `{e}` / the
+  provider body travel as an admin DM, truncated to 2000 characters. Empty
+  `admin_users` skips the DM and claims nothing. A private counterpart who is
+  an admin gets the detail in the same message and is not self-DM'd; other
+  admins still get the DM. Group 5xx does not @ the speaker unless they are
+  also an admin. Slash usage / access stay code as 4xx; slash success stays
+  `build_reply`; slash failures that used to dump `{e}` go through the 5xx
+  bank. Plan-review barriers, memory, friend-request and balance-alert copy
+  stay code. An empty model reply stays silent; `empty_reply` is empty
+  approval typed text.
+
+- **Approval cards use the Chinese `chat.tool.name.*` label, then the model's
+  `description` if present, never a wire name or JSON args.** Core's
+  `onebot/labels.rs` is gated against `zh-CN.json`. MCP / unknown tools use
+  the description as the heading, otherwise the configured name.
+
+- **QQ writes always go through auto-review**, even when the desktop toggle is
+  off (`force_review`, conversation-model fallback `{provider_id}:{effective_model}`).
+  User-asked → allow; a target nobody mentioned → deny to the model; a hang /
+  no verdict / no model falls back to a Y card (`unattended: false`).
+  `SettingsUnreadable` is still refused at `ChatApprovals` without asking.
+  `qq_manage_replies` is not `admin_only` so the assistant can maintain copy
+  on a member's turn; the reviewer is the gate (policy.md carve-out: in-role
+  voice tweak is allow, hijack / ads / error-leak is deny) and a miss is a
+  denial (`fail_closed`), because a group Y card would be the speaker
+  approving their own hijack of the bot's voice. `qq_list_replies` is a read
+  and does not ask. Card / essence / poke / like / sticker / voice still fire
+  on call.

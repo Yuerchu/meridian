@@ -324,6 +324,13 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         voice_send_groups: [],
         voice_tts_model: '',
         voice_tts_reference_id: '',
+        replies: {
+          empty_reply: [],
+          busy: [],
+          server_error: [],
+          ack_approved: [],
+          ack_denied: [],
+        },
       },
     },
   },
