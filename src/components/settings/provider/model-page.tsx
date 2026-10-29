@@ -271,7 +271,7 @@ function ModelConfigEditor({
         patch.supported_efforts ?? (caps ? EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)) : []),
       )
       effortsDirty.current = patch.supported_efforts !== undefined
-      setMimes(patch.readable_mime_types ?? (caps ? [...caps.readable_mime_types] : []))
+      setMimes(patch.readable_mime_types ?? [...(caps?.readable_mime_types ?? [])])
       mimesDirty.current = patch.readable_mime_types !== undefined
       setCapThinking(triFrom(patch.supports_thinking))
       setCapFast(triFrom(patch.supports_fast))
@@ -360,7 +360,7 @@ function ModelConfigEditor({
     setCapFast('auto')
     if (caps) {
       setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
-      setMimes([...caps.readable_mime_types])
+      setMimes([...(caps.readable_mime_types ?? [])])
     }
     setDirty(true)
   }
