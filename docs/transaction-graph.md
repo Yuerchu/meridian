@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：300
+- 事务根（非测试）：302
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -160,7 +160,9 @@
 | `src-tauri/crates/core/src/onebot/handler.rs` › `status_of` | sea-read | assistant, conversation, message |
 | `src-tauri/crates/core/src/onebot/media.rs` › `resolve_supports_images` | sea-read | assistant, conversation |
 | `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
+| `src-tauri/crates/core/src/onebot/mod.rs` › `save_settings` | sea-write | preference |
 | `src-tauri/crates/core/src/onebot/qq_tools.rs` › `list_stickers` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `manage_replies` | sea-write | preference |
 | `src-tauri/crates/core/src/onebot/qq_tools.rs` › `send_sticker` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/onebot/session.rs` › `create_project` | sea-nested | conversation, preference |
 | `src-tauri/crates/core/src/onebot/session.rs` › `get_or_create` | sea-write | conversation, preference, project |
