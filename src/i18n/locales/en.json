@@ -1099,6 +1099,7 @@
   "settings.model.capabilities": "Capability overrides",
   "settings.model.capabilitiesHint": "Only needed when the built-in catalog is wrong or missing this model. \"Auto\" keeps following catalog updates.",
   "settings.model.supportedEfforts": "Reasoning tiers",
+  "settings.model.readableMimes": "Native-readable file types",
   "settings.model.capThinking": "Reasoning",
   "settings.model.capFast": "Fast mode",
   "settings.model.capAuto": "Auto",

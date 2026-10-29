@@ -31,9 +31,11 @@ import type {
   PriceTier,
   ProviderCapabilitiesInfoResponse,
   ProviderCapabilityOverrides,
+  ReadableMime,
   ServerToolKind,
   ThinkingEffort,
 } from '@/types'
+import { READABLE_MIMES } from '@/types'
 
 /** The option that creates a description rather than pointing at one. */
 const NEW_PROFILE = '__new__'
@@ -183,6 +185,8 @@ function ModelConfigEditor({
   // A ref, not state: it is only ever read back when the patch is built on
   // save, so flipping it has nothing to redraw.
   const effortsDirty = useRef(false)
+  const [mimes, setMimes] = useState<ReadableMime[]>([])
+  const mimesDirty = useRef(false)
   const [capThinking, setCapThinking] = useState<Tri>('auto')
   const [capFast, setCapFast] = useState<Tri>('auto')
   const [dirty, setDirty] = useState(false)
@@ -267,6 +271,8 @@ function ModelConfigEditor({
         patch.supported_efforts ?? (caps ? EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)) : []),
       )
       effortsDirty.current = patch.supported_efforts !== undefined
+      setMimes(patch.readable_mime_types ?? (caps ? [...caps.readable_mime_types] : []))
+      mimesDirty.current = patch.readable_mime_types !== undefined
       setCapThinking(triFrom(patch.supports_thinking))
       setCapFast(triFrom(patch.supports_fast))
     },
@@ -336,6 +342,8 @@ function ModelConfigEditor({
     const next: ProviderCapabilityOverrides = { ...((chosen ?? profile)?.capability_overrides ?? {}) }
     if (effortsDirty.current) next.supported_efforts = efforts
     else delete next.supported_efforts
+    if (mimesDirty.current) next.readable_mime_types = mimes
+    else delete next.readable_mime_types
     const thinking = triTo(capThinking)
     if (thinking === undefined) delete next.supports_thinking
     else next.supports_thinking = thinking
@@ -347,9 +355,13 @@ function ModelConfigEditor({
 
   const resetOverrides = () => {
     effortsDirty.current = false
+    mimesDirty.current = false
     setCapThinking('auto')
     setCapFast('auto')
-    if (caps) setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
+    if (caps) {
+      setEfforts(EFFORT_LADDER.filter((e) => caps.supported_efforts.includes(e)))
+      setMimes([...caps.readable_mime_types])
+    }
     setDirty(true)
   }
 
@@ -872,6 +884,32 @@ function ModelConfigEditor({
                       }}
                     >
                       {t(`toolbar.thinking.${tier}`)}
+                    </ToggleButton>
+                  )
+                })}
+              </div>
+            </div>
+            <div data-slot="readable-mimes" className="space-y-1.5">
+              <p data-slot="readable-mimes-label" className="text-caption-1-regular text-text-secondary">
+                {t('settings.model.readableMimes')}
+              </p>
+              <div data-slot="readable-mime-chips" className="flex flex-wrap gap-1">
+                {READABLE_MIMES.map((mime) => {
+                  const on = mimes.includes(mime)
+                  return (
+                    <ToggleButton
+                      key={mime}
+                      data-slot="readable-mime-chip"
+                      size="small"
+                      isSelected={on}
+                      className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
+                      onChange={() => {
+                        setMimes(READABLE_MIMES.filter((item) => (item === mime ? !on : mimes.includes(item))))
+                        mimesDirty.current = true
+                        setDirty(true)
+                      }}
+                    >
+                      {mime}
                     </ToggleButton>
                   )
                 })}

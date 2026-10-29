@@ -1086,6 +1086,7 @@
   "settings.model.capabilities": "能力覆盖",
   "settings.model.capabilitiesHint": "仅在内置模型表缺失或有误时需要设置。选「自动」会持续跟随内置表更新。",
   "settings.model.supportedEfforts": "可用推理档位",
+  "settings.model.readableMimes": "可原生读取的文件类型",
   "settings.model.capThinking": "思维链",
   "settings.model.capFast": "疾速模式",
   "settings.model.capAuto": "自动",

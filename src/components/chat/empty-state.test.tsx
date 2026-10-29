@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => ({
       supports_tools: true,
       supports_streaming_tools: true,
       supports_thinking: true,
-      supports_images: true,
+      readable_mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp'],
       max_context_tokens: 128_000,
       max_output_tokens: 16_000,
       supports_fast: true,
