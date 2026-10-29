@@ -304,3 +304,18 @@ another file here — the index in `CLAUDE.md` says which.
   reaches `update_todos` in a private chat, so the frozen `todo|…` row (CLAUDE.md,
   "Memory is frozen into the history") is written on QQ too, after the memory row;
   a group sees only `OPEN_REGISTRY_TOOLS` and the planner is a no-op there.
+
+- **`send_sticker` picks by query.** The model passes a short name, tag, or mood;
+  `pick_from_roster` (shared with the desktop tool) ranks exact name, then name
+  contains, then a tag contains the query. `sticker_id` still works and wins when
+  both are given. `list_stickers` stays for browsing. The roster does not go in
+  the system prompt or the tool description — confirm/delete would bust the
+  prefix cache.
+
+- **`qq_stay_silent` drops this round's final QQ text.** Stickers, voice, poke
+  and interim text already sent stay. It is not approval-gated. The flag lives
+  on `QqToolExecutor` as an `AtomicBool`, so a `TurnEnd::Continue` round gets a
+  new executor and a clean flag. Empty model replies were already silent;
+  `empty_reply` is still empty *approval typed text*. After a sticker or when
+  there is nothing to add, the prompt tells the model to call this rather than
+  write 好的 / 收到 / 已发送.
