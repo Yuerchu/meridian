@@ -9,6 +9,7 @@ import { ArrowRight, ChevronDown, GitBranch, Message } from '@keyline-icons/reac
 import { api } from '@/api'
 import { Button, Chip, Kanban } from '@/components/base'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
+import type { ConfirmOptions } from '@/components/ui/confirm-dialog'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import { titleIfTruncated } from '@/lib/truncation'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
@@ -113,6 +114,22 @@ function StatusLine({ state }: { state: AgentState }) {
   )
 }
 
+function reloadBoard() {
+  return useBoardStore.getState().load()
+}
+
+/** After the card row is gone: reload the board, and if it had a conversation,
+ *  refresh the sidebar and leave that transcript if it is open. `board-updated`
+ *  only reloads cards; deleting the conversation does not announce itself. */
+export async function settleAfterCardDeleted(conversationId: string | null) {
+  await reloadBoard()
+  if (conversationId === null) return
+  await useConversationStore.getState().refreshConversations()
+  if (useConversationStore.getState().activeId === conversationId) {
+    useConversationStore.getState().setActiveId(null)
+  }
+}
+
 export interface AgentCardProps {
   task: BoardTaskInfoResponse
   state: AgentState
@@ -121,9 +138,19 @@ export interface AgentCardProps {
   onToggle: () => void
   onOpenConversation: (conversationId: string) => void
   onError: (error: string) => void
+  confirm: (options: ConfirmOptions) => Promise<boolean>
 }
 
-export function AgentCard({ task, state, expanded, focused, onToggle, onOpenConversation, onError }: AgentCardProps) {
+export function AgentCard({
+  task,
+  state,
+  expanded,
+  focused,
+  onToggle,
+  onOpenConversation,
+  onError,
+  confirm,
+}: AgentCardProps) {
   const { t } = useTranslation()
   const conversationId = task.conversation_id
   const waiting = state.kind === 'approval' || state.kind === 'question' ? state.item : null
@@ -131,8 +158,16 @@ export function AgentCard({ task, state, expanded, focused, onToggle, onOpenConv
   const branch = useWorktreeBranch(conversationId, task.worktree_path !== null, state.kind)
   const openReview = usePlanReviewStore((s) => s.openReview)
   const busy = state.kind === 'working' || state.kind === 'approval' || state.kind === 'question'
-  const advance = task.stage === 'running' ? 'review' : task.stage === 'review' ? 'done' : null
+  const toReview = task.stage === 'running'
+  const toDone = task.stage === 'review' && task.worktree_path === null
   const asking = waiting !== null
+  const showToReview = toReview && !busy && conversationId !== null && (expanded || state.kind === 'finished')
+  const showToDone = toDone && !busy && conversationId !== null && (expanded || state.kind === 'finished')
+  const showRemoveWorktree =
+    task.worktree_path !== null &&
+    !busy &&
+    (expanded || state.kind === 'finished' || task.stage === 'done' || task.stage === 'review')
+  const showDelete = task.worktree_path === null && (expanded || task.conversation_id === null)
 
   const move = async (stage: 'review' | 'done') => {
     try {
@@ -140,6 +175,32 @@ export function AgentCard({ task, state, expanded, focused, onToggle, onOpenConv
       await api.boardTaskMove({ id: task.id, stage, index: tasks.filter((c) => c.stage === stage).length })
     } catch (err) {
       onError(t('board.error.move', { error: String(err) }))
+    }
+  }
+
+  const removeWorktree = async () => {
+    try {
+      await api.boardTaskRemoveWorktree({ id: task.id })
+      await reloadBoard()
+    } catch (err) {
+      onError(t('board.error.removeWorktree', { error: String(err) }))
+    }
+  }
+
+  const removeCard = async () => {
+    if (
+      !(await confirm({
+        body: t('board.card.deleteConfirm', { title: task.title }),
+        confirmLabel: t('board.card.delete'),
+      }))
+    ) {
+      return
+    }
+    try {
+      await api.boardTaskDelete({ id: task.id })
+      await settleAfterCardDeleted(task.conversation_id)
+    } catch (err) {
+      onError(t('board.error.delete', { error: String(err) }))
     }
   }
 
@@ -233,11 +294,28 @@ export function AgentCard({ task, state, expanded, focused, onToggle, onOpenConv
           </div>
         )}
 
-        {advance !== null && !busy && conversationId !== null && (expanded || state.kind === 'finished') && (
-          <div className="flex justify-end">
-            <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move(advance)}>
-              {advance === 'review' ? t('board.card.toReview') : t('board.card.toDone')}
-            </Button>
+        {(showToReview || showToDone || showRemoveWorktree || showDelete) && (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {showToReview && (
+              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('review')}>
+                {t('board.card.toReview')}
+              </Button>
+            )}
+            {showToDone && (
+              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('done')}>
+                {t('board.card.toDone')}
+              </Button>
+            )}
+            {showRemoveWorktree && (
+              <Button size="small" variant="secondary" onPress={() => void removeWorktree()}>
+                {t('board.card.removeWorktree')}
+              </Button>
+            )}
+            {showDelete && (
+              <Button size="small" variant="secondary" onPress={() => void removeCard()}>
+                {t('board.card.delete')}
+              </Button>
+            )}
           </div>
         )}
 

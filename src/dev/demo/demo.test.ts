@@ -425,9 +425,18 @@ describe('demo fixtures', () => {
     }
     expect([removed.stage, removed.worktree_path]).toEqual(['done', null])
 
+    const seen: { channel: string; payload: unknown }[] = []
+    backend.subscribe('board-updated', (event) => seen.push({ channel: 'board-updated', payload: event.payload }))
+    backend.subscribe('conversation-updated', (event) =>
+      seen.push({ channel: 'conversation-updated', payload: event.payload }),
+    )
     await backend.invoke('board_task_delete', { request: { id: 'demo-card-csv' } })
     expect(backend.state.boardTasks.some((t) => t.id === 'demo-card-csv')).toBe(false)
     expect(backend.state.conversations.some((c) => c.id === conversationId)).toBe(false)
+    expect(seen).toEqual([
+      { channel: 'board-updated', payload: { task_id: null } },
+      { channel: 'conversation-updated', payload: { conversation_id: conversationId } },
+    ])
   })
 
   it('answers every other command with a valid empty result or DemoUnsupported', async () => {

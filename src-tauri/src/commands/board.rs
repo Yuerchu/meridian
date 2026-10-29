@@ -416,8 +416,9 @@ pub(crate) async fn delete(services: &Services, id: &str) -> Result<(), String> 
     if task.worktree_path.is_some() {
         return Err("remove the card's worktree before deleting it".into());
     }
-    if let Some(conversation_id) = task.conversation_id.as_deref() {
-        crate::commands::conversation::delete_conversation_tree(services, conversation_id).await?;
+    let conversation_id = task.conversation_id.clone();
+    if let Some(cid) = conversation_id.as_deref() {
+        crate::commands::conversation::delete_conversation_tree(services, cid).await?;
     }
     services
         .db
@@ -425,6 +426,11 @@ pub(crate) async fn delete(services: &Services, id: &str) -> Result<(), String> 
         .await
         .map_err(|e| e.to_string())?;
     announce(services, None);
+    // The sidebar refetches on this channel. `board-updated` only reloads
+    // cards, and `delete_conversation_tree` writes the rows without emitting.
+    if let Some(cid) = conversation_id.as_deref() {
+        let _ = services.events.emit_conversation_updated(cid);
+    }
     Ok(())
 }
 

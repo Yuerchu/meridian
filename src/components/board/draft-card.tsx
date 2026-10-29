@@ -2,7 +2,7 @@
 // for. Appended at the end of the column, so every card already there stays
 // where it was. Enter puts it on the board, Escape in an empty box takes it
 // back.
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
@@ -12,6 +12,19 @@ import { useConversationStore } from '@/stores/conversation-store'
 import type { BoardStage } from '@/types'
 
 const PROJECT_KEY = 'meridian.board.projectId'
+
+/** A draft's project: what this card already chose, then the last successful
+ *  create, then the first local project. A stored id that is no longer in
+ *  the list is skipped rather than kept as a selection nothing can submit. */
+export function resolveDraftProjectId(
+  stored: string | null,
+  remembered: string | null,
+  projectIds: readonly string[],
+): string | null {
+  if (stored !== null && projectIds.includes(stored)) return stored
+  if (remembered !== null && projectIds.includes(remembered)) return remembered
+  return projectIds[0] ?? null
+}
 
 export function DraftCard({
   stage,
@@ -24,12 +37,18 @@ export function DraftCard({
 }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDivElement>(null)
-  const [value, setValue] = useState('')
+  const draftId = `draft:${stage}`
+  const value = useBoardStore((s) => s.composerText[draftId] ?? '')
+  const setComposerText = useBoardStore((s) => s.setComposerText)
+  const storedProject = useBoardStore((s) => s.draftProjectId[draftId] ?? null)
+  const setDraftProjectId = useBoardStore((s) => s.setDraftProjectId)
   // A worktree is made from a folder, so only a project with one can hold a card.
   const projects = useConversationStore((s) => s.projects).filter((p) => p.source_type === 'local' && p.path !== null)
   const remembered = typeof localStorage === 'undefined' ? null : localStorage.getItem(PROJECT_KEY)
-  const [projectId, setProjectId] = useState<string | null>(
-    projects.find((p) => p.id === remembered)?.id ?? projects[0]?.id ?? null,
+  const projectId = resolveDraftProjectId(
+    storedProject,
+    remembered,
+    projects.map((p) => p.id),
   )
 
   // The press that opened the draft was the request to type.
@@ -44,6 +63,8 @@ export function DraftCard({
     try {
       await api.boardTaskCreate({ projectId, title, request: text, stage })
       if (typeof localStorage !== 'undefined') localStorage.setItem(PROJECT_KEY, projectId)
+      setComposerText(draftId, '')
+      setDraftProjectId(draftId, null)
       await useBoardStore.getState().load()
       onDone()
     } catch (err) {
@@ -71,8 +92,10 @@ export function DraftCard({
         <>
           <Select
             aria-label={t('board.draft.project')}
-            selectedKey={projectId ?? undefined}
-            onSelectionChange={(key) => setProjectId(String(key))}
+            selectedKey={projectId}
+            onSelectionChange={(key) => {
+              if (typeof key === 'string') setDraftProjectId(draftId, key)
+            }}
           >
             {projects.map((p) => (
               <SelectItem key={p.id} id={p.id} textValue={p.name}>
@@ -80,7 +103,12 @@ export function DraftCard({
               </SelectItem>
             ))}
           </Select>
-          <PromptInput value={value} onValueChange={setValue} onSubmit={() => void create()} maxLines={6}>
+          <PromptInput
+            value={value}
+            onValueChange={(next) => setComposerText(draftId, next)}
+            onSubmit={() => void create()}
+            maxLines={6}
+          >
             <PromptInput.Shell className="flex items-end gap-1 rounded-2xl pr-1">
               <div className="min-w-0 flex-1">
                 <PromptInput.TextArea

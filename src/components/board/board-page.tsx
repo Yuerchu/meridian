@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronLeft, Plus } from '@keyline-icons/react/two-tone'
 
 import { Button, Chip, Kanban } from '@/components/base'
+import { useConfirm } from '@/hooks/use-confirm'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useBoardStore } from '@/stores/board-store'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
@@ -48,6 +49,7 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
   const [draft, setDraft] = useState<BoardStage | null>(null)
   const [error, setError] = useState<string | null>(null)
   const boardRef = useRef<HTMLDivElement>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   useEffect(() => {
     void useBoardStore.getState().load()
@@ -215,6 +217,7 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
                           }}
                           onOpenConversation={onOpenConversation}
                           onError={setError}
+                          confirm={confirm}
                         />
                       )
                     }
@@ -225,6 +228,7 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
           })}
         </Kanban>
       </div>
+      {confirmDialog}
     </div>
   )
 }
