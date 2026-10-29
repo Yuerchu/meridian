@@ -254,7 +254,7 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         &resolved.transport_profile,
         &resolved.model,
     )?;
-    if !caps.supports_images {
+    if !caps.reads_any_image() {
         return Err("The default assistant's model does not support image input".into());
     }
     let path = emoji::emoji_path(&data_dir, &sticker.pack_id, &sticker.file_name);

@@ -155,7 +155,7 @@ describe('invoke response schema', () => {
     expect(() =>
       validate('get_model_config', {
         ...model,
-        profile: { ...profile, capability_overrides: { supports_tools: true, supports_pdf: undefined } },
+        profile: { ...profile, capability_overrides: { supports_tools: true, supports_thinking: undefined } },
       }),
     ).toThrow('must be a boolean')
     expect(() =>

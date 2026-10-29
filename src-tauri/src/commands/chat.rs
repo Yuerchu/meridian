@@ -175,6 +175,7 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             context_blocks: self.context_blocks.clone(),
             session_tools: None,
             command_shell: self.command_shell,
+            forbidden_effects: &[],
         };
         self.services
             .db
@@ -1283,7 +1284,12 @@ async fn chat_inner(
     // A capability copy rather than a borrow: `turn_params.params` is moved
     // later in the turn.
     let supports_tools = turn_params.caps.supports_tools;
-    let supports_images = turn_params.caps.supports_images;
+    let user_media = meridian_core::provider::registry::WireMediaPolicy::from_resolved(
+        &resolved.provider_type,
+        &resolved.api_format,
+        &turn_params.caps,
+    )?;
+    let supports_images = user_media.reads_any_image();
     // Copied for the same reason as the two above: `turn_params.params` is moved
     // later in the turn, and a mid-turn mode switch rebuilds the tool set — so
     // the list that suppresses the local `web_search` has to survive that.
@@ -1385,6 +1391,7 @@ async fn chat_inner(
                     context_blocks: blocks,
                     session_tools: None,
                     command_shell,
+                    forbidden_effects: &[],
                 };
                 Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input)
                     .await
@@ -1706,7 +1713,7 @@ async fn chat_inner(
         &mut chat_messages,
         files_root.as_deref(),
         &conversation_id,
-        supports_images,
+        user_media.clone(),
     )?;
     // History is not rewritten here any more. Compaction is the one place that
     // replaces it wholesale, and the trim below is its emergency floor: a
@@ -1930,6 +1937,9 @@ async fn chat_inner(
             // One person, and they own the machine.
             multi_party: false,
             unattended: false,
+            force_review: false,
+            review_model_fallback: None,
+            fail_closed: &[],
         },
     )
     .await?;
@@ -2005,7 +2015,7 @@ async fn chat_inner(
             approval_rule: engine::ApprovalRule::ByReach { accept_edits },
             withheld: engine::WithheldWording::Explained,
             files_root,
-            supports_images,
+            user_media,
             stickers: Some(engine::StickerRendering {
                 db: services.db.clone(),
                 data_dir: services.paths.data_dir.clone(),

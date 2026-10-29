@@ -9,6 +9,7 @@ import { Button, Kbd, Label, Tooltip, TooltipTrigger } from '@/components/base'
 import { ContextMenu } from '@/components/base'
 
 import { can } from '@/lib/capabilities'
+import { readsAnyImage } from '@/lib/model-media'
 import { isRemote } from '@/lib/transport'
 import type { Attachment } from '@/lib/upload'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
@@ -569,10 +570,10 @@ export function InputBar({
   // A hosted session takes attachments too: core sends each as an ACP content
   // block (an image, embedded text, or a link the agent reads), and refuses at
   // send time what the agent did not say it accepts. So the native model's
-  // `supports_images` says nothing about a hosted turn and is not asked —
+  // readable MIME list says nothing about a hosted turn and is not asked —
   // before the first send after a restart the session has not shaken hands
   // yet, and guessing its answer would be inventing one.
-  const acceptsImages = isHosted || capabilities?.supports_images !== false
+  const acceptsImages = isHosted || readsAnyImage(capabilities)
   const canAttachFiles = !!onAttachFiles && can.dropFiles
 
   // A pasted file is a clipboard operation that worked, like a pasted line of
@@ -985,7 +986,7 @@ export function InputBar({
                     <ComposerMenu
                       triggerRef={plusRef}
                       onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
-                      onPickFile={onAttachFiles && acceptsImages ? handlePickFile : undefined}
+                      onPickFile={onAttachFiles ? handlePickFile : undefined}
                       knobs={otherKnobs}
                       onSetKnob={setKnob}
                       knobsBusy={acp.busy}

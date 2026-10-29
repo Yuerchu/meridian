@@ -2596,10 +2596,10 @@ export interface ProviderCapabilitiesInfoResponse {
   supports_thinking: boolean
   /** False for always-thinking models such as Gemini 3.x. */
   supports_thinking_off: boolean
-  supports_images: boolean
+  /** Canonical IANA types this model can consume as native input. Empty means text only. */
+  readable_mime_types: ReadableMime[]
   max_context_tokens: number | null
   max_output_tokens: number | null
-  supports_pdf: boolean
   supports_temperature: boolean
   supports_top_p: boolean
   max_temperature: number | null
@@ -2620,6 +2620,32 @@ export interface ProviderCapabilitiesInfoResponse {
 
 export type CapabilityVerbosity = 'low' | 'medium' | 'high'
 
+/** Closed set of input MIME types a model can declare as native-readable. */
+export type ReadableMime =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/gif'
+  | 'image/webp'
+  | 'video/mp4'
+  | 'video/webm'
+  | 'audio/mpeg'
+  | 'audio/wav'
+  | 'audio/ogg'
+  | 'application/pdf'
+
+export const READABLE_MIMES: readonly ReadableMime[] = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+  'application/pdf',
+] as const
+
 /** Provider-side tools Meridian knows how to request. This is not an extension point. */
 export type ServerToolKind = 'web_search' | 'google_search' | 'url_context' | 'x_search' | 'code_execution'
 
@@ -2629,8 +2655,7 @@ export interface ProviderCapabilityOverrides {
   supports_streaming_tools?: boolean
   supports_thinking?: boolean
   supports_thinking_off?: boolean
-  supports_images?: boolean
-  supports_pdf?: boolean
+  readable_mime_types?: ReadableMime[]
   supports_temperature?: boolean
   supports_top_p?: boolean
   supports_fast?: boolean

@@ -488,6 +488,14 @@ impl DesktopSubAgents {
         // prefix every round, and without a key xAI treats each as cold.
         let mut params = turn_params.params.clone();
         params.cache_key = Some(sub_conversation_id.to_string());
+        let user_media = match meridian_core::provider::registry::WireMediaPolicy::from_resolved(
+            &provider.1.provider_type,
+            &provider.1.api_format,
+            &turn_params.caps,
+        ) {
+            Ok(policy) => policy,
+            Err(error) => return engine::TurnOutcome::failed(error),
+        };
 
         engine::run_turn(
             &engine::TurnServices {
@@ -529,7 +537,7 @@ impl DesktopSubAgents {
                 },
                 withheld: engine::WithheldWording::Explained,
                 files_root: self.files_root.clone(),
-                supports_images: turn_params.caps.supports_images,
+                user_media,
                 stickers: None,
                 // A sub-agent's conversation is one turn old. There is nothing
                 // behind it that could have been cut off.
@@ -601,6 +609,7 @@ impl DesktopSubAgents {
             )),
             #[cfg(target_os = "android")]
             command_shell: None,
+            forbidden_effects: &[],
         };
         meridian_core::agent::turn_config::resolve_on(&self.services.db, &self.registry, input).await
     }
@@ -861,6 +870,7 @@ mod tests {
                 context_blocks: Vec::new(),
                 session_tools: None,
                 command_shell: None,
+                forbidden_effects: &[],
             },
         )
         .await

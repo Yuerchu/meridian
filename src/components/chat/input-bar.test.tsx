@@ -371,7 +371,17 @@ describe('InputBar paste', () => {
     renderBar({
       onAttachFiles: vi.fn(),
       isHosted: true,
-      capabilities: { supports_images: false } as ComponentProps<typeof InputBar>['capabilities'],
+      capabilities: { readable_mime_types: [] } as ComponentProps<typeof InputBar>['capabilities'],
+    })
+
+    const props = composerMenu.props.mock.calls.at(-1)?.[0] as { onPickFile?: () => void }
+    expect(props.onPickFile).toBeTypeOf('function')
+  })
+
+  it('still offers the file picker when the native model cannot read images', () => {
+    renderBar({
+      onAttachFiles: vi.fn(),
+      capabilities: { readable_mime_types: [] } as ComponentProps<typeof InputBar>['capabilities'],
     })
 
     const props = composerMenu.props.mock.calls.at(-1)?.[0] as { onPickFile?: () => void }
