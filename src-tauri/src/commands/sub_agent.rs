@@ -609,6 +609,7 @@ impl DesktopSubAgents {
             )),
             #[cfg(target_os = "android")]
             command_shell: None,
+            forbidden_effects: &[],
         };
         meridian_core::agent::turn_config::resolve_on(&self.services.db, &self.registry, input).await
     }
@@ -869,6 +870,7 @@ mod tests {
                 context_blocks: Vec::new(),
                 session_tools: None,
                 command_shell: None,
+                forbidden_effects: &[],
             },
         )
         .await

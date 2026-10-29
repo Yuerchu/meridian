@@ -175,6 +175,7 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             context_blocks: self.context_blocks.clone(),
             session_tools: None,
             command_shell: self.command_shell,
+            forbidden_effects: &[],
         };
         self.services
             .db
@@ -1390,6 +1391,7 @@ async fn chat_inner(
                     context_blocks: blocks,
                     session_tools: None,
                     command_shell,
+                    forbidden_effects: &[],
                 };
                 Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input)
                     .await
@@ -1935,6 +1937,9 @@ async fn chat_inner(
             // One person, and they own the machine.
             multi_party: false,
             unattended: false,
+            force_review: false,
+            review_model_fallback: None,
+            fail_closed: &[],
         },
     )
     .await?;
