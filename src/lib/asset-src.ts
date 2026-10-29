@@ -36,26 +36,26 @@ export function assetSrc(url?: string): string | undefined {
 /** Extensions the WebView will render as an image. */
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg', 'ico'])
 
-function isImageName(name: string): boolean {
+/** MIME types that match `IMAGE_EXTENSIONS`. `image/heic` is not among them. */
+const RENDERABLE_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/gif',
+  'image/webp',
+  'image/bmp',
+  'image/avif',
+  'image/svg+xml',
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+])
+
+export function isImageName(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase()
   return !!ext && IMAGE_EXTENSIONS.has(ext)
 }
 
-/**
- * A preview URL for a file the composer is holding, or nothing.
- *
- * Composer attachments are bare absolute paths rather than URIs — that is what
- * the picker returns and what the backend expects to read. Only what can be
- * addressed is answered: a photo taken on Android arrives as a `content://`
- * URI the asset protocol cannot open, and a preview that fails is worse than
- * the icon it would have replaced.
- */
-export function localPreviewSrc(path: string, name: string): string | undefined {
-  if (!isImageName(name)) return undefined
-  if (path.startsWith('file://')) return assetSrc(path)
-  // Two characters at least, or `C:\Users\…` reads as a scheme and every
-  // Windows path is turned away at the door. A drive letter is one character;
-  // no scheme is.
-  if (/^[a-z][a-z0-9+.-]+:/i.test(path)) return undefined
-  return convertFileSrc(path)
+export function isRenderableImageType(type: string): boolean {
+  const mime = type.split(';')[0]?.trim().toLowerCase()
+  return !!mime && RENDERABLE_IMAGE_TYPES.has(mime)
 }

@@ -1864,6 +1864,15 @@ export interface MessageFileBytesUploadRequest {
   dataBase64: string
 }
 
+export interface LocalImagePreviewRequest {
+  filePath: string
+}
+
+export interface LocalImagePreviewResponse {
+  mime_type: string
+  data_base64: string
+}
+
 export interface VoiceModelStatusInfoResponse {
   installed: boolean
   path: string | null
