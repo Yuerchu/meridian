@@ -541,6 +541,10 @@ const chat: Record<string, DemoHandler> = {
       ? { type: 'image_url', image_url: { url } }
       : { type: 'file', file: { url, mime_type: 'application/octet-stream', name: req.fileName } }
   },
+  preview_local_image: () => ({
+    mime_type: 'image/png',
+    data_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  }),
   get_composer_draft: (args, { state }) =>
     state.drafts[request<{ conversationId: string | null }>(args).conversationId ?? ''] ?? null,
   save_composer_draft: (args, { state }) => {

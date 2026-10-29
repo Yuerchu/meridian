@@ -1,11 +1,11 @@
-import type { Ref } from 'react'
+import { useEffect, useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Button as AriaButton, GridList, GridListItem, useDragAndDrop, type Key } from 'react-aria-components'
 import { File as FileGlyph } from '@keyline-icons/react/two-tone'
 
 import { CloseButton } from '@/components/base'
-import { localPreviewSrc } from '@/lib/asset-src'
+import { useAttachmentPreview } from '@/hooks/use-attachment-preview'
 import { fileIconUrl } from '@/lib/file-icon'
 import { objectKey } from '@/lib/object-key'
 import type { Attachment } from '@/lib/upload'
@@ -121,8 +121,13 @@ function AttachmentTile({
   onRemove?: () => void
 }) {
   const { t } = useTranslation()
-  const preview = file.path && !file.missing ? localPreviewSrc(file.path, file.name) : undefined
-  const icon = preview ? undefined : fileIconUrl(file.name)
+  const preview = useAttachmentPreview(file)
+  const [broken, setBroken] = useState(false)
+  useEffect(() => {
+    setBroken(false)
+  }, [preview])
+  const src = preview !== null && !broken ? preview : null
+  const icon = src === null ? fileIconUrl(file.name) : null
   const position = t('chat.attachments.position', { index: index + 1, name: file.name })
   return (
     <GridListItem
@@ -146,8 +151,14 @@ function AttachmentTile({
           file.missing ? 'border-status-danger' : 'border-composer-panel-tile-border',
         )}
       >
-        {preview ? (
-          <img data-slot="attachment-tile-preview" src={preview} alt="" className="size-full object-cover" />
+        {src !== null ? (
+          <img
+            data-slot="attachment-tile-preview"
+            src={src}
+            alt=""
+            className="size-full object-cover"
+            onError={() => setBroken(true)}
+          />
         ) : (
           <>
             <span data-slot="attachment-tile-icon" className="absolute inset-x-0 top-2 flex justify-center">
@@ -194,7 +205,7 @@ function AttachmentTile({
               onPress={onRemove}
               className={cx(
                 'touch-hitbox rounded-full',
-                preview && 'bg-background-primary-default/70 backdrop-blur-[2px]',
+                src !== null && 'bg-background-primary-default/70 backdrop-blur-[2px]',
               )}
             />
           </span>

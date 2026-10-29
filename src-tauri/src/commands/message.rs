@@ -767,6 +767,18 @@ pub struct MessageFileBytesUploadRequest {
     pub data_base64: String,
 }
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LocalImagePreviewRequest {
+    pub file_path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct LocalImagePreviewResponse {
+    pub mime_type: String,
+    pub data_base64: String,
+}
+
 /// Read raw context only while its owning message is on this conversation's
 /// active branch. Knowing an item UUID is not authority to read a sibling's
 /// repository snapshot or command output.
@@ -1863,6 +1875,255 @@ pub async fn upload_file_bytes(
     tokio::task::spawn_blocking(move || store_uploaded_bytes(&app_data_dir, &conversation_id, &file_name, &bytes))
         .await
         .map_err(|e| e.to_string())?
+}
+
+/// Composer preview of a picture still sitting at the path the picker returned.
+/// Asset-protocol scope is `$APPDATA/files/**` only, so Pictures/Desktop paths
+/// and Android `content://` URIs cannot be an `<img src>`; this reads the bytes
+/// instead. Refuses anything that is not a WebView-renderable image, and
+/// anything over the inline-attachment cap, so a preview cannot dump an
+/// arbitrary file into JS.
+#[tauri::command]
+pub async fn preview_local_image(request: LocalImagePreviewRequest) -> Result<LocalImagePreviewResponse, String> {
+    let LocalImagePreviewRequest { file_path } = request;
+
+    #[cfg(target_os = "android")]
+    if file_path.starts_with("content://") {
+        return preview_android_content(&file_path).await;
+    }
+
+    let path = preview_path_from_request(&file_path);
+    let bytes = tokio::task::spawn_blocking(move || read_preview_file(&path))
+        .await
+        .map_err(|e| e.to_string())??;
+    encode_preview(&bytes)
+}
+
+fn preview_path_from_request(file_path: &str) -> std::path::PathBuf {
+    let Some(rest) = file_path.strip_prefix("file://") else {
+        return std::path::PathBuf::from(file_path);
+    };
+    // `file:///C:/x` — empty authority, the drive letter follows the third slash.
+    // `file:///home/a/x` — that third slash is the path root and must stay.
+    let path = rest.strip_prefix('/').map_or(rest, |p| {
+        let bytes = p.as_bytes();
+        if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' {
+            p
+        } else {
+            rest
+        }
+    });
+    std::path::PathBuf::from(path)
+}
+
+fn read_preview_file(path: &std::path::Path) -> Result<Vec<u8>, String> {
+    let meta = std::fs::metadata(path).map_err(|e| format!("could not read the image: {e}"))?;
+    if !meta.is_file() {
+        return Err("not a previewable image".to_string());
+    }
+    if meta.len() > meridian_core::files::MAX_INLINE_ATTACHMENT_BYTES {
+        return Err("image is too large to preview".to_string());
+    }
+    std::fs::read(path).map_err(|e| format!("could not read the image: {e}"))
+}
+
+fn encode_preview(bytes: &[u8]) -> Result<LocalImagePreviewResponse, String> {
+    use base64::Engine as _;
+    let mime_type = sniff_preview_image(bytes).ok_or_else(|| "not a previewable image".to_string())?;
+    Ok(LocalImagePreviewResponse {
+        mime_type: mime_type.to_string(),
+        data_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
+}
+
+/// Magic only. The filename is a hint the frontend already applied; a `.png`
+/// of text must not become a data URL.
+fn sniff_preview_image(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.len() >= 8 && bytes.starts_with(&[0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A]) {
+        return Some("image/png");
+    }
+    if bytes.len() >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF {
+        return Some("image/jpeg");
+    }
+    if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        return Some("image/gif");
+    }
+    if bytes.len() >= 12 && bytes.starts_with(b"RIFF") && &bytes[8..12] == b"WEBP" {
+        return Some("image/webp");
+    }
+    if bytes.starts_with(b"BM") {
+        return Some("image/bmp");
+    }
+    if bytes.len() >= 4 && bytes[0] == 0 && bytes[1] == 0 && bytes[2] == 1 && bytes[3] == 0 {
+        return Some("image/x-icon");
+    }
+    if bytes.len() >= 12 && &bytes[4..8] == b"ftyp" {
+        let brand = &bytes[8..12];
+        if brand == b"avif" || brand == b"avis" {
+            return Some("image/avif");
+        }
+        return None;
+    }
+    sniff_svg(bytes)
+}
+
+fn sniff_svg(bytes: &[u8]) -> Option<&'static str> {
+    let mut rest = bytes;
+    if rest.starts_with(&[0xEF, 0xBB, 0xBF]) {
+        rest = rest.get(3..)?;
+    }
+    while let Some((&b, tail)) = rest.split_first() {
+        if b.is_ascii_whitespace() {
+            rest = tail;
+        } else {
+            break;
+        }
+    }
+    let head = std::str::from_utf8(rest.get(..rest.len().min(1024))?)
+        .ok()?
+        .to_ascii_lowercase();
+    if head.starts_with("<svg") {
+        return Some("image/svg+xml");
+    }
+    if head.starts_with("<?xml") && head.contains("<svg") {
+        return Some("image/svg+xml");
+    }
+    None
+}
+
+#[cfg(target_os = "android")]
+async fn preview_android_content(file_path: &str) -> Result<LocalImagePreviewResponse, String> {
+    let stat = meridian_core::android_bridge::content_stat(file_path).await?;
+    if stat
+        .size
+        .is_some_and(|n| n > meridian_core::files::MAX_INLINE_ATTACHMENT_BYTES)
+    {
+        return Err("image is too large to preview".to_string());
+    }
+    let dest = std::env::temp_dir().join(format!("meridian-preview-{}", uuid::Uuid::new_v4()));
+    struct Cleanup(std::path::PathBuf);
+    impl Drop for Cleanup {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+    let cleanup = Cleanup(dest.clone());
+    let dest_str = dest.to_str().ok_or("invalid path")?.to_string();
+    meridian_core::android_bridge::content_copy(file_path, &dest_str).await?;
+    let path = dest.clone();
+    let bytes = tokio::task::spawn_blocking(move || read_preview_file(&path))
+        .await
+        .map_err(|e| e.to_string())??;
+    drop(cleanup);
+    encode_preview(&bytes)
+}
+
+#[cfg(test)]
+mod preview_image_tests {
+    use super::*;
+    use base64::Engine as _;
+
+    /// 1×1 PNG. Magic plus a real file so `encode_preview` and `read_preview_file` share one fixture.
+    const PNG_1X1: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00,
+        0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89, 0x00, 0x00, 0x00,
+        0x0D, 0x49, 0x44, 0x41, 0x54, 0x78, 0xDA, 0x63, 0xFC, 0xCF, 0xC0, 0x50, 0x0F, 0x00, 0x04, 0x85, 0x01, 0x80,
+        0x84, 0xA9, 0x8C, 0x21, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    #[test]
+    fn sniff_accepts_renderable_magic() {
+        assert_eq!(sniff_preview_image(PNG_1X1), Some("image/png"));
+        assert_eq!(sniff_preview_image(&[0xFF, 0xD8, 0xFF, 0xE0]), Some("image/jpeg"));
+        assert_eq!(sniff_preview_image(b"GIF89a...."), Some("image/gif"));
+        let mut webp = b"RIFF\x00\x00\x00\x00WEBP".to_vec();
+        webp.extend_from_slice(&[0, 0, 0, 0]);
+        assert_eq!(sniff_preview_image(&webp), Some("image/webp"));
+        assert_eq!(sniff_preview_image(b"BM...."), Some("image/bmp"));
+        assert_eq!(sniff_preview_image(&[0, 0, 1, 0, 0]), Some("image/x-icon"));
+        let mut avif = vec![0, 0, 0, 0];
+        avif.extend_from_slice(b"ftypavif");
+        assert_eq!(sniff_preview_image(&avif), Some("image/avif"));
+        assert_eq!(
+            sniff_preview_image(b"<svg xmlns='http://www.w3.org/2000/svg'/>"),
+            Some("image/svg+xml")
+        );
+        assert_eq!(
+            sniff_preview_image(b"<?xml version='1.0'?><svg xmlns='http://www.w3.org/2000/svg'/>"),
+            Some("image/svg+xml")
+        );
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend_from_slice(b"  <svg/>");
+        assert_eq!(sniff_preview_image(&bom), Some("image/svg+xml"));
+    }
+
+    #[test]
+    fn sniff_rejects_heic_and_text() {
+        let mut heic = vec![0, 0, 0, 0];
+        heic.extend_from_slice(b"ftypheic");
+        assert_eq!(sniff_preview_image(&heic), None);
+        assert_eq!(sniff_preview_image(b"not a png"), None);
+        assert_eq!(sniff_preview_image(b""), None);
+    }
+
+    #[test]
+    fn encode_preview_returns_png_base64() {
+        let out = encode_preview(PNG_1X1).unwrap();
+        assert_eq!(out.mime_type, "image/png");
+        assert_eq!(
+            base64::engine::general_purpose::STANDARD
+                .decode(&out.data_base64)
+                .unwrap(),
+            PNG_1X1
+        );
+    }
+
+    #[test]
+    fn encode_preview_rejects_a_png_named_lie() {
+        assert_eq!(encode_preview(b"hello").unwrap_err(), "not a previewable image");
+    }
+
+    #[test]
+    fn read_preview_file_rejects_missing_and_oversize() {
+        let missing = std::path::Path::new("C:/meridian-preview-does-not-exist-9f3c.png");
+        assert!(
+            read_preview_file(missing)
+                .unwrap_err()
+                .starts_with("could not read the image:")
+        );
+
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        tmp.as_file()
+            .set_len(meridian_core::files::MAX_INLINE_ATTACHMENT_BYTES + 1)
+            .unwrap();
+        assert_eq!(
+            read_preview_file(tmp.path()).unwrap_err(),
+            "image is too large to preview"
+        );
+    }
+
+    #[test]
+    fn read_preview_file_returns_a_small_png() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), PNG_1X1).unwrap();
+        assert_eq!(read_preview_file(tmp.path()).unwrap(), PNG_1X1);
+    }
+
+    #[test]
+    fn preview_path_strips_file_uri() {
+        assert_eq!(
+            preview_path_from_request("file:///C:/Users/A/photo.jpg").as_os_str(),
+            std::path::Path::new("C:/Users/A/photo.jpg").as_os_str()
+        );
+        assert_eq!(
+            preview_path_from_request("file:///home/a/photo.jpg").as_os_str(),
+            std::path::Path::new("/home/a/photo.jpg").as_os_str()
+        );
+        assert_eq!(
+            preview_path_from_request(r"C:\Users\A\photo.jpg").as_os_str(),
+            std::path::Path::new(r"C:\Users\A\photo.jpg").as_os_str()
+        );
+    }
 }
 
 #[cfg(test)]
