@@ -68,8 +68,9 @@ pub enum Scheme {
     #[default]
     Pinyin,
     Zhuyin,
-    /// The phone keyboard's nine-column layout. Typed by the Android keyboard;
-    /// a physical keyboard cannot produce its private-use keys.
+    /// 注拼: the phone keyboard's nine-column zhuyin-style layout. Typed by
+    /// the Android keyboard; a physical keyboard cannot produce its private-use
+    /// keys. The wire name stays `grid`.
     Grid,
 }
 

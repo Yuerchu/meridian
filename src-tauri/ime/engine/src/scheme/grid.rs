@@ -1,8 +1,10 @@
-//! Grid: the nine-column phone layout. Its keys carry pinyin letters, but the
-//! structure is zhuyin's — an initial, an optional medial (`y` `w` `v` for
-//! ㄧㄨㄩ), a final, and an optional tone key — so a syllable is spelled by
-//! mapping its bopomofo spelling onto keys (`grid_initials.txt`,
-//! `grid_rimes.txt`) rather than by reading pinyin.
+//! 注拼 (Zhupin): a nine-column phone layout. Its keys carry pinyin letters,
+//! but the structure is zhuyin's — an initial, an optional medial (`y` `w`
+//! `v` for ㄧㄨㄩ), a final, and an optional tone key — so a syllable is spelled
+//! by mapping its bopomofo spelling onto keys (`grid_initials.txt`,
+//! `grid_rimes.txt`) rather than by reading pinyin. The user-facing name is
+//! 注拼 so it is not taken for T9 九宫格. The scheme id on the wire stays
+//! `grid`.
 //!
 //! The layout is fuzzy by design. `z` `c` `s` each stand for both the dental
 //! and the retroflex initial, and `ng` is the only nasal key, so `z w ng` reads
@@ -25,7 +27,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-use super::pinyin::{raw_preedit, segment_dag};
+use super::pinyin::{APOSTROPHE, raw_preedit, segment_dag, skip_apostrophes};
 use super::{SchemeParser, Segmentation, SyllableDag, SyllableEdge};
 use meridian_ime_dict::SyllableTable;
 use meridian_ime_dict::syllable::{ZhuyinRole, zhuyin_role};
@@ -85,6 +87,9 @@ const fn fuzzy(
     }
 }
 
+/// First tone. Space types this on the board.
+pub const GRID_FIRST_TONE: char = '\u{02C9}';
+
 /// Every key of the layout. The Android keyboard sends exactly these `char`s.
 pub const GRID_TOKENS: &[GridToken] = &[
     tok('b', "b", "b", GridRole::Initial),
@@ -116,7 +121,7 @@ pub const GRID_TOKENS: &[GridToken] = &[
     tok('\u{E002}', "ei", "ei", GridRole::Final),
     tok('\u{E003}', "ou", "ou", GridRole::Final),
     tok('\u{E004}', "er", "er", GridRole::Final),
-    fuzzy('\u{E005}', "ng", "ng", GridRole::Nasal, &["er", "-n", "-ng"]),
+    fuzzy('\u{E005}', "ng", "ng", GridRole::Nasal, &["-n", "-ng"]),
     // The precise keys behind the fuzzy ones, reached by a long press: each
     // spells exactly one of what its fuzzy key covers.
     tok('\u{E006}', "zh", "zh", GridRole::Initial),
@@ -127,7 +132,7 @@ pub const GRID_TOKENS: &[GridToken] = &[
     tok('\u{E00B}', "s_", "s", GridRole::Initial),
     tok('\u{E00C}', "-n", "n", GridRole::Nasal),
     tok('\u{E00D}', "-ng", "ng", GridRole::Nasal),
-    tok('\u{02C9}', "t1", "ˉ", GridRole::Tone),
+    tok(GRID_FIRST_TONE, "t1", "ˉ", GridRole::Tone),
     tok('\u{02CA}', "t2", "ˊ", GridRole::Tone),
     tok('\u{02C7}', "t3", "ˇ", GridRole::Tone),
     tok('\u{02CB}', "t4", "ˋ", GridRole::Tone),
@@ -508,15 +513,15 @@ fn is_tone(t: Option<&GridToken>) -> bool {
 }
 
 impl SchemeParser for GridScheme {
-    /// Every layout key, tone keys included. Digits, space and the
-    /// apostrophe are not keys here: digits pick a candidate and space
-    /// commits one.
+    /// Layout keys plus the apostrophe (分词). Digits pick a candidate.
+    /// Space is the first tone or a commit, decided by the session.
     fn accepts_key(&self, ch: char) -> bool {
-        grid_token(ch).is_some()
+        grid_token(ch).is_some() || ch == APOSTROPHE
     }
 
     fn build_dag(&self, keys: &str) -> SyllableDag {
-        let toks: Vec<Option<&GridToken>> = keys.chars().map(grid_token).collect();
+        let chars: Vec<char> = keys.chars().collect();
+        let toks: Vec<Option<&GridToken>> = chars.iter().copied().map(grid_token).collect();
         let n = toks.len();
         let mut dag: SyllableDag = vec![Vec::new(); n];
         for start in 0..n {
@@ -533,10 +538,11 @@ impl SchemeParser for GridScheme {
                 seq.push(t.key);
                 let end = i + 1;
                 let tone_next = end < n && is_tone(toks[end]);
+                // A tone right after the syllable belongs to it; a 分词 after
+                // that (or instead) is absorbed the way pinyin's apostrophe is.
+                let end = skip_apostrophes(&chars, if tone_next { end + 1 } else { end });
                 let edges = &mut dag[start];
                 for &syllable in self.index.syllables_of(&seq) {
-                    // A tone right after the syllable belongs to it.
-                    let end = if tone_next { end + 1 } else { end };
                     edges.push(SyllableEdge {
                         end,
                         text: syllable.to_string(),
@@ -668,7 +674,7 @@ mod tests {
             }
         }
         let ng = grid_token_by_name("ng").unwrap();
-        assert_eq!(ng.variants, &["er", "-n", "-ng"]);
+        assert_eq!(ng.variants, &["-n", "-ng"]);
         assert_eq!(grid_token_by_name("ng").unwrap().key, '\u{E005}');
         assert_eq!(grid_label('\u{E001}'), "ao");
         assert_eq!(grid_label('!'), "!");
@@ -860,10 +866,29 @@ mod tests {
         let t = SyllableTable::new();
         let p = GridScheme::new(&t);
         assert!(p.accepts_key('\u{E005}') && p.accepts_key('ˇ') && p.accepts_key('b'));
-        for ch in ['1', ' ', '\'', 'i', 'u', ','] {
+        assert!(p.accepts_key(APOSTROPHE), "分词 is a grid key");
+        for ch in ['1', ' ', 'i', 'u', ','] {
             assert!(!p.accepts_key(ch), "{ch:?} is not a grid key");
         }
         assert!(p.segment("").is_empty());
+    }
+
+    #[test]
+    fn apostrophe_breaks_xian_into_xi_an() {
+        let t = SyllableTable::new();
+        let p = GridScheme::new(&t);
+        let xian = k("x y a ng");
+        let xi_an = format!("{}{APOSTROPHE}{}", k("x y"), k("a ng"));
+        let one = p.segment(&xian);
+        assert_eq!(one.edges.len(), 1, "{one:?}");
+        assert_eq!(one.edges[0].text, "xian");
+        let two = p.segment(&xi_an);
+        assert_eq!(
+            two.edges.iter().map(|e| e.text.as_str()).collect::<Vec<_>>(),
+            ["xi", "an"],
+            "{two:?}"
+        );
+        assert_eq!(two.edges[0].end, k("x y").chars().count() + 1, "the break is absorbed");
     }
 
     #[test]
