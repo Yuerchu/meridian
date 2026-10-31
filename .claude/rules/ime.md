@@ -14,8 +14,8 @@ another file here — the index in `CLAUDE.md` says which.
 
 ## The input method
 
-`src-tauri/ime/` is a Windows input method — pinyin and zhuyin, plus the grid
-layout the phone keyboard types — that installs with Meridian and does not
+`src-tauri/ime/` is a Windows input method — pinyin and zhuyin, plus 注拼
+(the phone keyboard's nine-column layout) — that installs with Meridian and does not
 need it running. It is in the shell workspace and not in core because a
 headless server and `meridiand` must not carry one, and it is ten crates
 rather than one because the boundaries are the design.
@@ -87,11 +87,13 @@ rather than one because the boundaries are the design.
   keys are boundaries and the tone value is ignored, since the dictionaries are
   toneless; digits are bopomofo keys there, so candidates are chosen with
   Up/Down and Enter, and Space after a toneless syllable is the first tone.
-- **The grid is fuzzy by design, and its fuzziness is data.** Nine columns of
-  pinyin-lettered keys with zhuyin's structure: `z` `c` `s` each stand for
-  both the dental and the retroflex initial, `ng` is the only nasal key, and
-  tones are optional keys (ˉ ˊ ˇ ˋ ˙) that close a syllable when typed. A
-  syllable's keys come from its bopomofo spelling through two tables,
+- **注拼 (Zhupin) is the nine-column layout**, not T9 九宫格. Pinyin-lettered
+  keys with zhuyin's structure: `z` `c` `s` each stand for both the dental
+  and the retroflex initial, `ng` is the only nasal key, and tones are optional
+  keys (ˊ ˇ ˋ ˙ on the board; 平声 is Space, like 大千注音) that close a
+  syllable when typed. The extra 平声 slot went to a two-column Backspace.
+  A syllable's keys come from its bopomofo spelling
+  through two tables,
   `grid_initials.txt` and `grid_rimes.txt`, and every syllable a key sequence
   can mean is its own edge from the same start to the same end — so `z w ng`
   is zhong, zong, zhun and zun at once, with no change to the dictionary.
@@ -101,11 +103,13 @@ rather than one because the boundaries are the design.
   is one `char` — the multi-letter keys are private-use code points, the tone
   keys are the tone marks — so the key string, `Candidate::consumed` and
   Backspace keep counting characters, and the preedit shows labels, never a
-  private-use character. Space only commits (the first tone has its own key)
-  and digits select. **A long press is the precise key**: `z` offers `z_`/`zh`,
-  `c` and `s` likewise, `ng` offers `er`/`-n`/`-ng`, each spelling exactly one
-  of what the tap covers (which also separates dun/dong and jun/jiong, merged
-  as a side effect of the single nasal key). `GridToken::variants` is the
+  private-use character. Space after a complete syllable with no tone is the
+  first tone; a second Space commits. Digits select. **A long press is the
+  precise key**: `z` offers `z_`/`zh`, `c` and `s` likewise, `ng` offers
+  `-n`/`-ng`, each spelling exactly one of what the tap covers (which also
+  separates dun/dong and jun/jiong, merged as a side effect of the single
+  nasal key). `er` has its own key, so it is not a variant of `ng`.
+  `GridToken::variants` is the
   menu, so the keyboard reads it rather than keeping its own list. A precise
   key is only precise if its *unfinished* edges are too: they are looked up
   by prefix, and `z` as a prefix is also every `zh…`, so `cover` splits a

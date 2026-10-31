@@ -122,8 +122,8 @@ impl SchemeParser for PinyinScheme<'_> {
 }
 
 /// Index past any apostrophes at `pos`, so an edge ending before a boundary
-/// absorbs it.
-fn skip_apostrophes(chars: &[char], mut pos: usize) -> usize {
+/// absorbs it. Shared with the grid scheme, which treats this mark the same way.
+pub(crate) fn skip_apostrophes(chars: &[char], mut pos: usize) -> usize {
     while pos < chars.len() && chars[pos] == APOSTROPHE {
         pos += 1;
     }

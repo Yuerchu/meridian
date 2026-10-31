@@ -26,8 +26,8 @@ use std::sync::Arc;
 
 use meridian_ime_engine::learn::Muted;
 use meridian_ime_engine::{
-    Candidate, CandidateSource, Engine, GridRole, InputScheme, Learner, Prediction, PredictionSource, Query,
-    QueryContext, SpanCache, grid_token,
+    Candidate, CandidateSource, Engine, GRID_FIRST_TONE, GridRole, InputScheme, Learner, Prediction, PredictionSource,
+    Query, QueryContext, SpanCache, grid_token,
 };
 use meridian_ime_proto::{CandidateItem, Frame, KeyEvent, Mode, PreeditKind, PreeditSegment};
 
@@ -37,6 +37,12 @@ use crate::chain::{
 };
 use crate::keys::*;
 use crate::punct::PunctState;
+
+/// The last key already ended the syllable: a tone, zhuyin's space-as-tone,
+/// or 分词.
+fn syllable_already_closed(ch: char) -> bool {
+    matches!(ch, '3' | '4' | '6' | '7' | ' ' | '\'') || grid_token(ch).is_some_and(|t| t.role == GridRole::Tone)
+}
 
 /// Shown in the frame while the person types with nothing to look things up in.
 pub const NO_DICTIONARY_NOTICE: &str = "尚未导入词库：在 Meridian 设置里导入一本 Rime 词库后即可打字";
@@ -558,11 +564,18 @@ impl Session {
                 InputScheme::Zhuyin | InputScheme::Grid => self.commit_highlighted_or_raw(engine, learner),
             },
             VK_SPACE => match self.config.scheme {
-                // Grid has a first-tone key of its own, so Space only commits.
-                InputScheme::Pinyin | InputScheme::Grid => self.commit_highlighted_or_raw(engine, learner),
-                InputScheme::Zhuyin => {
+                InputScheme::Pinyin => self.commit_highlighted_or_raw(engine, learner),
+                // Zhuyin and 注拼 share Space with the first tone: after a
+                // complete syllable with no tone yet it is ˉ, otherwise it
+                // commits.
+                InputScheme::Zhuyin | InputScheme::Grid => {
                     if self.space_is_tone() {
-                        self.push_key(engine, learner, ' ')
+                        let ch = if self.config.scheme == InputScheme::Grid {
+                            GRID_FIRST_TONE
+                        } else {
+                            ' '
+                        };
+                        self.push_key(engine, learner, ch)
                     } else {
                         self.commit_highlighted_or_raw(engine, learner)
                     }
@@ -766,14 +779,14 @@ impl Session {
         self.highlight = 0;
     }
 
-    /// In zhuyin, Space after a syllable with no tone yet is the first tone.
+    /// Space after a complete syllable with no tone yet is the first tone
+    /// (zhuyin and 注拼). A 分词 apostrophe already closed the syllable.
     fn space_is_tone(&self) -> bool {
         if self.keys.is_empty() {
             return false;
         }
         let last = self.keys.chars().last().unwrap_or(' ');
-        let last_is_tone = matches!(last, '3' | '4' | '6' | '7' | ' ');
-        if last_is_tone {
+        if syllable_already_closed(last) {
             return false;
         }
         self.query

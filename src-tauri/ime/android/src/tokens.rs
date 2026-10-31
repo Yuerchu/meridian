@@ -18,7 +18,7 @@ fn role_name(role: GridRole) -> &'static str {
 }
 
 /// `[{"key": "", "name": "ng", "label": "ng", "role": "nasal",
-/// "variants": ["er", "-n", "-ng"]}, …]`, in table order. `variants` are
+/// "variants": ["-n", "-ng"]}, …]`, in table order. `variants` are
 /// names of other entries in the same list.
 pub fn grid_tokens_json() -> String {
     let tokens: Vec<serde_json::Value> = GRID_TOKENS
@@ -55,7 +55,7 @@ mod tests {
         let ng = list.iter().find(|t| t["name"] == "ng").unwrap();
         assert_eq!(ng["key"], "\u{E005}");
         assert_eq!(ng["role"], "nasal");
-        assert_eq!(ng["variants"], serde_json::json!(["er", "-n", "-ng"]));
+        assert_eq!(ng["variants"], serde_json::json!(["-n", "-ng"]));
     }
 
     #[test]

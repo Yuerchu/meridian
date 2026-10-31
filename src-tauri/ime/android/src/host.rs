@@ -489,7 +489,8 @@ mod tests {
         let out = typed(&mut host, &meridian_ime_engine::grid_keys("z w ng"));
         let texts: Vec<&str> = out.frame.candidates.iter().map(|c| c.text.as_str()).collect();
         assert!(texts.contains(&"中") && texts.contains(&"总"), "{texts:?}");
-        // Space only commits in the grid.
+        // Space is 平声 on a complete syllable; a second space commits.
+        assert!(host.handle_key(printable(' ')).commit.is_none());
         assert_eq!(host.handle_key(printable(' ')).commit.as_deref(), Some("中"));
         host.set_scheme(None);
         assert_eq!(host.scheme(), InputScheme::Pinyin);
