@@ -2394,7 +2394,7 @@ const RAW_TABLES: RawTable[] = [
     ],
     rules: [
       '<b>不在 <code>PreferenceKey</code> 的内部键一律无法经通用 IPC 读写</b>：包括 <code>remote.*</code> / <code>hooks.*</code> / <code>onebot.*</code> / <code>acp.*</code>。',
-      '<code>autoreview.*</code> 与 <code>sandbox.enabled</code> 为本机设置页保留类型化 key，但远程 guard 仍拒绝：前者按取值授予审批能力，后者决定命令是否能写出项目；都必须在实际执行它们的主机上修改。',
+      '<code>autoreview.*</code>、<code>sandbox.enabled</code> 与 <code>emoji.embedder</code> 为本机设置页保留类型化 key，但远程 guard 仍拒绝：前两者按取值授予审批或写出能力，后者是这台机器上的绝对路径；都必须在实际执行它们的主机上修改。',
       '常见键：<code>ui.theme</code>、<code>logging.level</code>（文件日志级别，故意不受 RUST_LOG 影响）、<code>voice.filter_level</code>、<code>sandbox.enabled</code>、<code>android.manage_storage_enabled</code>、<code>android.saf_roots</code>、<code>hooks.plan_review.{model,assistant_id,max_rounds,timeout_secs}</code>、<code>autoreview.{enabled,model,escalate,environment,allow_rules,deny_rules}</code>、<code>acp.{command,args}</code> 与 <code>acp.cwd.&lt;conversation_id&gt;</code>。',
       '密钥（API key）<b>不</b>存这里，走 keyring（service「meridian」）/ secrets 后端。',
     ],

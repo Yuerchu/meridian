@@ -18,6 +18,8 @@ vi.mock('@/api', () => ({
     deleteEmojiPack: vi.fn(),
     createEmojiPack: vi.fn(),
     importEmojis: vi.fn(),
+    getPreference: vi.fn(),
+    setPreference: vi.fn(),
   },
 }))
 
@@ -76,6 +78,8 @@ describe('EmojiSettings', () => {
     mockApi.confirmStickerSemantics.mockImplementation(({ id, name, tags }) =>
       Promise.resolve(makeEmoji({ id, name, tags, semantic_status: 'confirmed' })),
     )
+    mockApi.getPreference.mockResolvedValue({ key: 'emoji.embedder', value: null })
+    mockApi.setPreference.mockResolvedValue(null)
   })
 
   /**
