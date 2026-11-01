@@ -14,6 +14,7 @@ import { usePointerPlay, useStickerPlayback } from '@/components/chat/sticker-pl
 import { StickerThumb } from '@/components/chat/sticker-thumb'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
+import { EmojiEmbedderSettings } from './emoji-embedder-settings'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
@@ -707,6 +708,8 @@ export function EmojiSettings() {
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
+
+      <EmojiEmbedderSettings />
 
       <div data-slot="pack-create" className="flex gap-2">
         <Input

@@ -440,6 +440,7 @@ export type PreferenceKey =
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
   | 'codex.client_version'
+  | 'emoji.embedder'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -487,6 +488,11 @@ export interface PreferenceInfoValueByKey {
    * reason the override could not be used.
    */
   'codex.client_version': string | null
+  /**
+   * Absolute `.litertlm` path for on-device sticker ranking, or null to keep
+   * the lexical name/tag pick. A path on this machine.
+   */
+  'emoji.embedder': string | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -511,6 +517,7 @@ export interface PreferenceUpdateValueByKey {
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null
+  'emoji.embedder': string | null
 }
 
 export type PreferenceUpdateRequest = {

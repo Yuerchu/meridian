@@ -333,6 +333,7 @@ mod tests {
             // Where every later summary, and so the whole transcript, is sent.
             "auxiliary.model",
             "sandbox.enabled",
+            "emoji.embedder",
         ] {
             let args = serde_json::json!({ "request": { "key": key } });
             assert!(

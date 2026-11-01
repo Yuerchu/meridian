@@ -312,6 +312,18 @@ another file here — the index in `CLAUDE.md` says which.
   the system prompt or the tool description — confirm/delete would bust the
   prefix cache.
 
+  **An optional on-device embedder sits on top of that floor.** `emoji.embedder`
+  is an absolute `.litertlm` path (EmbeddingGemma 2). Exact name still wins;
+  otherwise cosine among items that have a vector can pick a mood the tags never
+  named. A 740M bundle turns the vision backend on: each confirmed sticker's
+  file is one document (GIF/APNG as a PNG contact sheet, stills as the file
+  bytes) plus its name/tags in the same `compute_embedding` call, so inventory
+  without a useful name still ranks. A missing file, a failed run, or an empty
+  preference leaves the lexical pick unchanged. The engine and per-sticker
+  vectors live in a process `OnceLock`, keyed by id plus name/tags/image
+  bytes. The preference is `is_server_owned` because it is a path on this
+  machine.
+
 - **`qq_stay_silent` drops this round's final QQ text.** Stickers, voice, poke
   and interim text already sent stay. It is not approval-gated. The flag lives
   on `QqToolExecutor` as an `AtomicBool`, so a `TurnEnd::Continue` round gets a

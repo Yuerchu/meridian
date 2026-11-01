@@ -976,6 +976,7 @@ for (const [interfaceName, expected] of [
       'approvals.ttl_minutes': /^number \| null$/,
       'sub_agent.explore.model': /^PreferenceModelSelectionInfoResponse \| null$/,
       'sub_agent.agent.model': /^PreferenceModelSelectionInfoResponse \| null$/,
+      'emoji.embedder': /^string \| null$/,
     },
   ],
   [
@@ -996,6 +997,7 @@ for (const [interfaceName, expected] of [
       'approvals.ttl_minutes': /^number$/,
       'sub_agent.explore.model': /^PreferenceModelSelectionRequest \| null$/,
       'sub_agent.agent.model': /^PreferenceModelSelectionRequest \| null$/,
+      'emoji.embedder': /^string \| null$/,
     },
   ],
 ]) {
@@ -1014,6 +1016,7 @@ for (const [variant, payload] of [
   ['AutoReviewModel', 'PreferenceModelSelectionRequest'],
   ['SubAgentExploreModel', 'PreferenceModelSelectionRequest'],
   ['SubAgentAgentModel', 'PreferenceModelSelectionRequest'],
+  ['EmojiEmbedder', 'String'],
 ]) {
   if (
     !new RegExp(`${variant}\\s*\\{\\s*value:\\s*RequiredNullable<${payload}>\\s*,?\\s*\\}`).test(
