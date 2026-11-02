@@ -13,13 +13,15 @@ vi.mock('@/api', () => ({
     listEmojis: vi.fn(),
     getEmojiFileUrl: vi.fn(),
     confirmStickerSemantics: vi.fn(),
-    suggestStickerSemantics: vi.fn(),
     deleteEmoji: vi.fn(),
     deleteEmojiPack: vi.fn(),
     createEmojiPack: vi.fn(),
     importEmojis: vi.fn(),
     getPreference: vi.fn(),
     setPreference: vi.fn(),
+    listProviders: vi.fn(),
+    fetchProviderModels: vi.fn(),
+    suggestStickerSemantics: vi.fn(),
   },
 }))
 
@@ -78,8 +80,11 @@ describe('EmojiSettings', () => {
     mockApi.confirmStickerSemantics.mockImplementation(({ id, name, tags }) =>
       Promise.resolve(makeEmoji({ id, name, tags, semantic_status: 'confirmed' })),
     )
-    mockApi.getPreference.mockResolvedValue({ key: 'emoji.embedder', value: null })
+    mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
     mockApi.setPreference.mockResolvedValue(null)
+    mockApi.listProviders.mockResolvedValue([])
+    mockApi.fetchProviderModels.mockResolvedValue([])
+    mockApi.suggestStickerSemantics.mockImplementation(async (id) => makeEmoji({ id, semantic_status: 'suggested' }))
   })
 
   /**
@@ -266,5 +271,24 @@ describe('EmojiSettings', () => {
       await user.click(screen.getByRole('checkbox', { name: /select all/i }))
       expect(await screen.findByText(`${STICKERS_PER_PAGE} selected`)).toBeInTheDocument()
     })
+  })
+
+  it('generates suggestions for unconfirmed selected stickers that have a file', async () => {
+    const user = userEvent.setup()
+    mockApi.listEmojis.mockResolvedValue([
+      makeEmoji({ id: 'pending', name: 'pending-a', semantic_status: 'pending', file_name: 'a.gif' }),
+      makeEmoji({ id: 'named', name: '点赞', semantic_status: 'confirmed', file_name: 'b.gif' }),
+      makeEmoji({ id: 'nofile', name: 'pending-c', semantic_status: 'pending', file_name: '' }),
+    ])
+    render(<EmojiSettings />)
+    await openPack(user)
+
+    await user.click(screen.getByRole('checkbox', { name: /select all/i }))
+    await user.click(await screen.findByRole('button', { name: 'Generate suggestions' }))
+
+    await waitFor(() => {
+      expect(mockApi.suggestStickerSemantics).toHaveBeenCalledTimes(1)
+    })
+    expect(mockApi.suggestStickerSemantics).toHaveBeenCalledWith('pending')
   })
 })

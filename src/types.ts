@@ -441,6 +441,7 @@ export type PreferenceKey =
   | 'sub_agent.agent.model'
   | 'codex.client_version'
   | 'emoji.embedder'
+  | 'emoji.suggest.model'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -493,6 +494,11 @@ export interface PreferenceInfoValueByKey {
    * the lexical name/tag pick. A path on this machine.
    */
   'emoji.embedder': string | null
+  /**
+   * Model `suggest_sticker_semantics` uses to look at a sticker. Null follows
+   * the default assistant.
+   */
+  'emoji.suggest.model': PreferenceModelSelectionInfoResponse | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -518,6 +524,7 @@ export interface PreferenceUpdateValueByKey {
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null
   'emoji.embedder': string | null
+  'emoji.suggest.model': PreferenceModelSelectionRequest | null
 }
 
 export type PreferenceUpdateRequest = {

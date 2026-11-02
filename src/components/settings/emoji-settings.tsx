@@ -15,6 +15,7 @@ import { StickerThumb } from '@/components/chat/sticker-thumb'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { EmojiEmbedderSettings } from './emoji-embedder-settings'
+import { EmojiSuggestSettings } from './emoji-suggest-settings'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
@@ -578,6 +579,8 @@ export function EmojiSettings() {
   // One selection for the page, not one per pack: the bulk bar is fixed to the
   // viewport, and two packs holding selections would stack two of them there.
   const [selection, setSelection] = useState<{ packId: string; keys: DataGridSelection } | null>(null)
+  const [bulkSuggest, setBulkSuggest] = useState<{ done: number; total: number } | null>(null)
+  const [suggestError, setSuggestError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
@@ -609,6 +612,15 @@ export function EmojiSettings() {
     if (selection.keys === 'all') return []
     return [...selection.keys].map(String)
   }, [selection, details])
+
+  const suggestableSelected = useMemo(() => {
+    if (!selection) return []
+    const detail = details.find((d) => d.pack.id === selection.packId)
+    if (!detail) return []
+    return detail.emojis.filter(
+      (emoji) => selectedIds.includes(emoji.id) && emoji.semantic_status !== 'confirmed' && emoji.file_name,
+    )
+  }, [selection, details, selectedIds])
 
   const handleCreate = useCallback(async () => {
     if (!newPackName.trim()) return
@@ -694,12 +706,34 @@ export function EmojiSettings() {
 
   const handleSuggest = useCallback(
     async (id: string) => {
+      setSuggestError(null)
       const updated = await api.suggestStickerSemantics(id)
       await refresh()
       return updated
     },
     [refresh],
   )
+
+  const handleSuggestSelected = useCallback(async () => {
+    if (suggestableSelected.length === 0 || bulkSuggest) return
+    setSuggestError(null)
+    const ids = suggestableSelected.map((emoji) => emoji.id)
+    setBulkSuggest({ done: 0, total: ids.length })
+    const failures: string[] = []
+    for (const [index, id] of ids.entries()) {
+      try {
+        await api.suggestStickerSemantics(id)
+      } catch (reason) {
+        failures.push(String(reason))
+      }
+      setBulkSuggest({ done: index + 1, total: ids.length })
+    }
+    await refresh()
+    setBulkSuggest(null)
+    if (failures.length > 0) {
+      setSuggestError(t('settings.emoji.suggestSelectedFailed', { count: failures.length, error: failures[0] }))
+    }
+  }, [suggestableSelected, bulkSuggest, refresh, t])
 
   if (loading) {
     return <SettingsSkeleton />
@@ -709,6 +743,7 @@ export function EmojiSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
 
+      <EmojiSuggestSettings />
       <EmojiEmbedderSettings />
 
       <div data-slot="pack-create" className="flex gap-2">
@@ -768,7 +803,18 @@ export function EmojiSettings() {
             </span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button leadingIcon={Bin} variant="danger" onPress={handleDeleteSelected}>
+            <Button
+              leadingIcon={Sparkles}
+              variant="secondary"
+              isPending={bulkSuggest !== null}
+              isDisabled={suggestableSelected.length === 0 || bulkSuggest !== null}
+              onPress={() => void handleSuggestSelected()}
+            >
+              {bulkSuggest
+                ? t('settings.emoji.suggestSelectedProgress', bulkSuggest)
+                : t('settings.emoji.suggestSelected')}
+            </Button>
+            <Button leadingIcon={Bin} variant="danger" onPress={handleDeleteSelected} isDisabled={bulkSuggest !== null}>
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>
@@ -787,6 +833,11 @@ export function EmojiSettings() {
           </ActionBar.Suffix>
         </ActionBar>,
         document.body,
+      )}
+      {suggestError && (
+        <p data-slot="emoji-suggest-batch-error" role="alert" className="text-caption-1-regular text-status-danger">
+          {suggestError}
+        </p>
       )}
       {confirmDialog}
     </SettingsPane>

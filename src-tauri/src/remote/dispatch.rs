@@ -334,6 +334,7 @@ mod tests {
             "auxiliary.model",
             "sandbox.enabled",
             "emoji.embedder",
+            "emoji.suggest.model",
         ] {
             let args = serde_json::json!({ "request": { "key": key } });
             assert!(

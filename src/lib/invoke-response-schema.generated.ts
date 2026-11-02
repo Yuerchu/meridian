@@ -11789,6 +11789,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "ref",
       "id": 2
     },
+    "emoji.suggest.model": {
+      "kind": "ref",
+      "id": 3
+    },
     "sandbox.enabled": {
       "kind": "ref",
       "id": 5
