@@ -956,5 +956,6 @@ export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: Pre
     'sub_agent.agent.model': null,
     'codex.client_version': null,
     'emoji.embedder': null,
+    'emoji.suggest.model': null,
   }
 }

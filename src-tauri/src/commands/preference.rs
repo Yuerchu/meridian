@@ -80,6 +80,11 @@ pub enum PreferenceKey {
     /// set it.
     #[serde(rename = "emoji.embedder")]
     EmojiEmbedder,
+    /// Model `suggest_sticker_semantics` uses to look at a sticker. Empty is
+    /// the default assistant. Images go to this provider, so it is set on
+    /// the host.
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel,
 }
 
 impl PreferenceKey {
@@ -103,6 +108,7 @@ impl PreferenceKey {
             Self::SubAgentAgentModel => "sub_agent.agent.model",
             Self::CodexClientVersion => "codex.client_version",
             Self::EmojiEmbedder => "emoji.embedder",
+            Self::EmojiSuggestModel => "emoji.suggest.model",
         }
     }
 
@@ -125,6 +131,8 @@ impl PreferenceKey {
                 // An absolute path on this host; a remote client cannot name
                 // a file the embedder would open.
                 | Self::EmojiEmbedder
+                // Sticker images go to this provider.
+                | Self::EmojiSuggestModel
         )
     }
 }
@@ -251,6 +259,10 @@ pub enum PreferenceUpdateRequest {
     CodexClientVersion { value: RequiredNullable<String> },
     #[serde(rename = "emoji.embedder")]
     EmojiEmbedder { value: RequiredNullable<String> },
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel {
+        value: RequiredNullable<PreferenceModelSelectionRequest>,
+    },
 }
 
 /// Typed current value. `null` means the row is absent; it is not a second
@@ -294,6 +306,8 @@ pub enum PreferenceInfoResponse {
     CodexClientVersion(Option<String>),
     #[serde(rename = "emoji.embedder")]
     EmojiEmbedder(Option<String>),
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel(Option<PreferenceModelSelectionInfoResponse>),
 }
 
 fn optional_bool(key: PreferenceKey, raw: Option<String>) -> Result<Option<bool>, String> {
@@ -438,6 +452,7 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         PreferenceKey::EmojiEmbedder => {
             PreferenceInfoResponse::EmojiEmbedder(raw.map(validate_embedder_path).transpose()?)
         }
+        PreferenceKey::EmojiSuggestModel => PreferenceInfoResponse::EmojiSuggestModel(parse_model_selection(key, raw)?),
     })
 }
 
@@ -504,6 +519,10 @@ impl PreferenceUpdateRequest {
             Self::EmojiEmbedder { value } => (
                 PreferenceKey::EmojiEmbedder,
                 value.0.map(validate_embedder_path).transpose()?,
+            ),
+            Self::EmojiSuggestModel { value } => (
+                PreferenceKey::EmojiSuggestModel,
+                encode_model_selection(PreferenceKey::EmojiSuggestModel, value.0)?,
             ),
         })
     }
@@ -585,6 +604,7 @@ mod tests {
             "sub_agent.explore.model",
             "sub_agent.agent.model",
             "emoji.embedder",
+            "emoji.suggest.model",
         ] {
             assert!(
                 serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({ "key": key })).is_err(),

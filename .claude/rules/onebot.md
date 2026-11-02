@@ -324,6 +324,15 @@ another file here — the index in `CLAUDE.md` says which.
   bytes. The preference is `is_server_owned` because it is a path on this
   machine.
 
+- **Sticker "generate suggestion" has its own model.** `emoji.suggest.model` is
+  a `provider:model` pair. Empty follows the default assistant, which is what
+  `suggest_sticker_semantics` did before. Set but unusable is an error, never a
+  quiet return to the default assistant — the point is not to spend the chat
+  model on looking at a GIF. The model must accept images. The preference is
+  `is_server_owned` because the sticker files go to that provider. The bulk
+  action on the emoji page calls the same command once per unconfirmed row
+  that has a file.
+
 - **`qq_stay_silent` drops this round's final QQ text.** Stickers, voice, poke
   and interim text already sent stay. It is not approval-gated. The flag lives
   on `QqToolExecutor` as an `AtomicBool`, so a `TurnEnd::Continue` round gets a
