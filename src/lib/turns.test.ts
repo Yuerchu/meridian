@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { buildTurns, formatDuration, isBlockingCall, markQueued, questionPositionOf } from '@/lib/turns'
+import {
+  buildTurns,
+  formatDuration,
+  formatTps,
+  isBlockingCall,
+  lastRoundTiming,
+  markQueued,
+  questionPositionOf,
+  tokensPerSecond,
+} from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
@@ -36,6 +45,8 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
     tool_diffs: null,
     context_items: [],
     tool_media: [],
+    ttft_ms: null,
+    generation_ms: null,
     ...over,
   }
 }
@@ -355,6 +366,38 @@ describe('formatDuration', () => {
     expect(formatDuration(120_000)).toBe('2m')
     expect(formatDuration(3_720_000)).toBe('1h 2m')
     expect(formatDuration(3_600_000)).toBe('1h')
+  })
+})
+
+describe('lastRoundTiming', () => {
+  it('reads TTFT and generation from the last assistant row', () => {
+    const u = msg('user', { content: 'q' })
+    const a1 = msg('assistant', { content: 'step', ttft_ms: 80, generation_ms: 900, output_tokens: 12 })
+    const a2 = msg('assistant', { content: 'done', ttft_ms: 250, generation_ms: 2000, output_tokens: 100 })
+    expect(lastRoundTiming(buildTurns([u, a1, a2])[0])).toEqual({
+      ttftMs: 250,
+      generationMs: 2000,
+      outputTokens: 100,
+    })
+  })
+})
+
+describe('tokensPerSecond', () => {
+  it('is null when generation lasted under a millisecond', () => {
+    expect(tokensPerSecond(40, 0)).toBeNull()
+    expect(tokensPerSecond(40, null)).toBeNull()
+    expect(tokensPerSecond(null, 1000)).toBeNull()
+  })
+
+  it('is output tokens over the generation stretch', () => {
+    expect(tokensPerSecond(100, 2000)).toBe(50)
+  })
+})
+
+describe('formatTps', () => {
+  it('keeps one decimal under ten and rounds above', () => {
+    expect(formatTps(4.26)).toBe('4.3/s')
+    expect(formatTps(50.4)).toBe('50/s')
   })
 })
 

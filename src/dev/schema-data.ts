@@ -373,6 +373,20 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         '上游响应报告的实际模型名；与 <code>model_id</code>（请求模型）对照，用来发现代理或负载均衡器的静默换模。NULL = 上游未提供，或是迁移 60 之前写入的旧行',
       ],
+      [
+        'ttft_ms',
+        'INTEGER',
+        ['NULL'],
+        'NULL',
+        '从请求发出到第一个模型 token（可见正文、thinking，或 tool-call 开始）的毫秒数。NULL = 尚未记录：旧行、没有产出 token 的一轮、或托管会话。0 = 同一毫秒内到达（sea m0010）',
+      ],
+      [
+        'generation_ms',
+        'INTEGER',
+        ['NULL'],
+        'NULL',
+        '从第一个 token 到流结束的毫秒数。生成速度 = <code>output_tokens / (generation_ms / 1000)</code>，不另存。NULL 与 0 的语义同 <code>ttft_ms</code>（sea m0010）',
+      ],
     ],
     rels: [
       '自引用两次：<code>parent_id</code>（逻辑边，无外键）与 <code>compact_anchor_id</code>（真外键，只有一层深，不会链式递归）。',
