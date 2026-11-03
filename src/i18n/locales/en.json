@@ -44,6 +44,8 @@
   "chat.turnInfo.section.tokens": "Tokens",
   "chat.turnInfo.section.cost": "Cost",
   "chat.turnInfo.duration": "Duration",
+  "chat.turnInfo.ttft": "Time to first token",
+  "chat.turnInfo.tps": "Tokens per second",
   "chat.turnInfo.tokens.input": "Input",
   "chat.turnInfo.tokens.output": "Output",
   "chat.turnInfo.tokens.cacheRead": "Cache read",

@@ -2820,6 +2820,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "number"
           }
         },
+        "generation_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
         "id": {
           "optional": false,
           "schema": {
@@ -2948,6 +2955,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "schema": {
             "kind": "ref",
             "id": 93
+          }
+        },
+        "ttft_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
           }
         },
         "turn_id": {

@@ -2041,6 +2041,12 @@ export interface MessageInfoResponse {
   /** Pictures and other files a tool returned beside `content`, on a tool
    *  row; empty everywhere else. `content` is then only the text part. */
   tool_media: ToolMediaResponse[]
+  /** Milliseconds from the request going out to the first model token on this
+   *  row (visible text, thinking, or a tool-call start). Null until a native
+   *  stream records it. */
+  ttft_ms: number | null
+  /** Milliseconds from that first token to the stream ending. */
+  generation_ms: number | null
 }
 
 /** A transcript row after the front end has derived its renderable blocks. */

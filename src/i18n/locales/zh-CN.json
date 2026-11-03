@@ -44,6 +44,8 @@
   "chat.turnInfo.section.tokens": "Token",
   "chat.turnInfo.section.cost": "费用",
   "chat.turnInfo.duration": "耗时",
+  "chat.turnInfo.ttft": "首 token",
+  "chat.turnInfo.tps": "生成速度",
   "chat.turnInfo.tokens.input": "输入",
   "chat.turnInfo.tokens.output": "输出",
   "chat.turnInfo.tokens.cacheRead": "缓存读取",

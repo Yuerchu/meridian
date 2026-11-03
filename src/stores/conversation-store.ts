@@ -256,6 +256,8 @@ const MESSAGE_RESPONSE_KEYS = [
   'tool_diffs',
   'context_items',
   'tool_media',
+  'ttft_ms',
+  'generation_ms',
 ] as const
 
 function requireNullableString(value: unknown, label: string): void {
@@ -368,7 +370,14 @@ function validateSnapshotContracts(
     ] as const) {
       requireNullableString(message[field], `message.${field}`)
     }
-    for (const field of ['input_tokens', 'output_tokens', 'cache_read_tokens', 'cache_write_tokens'] as const) {
+    for (const field of [
+      'input_tokens',
+      'output_tokens',
+      'cache_read_tokens',
+      'cache_write_tokens',
+      'ttft_ms',
+      'generation_ms',
+    ] as const) {
       requireNullableNonNegativeInteger(message[field], `message.${field}`)
     }
     if (!Number.isInteger(message.sort_order) || !Number.isFinite(message.created_at)) {
@@ -1851,6 +1860,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           tool_diffs: null,
           context_items: [],
           tool_media: [],
+          ttft_ms: null,
+          generation_ms: null,
         })
       }),
     )
@@ -1901,6 +1912,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           tool_diffs: null,
           context_items: [],
           tool_media: [],
+          ttft_ms: null,
+          generation_ms: null,
         })
       }),
     )
