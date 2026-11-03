@@ -70,8 +70,8 @@ built from forked templates.** `tauri.ime.conf.json` is the whole switch:
 `pnpm tauri build --config src-tauri/tauri.ime.conf.json`, which the
 release workflow passes on Windows, points `bundle.windows.nsis.template`
 at `src-tauri/nsis/installer.nsi` and `bundle.windows.wix.template` at
-`src-tauri/wix/main.wxs` — each a verbatim copy of tauri-bundler 2.9.4's
-template (the bundler inside `@tauri-apps/cli` 2.11.4) with every change
+`src-tauri/wix/main.wxs` — each a verbatim copy of tauri-bundler 2.10.4's
+template (the bundler inside `@tauri-apps/cli` 2.12.4) with every change
 marked `Meridian:`, and a header saying to re-diff against upstream on a
 Tauri upgrade. A plain `pnpm tauri build` uses the stock templates and
 produces the old per-user installer without the input method, which is

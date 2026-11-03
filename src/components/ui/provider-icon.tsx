@@ -6,11 +6,11 @@ import { ModelIcon } from './model-icon'
  * A vendor's logo, loaded on demand.
  *
  * Same arrangement as {@link ModelIcon} and for the same reason: the icon set
- * is ~1.9 MB because its entry point pulls in a component for every mark it
- * knows, and both matchers scan all of them, so there is no subset to import
- * instead.
+ * is ~1.9 MB because `ProviderIcon` matches against every mark it knows, so
+ * there is no smaller subset. The feature module, not the package entry —
+ * see `model-icon.tsx`.
  */
-const LazyProviderIcon = lazy(() => import('@lobehub/icons').then((m) => ({ default: m.ProviderIcon })))
+const LazyProviderIcon = lazy(() => import('@lobehub/icons/es/features/ProviderIcon'))
 
 export function ProviderIcon({
   provider,
