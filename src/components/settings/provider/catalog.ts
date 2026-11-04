@@ -66,6 +66,29 @@ export function entryByType(
 }
 
 /**
+ * Options for the type select: one row per adapter family, labelled with the
+ * first catalog name for that family.
+ *
+ * Mapping every catalog *vendor* would repeat `openai` for Moonshot and
+ * SiliconFlow. React Aria 1.22 throws on a duplicate collection key, and even
+ * before that the extra rows were the same `provider_type` written twice.
+ */
+export function typeSelectOptions(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  fallbackType: ProviderType,
+): { value: ProviderType; label: string }[] {
+  if (catalog.length === 0) return [{ value: fallbackType, label: fallbackType }]
+  const seen = new Set<ProviderType>()
+  const options: { value: ProviderType; label: string }[] = []
+  for (const entry of catalog) {
+    if (seen.has(entry.provider_type)) continue
+    seen.add(entry.provider_type)
+    options.push({ value: entry.provider_type, label: entry.name })
+  }
+  return options
+}
+
+/**
  * The vendor a row names, and only that.
  *
  * `catalog_id` is the answer, but only while the type select still agrees with
