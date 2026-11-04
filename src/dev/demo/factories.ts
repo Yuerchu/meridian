@@ -73,6 +73,8 @@ export function message(
     tool_diffs: null,
     context_items: [],
     tool_media: [],
+    ttft_ms: assistant ? 420 : null,
+    generation_ms: assistant ? 8400 : null,
     ...over,
   }
 }

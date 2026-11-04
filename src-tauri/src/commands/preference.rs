@@ -75,6 +75,16 @@ pub enum PreferenceKey {
     /// Which Codex release this install claims to be, under `codex_request_shape`.
     #[serde(rename = "codex.client_version")]
     CodexClientVersion,
+    /// Absolute `.litertlm` path for on-device sticker ranking. Empty is the
+    /// lexical name/tag pick. A path on this machine, so remote callers cannot
+    /// set it.
+    #[serde(rename = "emoji.embedder")]
+    EmojiEmbedder,
+    /// Model `suggest_sticker_semantics` uses to look at a sticker. Empty is
+    /// the default assistant. Images go to this provider, so it is set on
+    /// the host.
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel,
 }
 
 impl PreferenceKey {
@@ -97,6 +107,8 @@ impl PreferenceKey {
             Self::SubAgentExploreModel => "sub_agent.explore.model",
             Self::SubAgentAgentModel => "sub_agent.agent.model",
             Self::CodexClientVersion => "codex.client_version",
+            Self::EmojiEmbedder => "emoji.embedder",
+            Self::EmojiSuggestModel => "emoji.suggest.model",
         }
     }
 
@@ -116,6 +128,11 @@ impl PreferenceKey {
                 // Pointing it at another provider sends every later summary
                 // there — the whole transcript — so it is set on the machine.
                 | Self::AuxiliaryModel
+                // An absolute path on this host; a remote client cannot name
+                // a file the embedder would open.
+                | Self::EmojiEmbedder
+                // Sticker images go to this provider.
+                | Self::EmojiSuggestModel
         )
     }
 }
@@ -240,6 +257,12 @@ pub enum PreferenceUpdateRequest {
     /// the reason it could not be used. `null` clears it back to the default.
     #[serde(rename = "codex.client_version")]
     CodexClientVersion { value: RequiredNullable<String> },
+    #[serde(rename = "emoji.embedder")]
+    EmojiEmbedder { value: RequiredNullable<String> },
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel {
+        value: RequiredNullable<PreferenceModelSelectionRequest>,
+    },
 }
 
 /// Typed current value. `null` means the row is absent; it is not a second
@@ -281,6 +304,10 @@ pub enum PreferenceInfoResponse {
     SubAgentAgentModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "codex.client_version")]
     CodexClientVersion(Option<String>),
+    #[serde(rename = "emoji.embedder")]
+    EmojiEmbedder(Option<String>),
+    #[serde(rename = "emoji.suggest.model")]
+    EmojiSuggestModel(Option<PreferenceModelSelectionInfoResponse>),
 }
 
 fn optional_bool(key: PreferenceKey, raw: Option<String>) -> Result<Option<bool>, String> {
@@ -361,6 +388,21 @@ fn validate_ttl(value: u64) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_embedder_path(value: String) -> Result<String, String> {
+    if value.trim() != value || value.is_empty() {
+        return Err("emoji.embedder must be an absolute .litertlm path without surrounding whitespace".into());
+    }
+    let path = std::path::Path::new(&value);
+    if !path.is_absolute() {
+        return Err("emoji.embedder must be an absolute path".into());
+    }
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    if !ext.eq_ignore_ascii_case("litertlm") {
+        return Err("emoji.embedder must be a .litertlm file".into());
+    }
+    Ok(value)
+}
+
 fn validate_download_url(value: String) -> Result<String, String> {
     if value.trim() != value || value.is_empty() {
         return Err("voice.download_url must be a non-empty URL without surrounding whitespace".into());
@@ -407,6 +449,10 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         // Free text, read back as stored. A value this build has never heard of
         // is exactly what the override is for.
         PreferenceKey::CodexClientVersion => PreferenceInfoResponse::CodexClientVersion(raw),
+        PreferenceKey::EmojiEmbedder => {
+            PreferenceInfoResponse::EmojiEmbedder(raw.map(validate_embedder_path).transpose()?)
+        }
+        PreferenceKey::EmojiSuggestModel => PreferenceInfoResponse::EmojiSuggestModel(parse_model_selection(key, raw)?),
     })
 }
 
@@ -469,6 +515,14 @@ impl PreferenceUpdateRequest {
             Self::CodexClientVersion { value } => (
                 PreferenceKey::CodexClientVersion,
                 value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            ),
+            Self::EmojiEmbedder { value } => (
+                PreferenceKey::EmojiEmbedder,
+                value.0.map(validate_embedder_path).transpose()?,
+            ),
+            Self::EmojiSuggestModel { value } => (
+                PreferenceKey::EmojiSuggestModel,
+                encode_model_selection(PreferenceKey::EmojiSuggestModel, value.0)?,
             ),
         })
     }
@@ -549,6 +603,8 @@ mod tests {
             "auxiliary.model",
             "sub_agent.explore.model",
             "sub_agent.agent.model",
+            "emoji.embedder",
+            "emoji.suggest.model",
         ] {
             assert!(
                 serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({ "key": key })).is_err(),
@@ -623,5 +679,47 @@ mod tests {
         assert!(decode_preference(PreferenceKey::ApprovalsTtlMinutes, Some("030".into())).is_err());
         assert!(decode_preference(PreferenceKey::SubAgentExploreModel, Some(String::new())).is_err());
         assert!(decode_preference(PreferenceKey::VoiceDownloadUrl, Some("not a url".into())).is_err());
+        assert!(decode_preference(PreferenceKey::EmojiEmbedder, Some("embed.litertlm".into())).is_err());
+        assert!(
+            decode_preference(
+                PreferenceKey::EmojiEmbedder,
+                Some(sample_embedder_path().replace(".litertlm", ".onnx"))
+            )
+            .is_err()
+        );
+    }
+
+    fn sample_embedder_path() -> String {
+        if cfg!(windows) {
+            r"C:\models\embed.litertlm".into()
+        } else {
+            "/models/embed.litertlm".into()
+        }
+    }
+
+    #[test]
+    fn an_embedder_path_must_be_absolute_and_litertlm() {
+        let path = sample_embedder_path();
+        let request = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+            "key": "emoji.embedder",
+            "value": path
+        }))
+        .unwrap();
+        assert_eq!(
+            request.into_storage().unwrap(),
+            (PreferenceKey::EmojiEmbedder, Some(path.clone()))
+        );
+        let response = decode_preference(PreferenceKey::EmojiEmbedder, Some(path.clone())).unwrap();
+        assert_eq!(
+            serde_json::to_value(response).unwrap(),
+            serde_json::json!({ "key": "emoji.embedder", "value": path })
+        );
+
+        let clear = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+            "key": "emoji.embedder",
+            "value": null
+        }))
+        .unwrap();
+        assert_eq!(clear.into_storage().unwrap(), (PreferenceKey::EmojiEmbedder, None));
     }
 }

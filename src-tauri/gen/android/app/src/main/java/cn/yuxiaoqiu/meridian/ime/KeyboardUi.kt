@@ -15,12 +15,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,8 +38,13 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -60,7 +69,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
@@ -79,6 +91,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -138,8 +151,6 @@ interface KeyboardActions {
   fun onChoose(index: Int)
   fun onPage(forward: Boolean)
   fun onHide()
-  /** The globe key: the system's list of keyboards. */
-  fun onPicker()
   fun onPanel(panel: Panel?)
   fun onEdit(action: EditAction)
   fun onPasteClip(clip: Clip)
@@ -190,8 +201,7 @@ fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
   KeyAction.Enter -> enterLabel(state.enterAction)
   KeyAction.Shift -> "⇧"
   KeyAction.ToggleMode -> if (state.mode == InputMode.CHINESE) "中" else "英"
-  is KeyAction.ChineseLayout -> if (action.layer == Layer.GRID) "九宫格" else "拼音"
-  KeyAction.Globe -> "🌐"
+  is KeyAction.ChineseLayout -> if (action.layer == Layer.GRID) "注拼" else "拼音"
   is KeyAction.ToLayer -> "123"
   KeyAction.BackToLetters -> "ABC"
   KeyAction.Spacer -> ""
@@ -199,14 +209,12 @@ fun labelOf(action: KeyAction, state: KeyboardState): String = when (action) {
 
 /**
  * The keys drawn as keyline two-tone icons (res/drawable/ime_*.xml, the
- * app's icon set) rather than as text: a glyph like ⌫ or an emoji globe comes
- * out in whatever font the device has. Enter keeps a word when the field has
- * an action for it.
+ * app's icon set) rather than as text: a glyph like ⌫ comes out in whatever
+ * font the device has. Enter keeps a word when the field has an action for it.
  */
 private fun iconOf(action: KeyAction, state: KeyboardState): Int? = when (action) {
   KeyAction.Backspace -> R.drawable.ime_backspace
   KeyAction.Shift -> if (state.capsLock) R.drawable.ime_shift_lock else R.drawable.ime_shift
-  KeyAction.Globe -> R.drawable.ime_globe
   KeyAction.Enter -> if (state.enterAction == null) R.drawable.ime_enter else null
   else -> null
 }
@@ -290,9 +298,16 @@ fun KeyboardScreen(state: KeyboardState, actions: KeyboardActions) {
           val layerIn = rememberAppear(state.layer)
           key(state.layer) {
             Column(Modifier.fillMaxWidth().popIn(layerIn, TransformOrigin.Center, from = 1f)) {
-              for (row in layerRows) {
+              if (state.layer == Layer.NUMBER) {
+                NumberPad(rowHeight, state, actions, viewWidth)
                 Row(Modifier.fillMaxWidth().height(rowHeight)) {
-                  for (spec in row) Key(spec, state, actions, viewWidth)
+                  for (spec in bottomRow(Layer.NUMBER)) Key(spec, state, actions, viewWidth)
+                }
+              } else {
+                for (row in layerRows) {
+                  Row(Modifier.fillMaxWidth().height(rowHeight)) {
+                    for (spec in row) Key(spec, state, actions, viewWidth)
+                  }
                 }
               }
             }
@@ -436,15 +451,100 @@ internal fun BarButton(icon: Int, description: String, active: Boolean = false, 
   }
 }
 
+/**
+ * Left: a scrolling column of numeric companions. Middle: the dial pad.
+ * Right: Backspace over Enter. Four rows, matching 注拼's letter block.
+ */
+@Composable
+private fun NumberPad(rowHeight: Dp, state: KeyboardState, actions: KeyboardActions, viewWidth: Float) {
+  Row(Modifier.fillMaxWidth().height(rowHeight * NUMBER_DIAL_ROWS.size)) {
+    NumberSymbolColumn(rowHeight, state, actions, viewWidth)
+    Column(Modifier.weight(3f).fillMaxHeight()) {
+      for (row in NUMBER_DIAL_ROWS) {
+        Row(Modifier.fillMaxWidth().weight(1f)) {
+          for (spec in row) Key(spec, state, actions, viewWidth)
+        }
+      }
+    }
+    Column(Modifier.weight(1f).fillMaxHeight()) {
+      KeyBody(Modifier.weight(1f).fillMaxWidth(), NUMBER_BACKSPACE, state, actions, viewWidth)
+      KeyBody(Modifier.weight(1f).fillMaxWidth(), NUMBER_ENTER, state, actions, viewWidth)
+    }
+  }
+}
+
+@Composable
+private fun RowScope.NumberSymbolColumn(
+  rowHeight: Dp,
+  state: KeyboardState,
+  actions: KeyboardActions,
+  viewWidth: Float,
+) {
+  val listState = rememberLazyListState()
+  Box(Modifier.weight(1f).fillMaxHeight()) {
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
+      items(NUMBER_SYMBOLS, key = { (it.action as KeyAction.Text).text }) { spec ->
+        Box(Modifier.fillMaxWidth().height(rowHeight)) {
+          // Tap only: a long-press menu would steal the column's vertical drag.
+          KeyBody(Modifier.fillMaxSize(), spec, state, actions, viewWidth, tapOnly = true)
+        }
+      }
+    }
+    ColumnScrollThumb(listState)
+  }
+}
+
+@Composable
+private fun BoxScope.ColumnScrollThumb(listState: LazyListState) {
+  val total = listState.layoutInfo.totalItemsCount
+  val visible = listState.layoutInfo.visibleItemsInfo.size
+  if (total <= visible) return
+  val first = listState.firstVisibleItemIndex
+  val range = (total - visible).coerceAtLeast(1)
+  val t = first.toFloat() / range
+  val thumbFrac = visible.toFloat() / total
+  val color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+  Canvas(
+    Modifier
+      .align(Alignment.CenterEnd)
+      .fillMaxHeight()
+      .width(3.dp)
+      .padding(start = 0.dp, top = 8.dp, end = 1.dp, bottom = 8.dp),
+  ) {
+    val h = size.height * thumbFrac
+    val y = (size.height - h) * t
+    drawRoundRect(
+      color = color,
+      topLeft = Offset(0f, y),
+      size = Size(size.width, h),
+      cornerRadius = CornerRadius(size.width, size.width),
+    )
+  }
+}
+
 @Composable
 private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardActions, viewWidth: Float) {
   if (spec.action == KeyAction.Spacer) {
     Spacer(Modifier.weight(spec.width))
     return
   }
+  KeyBody(Modifier.weight(spec.width).fillMaxHeight(), spec, state, actions, viewWidth)
+}
+
+@Composable
+private fun KeyBody(
+  modifier: Modifier,
+  spec: KeySpec,
+  state: KeyboardState,
+  actions: KeyboardActions,
+  viewWidth: Float,
+  tapOnly: Boolean = false,
+) {
   val view = LocalView.current
   val density = LocalDensity.current
   var pressed by remember { mutableStateOf(false) }
+  val interaction = remember { MutableInteractionSource() }
+  val clickPressed by interaction.collectIsPressedAsState()
   var bounds by remember { mutableStateOf(Rect.Zero) }
   val latestSpec by rememberUpdatedState(spec)
   val latestWidth by rememberUpdatedState(viewWidth)
@@ -458,13 +558,13 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
     Role.FUNCTION -> colors.secondaryContainer to colors.onSecondaryContainer
     Role.ACTION -> colors.primary to colors.onPrimary
   }
-  Box(
-    Modifier
-      .weight(spec.width)
-      .fillMaxHeight()
-      .padding(horizontal = 2.5.dp, vertical = 3.dp)
-      .onGloballyPositioned { bounds = it.boundsInRoot() }
-      .pointerInput(spec.action) {
+  val gesture = if (tapOnly) {
+    Modifier.clickable(interactionSource = interaction, indication = null) {
+      tap(view)
+      actions.onKey(spec.action)
+    }
+  } else {
+    Modifier.pointerInput(spec.action) {
         awaitEachGesture {
           val down = awaitFirstDown(requireUnconsumed = false)
           down.consume()
@@ -484,11 +584,6 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
               return@awaitEachGesture
             }
             // Held.
-            if (current.action == KeyAction.Globe) {
-              actions.onPicker()
-              awaitRelease(down.id)
-              return@awaitEachGesture
-            }
             val items = menuOf(current, state)
             if (items.isEmpty()) {
               if (awaitRelease(down.id) == Release.UP) actions.onKey(current.action)
@@ -522,9 +617,15 @@ private fun RowScope.Key(spec: KeySpec, state: KeyboardState, actions: KeyboardA
             pressed = false
           }
         }
-      },
+      }
+  }
+  Box(
+    modifier
+      .padding(horizontal = 2.5.dp, vertical = 3.dp)
+      .onGloballyPositioned { bounds = it.boundsInRoot() }
+      .then(gesture),
   ) {
-    val (color, corner) = keyLook(pressed, fill, ink)
+    val (color, corner) = keyLook(if (tapOnly) clickPressed else pressed, fill, ink)
     Surface(
       Modifier.fillMaxSize(),
       shape = RoundedCornerShape(corner),

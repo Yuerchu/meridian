@@ -196,9 +196,7 @@ pub struct ProviderCapabilityOverrides {
     #[serde(skip_serializing_if = "OverrideField::is_unset")]
     supports_thinking_off: OverrideField<bool>,
     #[serde(skip_serializing_if = "OverrideField::is_unset")]
-    supports_images: OverrideField<bool>,
-    #[serde(skip_serializing_if = "OverrideField::is_unset")]
-    supports_pdf: OverrideField<bool>,
+    readable_mime_types: OverrideField<Vec<meridian_core::files::ReadableMime>>,
     #[serde(skip_serializing_if = "OverrideField::is_unset")]
     supports_temperature: OverrideField<bool>,
     #[serde(skip_serializing_if = "OverrideField::is_unset")]

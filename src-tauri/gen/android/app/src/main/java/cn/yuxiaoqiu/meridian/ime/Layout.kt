@@ -29,8 +29,6 @@ sealed interface KeyAction {
   data object ToggleMode : KeyAction
   /** Chinese is typed on this layer from now on (GRID or QWERTY). */
   data class ChineseLayout(val layer: Layer) : KeyAction
-  /** The system's keyboard picker. */
-  data object Globe : KeyAction
   data class ToLayer(val layer: Layer) : KeyAction
   /** Back to whichever letter layer the number layer was opened from. */
   data object BackToLetters : KeyAction
@@ -60,24 +58,22 @@ private fun medial(name: String, vowel: String) = KeySpec(KeyAction.Token(name),
 private fun text(s: String) = KeySpec(KeyAction.Text(s), label = s)
 private val backspace = KeySpec(KeyAction.Backspace)
 
-/** Tone keys by the name the engine gives them. */
-private const val T1 = "t1"
+/** Tone keys by the name the engine gives them. 平声 is Space, not a key. */
 private const val T2 = "t2"
 private const val T3 = "t3"
 private const val T4 = "t4"
 private const val T5 = "t5"
 
 /**
- * The grid, nine columns, as the prototype drew it with two later changes:
- * Backspace is one column wide and the first tone takes the column it gave
- * up, and Space only commits (no digit under it). The first row's long press
- * also offers its column's digit, 1 to 9.
+ * 注拼: nine columns of pinyin-lettered keys with zhuyin's structure.
+ * Backspace is two columns (Space is 平声). The first row's long press also
+ * offers its column's digit, 1 to 9.
  */
 val GRID_LETTER_ROWS: List<Row> = listOf(
   listOf("b", "d", T4, T3, "z", T5, T2, "ai", "ao").mapIndexed { i, name -> t(name, KeyAction.Text("${i + 1}")) },
   listOf(t("p"), t("t"), t("g"), t("j"), t("c"), medial("y", "i"), t("a"), t("ei"), t("ou")),
   listOf(t("m"), t("n"), t("k"), t("q"), t("s"), medial("w", "u"), t("o"), t("er"), t("ng")),
-  listOf(t("f"), t("l"), t("h"), t("x"), t("r"), medial("v", "ü"), t("e"), t(T1), backspace),
+  listOf(t("f"), t("l"), t("h"), t("x"), t("r"), medial("v", "ü"), t("e"), backspace.copy(width = 2f)),
 )
 
 private fun letters(s: String, digits: String? = null) = s.mapIndexed { i, c ->
@@ -93,17 +89,27 @@ val QWERTY_LETTER_ROWS: List<Row> = listOf(
 )
 
 /**
- * The number layer on the grid's geometry: the dial pad in the right three
- * columns (1 2 3 on top, 0 under 8), symbols to the left, Backspace where the
- * letter layer has it. Everything here is inserted as given — a digit typed
+ * Number layer: a scrolling column of numeric companions on the left, a
+ * three-column dial pad in the middle (0 under 8), Backspace and Enter stacked
+ * on the right. Digits and companions are inserted as given — a digit typed
  * while composing must not select a candidate.
+ *
+ * The first four companions show without scrolling (currency, decimal, time).
+ * The rest are the marks that travel with a number (date, arithmetic, @#).
  */
-val NUMBER_ROWS: List<Row> = listOf(
-  listOf("+", "-", "*", "/", "=", "%", "1", "2", "3").map(::text),
-  listOf("@", "#", "&", "_", ":", "(", "4", "5", "6").map(::text),
-  listOf("~", "^", "<", ">", ";", ")", "7", "8", "9").map(::text),
-  listOf("!", "?", "\"", "'", "…", ".", ",", "0").map(::text) + backspace,
+val NUMBER_SYMBOLS: List<KeySpec> = listOf(
+  "￥", "$", ".", ":", "-", "/", "+", "*", "=", "%", "@", "#",
+).map(::text)
+
+val NUMBER_DIAL_ROWS: List<Row> = listOf(
+  listOf("1", "2", "3").map(::text),
+  listOf("4", "5", "6").map(::text),
+  listOf("7", "8", "9").map(::text),
+  listOf(KeySpec(KeyAction.Spacer), text("0"), KeySpec(KeyAction.Spacer)),
 )
+
+val NUMBER_BACKSPACE = backspace
+val NUMBER_ENTER = KeySpec(KeyAction.Enter)
 
 /**
  * The comma and full stop keys' menus. The comma holds what goes inside a
@@ -140,29 +146,25 @@ fun bottomRow(layer: Layer): Row {
   return when (layer) {
     Layer.QWERTY -> listOf(
       layerKey.copy(width = 1.5f),
-      KeySpec(KeyAction.Globe),
       toggleMode,
       comma,
-      KeySpec(KeyAction.Space, width = 3f),
+      KeySpec(KeyAction.Space, width = 4f),
       stop,
       KeySpec(KeyAction.Enter, width = 1.5f),
     )
     Layer.GRID -> listOf(
       layerKey,
-      KeySpec(KeyAction.Globe),
       toggleMode,
       comma,
-      KeySpec(KeyAction.Space, width = 2f),
+      KeySpec(KeyAction.Space, width = 3f, hint = "ˉ"),
       stop,
       KeySpec(KeyAction.Enter, width = 2f),
     )
     Layer.NUMBER -> listOf(
       layerKey,
-      KeySpec(KeyAction.Globe),
       comma,
-      KeySpec(KeyAction.Space, width = 3f),
+      KeySpec(KeyAction.Space, width = 6f),
       stop,
-      KeySpec(KeyAction.Enter, width = 2f),
     )
   }
 }
@@ -170,7 +172,9 @@ fun bottomRow(layer: Layer): Row {
 fun rows(layer: Layer): List<Row> = when (layer) {
   Layer.GRID -> GRID_LETTER_ROWS
   Layer.QWERTY -> QWERTY_LETTER_ROWS
-  Layer.NUMBER -> NUMBER_ROWS
+  // Five rows so the keyboard stays as tall as 注拼; the screen draws the
+  // number pad as three columns, not these rows.
+  Layer.NUMBER -> NUMBER_DIAL_ROWS
 } + listOf(bottomRow(layer))
 
 /** A grid key's long-press menu: the precise keys behind it first, then its own extras. */

@@ -440,6 +440,8 @@ export type PreferenceKey =
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
   | 'codex.client_version'
+  | 'emoji.embedder'
+  | 'emoji.suggest.model'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -487,6 +489,16 @@ export interface PreferenceInfoValueByKey {
    * reason the override could not be used.
    */
   'codex.client_version': string | null
+  /**
+   * Absolute `.litertlm` path for on-device sticker ranking, or null to keep
+   * the lexical name/tag pick. A path on this machine.
+   */
+  'emoji.embedder': string | null
+  /**
+   * Model `suggest_sticker_semantics` uses to look at a sticker. Null follows
+   * the default assistant.
+   */
+  'emoji.suggest.model': PreferenceModelSelectionInfoResponse | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -511,6 +523,8 @@ export interface PreferenceUpdateValueByKey {
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null
+  'emoji.embedder': string | null
+  'emoji.suggest.model': PreferenceModelSelectionRequest | null
 }
 
 export type PreferenceUpdateRequest = {
@@ -1864,6 +1878,15 @@ export interface MessageFileBytesUploadRequest {
   dataBase64: string
 }
 
+export interface LocalImagePreviewRequest {
+  filePath: string
+}
+
+export interface LocalImagePreviewResponse {
+  mime_type: string
+  data_base64: string
+}
+
 export interface VoiceModelStatusInfoResponse {
   installed: boolean
   path: string | null
@@ -2018,6 +2041,12 @@ export interface MessageInfoResponse {
   /** Pictures and other files a tool returned beside `content`, on a tool
    *  row; empty everywhere else. `content` is then only the text part. */
   tool_media: ToolMediaResponse[]
+  /** Milliseconds from the request going out to the first model token on this
+   *  row (visible text, thinking, or a tool-call start). Null until a native
+   *  stream records it. */
+  ttft_ms: number | null
+  /** Milliseconds from that first token to the stream ending. */
+  generation_ms: number | null
 }
 
 /** A transcript row after the front end has derived its renderable blocks. */
@@ -2608,10 +2637,10 @@ export interface ProviderCapabilitiesInfoResponse {
   supports_thinking: boolean
   /** False for always-thinking models such as Gemini 3.x. */
   supports_thinking_off: boolean
-  supports_images: boolean
+  /** Canonical IANA types this model can consume as native input. Empty means text only. */
+  readable_mime_types: ReadableMime[]
   max_context_tokens: number | null
   max_output_tokens: number | null
-  supports_pdf: boolean
   supports_temperature: boolean
   supports_top_p: boolean
   max_temperature: number | null
@@ -2632,6 +2661,32 @@ export interface ProviderCapabilitiesInfoResponse {
 
 export type CapabilityVerbosity = 'low' | 'medium' | 'high'
 
+/** Closed set of input MIME types a model can declare as native-readable. */
+export type ReadableMime =
+  | 'image/jpeg'
+  | 'image/png'
+  | 'image/gif'
+  | 'image/webp'
+  | 'video/mp4'
+  | 'video/webm'
+  | 'audio/mpeg'
+  | 'audio/wav'
+  | 'audio/ogg'
+  | 'application/pdf'
+
+export const READABLE_MIMES: readonly ReadableMime[] = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'video/mp4',
+  'video/webm',
+  'audio/mpeg',
+  'audio/wav',
+  'audio/ogg',
+  'application/pdf',
+] as const
+
 /** Provider-side tools Meridian knows how to request. This is not an extension point. */
 export type ServerToolKind = 'web_search' | 'google_search' | 'url_context' | 'x_search' | 'code_execution'
 
@@ -2641,8 +2696,7 @@ export interface ProviderCapabilityOverrides {
   supports_streaming_tools?: boolean
   supports_thinking?: boolean
   supports_thinking_off?: boolean
-  supports_images?: boolean
-  supports_pdf?: boolean
+  readable_mime_types?: ReadableMime[]
   supports_temperature?: boolean
   supports_top_p?: boolean
   supports_fast?: boolean

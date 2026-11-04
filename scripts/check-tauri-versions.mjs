@@ -15,6 +15,10 @@
 // no build. A crate with no npm counterpart (tauri-plugin-fs) is fine; a pair
 // that exists on both sides must agree on major.minor.
 //
+// Specifiers must be `~` (or exact `=`). `^2.11` is what let `pnpm update`
+// take @tauri-apps/api to 2.12 while Cargo.lock stayed on tauri 2.11; cargo's
+// default `"2.5"` is `^2.5.0` and does the same on `cargo update`.
+//
 //   node scripts/check-tauri-versions.mjs
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -67,6 +71,37 @@ export function mismatches(cargo, npm) {
   return problems
 }
 
+function specAllowsMinorJump(spec) {
+  if (typeof spec !== 'string' || spec.length === 0) return true
+  return !(spec.startsWith('~') || spec.startsWith('='))
+}
+
+/** @tauri-apps packages that pair with a crate, plus the CLI (templates pin it). */
+export function looseNpmSpecifiers(pkg) {
+  const problems = []
+  const deps = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) }
+  for (const [name, spec] of Object.entries(deps)) {
+    if (name !== '@tauri-apps/cli' && crateFor(name) == null) continue
+    if (specAllowsMinorJump(spec)) {
+      problems.push(`${name} specifier ${spec} allows a minor jump; use ~`)
+    }
+  }
+  return problems
+}
+
+/** Direct tauri / tauri-build / tauri-plugin-* pins in the shell Cargo.toml. */
+export function looseCargoPins(toml) {
+  const problems = []
+  const re = /^(tauri(?:-build|-plugin-[a-z0-9-]+)?)\s*=\s*(?:\{[^}\n]*version\s*=\s*"([^"]+)"|"([^"]+)")/gm
+  for (const m of toml.matchAll(re)) {
+    const spec = m[2] ?? m[3]
+    if (specAllowsMinorJump(spec)) {
+      problems.push(`${m[1]} = ${spec} allows a minor jump; use ~`)
+    }
+  }
+  return problems
+}
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const cargo = cargoVersions(readFileSync(join(root, 'src-tauri/Cargo.lock'), 'utf8'))
   const npm = npmVersions(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'))
@@ -74,9 +109,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     console.error('check-tauri-versions: found no @tauri-apps packages in pnpm-lock.yaml; the parser is stale')
     process.exit(1)
   }
-  const problems = mismatches(cargo, npm)
+  const problems = [
+    ...mismatches(cargo, npm),
+    ...looseNpmSpecifiers(JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))),
+    ...looseCargoPins(readFileSync(join(root, 'src-tauri/Cargo.toml'), 'utf8')),
+  ]
   if (problems.length > 0) {
-    console.error('Tauri npm packages and Rust crates must share major.minor (the Tauri CLI refuses otherwise):')
+    console.error(
+      'Tauri npm packages and Rust crates must share major.minor (the Tauri CLI refuses otherwise); specifiers must be ~ so an update cannot jump minor alone:',
+    )
     for (const p of problems) console.error(`  ${p}`)
     process.exit(1)
   }

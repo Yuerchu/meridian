@@ -352,3 +352,39 @@ another file here — the index in `CLAUDE.md` says which.
   approving their own hijack of the bot's voice. `qq_list_replies` is a read
   and does not ask. Card / essence / poke / like / sticker / voice still fire
   on call.
+
+- **`send_sticker` picks by query.** The model passes a short name, tag, or mood;
+  `pick_from_roster` (shared with the desktop tool) ranks exact name, then name
+  contains, then a tag contains the query. `sticker_id` still works and wins when
+  both are given. `list_stickers` stays for browsing. The roster does not go in
+  the system prompt or the tool description — confirm/delete would bust the
+  prefix cache.
+
+  **An optional on-device embedder sits on top of that floor.** `emoji.embedder`
+  is an absolute `.litertlm` path (EmbeddingGemma 2). Exact name still wins;
+  otherwise cosine among items that have a vector can pick a mood the tags never
+  named. A 740M bundle turns the vision backend on: each confirmed sticker's
+  file is one document (GIF/APNG as a PNG contact sheet, stills as the file
+  bytes) plus its name/tags in the same `compute_embedding` call, so inventory
+  without a useful name still ranks. A missing file, a failed run, or an empty
+  preference leaves the lexical pick unchanged. The engine and per-sticker
+  vectors live in a process `OnceLock`, keyed by id plus name/tags/image
+  bytes. The preference is `is_server_owned` because it is a path on this
+  machine.
+
+- **Sticker "generate suggestion" has its own model.** `emoji.suggest.model` is
+  a `provider:model` pair. Empty follows the default assistant, which is what
+  `suggest_sticker_semantics` did before. Set but unusable is an error, never a
+  quiet return to the default assistant — the point is not to spend the chat
+  model on looking at a GIF. The model must accept images. The preference is
+  `is_server_owned` because the sticker files go to that provider. The bulk
+  action on the emoji page calls the same command once per unconfirmed row
+  that has a file.
+
+- **`qq_stay_silent` drops this round's final QQ text.** Stickers, voice, poke
+  and interim text already sent stay. It is not approval-gated. The flag lives
+  on `QqToolExecutor` as an `AtomicBool`, so a `TurnEnd::Continue` round gets a
+  new executor and a clean flag. Empty model replies were already silent;
+  `empty_reply` is still empty *approval typed text*. After a sticker or when
+  there is nothing to add, the prompt tells the model to call this rather than
+  write 好的 / 收到 / 已发送.

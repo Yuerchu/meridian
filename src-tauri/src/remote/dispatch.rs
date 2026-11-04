@@ -333,6 +333,8 @@ mod tests {
             // Where every later summary, and so the whole transcript, is sent.
             "auxiliary.model",
             "sandbox.enabled",
+            "emoji.embedder",
+            "emoji.suggest.model",
         ] {
             let args = serde_json::json!({ "request": { "key": key } });
             assert!(
@@ -523,6 +525,9 @@ mod tests {
             // same operation as multipart — base64 through the socket would be
             // a second, worse spelling of it.
             "upload_file_bytes",
+            // Bytes of a picture the composer is holding on this machine, so
+            // the tile can draw it. A path on the phone is not a path here.
+            "preview_local_image",
             "export_conversation",
             "export_media_file",
             "inspect_local_model",

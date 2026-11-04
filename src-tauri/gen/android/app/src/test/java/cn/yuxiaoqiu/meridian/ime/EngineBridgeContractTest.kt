@@ -45,7 +45,7 @@ class EngineBridgeContractTest {
     val ng = tokens.single { it.name == "ng" }
     assertEquals("", ng.key)
     assertEquals(GridRole.NASAL, ng.role)
-    assertEquals(listOf("er", "-n", "-ng"), ng.variants)
+    assertEquals(listOf("-n", "-ng"), ng.variants)
   }
 
   @Test(expected = SerializationException::class)

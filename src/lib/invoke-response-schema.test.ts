@@ -8,8 +8,8 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(261)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(261)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(262)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(262)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 
@@ -155,7 +155,7 @@ describe('invoke response schema', () => {
     expect(() =>
       validate('get_model_config', {
         ...model,
-        profile: { ...profile, capability_overrides: { supports_tools: true, supports_pdf: undefined } },
+        profile: { ...profile, capability_overrides: { supports_tools: true, supports_thinking: undefined } },
       }),
     ).toThrow('must be a boolean')
     expect(() =>

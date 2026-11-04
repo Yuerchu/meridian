@@ -227,10 +227,9 @@ export const CAPABILITIES: ProviderCapabilitiesInfoResponse = {
   supports_streaming_tools: true,
   supports_thinking: true,
   supports_thinking_off: true,
-  supports_images: true,
+  readable_mime_types: ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'],
   max_context_tokens: 200_000,
   max_output_tokens: 64_000,
-  supports_pdf: true,
   supports_temperature: true,
   supports_top_p: true,
   max_temperature: 1,
@@ -970,5 +969,7 @@ export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: Pre
     'sub_agent.explore.model': { provider_id: PROVIDER.anthropic, model_id: 'claude-haiku-5' },
     'sub_agent.agent.model': null,
     'codex.client_version': null,
+    'emoji.embedder': null,
+    'emoji.suggest.model': null,
   }
 }

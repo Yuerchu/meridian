@@ -55,6 +55,10 @@ fn dictionary(dir: &std::path::Path) -> DictSet {
         ("zhong guo", "中国", 8000),
         ("ren", "人", 9000),
         ("reng", "扔", 100),
+        ("xian", "先", 9500),
+        ("xi", "西", 7000),
+        ("an", "安", 6000),
+        ("xi an", "西安", 100),
     ];
     let mut w = DictWriter::new();
     for (c, t, f) in rows {
@@ -489,11 +493,24 @@ fn grid_tone_key_never_commits() {
 }
 
 #[test]
-fn grid_space_is_not_a_tone() {
+fn grid_space_after_a_syllable_is_the_first_tone() {
     let mut r = Rig::new(InputScheme::Grid);
     let (committed, out) = r.run("ny<space>");
-    assert_eq!(committed, "你", "space commits at once, unlike zhuyin");
-    assert!(out.frame.preedit.is_empty());
+    assert_eq!(committed, "", "space is 平声, like zhuyin");
+    assert!(out.consumed);
+    assert!(r.session.is_composing());
+    let (committed, _) = r.run("<space>");
+    assert_eq!(committed, "你", "a second space commits");
+}
+
+#[test]
+fn grid_segment_key_breaks_xi_an() {
+    let mut r = Rig::new(InputScheme::Grid);
+    let (_, out) = r.run("xya<ng>");
+    assert_eq!(r.candidates(&out)[0], "先", "one syllable, and it is commoner");
+    r.run("<esc>");
+    let (_, out) = r.run("xy'a<ng>");
+    assert_eq!(r.candidates(&out)[0], "西安", "the break forbids xian");
 }
 
 #[test]
@@ -887,11 +904,11 @@ fn a_private_session_predicts_from_the_dictionary_only() {
 #[test]
 fn a_tap_takes_a_prediction() {
     let mut r = Rig::new(InputScheme::Grid);
-    r.run("nyh<ao><space>");
+    r.run("nyh<ao><enter>");
     let out = r.session.choose(&r.engine, &mut r.learner, 0);
     assert_eq!(out.commit.as_deref(), Some("吗"));
     let mut r = Rig::new(InputScheme::Grid);
-    r.run("nyh<ao><space>");
+    r.run("nyh<ao><enter>");
     let out = r.session.choose(&r.engine, &mut r.learner, 2);
     assert_eq!(out.commit.as_deref(), Some("。"), "the marks are taps too");
 }

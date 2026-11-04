@@ -1,15 +1,20 @@
 import { lazy, Suspense } from 'react'
 
 /**
- * A provider's logo, loaded on demand.
+ * A model's logo, loaded on demand.
  *
- * `@lobehub/icons` is ~1.9 MB: its entry point pulls in a React component for
- * every logo it knows, and `ModelIcon` matches against all of them, so there is
- * no subset to import instead. Deferring it keeps that weight out of the first
- * paint — the chunk is on local disk and lands within a frame or two, against a
- * placeholder of the right size so nothing shifts when it does.
+ * `@lobehub/icons` is ~1.9 MB: `ModelIcon` matches against every logo it knows,
+ * so there is no smaller subset. Deferring it keeps that weight out of the
+ * first paint — the chunk is on local disk and lands within a frame or two,
+ * against a placeholder of the right size so nothing shifts when it does.
+ *
+ * The feature module, not the package entry: the barrel also re-exports
+ * `ModelTag` and `ProviderCombine`, which import `Tag`/`Divider` from
+ * `@lobehub/ui/base-ui`. Those names are not in the ui version this set
+ * currently resolves, and a production build fails on the missing export
+ * even though this app never uses those two components.
  */
-const LazyModelIcon = lazy(() => import('@lobehub/icons').then((m) => ({ default: m.ModelIcon })))
+const LazyModelIcon = lazy(() => import('@lobehub/icons/es/features/ModelIcon'))
 
 export interface ModelIconProps {
   model?: string

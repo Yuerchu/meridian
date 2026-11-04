@@ -136,6 +136,8 @@ import type {
   MessageContextContentResponse,
   MessageContextReadRequest,
   MessageDeleteRequest,
+  LocalImagePreviewRequest,
+  LocalImagePreviewResponse,
   MessageFileBytesUploadRequest,
   MessageFileUploadRequest,
   MessageRatingUpdateRequest,
@@ -355,6 +357,11 @@ export const api = {
 
   uploadFileBytes: (request: MessageFileBytesUploadRequest) =>
     invoke<UploadFileResponse>('upload_file_bytes', { request }),
+
+  /** Bytes of a picture at a path on this machine, for the composer tile.
+   *  Local only: the path names a file the host cannot see from a phone. */
+  previewLocalImage: (request: LocalImagePreviewRequest) =>
+    invoke<LocalImagePreviewResponse>('preview_local_image', { request }),
 
   // `turnId` says which run to stop. Without it the backend stops whatever is
   // running, which is what a reloaded window has to fall back on — but sending

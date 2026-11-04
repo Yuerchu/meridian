@@ -17,7 +17,6 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
-import android.view.inputmethod.InputMethodManager
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.RequiresApi
 import androidx.autofill.inline.UiVersions
@@ -351,7 +350,6 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
         switchLetters(lettersAfterToggle(keyboard.mode, keyboard.chineseLayout))
       }
       is KeyAction.ChineseLayout -> chooseChineseLayout(action.layer)
-      KeyAction.Globe -> onPicker()
       is KeyAction.ToLayer -> keyboard.layer = action.layer
       KeyAction.BackToLetters -> keyboard.layer = keyboard.lettersLayer
       KeyAction.Spacer -> Unit
@@ -368,10 +366,6 @@ class MeridianInputMethodService : InputMethodService(), KeyboardActions {
 
   override fun onHide() {
     requestHideSelf(0)
-  }
-
-  override fun onPicker() {
-    (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showInputMethodPicker()
   }
 
   // ── the toolbar ───────────────────────────────────────────────────────

@@ -20,16 +20,19 @@ class LayoutTest {
     assertEquals("placed twice: ${placed.groupBy { it }.filter { it.value.size > 1 }.keys}", placed.toSet().size, placed.size)
     val variants = tokens.flatMap { it.variants }.toSet()
     val all = tokens.map { it.name }.toSet()
-    assertEquals("a token reachable by no key", all, placed.toSet() + variants)
+    // 平声 is Space, so t1 is not on the board; Backspace took that column.
+    val spaceTone = setOf("t1")
+    assertEquals("a token reachable by no key", all, placed.toSet() + variants + spaceTone)
     assertTrue("a placed name the engine does not know", all.containsAll(placed))
-    assertEquals(35, placed.size)
+    assertEquals(34, placed.size)
+    assertEquals(2f, GRID_LETTER_ROWS[3].last().width)
   }
 
   @Test
   fun rowsFillTheirColumns() {
     fun widths(layer: Layer) = rows(layer).map { row -> row.sumOf { it.width.toDouble() } }
     assertEquals(List(5) { 9.0 }, widths(Layer.GRID))
-    assertEquals(List(5) { 9.0 }, widths(Layer.NUMBER))
+    assertEquals(List(4) { 3.0 } + listOf(9.0), widths(Layer.NUMBER))
     assertEquals(List(4) { 10.0 }, widths(Layer.QWERTY))
   }
 
@@ -45,17 +48,25 @@ class LayoutTest {
 
   @Test
   fun theDialPadIsComplete() {
-    val digits = NUMBER_ROWS.flatten().mapNotNull { (it.action as? KeyAction.Text)?.text }.filter { it.single().isDigit() }
+    val digits = NUMBER_DIAL_ROWS.flatten().mapNotNull { (it.action as? KeyAction.Text)?.text }.filter { it.single().isDigit() }
     assertEquals((0..9).map { "$it" }.sorted(), digits.sorted())
-    // 1 2 3 on top in the right three columns, 0 under 8.
-    assertEquals(listOf("1", "2", "3"), NUMBER_ROWS[0].takeLast(3).map { it.label })
-    assertEquals("0", NUMBER_ROWS[3][7].label)
+    assertEquals(listOf("1", "2", "3"), NUMBER_DIAL_ROWS[0].map { it.label })
+    assertEquals("0", NUMBER_DIAL_ROWS[3][1].label)
+  }
+
+  @Test
+  fun theNumberSymbolsLeadWithPriceTimeAndDecimal() {
+    assertEquals(listOf("￥", "$", ".", ":"), NUMBER_SYMBOLS.take(4).map { it.label })
+    assertTrue(NUMBER_SYMBOLS.size > 4)
+    assertEquals(KeyAction.Backspace, NUMBER_BACKSPACE.action)
+    assertEquals(KeyAction.Enter, NUMBER_ENTER.action)
+    assertTrue(bottomRow(Layer.NUMBER).none { it.action == KeyAction.Enter })
   }
 
   @Test
   fun backspaceStaysPutAcrossLayers() {
     assertEquals(KeyAction.Backspace, GRID_LETTER_ROWS[3].last().action)
-    assertEquals(KeyAction.Backspace, NUMBER_ROWS[3].last().action)
+    assertEquals(KeyAction.Backspace, NUMBER_BACKSPACE.action)
   }
 
   @Test
@@ -91,6 +102,18 @@ class LayoutTest {
       gridMenu(z, byName),
     )
     val ng = GRID_LETTER_ROWS.flatten().single { it.action == KeyAction.Token("ng") }
-    assertEquals(listOf("er", "-n", "-ng").map { KeyAction.Token(it) }, gridMenu(ng, byName))
+    assertEquals(listOf("-n", "-ng").map { KeyAction.Token(it) }, gridMenu(ng, byName))
+  }
+
+  @Test
+  fun spaceTookTheSwitcherColumn() {
+    assertEquals(6, bottomRow(Layer.GRID).size)
+    assertEquals(6, bottomRow(Layer.QWERTY).size)
+    assertEquals(4, bottomRow(Layer.NUMBER).size)
+    val gridSpace = bottomRow(Layer.GRID).single { it.action == KeyAction.Space }
+    assertEquals(3f, gridSpace.width)
+    assertEquals("ˉ", gridSpace.hint)
+    assertEquals(4f, bottomRow(Layer.QWERTY).single { it.action == KeyAction.Space }.width)
+    assertEquals(6f, bottomRow(Layer.NUMBER).single { it.action == KeyAction.Space }.width)
   }
 }

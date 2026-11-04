@@ -1,5 +1,6 @@
 import { createContext, useContext, type ComponentProps, type ReactNode } from 'react'
 import { File } from '@keyline-icons/react/two-tone'
+import { fileIconUrl } from '@/lib/file-icon'
 import { cx } from '@/utils/cx'
 import { CloseButton } from './buttons/close-button'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -51,6 +52,7 @@ function ChatAttachmentRoot({ className, name, src, mediaType, children, ...prop
 function ChatAttachmentPreview({ className, ...props }: ComponentProps<'div'>) {
   const { name, src, mediaType } = useContext(AttachmentContext)
   const isImage = mediaType === 'image' || (!mediaType && !!src)
+  const icon = fileIconUrl(name ?? '')
   return (
     <div
       data-slot="chat-attachment-preview"
@@ -62,6 +64,8 @@ function ChatAttachmentPreview({ className, ...props }: ComponentProps<'div'>) {
     >
       {isImage && src ? (
         <img src={src} alt={name ?? ''} className="size-full object-cover" />
+      ) : icon ? (
+        <img src={icon} alt="" aria-hidden className="size-5" />
       ) : (
         <File className="size-5" aria-hidden />
       )}

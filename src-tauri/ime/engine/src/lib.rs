@@ -33,7 +33,8 @@ pub use predict::{Prediction, PredictionSource};
 pub use query::{Candidate, CandidateSource, Engine, Query, QueryContext};
 pub use scheme::grid::SpellingHabit;
 pub use scheme::grid::{
-    GRID_TOKENS, GridRole, GridToken, grid_keys, grid_label, grid_table_sha256, grid_token, grid_token_by_name,
+    GRID_FIRST_TONE, GRID_TOKENS, GridRole, GridToken, grid_keys, grid_label, grid_table_sha256, grid_token,
+    grid_token_by_name,
 };
 pub use scheme::keys::{TonePolicy, keys_for, keys_for_habit};
 pub use scheme::{InputScheme, Segmentation, SyllableDag, SyllableEdge};

@@ -148,6 +148,9 @@ macro_rules! with_all_commands {
             local commands::message => upload_file_bytes(
                 request: $crate::commands::message::MessageFileBytesUploadRequest,
             ),
+            local commands::message => preview_local_image(
+                request: $crate::commands::message::LocalImagePreviewRequest,
+            ),
 
             async commands::assistant => list_assistants(),
             async commands::assistant => create_assistant(

@@ -490,7 +490,7 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
 
   // ---- stickers and voice: JSON answers ----
   list_stickers: { side: 'native', args: 'fields', result: 'structured' },
-  send_sticker: { side: 'native', args: 'fields', result: 'structured' },
+  send_sticker: { side: 'native', args: 'fields', result: 'structured', ident: text('query', 'sticker_id') },
   send_voice: { side: 'native', args: 'fields', result: 'structured' },
 
   // ---- QQ: fixed Chinese sentences and line lists ----
@@ -512,6 +512,7 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   qq_send_group_notice: plain('native'),
   qq_list_replies: plain('native'),
   qq_manage_replies: plain('native'),
+  qq_stay_silent: plain('native'),
 }
 
 /**

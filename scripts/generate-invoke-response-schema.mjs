@@ -12,6 +12,30 @@ function defaultRoot() {
   return resolve(dirname(fileURLToPath(import.meta.url)), '..')
 }
 
+const TEST_FILE = 'src/lib/invoke-response-schema.test.ts'
+
+export function pinnedInvokeCommandCount(source) {
+  const toBe = source.match(/expect\(\s*INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT\s*\)\.toBe\(\s*(\d+)\s*\)/)
+  const length = source.match(
+    /expect\(\s*Object\.keys\(\s*invokeResponseSchemaDocument\.commands\s*\)\s*\)\.toHaveLength\(\s*(\d+)\s*\)/,
+  )
+  if (!toBe || !length) {
+    throw new Error(
+      `${TEST_FILE} must pin INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT and commands length as integer literals`,
+    )
+  }
+  return { toBe: Number(toBe[1]), toHaveLength: Number(length[1]) }
+}
+
+export function assertPinnedInvokeCommandCount(source, commandCount) {
+  const pin = pinnedInvokeCommandCount(source)
+  if (pin.toBe !== commandCount || pin.toHaveLength !== commandCount) {
+    throw new Error(
+      `${TEST_FILE} pins the command count at ${pin.toBe}/${pin.toHaveLength}; api.ts now has ${commandCount}. Bump both literals.`,
+    )
+  }
+}
+
 export function runInvokeResponseSchemaGenerator(options = {}) {
   const ROOT = resolve(options.root ?? defaultRoot())
   const CHECK = options.check ?? false
@@ -297,6 +321,10 @@ export function runInvokeResponseSchemaGenerator(options = {}) {
     writeFileSync(outputPath, generated)
     console.log(`generated ${OUTPUT_FILE} (${commands.size} commands, ${definitions.length} definitions)`)
   }
+
+  const pinSource = STAGED ? readStaged(TEST_FILE) : readFileSync(join(ROOT, TEST_FILE), 'utf8')
+  if (pinSource == null) throw new Error(`${TEST_FILE} is missing from the staged snapshot`)
+  assertPinnedInvokeCommandCount(pinSource, commands.size)
 }
 
 const entryUrl = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : null

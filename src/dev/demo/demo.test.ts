@@ -73,6 +73,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   },
   upload_file: { args: { request: { conversationId: CONV.rich, filePath: 'C:\\a\\b.txt' } } },
   upload_file_bytes: { args: { request: { conversationId: CONV.rich, fileName: 'a.png', dataBase64: 'AAAA' } } },
+  preview_local_image: { args: { request: { filePath: 'C:\\a\\photo.png' } } },
   get_composer_draft: { args: { request: { conversationId: null } } },
   save_composer_draft: {
     args: {

@@ -69,4 +69,28 @@ describe('AttachmentTiles', () => {
     render(<AttachmentTiles files={[{ name: 'gone.txt', missing: true }]} />)
     expect(screen.getByText('gone.txt').className).toContain('text-status-danger')
   })
+
+  it('shows a pasted image as the picture itself', () => {
+    URL.createObjectURL = vi.fn(() => 'blob:test/image')
+    URL.revokeObjectURL = vi.fn()
+    const file = new File([new Uint8Array([1, 2, 3])], 'image.png', { type: 'image/png' })
+    const { container, unmount } = render(<AttachmentTiles files={[{ name: 'image.png', file }]} />)
+    const img = container.querySelector('[data-slot="attachment-tile-preview"]')
+    expect(img).toHaveAttribute('src', 'blob:test/image')
+    expect(container.querySelector('[data-slot="attachment-tile-name"]')).toBeNull()
+    unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:test/image')
+  })
+
+  it('keeps a spreadsheet as its type icon and name', () => {
+    URL.createObjectURL = vi.fn()
+    const file = new File(['x'], 'sheet.xlsx', {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
+    const { container } = render(<AttachmentTiles files={[{ name: 'sheet.xlsx', file }]} />)
+    expect(container.querySelector('[data-slot="attachment-tile-preview"]')).toBeNull()
+    expect(container.querySelector('[data-slot="attachment-tile-icon"]')).not.toBeNull()
+    expect(screen.getByText('sheet.xlsx')).toBeInTheDocument()
+    expect(URL.createObjectURL).not.toHaveBeenCalled()
+  })
 })

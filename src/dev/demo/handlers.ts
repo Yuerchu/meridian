@@ -542,6 +542,10 @@ const chat: Record<string, DemoHandler> = {
       ? { type: 'image_url', image_url: { url } }
       : { type: 'file', file: { url, mime_type: 'application/octet-stream', name: req.fileName } }
   },
+  preview_local_image: () => ({
+    mime_type: 'image/png',
+    data_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  }),
   get_composer_draft: (args, { state }) =>
     state.drafts[request<{ conversationId: string | null }>(args).conversationId ?? ''] ?? null,
   save_composer_draft: (args, { state }) => {
@@ -976,8 +980,7 @@ const providers: Record<string, DemoHandler> = {
       supports_tools: info.supports_function_calling,
       supports_streaming_tools: info.supports_function_calling,
       supports_thinking: info.supports_thinking,
-      supports_images: false,
-      supports_pdf: false,
+      readable_mime_types: [],
       supports_temperature: false,
       supports_top_p: false,
       max_temperature: null,

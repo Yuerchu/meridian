@@ -37,20 +37,18 @@ text. Generation (phases 1 and 2) builds on exactly this.
   `MessageOrigin::ToolParts`.
 
 - **Pictures are inlined from the conversation's own directory, and an
-  unreadable one becomes text.** `resolve_file_uris_in_messages` inlines a user
-  row's attachments from anywhere under the files root, as before; a
-  `ToolParts` row only from `files/<conversation_id>/`
-  (`files::resolve_conversation_attachment`). Where a user attachment that
-  cannot be read stays a URI, a tool picture is replaced by `[attachment
-  unavailable]` — otherwise a local path goes to the provider. Non-image files
-  are never inlined: `[video/mp4: name, 12.3 MB, not inlined]`. A model whose
-  capabilities say no images gets `[image omitted: …]` instead of the picture,
-  decided by `TurnSetup::supports_images` / the caller's `caps.supports_images`
-  — sending one anyway is a 400 on every later turn of that conversation. Each
-  replacement is a function of the file and the model only, so a replay renders
-  the bytes the first send did (CLAUDE.md, "What was sent is never dropped or
-  rewritten"); `a_tool_picture_replays_as_the_bytes_it_was_first_sent_as` pins
-  it.
+  unreadable user attachment fails the turn.** `resolve_file_uris_in_messages`
+  projects user attachments against `WireMediaPolicy` (the model's
+  `readable_mime_types` intersected with this door's part shapes). A `file://`
+  that cannot be opened is an error, not a leftover URI. Oversize files and
+  MIME types this door cannot send become `[attachment: {path} ({len} bytes)]`.
+  A `ToolParts` row is still only from `files/<conversation_id>/`
+  (`files::resolve_conversation_attachment`). A tool picture that cannot be
+  read is `[attachment unavailable]`; a model whose readable set has no images
+  gets `[image omitted: …]`. Each replacement is a function of the file and
+  the policy only, so a replay renders the bytes the first send did (CLAUDE.md,
+  "What was sent is never dropped or rewritten");
+  `a_tool_picture_replays_as_the_bytes_it_was_first_sent_as` pins it.
 
 - **Each dialect carries the pictures where its wire allows.** Anthropic: image
   blocks inside `tool_result.content`. Responses and Codex: the
