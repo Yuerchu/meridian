@@ -50,6 +50,9 @@ path = "src/main.rs"
 [build-dependencies]
 tauri-build = { version = "~2.7", features = [] }
 litert-lm = { path = "crates/litert-lm" }
+# Same crate as [dependencies]: cargo runs a `links` build script before this
+# package's, so the DLLs exist when `stage_sherpa_runtime` looks for them.
+sherpa-onnx-sys = { version = "1.13.8", default-features = false, features = ["shared"] }
 
 [dependencies]
 meridian-core = { path = "crates/core" }
