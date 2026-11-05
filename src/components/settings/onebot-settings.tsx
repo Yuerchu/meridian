@@ -2,13 +2,70 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Alert, Button, Description, Input, Label, TextField } from '@/components/base'
+import { Alert, Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { cx } from '@/utils/cx'
-import type { AssistantInfoResponse, OneBotConfigInfoResponse, OneBotStatusInfoResponse } from '@/types'
+import type {
+  AssistantInfoResponse,
+  OneBotConfigInfoResponse,
+  OneBotConfigUpdateRequest,
+  OneBotStatusInfoResponse,
+  ReplyBank,
+  ReplySeeds,
+} from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
+
+const EMPTY_REPLIES: ReplyBank = {
+  empty_reply: [],
+  busy: [],
+  server_error: [],
+  ack_approved: [],
+  ack_denied: [],
+}
+
+const SEED_REPLIES: ReplySeeds = {
+  empty_reply: '没搞明白你在说什么。',
+  busy: '这个对话正在电脑端处理，请等它结束后再发。',
+  server_error: '这边出了点问题。',
+  ack_approved: '已批准执行。',
+  ack_denied: '已拒绝，你写的理由会一并转达。',
+}
+
+const REPLY_SLOTS = ['empty_reply', 'busy', 'server_error', 'ack_approved', 'ack_denied'] as const
+type ReplySlotId = (typeof REPLY_SLOTS)[number]
+
+function emptyDrafts(): Record<ReplySlotId, string> {
+  return { empty_reply: '', busy: '', server_error: '', ack_approved: '', ack_denied: '' }
+}
+
+function draftsFrom(bank: ReplyBank): Record<ReplySlotId, string> {
+  return {
+    empty_reply: bank.empty_reply.join('\n'),
+    busy: bank.busy.join('\n'),
+    server_error: bank.server_error.join('\n'),
+    ack_approved: bank.ack_approved.join('\n'),
+    ack_denied: bank.ack_denied.join('\n'),
+  }
+}
+
+function linesOf(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '')
+}
+
+function bankFrom(drafts: Record<ReplySlotId, string>): ReplyBank {
+  return {
+    empty_reply: linesOf(drafts.empty_reply),
+    busy: linesOf(drafts.busy),
+    server_error: linesOf(drafts.server_error),
+    ack_approved: linesOf(drafts.ack_approved),
+    ack_denied: linesOf(drafts.ack_denied),
+  }
+}
 
 export function OneBotSettings() {
   const { t } = useTranslation()
@@ -25,6 +82,8 @@ export function OneBotSettings() {
     voice_send_groups: [],
     voice_tts_model: '',
     voice_tts_reference_id: '',
+    replies: EMPTY_REPLIES,
+    reply_seeds: SEED_REPLIES,
   })
   const [status, setStatus] = useState<OneBotStatusInfoResponse | null>(null)
   const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
@@ -48,6 +107,7 @@ export function OneBotSettings() {
   const [loaded, setLoaded] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [portInput, setPortInput] = useState('6700')
+  const [replyDrafts, setReplyDrafts] = useState<Record<ReplySlotId, string>>(emptyDrafts)
   const [savedDraft, setSavedDraft] = useState<string | null>(null)
   const draft = JSON.stringify({
     ...config,
@@ -56,6 +116,7 @@ export function OneBotSettings() {
     voiceCaptureInput,
     voiceSendInput,
     fishKey,
+    replyDrafts,
   })
   const dirty = loaded && draft !== savedDraft
   useSettingsDirtyRegistration('onebot', 'onebot-config', dirty)
@@ -81,6 +142,8 @@ export function OneBotSettings() {
       setAdminInput(nextAdmin)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
+      const nextDrafts = draftsFrom(cfg.replies)
+      setReplyDrafts(nextDrafts)
       setFishKeySet(hasFishKey)
       setVoiceReady(readiness)
       setSavedDraft(
@@ -91,6 +154,7 @@ export function OneBotSettings() {
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
+          replyDrafts: nextDrafts,
         }),
       )
       setLoaded(true)
@@ -160,31 +224,47 @@ export function OneBotSettings() {
         setFishKeySet(true)
       }
 
-      const newConfig = {
-        ...config,
+      const replies = bankFrom(replyDrafts)
+      const request: OneBotConfigUpdateRequest = {
+        enabled: config.enabled,
+        host: config.host,
         port,
+        access_token: config.access_token,
+        assistant_id: config.assistant_id,
         admin_users: adminUsers,
+        ack_emoji_id: config.ack_emoji_id,
         voice_capture_sessions: voiceCaptureSessions,
+        voice_send_enabled: config.voice_send_enabled,
         voice_send_groups: voiceSendGroups,
+        voice_tts_model: config.voice_tts_model,
+        voice_tts_reference_id: config.voice_tts_reference_id,
+        replies,
       }
-      await api.saveOneBotConfig(newConfig)
-      setConfig(newConfig)
+      await api.saveOneBotConfig(request)
+      const nextConfig: OneBotConfigInfoResponse = {
+        ...request,
+        reply_seeds: config.reply_seeds,
+      }
+      setConfig(nextConfig)
       const nextPort = port.toString()
       const nextAdmin = adminUsers.join(', ')
       const nextCapture = voiceCaptureSessions.join(', ')
       const nextSend = voiceSendGroups.join(', ')
+      const nextDrafts = draftsFrom(replies)
       setPortInput(nextPort)
       setAdminInput(nextAdmin)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
+      setReplyDrafts(nextDrafts)
       setSavedDraft(
         JSON.stringify({
-          ...newConfig,
+          ...nextConfig,
           port: nextPort,
           adminInput: nextAdmin,
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
+          replyDrafts: nextDrafts,
         }),
       )
       // Re-asked rather than assumed: the save is also what applies the policy,
@@ -334,6 +414,25 @@ export function OneBotSettings() {
         />
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
+
+      <div className="space-y-3">
+        <div className="space-y-1">
+          <p className="text-body-medium text-text-primary">{t('settings.onebot.replies.title')}</p>
+          <p className="text-caption-1-regular text-text-secondary">{t('settings.onebot.replies.hint')}</p>
+        </div>
+        {REPLY_SLOTS.map((slot) => (
+          <TextField key={slot}>
+            <Label>{t(`settings.onebot.replies.${slot}`)}</Label>
+            <TextArea
+              rows={3}
+              value={replyDrafts[slot]}
+              placeholder={config.reply_seeds[slot]}
+              onChange={(e) => setReplyDrafts({ ...replyDrafts, [slot]: e.target.value })}
+            />
+            <Description>{t('settings.onebot.replies.lineHint')}</Description>
+          </TextField>
+        ))}
+      </div>
 
       <TextField>
         <Label>{t('settings.onebot.voiceCapture')}</Label>
