@@ -1,0 +1,94 @@
+Yuerchu UI License 1.0 (Meridian Edition)
+
+Copyright (c) 2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>
+
+## Acceptance
+
+In order to get any license under these terms, you must agree to them as
+both strict obligations and conditions to all your licenses.
+
+## Definitions
+
+"Licensor" means 于小丘 Yuerchu, the copyright holder.
+
+"Software" means the files that carry this license, as identified by
+`REUSE.toml` or by an `SPDX-License-Identifier: LicenseRef-Yuerchu-UI`
+notice, together with any modified version of those files.
+
+"Meridian" means the application published by the Licensor at
+https://github.com/Yuerchu/meridian.
+
+"Meridian Work" means Meridian, or any work based on Meridian that you
+receive or make under the GNU Affero General Public License (including a
+fork or a modified version of Meridian, whatever it is named and
+whatever it is used for), in which the Software is included as part of
+that application.
+
+"Permitted Purpose" means using, building, running, studying, modifying
+and distributing the Software as a part of a Meridian Work.
+
+## Copyright License
+
+The Licensor grants you a copyright license to use, copy, modify and
+distribute the Software, and to prepare derivative works of it, for the
+Permitted Purpose only.
+
+## Limitations
+
+You may not, without a separate written license from the Licensor:
+
+1. use the Software, or any substantial part of it, outside a Meridian
+   Work, including by copying it into another application, website or
+   product;
+
+2. distribute, publish or offer the Software, or any substantial part of
+   it, on its own or as a component library, design system, UI kit,
+   template, theme or similar collection, whether or not modified, and
+   whether or not for a fee; or
+
+3. use the Software to build or train a product whose purpose is to
+   provide user-interface components, designs or code to others.
+
+Distributing a Meridian Work in source or binary form, as a whole, is not
+a violation of these limitations, even when someone can read the
+Software's source code in that distribution.
+
+## Relationship to the AGPL
+
+The Software is not licensed under the GNU Affero General Public License.
+Meridian grants an additional permission under section 7 of that license
+(see `LICENSING.md`) that allows a Meridian Work to be conveyed together
+with the Software. Removing the Software from a Meridian Work and
+replacing it with other code is always allowed.
+
+## Notices
+
+You must ensure that anyone who gets a copy of any part of the Software
+from you also gets a copy of these terms, and that the copyright and
+license notices in the Software's files are kept.
+
+## Contributions
+
+Contributions to the Software are accepted under the Meridian Contributor
+License Agreement (`.github/CLA.md`). The Licensor may include them in
+other editions of the Software, under any terms.
+
+## No Other Rights
+
+These terms do not imply any licenses other than those expressly granted
+in them, including licenses to the Licensor's trademarks or to other
+editions of the Software.
+
+## Violations
+
+If you violate these terms, your license ends unless, within 30 days after
+you first receive notice of the violation from the Licensor, you stop the
+violation and take practical steps to correct its past effects. If your
+license ends a second time, it does not come back.
+
+## No Liability
+
+As far as the law allows, the Software comes as is, without any warranty
+or condition, and the Licensor will not be liable to you for any damages
+arising out of these terms or the use or nature of the Software, under
+any kind of legal claim.
