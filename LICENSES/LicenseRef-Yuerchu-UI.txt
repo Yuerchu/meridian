@@ -1,7 +1,5 @@
 Yuerchu UI License 1.0 (Meridian Edition)
 
-DRAFT — not yet in force. To be reviewed before it is published.
-
 Copyright (c) 2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>
 
 ## Acceptance
@@ -22,8 +20,9 @@ https://github.com/Yuerchu/meridian.
 
 "Meridian Work" means Meridian, or any work based on Meridian that you
 receive or make under the GNU Affero General Public License (including a
-fork or a modified version of Meridian), in which the Software is
-included as part of that application.
+fork or a modified version of Meridian, whatever it is named and
+whatever it is used for), in which the Software is included as part of
+that application.
 
 "Permitted Purpose" means using, building, running, studying, modifying
 and distributing the Software as a part of a Meridian Work.

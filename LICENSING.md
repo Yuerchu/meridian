@@ -24,8 +24,6 @@ Contact: **admin@yuxiaoqiu.cn**
 
 ## Yuerchu UI components (not AGPL)
 
-> **Draft — not yet in force.**
-
 The user-interface components under `src/components/yuerchu-ui/` are synced
 from @yuerchu/ui, a separate component library by the same author. They are
 **not** covered by the AGPL. They are source-available under the
