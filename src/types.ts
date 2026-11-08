@@ -3477,6 +3477,21 @@ export interface ImeLearnedWordForgetRequest {
   text: string
 }
 
+export interface ImeLearningExportRequest {
+  dest: string | null
+}
+
+export interface ImeLearningExportInfoResponse {
+  path: string
+}
+
+export type ImeLearningImportMode = 'add' | 'replace'
+
+export interface ImeLearningImportRequest {
+  path: string
+  mode: ImeLearningImportMode
+}
+
 export interface ImeDictionaryRemoveRequest {
   file: string
 }

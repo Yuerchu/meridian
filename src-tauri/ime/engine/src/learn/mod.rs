@@ -21,7 +21,7 @@ mod file;
 mod memory;
 mod ngram;
 
-pub use file::FileLearner;
+pub use file::{FileLearner, TABLE_FILES};
 pub use memory::MemoryLearner;
 pub use ngram::UserNgram;
 
@@ -118,6 +118,13 @@ pub trait Learner: Send {
     fn erase(&mut self, text: &str);
     /// Everything learned.
     fn erase_all(&mut self);
+
+    /// Adds another learner's counts onto this one. Default does nothing: a
+    /// memory-only store must not consume a disk merge. The owner of the
+    /// tables implements it.
+    fn absorb(&mut self, other: &MemoryLearner) {
+        let _ = other;
+    }
 
     /// Whether what this learner forgets is forgotten on disk too. Only then
     /// may a request to forget be taken as done; a learner in memory would
@@ -218,6 +225,10 @@ impl Learner for Muted<'_> {
     }
     fn erase_all(&mut self) {
         self.inner.erase_all()
+    }
+    fn absorb(&mut self, other: &MemoryLearner) {
+        // Not muted: merging is the person asking, like forgetting.
+        self.inner.absorb(other)
     }
     fn persists(&self) -> bool {
         self.inner.persists()

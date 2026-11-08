@@ -8,11 +8,14 @@
 //! Every loader fails soft and says so in the log: a broken file leaves the
 //! host typing with less, never not typing.
 
+use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::SystemTime;
 
-use meridian_ime_config::{ForgetRequest, HostConfig, ImeDirs, Scheme, pending_forgets};
+use meridian_ime_config::{
+    ForgetRequest, HostConfig, ImeDirs, MergeKind, Scheme, pending_forgets, pending_merges, reject_merge,
+};
 use meridian_ime_dict::{Catalog, DictSet};
 use meridian_ime_engine::{Engine, FileLearner, InputScheme, Learner, MemoryLearner, SentenceScorer};
 
@@ -52,6 +55,7 @@ pub fn open_learner(dirs: &ImeDirs) -> Box<dyn Learner> {
         }
     };
     apply_forgets(dirs, learner.as_mut());
+    apply_merges(dirs, learner.as_mut());
     learner
 }
 
@@ -110,6 +114,89 @@ pub fn apply_forgets(dirs: &ImeDirs, learner: &mut dyn Learner) -> usize {
         }
     }
     tracing::info!(requests = done.len(), "forgot what was asked");
+    done.len()
+}
+
+/// Merge add is not idempotent: absorbing the same incoming tables twice
+/// doubles counts. Forget can retry after a failed write because erase is.
+/// If flush fails we keep the request for a restart (disk still has the old
+/// tables) but must not absorb again in this process — the next tick would.
+static ABSORBED_MERGES: LazyLock<Mutex<HashSet<std::path::PathBuf>>> = LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Carries out Meridian's requests to merge another device's tables. Same
+/// persist / flush / unsaved / rejected rules as [`apply_forgets`]. A merge
+/// directory is removed only after the tables are written.
+pub fn apply_merges(dirs: &ImeDirs, learner: &mut dyn Learner) -> usize {
+    if !learner.persists() {
+        return 0;
+    }
+    let pending = match pending_merges(dirs) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error = %e, "requests to merge unreadable");
+            return 0;
+        }
+    };
+    let mut done = Vec::new();
+    for p in pending {
+        let kind = match p.request {
+            Ok(req) => req.kind,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %p.path.display(), "request to merge does not parse; set aside");
+                if let Err(err) = reject_merge(&p.path) {
+                    tracing::warn!(error = %err, path = %p.path.display(), "cannot set a bad merge aside");
+                }
+                continue;
+            }
+        };
+        let incoming = match FileLearner::read(&p.path) {
+            Ok(t) => t,
+            Err(e) => {
+                tracing::warn!(error = %e, path = %p.path.display(), "merge tables unreadable; set aside");
+                if let Err(err) = reject_merge(&p.path) {
+                    tracing::warn!(error = %err, path = %p.path.display(), "cannot set a bad merge aside");
+                }
+                continue;
+            }
+        };
+        let already = ABSORBED_MERGES
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(&p.path);
+        if !already {
+            match kind {
+                MergeKind::Add => learner.absorb(&incoming),
+                MergeKind::Replace => {
+                    learner.erase_all();
+                    learner.absorb(&incoming);
+                }
+            }
+            ABSORBED_MERGES
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .insert(p.path.clone());
+        }
+        done.push(p.path);
+    }
+    if done.is_empty() {
+        return 0;
+    }
+    learner.flush();
+    if learner.unsaved() {
+        tracing::warn!(
+            requests = done.len(),
+            "merged in memory but could not write the tables; the requests are kept"
+        );
+        return done.len();
+    }
+    for path in &done {
+        if let Err(e) = std::fs::remove_dir_all(path) {
+            tracing::warn!(error = %e, path = %path.display(), "carried out a merge and could not remove it");
+            continue;
+        }
+        ABSORBED_MERGES.lock().unwrap_or_else(|p| p.into_inner()).remove(path);
+    }
+    tracing::info!(requests = done.len(), "merged what was asked");
     done.len()
 }
 
@@ -424,5 +511,135 @@ mod tests {
         apply_forgets(&dirs, learner.as_mut());
         assert!(pending_forgets(&dirs).unwrap().is_empty(), "removed once written");
         assert_eq!(FileLearner::open(&dirs.learn()).unwrap().weight("香港"), 0);
+    }
+
+    fn incoming_tables(dir: &std::path::Path, word: &str, n: u32) -> std::path::PathBuf {
+        let t = dir.join(format!("in-{word}-{n}"));
+        let mut m = MemoryLearner::new();
+        for _ in 0..n {
+            m.record(word);
+        }
+        FileLearner::write_tables(&t, &m).unwrap();
+        t
+    }
+
+    #[test]
+    fn a_request_to_merge_add_is_carried_out_on_disk_and_then_removed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let mut learner = open_learner(&dirs);
+        learner.record("香港");
+        learner.record("你好");
+        learner.flush();
+        let incoming = incoming_tables(tmp.path(), "香港", 2);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Add, &incoming).unwrap();
+
+        assert_eq!(apply_merges(&dirs, learner.as_mut()), 1);
+        assert_eq!(learner.weight("香港"), 3);
+        assert_eq!(learner.weight("你好"), 1);
+        assert!(pending_merges(&dirs).unwrap().is_empty(), "removed once done");
+        let reopened = FileLearner::open(&dirs.learn()).unwrap();
+        assert_eq!(reopened.weight("香港"), 3);
+        assert_eq!(reopened.weight("你好"), 1);
+    }
+
+    #[test]
+    fn a_request_to_merge_replace_drops_what_was_here() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let mut learner = open_learner(&dirs);
+        learner.record("香港");
+        learner.flush();
+        let incoming = incoming_tables(tmp.path(), "你好", 1);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Replace, &incoming).unwrap();
+        assert_eq!(apply_merges(&dirs, learner.as_mut()), 1);
+        assert_eq!(learner.weight("香港"), 0);
+        assert_eq!(learner.weight("你好"), 1);
+        let reopened = FileLearner::open(&dirs.learn()).unwrap();
+        assert_eq!(reopened.weight("香港"), 0);
+        assert_eq!(reopened.weight("你好"), 1);
+    }
+
+    #[test]
+    fn a_merge_made_while_nothing_held_the_store_is_carried_out_on_opening() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        {
+            let mut learner = open_learner(&dirs);
+            learner.record("香港");
+            learner.flush();
+        }
+        let incoming = incoming_tables(tmp.path(), "你好", 1);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Add, &incoming).unwrap();
+        let learner = open_learner(&dirs);
+        assert_eq!(learner.weight("香港"), 1);
+        assert_eq!(learner.weight("你好"), 1);
+        assert!(pending_merges(&dirs).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_learner_that_does_not_write_leaves_merges_waiting() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let incoming = incoming_tables(tmp.path(), "香港", 1);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Add, &incoming).unwrap();
+        assert_eq!(apply_merges(&dirs, &mut MemoryLearner::new()), 0);
+        assert_eq!(pending_merges(&dirs).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_merge_that_does_not_parse_is_set_aside_not_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        std::fs::create_dir_all(dirs.merge()).unwrap();
+        let bad = dirs.merge().join("1-1");
+        std::fs::create_dir_all(&bad).unwrap();
+        std::fs::write(bad.join("request.json"), "{").unwrap();
+        let mut learner = open_learner(&dirs);
+        assert_eq!(apply_merges(&dirs, learner.as_mut()), 0);
+        assert!(dirs.merge().join("1-1.rejected").exists());
+        assert!(pending_merges(&dirs).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_merge_is_kept_until_the_tables_are_written() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let mut learner = open_learner(&dirs);
+        learner.record("你好");
+        learner.flush();
+        let incoming = incoming_tables(tmp.path(), "香港", 1);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Add, &incoming).unwrap();
+        let table = dirs.learn().join("user.tsv");
+        std::fs::remove_file(&table).unwrap();
+        std::fs::create_dir(&table).unwrap();
+
+        apply_merges(&dirs, learner.as_mut());
+        assert_eq!(pending_merges(&dirs).unwrap().len(), 1, "kept while unwritten");
+
+        std::fs::remove_dir(&table).unwrap();
+        apply_merges(&dirs, learner.as_mut());
+        assert!(pending_merges(&dirs).unwrap().is_empty(), "removed once written");
+        assert_eq!(FileLearner::open(&dirs.learn()).unwrap().weight("香港"), 1);
+    }
+
+    #[test]
+    fn forgets_run_before_merges_on_open() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        {
+            let mut learner = open_learner(&dirs);
+            learner.record("香港");
+            learner.flush();
+        }
+        meridian_ime_config::request_forget(&dirs, &ForgetRequest::Word { text: "香港".into() }).unwrap();
+        let incoming = incoming_tables(tmp.path(), "香港", 2);
+        meridian_ime_config::request_merge(&dirs, MergeKind::Add, &incoming).unwrap();
+        let learner = open_learner(&dirs);
+        assert_eq!(
+            learner.weight("香港"),
+            2,
+            "forgotten first, then the incoming add puts it back"
+        );
     }
 }

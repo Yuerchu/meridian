@@ -18,8 +18,8 @@ const BRIDGE_CLASS: &str = "cn.yuxiaoqiu.meridian.ImeBridge";
 
 fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject, &JClass) -> jni::errors::Result<T>) -> Result<T, String> {
     let ctx = ndk_context::android_context();
-    // SAFETY: ndk-context was initialised by `initNdkContext` with the VM
-    // pointer Android passed to MainActivity; it outlives the process.
+    // SAFETY: ndk-context was initialised by tao's `Rust.onCreate` with the
+    // application Context; it outlives the process.
     let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| format!("JavaVM: {e}"))?;
     let mut env = vm
         .attach_current_thread_permanently()

@@ -8,6 +8,7 @@ mod bench;
 mod dicts;
 mod import;
 mod keys;
+mod learn;
 mod lookup;
 mod replay;
 mod upgrade;
@@ -33,6 +34,10 @@ meridian-ime <command> [args]
                               replay a key script through the session state machine
   repl   [--data-dir <dir>] [--scheme pinyin|zhuyin|grid]
                               read key scripts from stdin, one per line
+  learn  export [--data-dir D] [--out DIR]
+                              write the four learned tables to a directory
+  learn  merge --add|--replace PATH [--data-dir D] [--apply true]
+                              file a merge request, or write the tables now with --apply true
 
 <data-dir> defaults to $MERIDIAN_IME_DATA_DIR, then the app data directory.
 ";
@@ -53,6 +58,7 @@ fn main() -> ExitCode {
         "keys" => keys::run(rest),
         "type" => replay::run_script(rest),
         "repl" => replay::run_repl(rest),
+        "learn" => learn::run(rest),
         "-h" | "--help" | "help" => {
             print!("{USAGE}");
             Ok(())
