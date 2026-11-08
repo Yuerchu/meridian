@@ -7,8 +7,8 @@ use std::time::Instant;
 use meridian_ime_config::{APP_IDENTIFIER, HostConfig, ImeDirs, Punctuation};
 use meridian_ime_engine::{Engine, InputScheme, Learner};
 use meridian_ime_host::data::{
-    Change, SharedScorer, Watch, apply_forgets, build_engine, input_scheme, load_config, load_hints, load_scorer,
-    open_learner,
+    Change, SharedScorer, Watch, apply_forgets, apply_merges, build_engine, input_scheme, load_config, load_hints,
+    load_scorer, open_learner,
 };
 use meridian_ime_proto::{Frame, KeyEvent};
 use meridian_ime_session::{DictionaryNotice, FLUSH_INTERVAL, KeyOutcome, Session, SessionConfig};
@@ -227,6 +227,11 @@ impl ImeHost {
         }
         // Meridian asked for something to be forgotten (its settings page).
         if apply_forgets(&self.dirs, self.learner.as_mut()) > 0 {
+            self.refresh_user_words();
+            self.session.invalidate_cache();
+            changed = true;
+        }
+        if apply_merges(&self.dirs, self.learner.as_mut()) > 0 {
             self.refresh_user_words();
             self.session.invalidate_cache();
             changed = true;

@@ -91,6 +91,106 @@ fn muted_swallows_writes_but_reads() {
 }
 
 #[test]
+fn absorb_adds_counts_and_a_trigram_share_is_not_doubled() {
+    let mut a = MemoryLearner::new();
+    a.record("你好");
+    a.record("你好");
+    a.record_choice("nh", "你好");
+    a.learn_word("香港", "xiang gang");
+    a.record_transition(Context::of(Some("我"), "去"), "香港", 2);
+    a.record_transition(Context::after("去"), "香港", 1);
+
+    let mut b = MemoryLearner::new();
+    b.record("你好");
+    b.record_choice("nh", "你好");
+    b.record_choice("nh", "拟好");
+    b.learn_word("香港", "xiang gang");
+    b.record_transition(Context::of(Some("我"), "去"), "香港", 3);
+
+    a.absorb(&b);
+    assert_eq!(a.weight("你好"), 3);
+    assert_eq!(a.choice_weight("nh", "你好"), 2);
+    assert_eq!(a.choice_weight("nh", "拟好"), 1);
+    assert_eq!(a.user_words()[0].weight, 2);
+    assert_eq!(a.ngram().trigram_count("我", "去", "香港"), 5);
+    assert_eq!(
+        a.ngram().bigram_count("去", "香港"),
+        6,
+        "trigram 5 plus the residual 1, not 5+5+1"
+    );
+}
+
+#[test]
+fn write_read_absorb_into_empty_matches_the_original() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut original = MemoryLearner::new();
+    original.record("好");
+    original.record("好");
+    original.record_choice("h", "好");
+    original.learn_word("妮好", "ni hao");
+    original.record_transition(Context::after("我"), "想", 3);
+    original.record_transition(Context::of(Some("我"), "也"), "想", 2);
+    original.record_transition(Context::of(Some("你"), "很"), "好", 4);
+    FileLearner::write_tables(dir.path(), &original).unwrap();
+    let loaded = FileLearner::read(dir.path()).unwrap();
+    let mut empty = MemoryLearner::new();
+    empty.absorb(&loaded);
+    assert_eq!(empty.weight("好"), 2);
+    assert_eq!(empty.choice_weight("h", "好"), 1);
+    assert_eq!(empty.user_words()[0].text, "妮好");
+    assert_eq!(empty.ngram().bigram_count("我", "想"), 3);
+    assert_eq!(empty.ngram().trigram_count("我", "也", "想"), 2);
+    assert_eq!(empty.ngram().bigram_count("也", "想"), 2);
+    assert_eq!(
+        empty.ngram().bigram_count("很", "好"),
+        4,
+        "a bigram that is only a trigram share still comes back"
+    );
+    assert_eq!(empty.ngram().trigram_count("你", "很", "好"), 4);
+}
+
+#[test]
+fn absorb_saturates_weights_and_choices() {
+    use std::collections::{BTreeMap, HashMap};
+
+    use super::UserNgram;
+
+    let mut heavy = HashMap::new();
+    heavy.insert("好".into(), u32::MAX);
+    let mut choices = HashMap::new();
+    choices.insert(("h".into(), "好".into()), u32::MAX);
+    let mut words = BTreeMap::new();
+    words.insert(("好".into(), "hao".into()), u32::MAX);
+    let a = MemoryLearner::from_parts(heavy, choices, words, UserNgram::new());
+    let mut extra = MemoryLearner::new();
+    extra.record("好");
+    extra.record_choice("h", "好");
+    extra.learn_word("好", "hao");
+    let mut dest = MemoryLearner::from_parts(
+        a.weights().clone(),
+        a.choices().clone(),
+        a.words().clone(),
+        UserNgram::new(),
+    );
+    dest.absorb(&extra);
+    assert_eq!(dest.weight("好"), u32::MAX);
+    assert_eq!(dest.choice_weight("h", "好"), u32::MAX);
+    assert_eq!(dest.user_words()[0].weight, u32::MAX);
+}
+
+#[test]
+fn muted_absorb_still_writes_because_merge_is_the_person_asking() {
+    let mut m = MemoryLearner::new();
+    let mut incoming = MemoryLearner::new();
+    incoming.record("好");
+    {
+        let mut muted = Muted::new(&mut m, true);
+        muted.absorb(&incoming);
+    }
+    assert_eq!(m.weight("好"), 1);
+}
+
+#[test]
 fn file_learner_round_trips_all_four_tables() {
     let dir = tempfile::tempdir().unwrap();
     {

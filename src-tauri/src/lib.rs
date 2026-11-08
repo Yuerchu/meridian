@@ -271,9 +271,24 @@ pub fn run() {
             {
                 let services = services.clone();
                 let handle = app.handle().clone();
-                tauri::async_runtime::spawn(async move {
-                    handle.manage(ime::maybe_start(services, handle.clone()).await);
-                });
+                // Android's WebView can invoke before this spawn runs. Opening
+                // IME settings (including from the keyboard) calls get_ime_learning
+                // at once; `app.state::<AppIme>()` then SIGABRTs. Register it
+                // before setup returns. Windows keeps the spawn: starting the
+                // host must not hold the window.
+                #[cfg(target_os = "android")]
+                {
+                    handle.manage(tauri::async_runtime::block_on(ime::maybe_start(
+                        services,
+                        handle.clone(),
+                    )));
+                }
+                #[cfg(windows)]
+                {
+                    tauri::async_runtime::spawn(async move {
+                        handle.manage(ime::maybe_start(services, handle.clone()).await);
+                    });
+                }
             }
 
             // Registered even when the watcher is switched off, so the IPC
@@ -534,9 +549,16 @@ static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicB
 #[cfg(target_os = "android")]
 static KEYSTORE_INIT_ERROR: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
-/// Called from MainActivity.onCreate to initialize ndk-context and
-/// android-keyring before any Rust code touches the Android keystore.
-/// Tauri itself does NOT initialize ndk-context; this JNI entry is required.
+/// Called from MainActivity.onCreate, before `super.onCreate`.
+///
+/// android-keyring's `from_ndk_context` needs the ndk-context slot filled so
+/// bootstrap can read API keys. tao's `Rust.onCreate` (reached from
+/// `super.onCreate`) *also* calls `initialize_android_context` and asserts the
+/// slot is empty — leaving it set here is `assertion failed: previous.is_none()`
+/// on the next line, a SIGABRT before the window draws. Borrow the slot only
+/// for the credential builder, then release; tao owns it for the rest of the
+/// process. (The old comment that Tauri does not initialize ndk-context was
+/// wrong: tao 0.37 `ndk_glue::onCreate` does.)
 #[cfg(target_os = "android")]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -545,27 +567,37 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
     _class: jni::objects::JObject,
     context: jni::objects::JObject,
 ) {
-    use jni::objects::GlobalRef;
     use std::ffi::c_void;
     use std::sync::OnceLock;
 
-    static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
-    REF.get_or_init(|| match env.new_global_ref(&context) {
+    static STARTED: OnceLock<()> = OnceLock::new();
+    STARTED.get_or_init(|| match env.new_global_ref(&context) {
         Ok(ref_) => {
             let vm = env.get_java_vm().unwrap();
             let vm = vm.get_java_vm_pointer() as *mut c_void;
             unsafe {
                 ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
             }
+            // Always hand the slot back, even if the builder fails: tao's
+            // onCreate still runs and still asserts.
+            struct ReleaseOnDrop;
+            impl Drop for ReleaseOnDrop {
+                fn drop(&mut self) {
+                    unsafe {
+                        ndk_context::release_android_context();
+                    }
+                }
+            }
+            let _release = ReleaseOnDrop;
             if let Err(error) = android_keyring::set_android_keyring_credential_builder() {
                 // Only ever set once: this whole block runs inside `get_or_init`.
                 let _ = KEYSTORE_INIT_ERROR.set(error.to_string());
             }
-            Some(ref_)
+            // `ref_` drops after `_release`: android-keyring holds its own
+            // GlobalRef of the same Context.
         }
         Err(error) => {
             let _ = KEYSTORE_INIT_ERROR.set(format!("could not hold the Android context: {error}"));
-            None
         }
     });
 }

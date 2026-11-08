@@ -15,6 +15,12 @@ export interface ConfirmOptions {
    * conversation?" makes the reader parse the body to learn what it does.
    */
   confirmLabel: ReactNode
+  /**
+   * A third verb, between Cancel and Confirm. Import is the one caller: Add
+   * and Replace are both real answers, and hiding Replace behind Cancel made
+   * it look like Add was the only mode.
+   */
+  altLabel?: ReactNode
   /** Destructive unless said otherwise: everything that asks here is a delete. */
   status?: 'danger' | 'warning' | 'accent'
   /**
@@ -45,15 +51,18 @@ export function ConfirmDialog({
   isOpen,
   onOpenChange,
   onConfirm,
+  onAlt,
   title,
   body,
   confirmLabel,
+  altLabel,
   status = 'danger',
   presentation = 'auto',
 }: ConfirmOptions & {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
   onConfirm: () => void
+  onAlt?: () => void
 }) {
   const { t } = useTranslation()
   const descId = useId()
@@ -67,11 +76,23 @@ export function ConfirmDialog({
   useHistoryLevel(isOpen && !asSheet, () => onOpenChange(false))
 
   const heading = title ?? t('confirm.title')
+  const stacked = altLabel != null
   const buttons = (
     <>
       <Button slot="close" variant="secondary">
         {t('common.cancel')}
       </Button>
+      {altLabel != null && (
+        <Button
+          variant="danger"
+          onPress={() => {
+            onAlt?.()
+            onOpenChange(false)
+          }}
+        >
+          {altLabel}
+        </Button>
+      )}
       {/* Closed here rather than with `slot="close"`, so that the answer
           is recorded before the dialog goes: `useConfirm` settles its
           promise from `onOpenChange`, and a close it did not order means
@@ -109,7 +130,11 @@ export function ConfirmDialog({
               <Sheet.Body id={descId} className="text-body-regular text-text-secondary">
                 {body}
               </Sheet.Body>
-              <Sheet.Footer>{buttons}</Sheet.Footer>
+              <Sheet.Footer
+                className={stacked ? 'flex-col-reverse items-stretch sm:flex-row sm:items-center' : undefined}
+              >
+                {buttons}
+              </Sheet.Footer>
             </Sheet.Dialog>
           </Sheet.Content>
         </Sheet.Backdrop>
@@ -126,7 +151,11 @@ export function ConfirmDialog({
             <AlertDialog.Heading>{heading}</AlertDialog.Heading>
           </AlertDialog.Header>
           <AlertDialog.Body id={descId}>{body}</AlertDialog.Body>
-          <AlertDialog.Footer>{buttons}</AlertDialog.Footer>
+          <AlertDialog.Footer
+            className={stacked ? 'flex-col-reverse items-stretch sm:flex-row sm:items-center' : undefined}
+          >
+            {buttons}
+          </AlertDialog.Footer>
         </AlertDialog.Dialog>
       </AlertDialog.Container>
     </AlertDialog.Backdrop>

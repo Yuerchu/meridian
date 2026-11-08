@@ -416,4 +416,12 @@ object FileBridge {
       ?: throw IOException("cannot open $uri")
     ins.use { s -> java.io.File(destAbsPath).outputStream().use { s.copyTo(it) } }
   }
+
+  /** Overwrite a `content://` document (the dest from ACTION_CREATE_DOCUMENT). */
+  @JvmStatic
+  fun contentWrite(context: Context, srcAbsPath: String, uri: String) {
+    val outs = context.contentResolver.openOutputStream(Uri.parse(uri), "w")
+      ?: throw IOException("cannot open $uri")
+    outs.use { o -> java.io.File(srcAbsPath).inputStream().use { it.copyTo(o) } }
+  }
 }

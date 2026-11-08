@@ -1400,6 +1400,8 @@ const integrations: Record<string, DemoHandler> = {
   get_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
   forget_ime_learned_word: () => ({ words: [], transitions: 0, pending: 0 }),
   forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  export_ime_learning: () => ({ path: '/tmp/meridian-ime-learn.zip' }),
+  import_ime_learning: () => ({ words: [], transitions: 0, pending: 1 }),
   // A browser is launched by nobody's keyboard.
   take_launch_request: () => null,
   cancel_staged_ime_dictionaries: () => null,

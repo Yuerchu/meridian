@@ -1,18 +1,25 @@
 //! What the input method has learned, as the settings page lists it, and the
-//! page's way of having some of it forgotten.
+//! page's way of having some of it forgotten or merged.
 //!
 //! The tables belong to the process that types (the Windows host, the Android
 //! keyboard), which holds them in memory and writes them out every minute, so
-//! nothing here writes them: forgetting is a request that process carries out
-//! (`meridian_ime_config::forget`). Reading goes through `FileLearner::read`,
-//! which never writes either, and the requests still waiting are applied to
-//! what was read — in memory, never saved — so a word just forgotten is not
-//! listed again before the keyboard has got round to it.
+//! nothing here writes them: forgetting and merging are requests that process
+//! carries out. Reading goes through `FileLearner::read`, which never writes
+//! either, and the requests still waiting are applied to what was read — in
+//! memory, never saved — so a word just forgotten is not listed again before
+//! the keyboard has got round to it, and a just-imported replace already shows
+//! only the incoming rows.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
-use meridian_ime_config::{ForgetRequest, ImeDirs, pending_forgets, request_forget};
-use meridian_ime_engine::{FileLearner, Learner};
+use meridian_ime_config::{
+    ForgetRequest, ImeDirs, MergeKind, pending_forgets, pending_merges, request_forget, request_merge,
+};
+use meridian_ime_engine::{FileLearner, Learner, MemoryLearner};
+
+use super::archive;
+use super::learn_zip;
 
 /// One word, as often as it was committed; `user_word` when the person also
 /// composed it into their own dictionary.
@@ -29,22 +36,52 @@ pub struct Learned {
     pub words: Vec<LearnedWord>,
     /// Which-word-followed-which rows; what makes the next word easier.
     pub transitions: usize,
-    /// Requests to forget the keyboard has not carried out yet.
+    /// Requests to forget or merge the keyboard has not carried out yet.
     pub pending: usize,
 }
 
-pub fn list(dirs: &ImeDirs) -> Result<Learned, String> {
+fn overlay(dirs: &ImeDirs) -> Result<(MemoryLearner, usize), String> {
     let mut tables =
         FileLearner::read(&dirs.learn()).map_err(|e| format!("cannot read {}: {e}", dirs.learn().display()))?;
-    let pending = pending_forgets(dirs).map_err(|e| format!("cannot read the requests to forget: {e}"))?;
-    for p in &pending {
+    let forgets = pending_forgets(dirs).map_err(|e| format!("cannot read the requests to forget: {e}"))?;
+    let mut pending = 0usize;
+    for p in &forgets {
         match &p.request {
             Ok(ForgetRequest::Word { text }) => tables.erase(text),
             Ok(ForgetRequest::Everything) => tables.erase_all(),
-            // Set aside by the keyboard when it next looks; nothing to apply.
+            Err(_) => {}
+        }
+        if p.request.is_ok() {
+            pending += 1;
+        }
+    }
+    let merges = pending_merges(dirs).map_err(|e| format!("cannot read the requests to merge: {e}"))?;
+    for p in &merges {
+        match &p.request {
+            Ok(req) => {
+                pending += 1;
+                let incoming = match FileLearner::read(&p.path) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::warn!(error = %e, path = %p.path.display(), "pending merge unreadable; listed without it");
+                        continue;
+                    }
+                };
+                match req.kind {
+                    MergeKind::Add => tables.absorb(&incoming),
+                    MergeKind::Replace => {
+                        tables.erase_all();
+                        tables.absorb(&incoming);
+                    }
+                }
+            }
             Err(_) => {}
         }
     }
+    Ok((tables, pending))
+}
+
+fn learned_from(tables: &MemoryLearner, pending: usize) -> Learned {
     let mut words: BTreeMap<String, LearnedWord> = BTreeMap::new();
     for (text, count) in tables.weights() {
         words.insert(
@@ -68,11 +105,16 @@ pub fn list(dirs: &ImeDirs) -> Result<Learned, String> {
     }
     let mut words: Vec<LearnedWord> = words.into_values().collect();
     words.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.text.cmp(&b.text)));
-    Ok(Learned {
+    Learned {
         words,
         transitions: tables.ngram().len(),
-        pending: pending.iter().filter(|p| p.request.is_ok()).count(),
-    })
+        pending,
+    }
+}
+
+pub fn list(dirs: &ImeDirs) -> Result<Learned, String> {
+    let (tables, pending) = overlay(dirs)?;
+    Ok(learned_from(&tables, pending))
 }
 
 /// Asks for every trace of `text` to be forgotten.
@@ -87,6 +129,49 @@ pub fn forget(dirs: &ImeDirs, text: &str) -> Result<(), String> {
 /// Asks for everything learned to be forgotten.
 pub fn forget_all(dirs: &ImeDirs) -> Result<(), String> {
     request_forget(dirs, &ForgetRequest::Everything).map_err(|e| format!("cannot file the request: {e}"))
+}
+
+/// Writes a zip of the learned tables, with pending forgets and merges already
+/// applied in memory, to `dest`.
+pub fn export(dirs: &ImeDirs, dest: &Path) -> Result<PathBuf, String> {
+    let (tables, _) = overlay(dirs)?;
+    let parent = dest.parent().unwrap_or(dest);
+    let staging = parent.join(format!(
+        ".{}.tables-{}",
+        dest.file_name().and_then(|n| n.to_str()).unwrap_or("learn"),
+        std::process::id()
+    ));
+    let written = (|| {
+        FileLearner::write_tables(&staging, &tables).map_err(|e| e.to_string())?;
+        learn_zip::write_zip(&staging, dest)
+    })();
+    let _ = std::fs::remove_dir_all(&staging);
+    written?;
+    Ok(dest.to_path_buf())
+}
+
+/// Stages `path` (a zip or a directory of the four TSVs) as a merge request.
+/// Does not write the live tables.
+pub fn import(dirs: &ImeDirs, path: &Path, kind: MergeKind) -> Result<(), String> {
+    if path.is_dir() {
+        FileLearner::read(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+        request_merge(dirs, kind, path).map_err(|e| format!("cannot file the request: {e}"))?;
+        return Ok(());
+    }
+    let is_zip = archive::is_zip(path).map_err(|e| e.to_string())?;
+    if !is_zip {
+        return Err(format!("{} is not a zip or a learn directory", path.display()));
+    }
+    let staging = learn_zip::staging_root(dirs).join(format!("import-{}", std::process::id()));
+    if staging.exists() {
+        let _ = std::fs::remove_dir_all(&staging);
+    }
+    let result = (|| {
+        learn_zip::unpack_zip(path, &staging)?;
+        request_merge(dirs, kind, &staging).map_err(|e| format!("cannot file the request: {e}"))
+    })();
+    let _ = std::fs::remove_dir_all(&staging);
+    result
 }
 
 #[cfg(test)]
@@ -147,5 +232,81 @@ mod tests {
         let l = list(&ImeDirs::new(tmp.path())).unwrap();
         assert!(l.words.is_empty() && l.transitions == 0);
         assert!(forget(&ImeDirs::new(tmp.path()), "  ").is_err());
+    }
+
+    #[test]
+    fn export_omits_a_word_waiting_to_be_forgotten() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = learned(tmp.path());
+        forget(&dirs, "香港").unwrap();
+        let zip = tmp.path().join("out.zip");
+        export(&dirs, &zip).unwrap();
+        let unpacked = tmp.path().join("unpacked");
+        learn_zip::unpack_zip(&zip, &unpacked).unwrap();
+        let loaded = FileLearner::read(&unpacked).unwrap();
+        assert_eq!(loaded.weight("香港"), 0);
+        assert_eq!(loaded.weight("你好"), 2);
+        assert!(
+            std::fs::read_to_string(dirs.learn().join("user.tsv"))
+                .unwrap()
+                .contains("香港\t1"),
+            "live tables untouched"
+        );
+    }
+
+    #[test]
+    fn import_add_from_a_directory_is_a_request_not_a_write() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = learned(tmp.path());
+        let incoming = tmp.path().join("incoming");
+        let mut extra = MemoryLearner::new();
+        extra.record("香港");
+        extra.record("香港");
+        FileLearner::write_tables(&incoming, &extra).unwrap();
+        let before = std::fs::read_to_string(dirs.learn().join("user.tsv")).unwrap();
+        import(&dirs, &incoming, MergeKind::Add).unwrap();
+        assert_eq!(std::fs::read_to_string(dirs.learn().join("user.tsv")).unwrap(), before);
+        let l = list(&dirs).unwrap();
+        assert_eq!(l.words.iter().find(|w| w.text == "香港").unwrap().count, 3);
+        assert_eq!(l.pending, 1);
+    }
+
+    #[test]
+    fn import_replace_from_a_zip_shows_only_incoming_rows() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = learned(tmp.path());
+        let incoming = tmp.path().join("incoming");
+        let mut extra = MemoryLearner::new();
+        extra.record("北京");
+        FileLearner::write_tables(&incoming, &extra).unwrap();
+        let zip = tmp.path().join("in.zip");
+        learn_zip::write_zip(&incoming, &zip).unwrap();
+        import(&dirs, &zip, MergeKind::Replace).unwrap();
+        let l = list(&dirs).unwrap();
+        let texts: Vec<_> = l.words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(texts, vec!["北京"]);
+        assert_eq!(l.pending, 1);
+        assert!(
+            std::fs::read_to_string(dirs.learn().join("user.tsv"))
+                .unwrap()
+                .contains("你好"),
+            "live tables still the old ones"
+        );
+    }
+
+    #[test]
+    fn a_zip_that_is_not_a_learn_export_is_refused() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dirs = ImeDirs::new(tmp.path());
+        let zip = tmp.path().join("nope.zip");
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&zip).unwrap());
+        archive
+            .start_file("secret.txt", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        use std::io::Write;
+        archive.write_all(b"no").unwrap();
+        archive.finish().unwrap();
+        assert!(import(&dirs, &zip, MergeKind::Add).is_err());
+        assert!(pending_merges(&dirs).unwrap().is_empty());
     }
 }

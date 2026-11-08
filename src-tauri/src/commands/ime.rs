@@ -6,6 +6,8 @@
 //! same files on both platforms; the rest is each platform's own — the TSF
 //! registration and host on Windows, the keyboard's system state on Android.
 
+use std::time::{Duration, Instant};
+
 use tauri::Manager;
 
 use crate::ServicesExt;
@@ -193,6 +195,33 @@ pub struct ImeLearnedWordForgetRequest {
     pub text: String,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLearningExportRequest {
+    /// Where to write the zip; omitted is `{ime}/exports/meridian-ime-learn.zip`.
+    pub dest: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct ImeLearningExportInfoResponse {
+    pub path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum ImeLearningImportMode {
+    Add,
+    Replace,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ImeLearningImportRequest {
+    /// A zip, a directory of the four TSVs, or on Android a `content://` URI.
+    pub path: String,
+    pub mode: ImeLearningImportMode,
+}
+
 /// The Android keyboard as the system sees it.
 #[cfg(target_os = "android")]
 #[derive(Debug, serde::Serialize)]
@@ -320,8 +349,26 @@ impl TryFrom<ImeConfigUpdateRequest> for meridian_ime_config::HostConfig {
     }
 }
 
+/// How long an IPC that beat `ime::maybe_start` will wait. Same reason as
+/// `ServicesExt`: on Android the WebView can speak before setup has
+/// `manage()`d `AppIme`, and `app.state` panics across JNI as SIGABRT.
+const IME_WAIT: Duration = Duration::from_secs(30);
+
+async fn wait_ime(app: &tauri::AppHandle) -> tauri::State<'_, AppIme> {
+    let deadline = Instant::now() + IME_WAIT;
+    loop {
+        if let Some(ime) = app.try_state::<AppIme>() {
+            return ime;
+        }
+        if Instant::now() >= deadline {
+            panic!("AppIme was still not registered {IME_WAIT:?} after an IPC asked for it");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
 async fn bridge(app: &tauri::AppHandle) -> crate::ime::ImeBridge {
-    app.state::<AppIme>().bridge.lock().await.clone()
+    wait_ime(app).await.bridge.lock().await.clone()
 }
 
 #[cfg(windows)]
@@ -378,7 +425,7 @@ pub async fn save_ime_config(
 #[tauri::command]
 pub async fn list_ime_dictionaries(app: tauri::AppHandle) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
-    let progress = app.state::<AppIme>().upgrade.clone();
+    let progress = wait_ime(&app).await.upgrade.clone();
     let list = tokio::task::spawn_blocking(move || dictionary::list(&bridge.dirs, &progress))
         .await
         .expect("list task")?;
@@ -512,7 +559,7 @@ pub async fn stage_ime_dictionary(
             })
             .collect(),
     };
-    let ime = app.state::<AppIme>();
+    let ime = wait_ime(&app).await;
     if let Some(old) = ime.staged.lock().await.replace(staged) {
         old.cleanup();
     }
@@ -528,7 +575,7 @@ pub async fn cancel_staged_ime_dictionaries(
     app: tauri::AppHandle,
     request: ImeDictionaryStagedCancelRequest,
 ) -> Result<(), String> {
-    let ime = app.state::<AppIme>();
+    let ime = wait_ime(&app).await;
     let staged = archive::take_staged(&mut *ime.staged.lock().await, &request.staging_id);
     if let Some(staged) = staged {
         tokio::task::spawn_blocking(move || staged.cleanup())
@@ -549,7 +596,7 @@ pub async fn import_staged_ime_dictionaries(
         return Err("choose at least one dictionary".into());
     }
     let dirs = bridge(&app).await.dirs;
-    let ime = app.state::<AppIme>();
+    let ime = wait_ime(&app).await;
     let writes = ime.dict_writes.clone();
     let staged = {
         let mut slot = ime.staged.lock().await;
@@ -580,7 +627,7 @@ pub async fn import_staged_ime_dictionaries(
 #[tauri::command]
 pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
     let dirs = bridge(&app).await.dirs;
-    let writes = app.state::<AppIme>().dict_writes.clone();
+    let writes = wait_ime(&app).await.dict_writes.clone();
     let scratch = scratch_root(&dirs);
     std::fs::create_dir_all(&scratch).map_err(|e| e.to_string())?;
     let id = uuid::Uuid::new_v4().to_string();
@@ -616,7 +663,7 @@ pub async fn set_ime_dictionary_enabled(
     request: ImeDictionaryToggleRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
-    let ime = app.state::<AppIme>();
+    let ime = wait_ime(&app).await;
     let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
         let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
@@ -634,7 +681,7 @@ pub async fn remove_ime_dictionary(
     request: ImeDictionaryRemoveRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
-    let ime = app.state::<AppIme>();
+    let ime = wait_ime(&app).await;
     let (writes, progress) = (ime.dict_writes.clone(), ime.upgrade.clone());
     let list = tokio::task::spawn_blocking(move || {
         let _guard = writes.lock().unwrap_or_else(|p| p.into_inner());
@@ -681,6 +728,63 @@ pub async fn forget_all_ime_learning(app: tauri::AppHandle) -> Result<ImeLearnin
     })
     .await
     .expect("forget task")?;
+    Ok(learning_into(learned))
+}
+
+#[tauri::command]
+pub async fn export_ime_learning(
+    app: tauri::AppHandle,
+    request: ImeLearningExportRequest,
+) -> Result<ImeLearningExportInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let dest = request.dest.filter(|s| !s.trim().is_empty());
+
+    // Android's save dialog returns a content:// document, not a path Rust
+    // can create. Write the zip locally, then copy into the document.
+    #[cfg(target_os = "android")]
+    if let Some(uri) = dest.as_deref().filter(|s| s.starts_with("content://")) {
+        let local = crate::ime::learn_zip::default_export_path(&bridge.dirs);
+        let dirs = bridge.dirs.clone();
+        let local_path = tokio::task::spawn_blocking(move || learning::export(&dirs, &local))
+            .await
+            .expect("export task")?;
+        meridian_core::android_bridge::content_write(&local_path.to_string_lossy(), uri).await?;
+        return Ok(ImeLearningExportInfoResponse { path: uri.to_string() });
+    }
+
+    let dest = dest
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| crate::ime::learn_zip::default_export_path(&bridge.dirs));
+    let path = tokio::task::spawn_blocking(move || learning::export(&bridge.dirs, &dest))
+        .await
+        .expect("export task")?;
+    Ok(ImeLearningExportInfoResponse {
+        path: path.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub async fn import_ime_learning(
+    app: tauri::AppHandle,
+    request: ImeLearningImportRequest,
+) -> Result<ImeLearningInfoResponse, String> {
+    let bridge = bridge(&app).await;
+    let scratch = scratch_root(&bridge.dirs);
+    let id = uuid::Uuid::new_v4().to_string();
+    let (picked, copy_dir) = local_copy(&request.path, &scratch, &id).await?;
+    let kind = match request.mode {
+        ImeLearningImportMode::Add => meridian_ime_config::MergeKind::Add,
+        ImeLearningImportMode::Replace => meridian_ime_config::MergeKind::Replace,
+    };
+    let learned = tokio::task::spawn_blocking(move || {
+        let result = learning::import(&bridge.dirs, &picked, kind).and_then(|_| learning::list(&bridge.dirs));
+        if let Some(dir) = copy_dir {
+            let _ = std::fs::remove_dir_all(dir);
+        }
+        result
+    })
+    .await
+    .expect("import task")?;
     Ok(learning_into(learned))
 }
 

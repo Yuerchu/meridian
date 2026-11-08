@@ -381,6 +381,8 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   get_ime_learning: {},
   forget_ime_learned_word: { args: { request: { text: '你好' } } },
   forget_all_ime_learning: {},
+  export_ime_learning: { args: { request: { dest: null } } },
+  import_ime_learning: { args: { request: { path: '/tmp/learn.zip', mode: 'add' } } },
   take_launch_request: {},
   cancel_staged_ime_dictionaries: { args: { request: { staging_id: 'none' } } },
   dismiss_system_notice: { args: { request: { id: 'none' } } },
