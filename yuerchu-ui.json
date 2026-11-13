@@ -7,6 +7,7 @@
   },
   "entries": [
     "components/button/button.tsx",
+    "components/tooltip/tooltip.tsx",
     "styles/index.css"
   ],
   "dependencies": {
@@ -22,6 +23,8 @@
     "components/reveal/reveal.tsx": "47ac5288a4d0110e7da36a936f349ff7c36ff28a5121112889c709320b0ef9ef",
     "components/skeleton/skeleton.css": "1c8e4ad71e51e102dd61e7e850c7136611df5c14ef85cf374c5385a143dbc2d3",
     "components/skeleton/skeleton.tsx": "0562bb42cde1f05309aa7cab99d3bab165d56f3911a60692b6db7354c9453c47",
+    "components/tooltip/tooltip.css": "07b6fca933fa35a20416f53f712497a22e1da81e8d24e7e4607d60835c034dbd",
+    "components/tooltip/tooltip.tsx": "da978ab833daa455157a78708ef933b5b8a1610564e975f95531f73969680fed",
     "lib/announce.ts": "9cd02f46f7ef4365ac1d0cc9f1d8ea6ffeba056ed38f959bae91978e6dd130d5",
     "lib/class-name.ts": "b5be3daa8273f305b48e7ad966b6bcee3a99e7555a6670093129004299f28109",
     "lib/icons.LICENSE": "c9eaf07fee7f7eed72daec177408132b0a48eca8db0c831e1f7bf28e3b1ccefc",

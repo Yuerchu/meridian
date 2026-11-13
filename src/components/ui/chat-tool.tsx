@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Disclosure, Spinner, Tooltip, TooltipTrigger, tv, type VariantProps } from '@/components/base'
+import { Disclosure, Spinner, tv, type VariantProps } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleAlert, CircleCheck, CircleX, Clock } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
@@ -287,7 +288,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
     // and the disclosure's own context reaches through.
     if (!requiresAction && hasSubtitle) {
       return (
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           {key}
           <Tooltip placement="top">{subtitle}</Tooltip>
         </TooltipTrigger>

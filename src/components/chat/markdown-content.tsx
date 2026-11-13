@@ -6,7 +6,8 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { LinkButton, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { LinkButton, Skeleton } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import type { Components } from 'react-markdown'
 
 import { markdownVariants } from '@/components/base'
@@ -117,7 +118,7 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
   const label = referenceLabel(reference)
 
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       <LinkButton
         data-slot="markdown-file-reference"
         variant="secondary"

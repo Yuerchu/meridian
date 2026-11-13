@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Skeleton } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useStickerUrl } from '@/lib/sticker-urls'
@@ -174,7 +175,7 @@ export function InlineSticker({
           data-slot={`${slot}-error`}
           className="flex size-full items-center justify-center bg-background-secondary-default/40"
         >
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               size="sm"
               variant="ghost"

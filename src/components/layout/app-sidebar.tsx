@@ -28,18 +28,8 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Input,
-  Kbd,
-  Label,
-  ToggleButton,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Dropdown, DropdownItem, DropdownPopover, Input, Kbd, Label, ToggleButton } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
@@ -303,7 +293,7 @@ function NewProjectForm({
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button
             icon={<X />}
             size="sm"
@@ -417,7 +407,7 @@ function NewHostedSessionForm({
         >
           {t('sidebar.startHostedSession')}
         </Button>
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button
             icon={<X />}
             size="sm"
@@ -664,7 +654,7 @@ function ConversationGroup({
             data-row-id={projectId ?? undefined}
             data-row-kind={projectId ? 'project' : undefined}
           >
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
                 icon={<ChevronRight />}
                 size="sm"
@@ -706,7 +696,7 @@ function ConversationGroup({
               </span>
             )}
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button
                   icon={<Plus />}
                   size="sm"
@@ -721,7 +711,7 @@ function ConversationGroup({
                 <Dropdown>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={moreLabel}>
                       <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
@@ -1285,7 +1275,7 @@ export function AppSidebar({
             pointers because DnD is disabled there and the row-actions dialog
             is the touch path; on fine pointers it appears on hover, the way a
             file tree's handle does — see `conv-grip` in `index.css`. */}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Sidebar.MenuAction
             slot="drag"
             aria-label={t('sidebar.dragConversation', { name: title })}
@@ -1329,7 +1319,7 @@ export function AppSidebar({
             {canHostSessions && (
               <Sidebar.MenuActions>
                 <Dropdown>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
                       <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
@@ -1520,7 +1510,7 @@ export function AppSidebar({
             <Alert.Content className="min-w-0">
               <Alert.Description className="break-words">{actionError}</Alert.Description>
             </Alert.Content>
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
                 icon={<X />}
                 size="sm"

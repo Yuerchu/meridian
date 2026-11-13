@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Label, Link, TextArea, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import type { PlanCommentInfoResponse } from '@/types'

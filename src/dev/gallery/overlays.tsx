@@ -17,9 +17,8 @@ import {
   Popover,
   Sheet,
   TextField,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { ModalSize } from '@/components/base/modal'
 import type { SheetPlacement } from '@/components/base/sheet'
@@ -98,20 +97,18 @@ function Hints() {
     <Stage>
       <Row label="Tooltip">
         {(['top', 'bottom', 'start', 'end'] as const).map((placement) => (
-          <TooltipTrigger key={placement} delay={0}>
+          <TooltipTrigger key={placement}>
             <Button variant="secondary" size="sm">
               {placement}
             </Button>
             <Tooltip placement={placement}>新对话</Tooltip>
           </TooltipTrigger>
         ))}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button variant="secondary" size="sm">
             md · 无箭头
           </Button>
-          <Tooltip size="md" showArrow={false}>
-            较长的说明会换行，宽度跟内容走，不超过它的上限。
-          </Tooltip>
+          <Tooltip>较长的说明会换行，宽度跟内容走，不超过它的上限。</Tooltip>
         </TooltipTrigger>
       </Row>
       <Row label="Popover">

@@ -1,7 +1,7 @@
 import type { ComponentType, Ref } from 'react'
 import { Button as AriaButton } from 'react-aria-components'
 
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { cx } from '@/utils/cx'
 
 /**
@@ -54,7 +54,7 @@ function ActionButton({
   ref,
 }: ActionButtonProps) {
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       {/* The button is the trigger — RAC TooltipTrigger picks it up from
           context, so no wrapper is needed around a real focusable element. */}
       <AriaButton

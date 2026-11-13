@@ -13,9 +13,8 @@ import {
   Label,
   TextArea,
   TextField,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -209,7 +208,7 @@ function SkillEditor({
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               icon={<Bin />}
               size="sm"

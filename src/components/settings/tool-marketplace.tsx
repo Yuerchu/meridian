@@ -1,19 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Card,
-  Chip,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -208,7 +197,7 @@ function CustomToolEditor({
         <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               type="button"
               icon={<Bin />}

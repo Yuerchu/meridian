@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
@@ -76,7 +76,7 @@ function EmojiEmbedderRow() {
                 {t('settings.emoji.embedderBrowse')}
               </Button>
               {path !== null && (
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
                     icon={<X />}
                     size="sm"

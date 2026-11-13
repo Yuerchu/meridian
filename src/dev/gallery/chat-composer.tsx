@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { AttachmentTiles } from '@/components/chat/attachment-tiles'
 import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
@@ -217,7 +217,7 @@ export default function ChatComposer() {
         <div data-slot="gallery-voice-buttons" className="flex flex-wrap items-center gap-6">
           {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
             <div data-slot="gallery-voice-button" key={s} className="flex flex-col items-center gap-1">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
                 <Tooltip>语音输入</Tooltip>
               </TooltipTrigger>

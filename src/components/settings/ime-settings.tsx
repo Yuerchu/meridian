@@ -14,9 +14,8 @@ import {
   Spinner,
   TextArea,
   TextField,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
@@ -784,7 +783,7 @@ export function ImeSettings() {
                         <CellSwitch.Control />
                       </CellSwitch.Trigger>
                     </CellSwitch>
-                    <TooltipTrigger delay={0}>
+                    <TooltipTrigger>
                       <Button
                         icon={<Bin />}
                         size="sm"

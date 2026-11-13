@@ -4,7 +4,7 @@ import { RevealHostContext } from '@/hooks/use-revealed-text'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
@@ -477,7 +477,7 @@ export function ChatTranscript({
                     {emptyState}
                   </MessageScrollerContent>
                 </MessageScrollerViewport>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <MessageScrollerButton aria-label={scrollToBottomLabel} />
                   <Tooltip>{scrollToBottomLabel}</Tooltip>
                 </TooltipTrigger>

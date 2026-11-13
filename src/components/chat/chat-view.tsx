@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Chip, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Messages, X } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
@@ -1053,7 +1054,7 @@ function ChatViewInner({
                   >
                     {name}
                   </span>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
                       icon={<X />}
                       size="sm"

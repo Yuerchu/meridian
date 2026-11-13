@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useCopy } from '@/hooks/use-copy'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
@@ -102,7 +102,7 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         )}
       </div>
 
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         <Button
           icon={failure !== null ? <TriangleAlert /> : copied ? <Check /> : <Copy />}
           data-slot="log-row-copy"

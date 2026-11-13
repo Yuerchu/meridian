@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Eye, EyeOff } from '@keyline-icons/react/two-tone'
-import { Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Input } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SettingsAddRow, SettingsCard, SettingsSectionLabel } from '../primitives'
 import { newPair, type KeyValuePair } from './key-value'
@@ -51,7 +52,7 @@ export function KeyValueEditor({
           )}
         </div>
         {pairs.length > 0 && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               data-slot="mcp-kv-reveal"
               size="sm"
@@ -95,7 +96,7 @@ export function KeyValueEditor({
               fieldClassName="min-w-0 flex-[3]"
               className="font-mono"
             />
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
                 data-slot="mcp-kv-remove"
                 size="sm"

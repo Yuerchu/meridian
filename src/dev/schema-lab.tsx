@@ -25,7 +25,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Input, ListBox, ToggleButton } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { cx } from '@/utils/cx'
 import { useAppTheme } from '@/lib/theme'
@@ -464,7 +465,7 @@ function DetailPanel({
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               icon={<X />}
               aria-label="关闭详情"
@@ -674,7 +675,7 @@ function Lab() {
               </TooltipTrigger>
             )
           })}
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
               aria-label="切换主题"

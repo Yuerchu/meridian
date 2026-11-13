@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
-import { Alert, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
@@ -146,7 +147,7 @@ export function AndroidFileAccess() {
                     {root.virtual_prefix}
                   </div>
                 </div>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
                     variant="ghost"
                     icon={<X />}

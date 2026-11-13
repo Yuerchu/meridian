@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, DisclosureGroup, Input, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, DisclosureGroup, Input, TextArea } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { ActionBar } from '@/components/base'
@@ -321,7 +322,7 @@ export function MemorySettings() {
                 </Button>
               </ActionBar.Content>
               <ActionBar.Suffix>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
                     icon={<X />}
                     size="sm"

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Moon, Sun } from '@keyline-icons/react/two-tone'
 
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useAppTheme } from '@/lib/theme'
 import { cx } from '@/utils/cx'
@@ -46,7 +46,7 @@ function ThemeToggle() {
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       <Button
         icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
         size="sm"

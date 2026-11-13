@@ -36,9 +36,8 @@ import {
   Switch,
   TextArea,
   TextField,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { Composer } from '@/components/chat/composer'
@@ -334,7 +333,7 @@ function PromptInputProbe() {
             {/* Same shape as the composer's context gauge, which went missing
                 after the move. */}
             <Popover>
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Popover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
                   <ProgressCircle
                     aria-hidden
@@ -539,7 +538,7 @@ export default function WebViewLab() {
             <Slider defaultValue={40} className="max-w-xs" aria-label="滑块" />
 
             <div data-slot="webview-lab-overlays" className="flex flex-wrap items-center gap-3">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button variant="secondary">悬停看 Tooltip</Button>
                 <Tooltip>浮层定位对不对</Tooltip>
               </TooltipTrigger>
@@ -724,12 +723,12 @@ export default function WebViewLab() {
                           />
                         </div>
                         <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-                          <TooltipTrigger delay={0}>
+                          <TooltipTrigger>
                             <Button icon={<Plus />} size="sm" variant="ghost" aria-label="加号" />
                             <Tooltip>加号</Tooltip>
                           </TooltipTrigger>
                           <span data-slot="webview-lab-composer-spacer" className="flex-1" />
-                          <TooltipTrigger delay={0}>
+                          <TooltipTrigger>
                             <Button icon={<ArrowUp />} size="sm" aria-label="发送" className="rounded-full" />
                             <Tooltip>发送</Tooltip>
                           </TooltipTrigger>

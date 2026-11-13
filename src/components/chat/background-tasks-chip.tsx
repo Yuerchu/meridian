@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
-import { Popover, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Popover, Sheet, Spinner } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 
@@ -102,7 +103,7 @@ export function BackgroundTasksChip({
                       return t(elapsed.key, elapsed.values)
                     })()}
                   </span>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
                       icon={<FileText />}
                       size="sm"
@@ -113,7 +114,7 @@ export function BackgroundTasksChip({
                     />
                     <Tooltip>{t('chat.background.output')}</Tooltip>
                   </TooltipTrigger>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
                       icon={<Stop />}
                       size="sm"
