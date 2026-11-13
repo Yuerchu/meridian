@@ -253,7 +253,8 @@ export const uiRestrictions = {
 }
 
 export default tseslint.config(
-  { ignores: ['dist', 'src-tauri', '**/*.test.ts', '**/*.test.tsx'] },
+  // Copied from Yuerchu UI and held to its own lint there; `pnpm ui:check` keeps it verbatim.
+  { ignores: ['dist', 'src-tauri', 'src/components/yuerchu-ui', '**/*.test.ts', '**/*.test.tsx'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

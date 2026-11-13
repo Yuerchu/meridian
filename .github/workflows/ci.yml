@@ -129,6 +129,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: pnpm lint:rules
 
+      # src/components/yuerchu-ui is a verbatim copy of a private library; CI has no
+      # checkout of it, so this checks the copy against its own ledger: hashes, no
+      # strays, imports resolve, dependencies declared.
+      - name: Yuerchu UI copy
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm ui:check
+
       - name: No invented domain defaults (core)
         if: matrix.os == 'ubuntu-latest'
         run: node scripts/check-rust-invented-default.mjs src-tauri/crates/core/src
