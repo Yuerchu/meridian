@@ -310,8 +310,8 @@ export function ImeSettings() {
   const handleRemoveDictionary = async (dict: ImeDictionaryInfoResponse) => {
     if (
       !(await confirm({
-        body: t('settings.ime.removeConfirm', { name: dict.name }),
-        status: 'danger',
+        description: t('settings.ime.removeConfirm', { name: dict.name }),
+        tone: 'danger',
         confirmLabel: t('common.delete'),
       }))
     )

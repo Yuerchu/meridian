@@ -301,9 +301,10 @@ export function MemorySettings() {
                   variant="destructive"
                   onPress={async () => {
                     const ok = await confirm({
-                      title: t('settings.memory.deleteConfirmTitle'),
-                      body: t('settings.memory.deleteConfirmBody'),
+                      heading: t('settings.memory.deleteConfirmTitle'),
+                      description: t('settings.memory.deleteConfirmBody'),
                       confirmLabel: t('common.delete'),
+                      tone: 'danger',
                     })
                     if (!ok) return
                     setActionError(null)

@@ -16,7 +16,7 @@ import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmen
 import { NotificationBell } from '@/components/application/app-shell/notification-bell'
 import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useConfirm } from '@/hooks/use-confirm'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { Hint } from '@/components/ui/hint'
 import { ModelIcon } from '@/components/ui/model-icon'
@@ -229,7 +229,7 @@ const INBOX: NotificationCenterItem[] = [
 /** The overlays the product opens on its own terms: bulk bar, inbox, confirm, emoji. */
 export function OverlayParts() {
   const [bar, setBar] = useState(false)
-  const [confirm, setConfirm] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   const [emoji, setEmoji] = useState(false)
   return (
     <>
@@ -251,17 +251,16 @@ export function OverlayParts() {
       <Section title="NotificationBell / 待处理收件箱">
         <NotificationBell notifications={INBOX} triggerLabel="待处理 2 项" dialogLabel="待处理" />
       </Section>
-      <Section title="ConfirmDialog / 确认">
-        <Button variant="destructive" onPress={() => setConfirm(true)}>
+      <Section title="useConfirm / 确认">
+        <Button
+          variant="destructive"
+          onPress={() =>
+            void confirm({ description: '从这条消息往后的整段都会删除。', confirmLabel: '删除', tone: 'danger' })
+          }
+        >
           删除这段对话
         </Button>
-        <ConfirmDialog
-          isOpen={confirm}
-          onOpenChange={setConfirm}
-          onConfirm={() => setConfirm(false)}
-          body="从这条消息往后的整段都会删除。"
-          confirmLabel="删除"
-        />
+        {confirmDialog}
       </Section>
       <Section title="EmojiPicker">
         <EmojiPicker isOpen={emoji} onOpenChange={setEmoji} aria-label="表情">

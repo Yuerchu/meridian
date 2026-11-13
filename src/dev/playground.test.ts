@@ -187,6 +187,11 @@ const ALLOWED_UNPREVIEWED = new Map<string, string>([
   ['CopyAnnouncement', 'an sr-only live region: there is nothing on screen to look at'],
   ['FileInput', 'a hidden <input type="file"> opened imperatively; it draws nothing'],
   [
+    'Modal',
+    "boardui's, kept only by the settings drill-down until a page stack replaces it (Yuerchu/ui#559); " +
+      'the gallery shows the library Dialog that every other dialog has moved to',
+  ],
+  [
     'MessageScroller',
     'on show at #playground/scroll inside ChatTranscript, the harness that drives it; a bare copy in the gallery ' +
       'reads the platform through Tauri and only logs invoke errors in a browser',

@@ -10,7 +10,8 @@ import { Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
 import type { ImeLearnedWordInfoResponse, ImeLearningImportMode, ImeLearningInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -105,6 +106,14 @@ export function ImeLearningSection() {
     }
   }
 
+  const chooseImport = (mode: ImeLearningImportMode) => {
+    const path = pendingImport
+    setPendingImport(null)
+    if (path) void runImport(path, mode)
+  }
+  // The back gesture answers the choice with neither, as Cancel does.
+  useHistoryLevel(pendingImport !== null, () => setPendingImport(null))
+
   const handleImport = async () => {
     setError(null)
     const file = await pickPath({
@@ -125,8 +134,8 @@ export function ImeLearningSection() {
   const handleForgetAll = async () => {
     if (
       !(await confirm({
-        body: t('settings.ime.learned.forgetAllConfirm'),
-        status: 'danger',
+        description: t('settings.ime.learned.forgetAllConfirm'),
+        tone: 'danger',
         confirmLabel: t('settings.ime.learned.forgetAll'),
       }))
     )
@@ -259,27 +268,28 @@ export function ImeLearningSection() {
         </div>
       )}
       {confirmDialog}
-      <ConfirmDialog
+      {/* A choice between two real answers, not "are you sure": Add and Replace
+          both proceed, so this is a dialog with three buttons rather than an
+          alert dialog with two. */}
+      <Dialog
         isOpen={pendingImport !== null}
-        title={t('settings.ime.learned.importTitle')}
-        body={t('settings.ime.learned.importChoose')}
-        confirmLabel={t('settings.ime.learned.importAdd')}
-        altLabel={t('settings.ime.learned.importReplace')}
-        status="accent"
-        onConfirm={() => {
-          const path = pendingImport
-          setPendingImport(null)
-          if (path) void runImport(path, 'add')
-        }}
-        onAlt={() => {
-          const path = pendingImport
-          setPendingImport(null)
-          if (path) void runImport(path, 'replace')
-        }}
         onOpenChange={(open) => {
           if (!open) setPendingImport(null)
         }}
-      />
+        heading={t('settings.ime.learned.importTitle')}
+        description={t('settings.ime.learned.importChoose')}
+        size="sm"
+      >
+        <DialogFooter>
+          <Button slot="close" variant="secondary">
+            {t('common.cancel')}
+          </Button>
+          <Button variant="destructive" onPress={() => chooseImport('replace')}>
+            {t('settings.ime.learned.importReplace')}
+          </Button>
+          <Button onPress={() => chooseImport('add')}>{t('settings.ime.learned.importAdd')}</Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }

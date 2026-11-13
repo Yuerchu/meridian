@@ -19,7 +19,6 @@ import {
   Label,
   LinkButton,
   Meter,
-  Modal,
   Notification,
   NotificationViewport,
   Popover,
@@ -34,6 +33,7 @@ import {
 } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Dialog } from '@/components/yuerchu-ui/components/dialog/dialog'
 
 /**
  * What every primitive under `components/base` promises the app, asserted
@@ -59,18 +59,14 @@ describe('Button is a React Aria pressable', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('tip text')
   })
 
-  it('closes a Modal from slot="close"', async () => {
+  it('closes the library Dialog from slot="close"', async () => {
     const onOpenChange = vi.fn()
     render(
-      <Modal.Backdrop isOpen onOpenChange={onOpenChange}>
-        <Modal.Container>
-          <Modal.Dialog aria-label="d">
-            <Button slot="close">Close</Button>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>,
+      <Dialog isOpen onOpenChange={onOpenChange} heading="d">
+        <Button slot="close">Done</Button>
+      </Dialog>,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 

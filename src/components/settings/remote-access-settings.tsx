@@ -169,8 +169,7 @@ export function RemoteAccessSettings() {
   const handleRegenerate = async () => {
     if (
       !(await confirm({
-        body: t('settings.remote.regenerateConfirm'),
-        status: 'warning',
+        description: t('settings.remote.regenerateConfirm'),
         confirmLabel: t('settings.remote.regenerate'),
       }))
     )

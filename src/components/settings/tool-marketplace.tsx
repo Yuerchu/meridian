@@ -424,8 +424,9 @@ export function ToolMarketplace() {
                         onDelete={async () => {
                           if (
                             !(await confirm({
-                              body: t('settings.confirmDelete.customTool'),
+                              description: t('settings.confirmDelete.customTool'),
                               confirmLabel: t('common.delete'),
+                              tone: 'danger',
                             }))
                           )
                             return

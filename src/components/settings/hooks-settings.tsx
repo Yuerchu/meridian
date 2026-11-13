@@ -331,8 +331,7 @@ export function HooksSettings() {
   const handleRegenerate = async () => {
     if (
       !(await confirm({
-        body: t('settings.hooks.regenerateConfirm'),
-        status: 'warning',
+        description: t('settings.hooks.regenerateConfirm'),
         confirmLabel: t('settings.hooks.regenerate'),
       }))
     )

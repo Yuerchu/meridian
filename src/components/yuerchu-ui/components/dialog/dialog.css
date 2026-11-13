@@ -1,0 +1,199 @@
+@layer components {
+  /* ---------- 遮罩 ---------- */
+  .ui-dialog-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: var(--visual-viewport-height, 100dvh);
+    padding: var(--space-4);
+    background: var(--overlay);
+  }
+
+  .ui-dialog-overlay[data-entering] {
+    animation: ui-dialog-fade var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-dialog-overlay[data-exiting] {
+    animation: ui-dialog-fade var(--dur-fast) var(--ease-exit) reverse forwards;
+  }
+
+  @keyframes ui-dialog-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* ---------- 对话框 ---------- */
+  .ui-dialog {
+    --ui-dialog-width: 520px;
+    --ui-dialog-padding: var(--space-6);
+
+    position: relative;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: min(var(--ui-dialog-width), 100%);
+    max-height: 100%;
+    /* 外框不滚动，内容区滚动：右上角的关闭按钮（相对外框定位）一直可见 */
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-surface);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-floating);
+    outline: 1px solid transparent; /* 高对比度模式下显示边界 */
+  }
+
+  .ui-dialog[data-size="sm"] {
+    --ui-dialog-width: 400px;
+  }
+
+  .ui-dialog[data-size="lg"] {
+    --ui-dialog-width: 720px;
+  }
+
+  /* 预览用的大尺寸：几乎占满高度，内容区撑满（里面放 PDF、视频、代码这类自己定尺寸的查看器） */
+  .ui-dialog[data-size="xl"],
+  .ui-dialog[data-size="full"] {
+    --ui-dialog-width: 1200px;
+
+    height: 100%;
+  }
+
+  .ui-dialog[data-size="xl"] .ui-dialog__body,
+  .ui-dialog[data-size="full"] .ui-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  /* 全屏：遮罩不留边距，对话框没有圆角和边框 */
+  .ui-dialog-overlay[data-size="full"] {
+    padding: 0;
+  }
+
+  .ui-dialog[data-size="full"] {
+    --ui-dialog-width: 100%;
+
+    border-color: transparent;
+    border-radius: 0;
+  }
+
+  .ui-dialog[data-entering] {
+    animation: ui-dialog-in var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-dialog[data-exiting] {
+    animation: ui-dialog-out var(--dur-fast) var(--ease-exit) forwards;
+  }
+
+  @keyframes ui-dialog-in {
+    from {
+      opacity: 0;
+      translate: 0 calc(2 * var(--enter-distance));
+      scale: var(--enter-scale);
+    }
+  }
+
+  @keyframes ui-dialog-out {
+    to {
+      opacity: 0;
+      scale: var(--enter-scale);
+    }
+  }
+
+  .ui-dialog__content {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 0;
+    padding: var(--ui-dialog-padding);
+    overflow: auto;
+    outline: 1px solid transparent;
+  }
+
+  /* 内容长的时候：标题吸在顶部、底部按钮吸在底部，只有中间滚动。
+     负外边距 + 同样的内边距：吸附时盖住内容区的内边距，滚过去的内容不会从缝里露出来 */
+  .ui-dialog__header {
+    position: sticky;
+    inset-block-start: calc(-1 * var(--ui-dialog-padding));
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin-block: calc(-1 * var(--ui-dialog-padding)) calc(-1 * var(--space-3));
+    padding-block: var(--ui-dialog-padding) var(--space-3);
+    /* 给右上角的关闭按钮留位置 */
+    padding-inline-end: var(--space-8);
+    background: var(--surface);
+  }
+
+  .ui-dialog[data-tone] .ui-dialog__header {
+    padding-inline-end: 0;
+  }
+
+  .ui-dialog__title {
+    margin: 0;
+    font: var(--text-title-3);
+  }
+
+  .ui-dialog__description {
+    margin: 0;
+    font: var(--text-body);
+    color: var(--text-secondary);
+  }
+
+  /* 带上根类名：比 .ui-button 的优先级高，不依赖 CSS 加载顺序 */
+  .ui-dialog .ui-dialog__close {
+    position: absolute;
+    inset-block-start: var(--space-4);
+    inset-inline-end: var(--space-4);
+    z-index: 2;
+  }
+
+  .ui-dialog__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  /* ---------- 底部按钮 ---------- */
+  .ui-dialog__footer {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin-block-start: var(--space-2);
+  }
+
+  /* 底栏是沉进对话框的槽（同 Card 底栏、Tray）：贴到对话框的左、右、下三边（底角由对话框的 overflow 裁切），吸在底部（同标题的写法）。
+     槽底是半透明的 --surface-inset，叠在不透明的 --surface 上：吸附时滚过去的内容不会透出来 */
+  .ui-dialog__content .ui-dialog__footer {
+    position: sticky;
+    inset-block-end: calc(-1 * var(--ui-dialog-padding));
+    z-index: 1;
+    margin-inline: calc(-1 * var(--ui-dialog-padding));
+    margin-block-end: calc(-1 * var(--ui-dialog-padding));
+    padding: var(--space-4) var(--ui-dialog-padding);
+    background: linear-gradient(var(--surface-inset), var(--surface-inset)), var(--surface);
+  }
+
+  /* 高对比度模式下底色不显示：补一条上边线分开 */
+  @media (forced-colors: active) {
+    .ui-dialog__content .ui-dialog__footer {
+      border-block-start: 1px solid CanvasText;
+    }
+  }
+
+  /* 窄屏：按钮纵向铺满，主要操作（最后一个）在最上面 */
+  @media (width < 480px) {
+    .ui-dialog__footer {
+      flex-direction: column-reverse;
+    }
+  }
+}

@@ -605,7 +605,14 @@ function ModelConfigEditor({
 
   const handleDelete = async () => {
     if (!onDelete || deleting) return
-    if (!(await confirm({ body: t('settings.confirmDelete.modelConfig'), confirmLabel: t('common.delete') }))) return
+    if (
+      !(await confirm({
+        description: t('settings.confirmDelete.modelConfig'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setDeleting(true)
     setPriceError(null)
     try {

@@ -138,7 +138,7 @@ export function AppShell(props: ShellProps) {
 
   const requestLeaveSettings = useCallback(async () => {
     if (!settingsDirty) return true
-    return confirm({ body: t('settings.unsavedChanges'), status: 'warning', confirmLabel: t('common.discardChanges') })
+    return confirm({ description: t('settings.unsavedChanges'), confirmLabel: t('common.discardChanges') })
   }, [confirm, settingsDirty, t])
 
   const changeSettingsTab = useCallback(

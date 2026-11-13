@@ -85,8 +85,9 @@ export function VoiceCorpusSettings() {
   const deleteSession = async (session: VoiceCorpusSessionInfoResponse) => {
     if (
       !(await confirm({
-        body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }),
+        description: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }),
         confirmLabel: t('common.delete'),
+        tone: 'danger',
       }))
     )
       return
@@ -100,8 +101,9 @@ export function VoiceCorpusSettings() {
     if (
       !id ||
       !(await confirm({
-        body: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }),
+        description: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }),
         confirmLabel: t('settings.voiceCorpus.forget'),
+        tone: 'danger',
       }))
     )
       return

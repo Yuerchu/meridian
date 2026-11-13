@@ -1,6 +1,5 @@
 export { ActionBar } from './action-bar'
 export { ActivityHeatmap } from './activity-heatmap'
-export { AlertDialog } from './alert-dialog'
 export { AreaChart } from './area-chart'
 export { BarChart } from './bar-chart'
 export { BarList, type BarListItem } from './bar-list'
@@ -45,7 +44,6 @@ export { ListBox } from './list-box'
 export { ListView } from './list-view'
 export { Markdown, markdownVariants } from './markdown-variants'
 export { Meter } from './meter'
-export { Modal } from './modal'
 export { Pagination, type PaginationProps } from './pagination/pagination'
 export {
   Notification,
