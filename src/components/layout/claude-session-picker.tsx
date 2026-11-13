@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Modal, SearchField, Spinner } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 
@@ -259,7 +260,7 @@ export function ClaudeSessionPicker({
                 </Button>
               )}
               {folder && (
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
                     icon={<X />}
                     size="sm"

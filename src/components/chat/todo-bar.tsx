@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ProgressCircle, Segment, Tooltip, TooltipTrigger } from '@/components/base'
+import { ProgressCircle, Segment } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { LayoutDashboard, List } from '@keyline-icons/react/two-tone'
 import { useTranslation } from 'react-i18next'
 
@@ -81,13 +82,13 @@ export function TodoPanelBody({ todos, className }: { todos: TodoArgs; className
             if (next === 'list' || next === 'board') setView(next)
           }}
         >
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
               <List className="size-4" />
             </Segment.Item>
             <Tooltip>{t('chat.todo.viewList')}</Tooltip>
           </TooltipTrigger>
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
               <LayoutDashboard className="size-4" />
             </Segment.Item>

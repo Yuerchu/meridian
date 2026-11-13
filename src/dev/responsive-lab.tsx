@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
+import { ListBox, ToggleButton, ToggleButtonGroup } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { CASES } from './responsive-cases'
@@ -374,7 +375,7 @@ function Choices<T extends string | number>({
           )
         }
         return (
-          <TooltipTrigger key={key} delay={0}>
+          <TooltipTrigger key={key}>
             <ToggleButton id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>

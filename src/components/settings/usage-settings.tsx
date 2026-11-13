@@ -1,17 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Label,
-  Skeleton,
-  Spinner,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'

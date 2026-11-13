@@ -76,7 +76,6 @@ export { Spinner } from './spinner'
 export { Switch } from './switch/switch'
 export { Tabs, TabList, Tab, TabPanel } from './tabs/tabs'
 export { ToggleButton, ToggleButtonGroup } from './toggle-button'
-export { Tooltip, TooltipTrigger } from './tooltip/tooltip'
 export { TreeView, TreeViewItem } from './tree-view/tree-view'
 
 export { tv, type VariantProps } from 'tailwind-variants'

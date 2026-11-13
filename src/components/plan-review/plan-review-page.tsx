@@ -2,17 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Chip,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Skeleton,
-  TextArea,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton, TextArea } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'

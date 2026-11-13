@@ -3,17 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import {
-  Card,
-  Description,
-  Input,
-  Label,
-  ProgressCircle,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Card, Description, Input, Label, ProgressCircle, Spinner, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -192,7 +183,7 @@ export function VoiceSettings() {
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button
                   icon={<Bin />}
                   size="sm"

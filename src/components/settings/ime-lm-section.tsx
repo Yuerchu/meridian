@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Chip, ItemCard, ItemCardGroup, Separator, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Chip, ItemCard, ItemCardGroup, Separator, Spinner } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
@@ -143,7 +144,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                       </ItemCard.Description>
                     </ItemCard.Content>
                     <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
+                      <TooltipTrigger>
                         <Button
                           icon={<Bin />}
                           size="sm"

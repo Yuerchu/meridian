@@ -8,7 +8,8 @@ import {
 } from 'react-aria-components'
 import { Check, ChevronRight, Cpu, FaceSmile, Paperclip, Plus, Zap } from '@keyline-icons/react/two-tone'
 
-import { Dropdown, DropdownItem, DropdownPopover, PromptInput, Tooltip, TooltipTrigger } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, PromptInput } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { MENU_ITEMS_CONTAINER, MENU_POPOVER_SURFACE, MENU_POPOVER_WIDTH } from '@/components/base/dropdown/menu-styles'
 
 import { cx } from '@/utils/cx'
@@ -151,7 +152,7 @@ export function ComposerMenu({
 
   return (
     <Dropdown isOpen={open} onOpenChange={setOpen}>
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         {/* The composer's round control (the registry agent-composer's
             add button, `ai-chat-composer-add-*`). */}
         <PromptInput.Control

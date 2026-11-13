@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Description, Input, Label, Separator, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Description, Input, Label, Separator, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
@@ -403,7 +404,7 @@ export function RemoteAccessSettings() {
                       <ItemCard.Title className="w-full break-all font-mono">{dialable}</ItemCard.Title>
                     </ItemCard.Content>
                     <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
+                      <TooltipTrigger>
                         <Button
                           icon={copied && copiedAddress === dialable ? <Check /> : <Copy />}
                           size="sm"

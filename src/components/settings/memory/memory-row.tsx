@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, ChevronRight, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Checkbox, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Checkbox, Disclosure, TextArea } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { MemoryInfoResponse } from '@/types'
 import { SettingsTag } from '../primitives'
@@ -164,7 +165,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               </span>
             )}
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
                 variant="ghost"
                 icon={<Bin />}

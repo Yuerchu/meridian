@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert } from '@keyline-icons/react/two-tone'
 
-import { Link, Popover, ProgressCircle, Tooltip, TooltipTrigger } from '@/components/base'
+import { Link, Popover, ProgressCircle } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { cx } from '@/utils/cx'
 
@@ -86,7 +87,7 @@ export function ContextGauge({
     const label = t('chat.context.unavailable')
     return (
       <Popover>
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Popover.Trigger
             aria-label={label}
             data-slot="context-gauge-error"
@@ -146,7 +147,7 @@ export function ContextGauge({
           is worth saying because it is the reason this is not simply a larger
           button: the toolbar row is 32px, and a control taller than that pushes
           the shell open. */}
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         <Popover.Trigger
           aria-label={figures}
           className={cx(

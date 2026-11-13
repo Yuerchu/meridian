@@ -1,6 +1,7 @@
 import { Mic } from '@keyline-icons/react/two-tone'
 import { Stop } from '@keyline-icons/react/fill'
-import { PromptInput, Tooltip, TooltipTrigger } from '@/components/base'
+import { PromptInput } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { cx } from '@/utils/cx'
 
 export type VoiceButtonState =
@@ -55,7 +56,7 @@ export function VoiceButton({
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         {/* The composer's round control (the registry agent-composer's
             `ai-chat-composer-add-*` button), red while it is listening. */}
         <PromptInput.Control

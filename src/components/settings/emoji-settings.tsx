@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
-import { Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Disclosure, Input } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
@@ -194,7 +195,7 @@ function RowActions({
           accessible name and the tooltip. */}
       {unconfirmed && (
         <>
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               icon={<Sparkles />}
               size="sm"
@@ -209,7 +210,7 @@ function RowActions({
             />
             <Tooltip>{t('settings.emoji.suggest')}</Tooltip>
           </TooltipTrigger>
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               icon={<Check />}
               size="sm"
@@ -227,7 +228,7 @@ function RowActions({
         </>
       )}
       {canDelete && (
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button
             icon={<Bin />}
             size="sm"
@@ -817,7 +818,7 @@ export function EmojiSettings() {
             </Button>
           </ActionBar.Content>
           <ActionBar.Suffix>
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
                 icon={<X />}
                 size="sm"

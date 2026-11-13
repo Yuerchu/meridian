@@ -2,7 +2,8 @@ import { useState, useCallback, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Menu as AriaMenu } from 'react-aria-components'
 import { Camera, FaceSmile, Image, Paperclip, Plus } from '@keyline-icons/react/two-tone'
-import { DropdownItem, Sheet, Tooltip, TooltipTrigger } from '@/components/base'
+import { DropdownItem, Sheet } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { MENU_ITEMS_CONTAINER } from '@/components/base/dropdown/menu-styles'
 import { cx } from '@/utils/cx'
@@ -51,7 +52,7 @@ export function AttachSheet({
 
   return (
     <Sheet isOpen={open} placement="bottom" onOpenChange={setOpen}>
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         <Button
           ref={triggerRef}
           variant="ghost"

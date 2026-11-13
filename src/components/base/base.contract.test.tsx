@@ -31,9 +31,8 @@ import {
   Spinner,
   TextField,
   ToggleButton,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 /**

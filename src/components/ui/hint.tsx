@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Focusable } from 'react-aria-components'
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 
 import { cx } from '@/utils/cx'
 
@@ -40,7 +40,7 @@ export function Hint({
 }) {
   const Tag = as as 'span'
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       <Focusable excludeFromTabOrder={!focusable}>
         <Tag {...props} className={cx('min-w-0', className)}>
           {children}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Search } from '@keyline-icons/react/two-tone'
-import { PromptInput, ScrollShadow, SearchField, Tooltip, TooltipTrigger } from '@/components/base'
+import { PromptInput, ScrollShadow, SearchField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { EmojiPicker as ProEmojiPicker } from '@/components/base'
 import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 
@@ -206,7 +207,7 @@ export function EmojiPicker({
       onSelectionChange={handleSelect}
     >
       {!anchorRef && (
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           {/* The composer's round control rather than the picker's own neutral
               trigger: this picker only ever sits in the composer toolbar, beside
               the `+` and the microphone, and the three are one control family

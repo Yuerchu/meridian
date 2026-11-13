@@ -2,17 +2,8 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import {
-  Checkbox,
-  Description,
-  Input,
-  Label,
-  Separator,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Checkbox, Description, Input, Label, Separator, Spinner, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
@@ -185,7 +176,7 @@ export function VoiceCorpusSettings() {
                   </ItemCard.Description>
                 </ItemCard.Content>
                 <ItemCard.Action>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
                       icon={<Bin />}
                       size="sm"

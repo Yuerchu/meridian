@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Input, Label, TextField } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin, Plus } from '@keyline-icons/react/two-tone'
 import { blankTier, type TierDraft } from './pricing'

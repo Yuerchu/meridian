@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Separator, Skeleton } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
@@ -241,7 +242,7 @@ export function About() {
             action={
               info && (
                 <>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
                       icon={pathCopy.failure !== null ? <TriangleAlert /> : pathCopy.copied ? <Check /> : <Copy />}
                       size="sm"

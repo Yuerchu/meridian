@@ -32,9 +32,6 @@ vi.mock('@keyline-icons/react/two-tone', () => ({
   X: () => null,
 }))
 vi.mock('@/components/base', () => {
-  const Tooltip = Object.assign(({ children }: { children: React.ReactNode }) => <>{children}</>, {
-    Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  })
   const Kbd = Object.assign(({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>, {
     Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   })
@@ -54,8 +51,6 @@ vi.mock('@/components/base', () => {
   return {
     Alert,
     Kbd,
-    Tooltip,
-    TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Sidebar: {
       Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
       Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

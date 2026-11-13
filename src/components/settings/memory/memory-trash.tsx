@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Alert, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { INFO_CHIP } from './memory-row'
@@ -119,7 +120,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       </span>
                       <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
                       <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
-                        <TooltipTrigger delay={0}>
+                        <TooltipTrigger>
                           <Button
                             variant="ghost"
                             icon={<ArrowUTurnLeft />}
@@ -134,7 +135,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                           />
                           <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
                         </TooltipTrigger>
-                        <TooltipTrigger delay={0}>
+                        <TooltipTrigger>
                           <Button
                             variant="ghost"
                             icon={<Bin />}
