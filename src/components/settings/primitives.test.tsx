@@ -121,7 +121,7 @@ describe('SettingsSelect', () => {
 describe('the settings width', () => {
   it('is the registry settings-modal content pane, 532px', () => {
     const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
-    expect(css).toMatch(/--container-settings:\s*33\.25rem;/)
+    expect(css).toMatch(/--content-settings:\s*33\.25rem;/)
   })
 
   it('is the width of every page shell, and of the skeleton that stands in for one', () => {

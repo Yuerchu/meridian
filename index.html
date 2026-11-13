@@ -17,8 +17,8 @@
          synchronously, where a Tauri `get_preference` round-trip is not.
          The key and the media query are the ones `src/lib/theme.tsx` uses,
          and it narrows a junk value the same way — diverge here and the two
-         fight over `<html>`. `dark` is the only class anything reads
-         (`@custom-variant dark` in globals.css); light is its absence.
+         fight over `<html>`. Yuerchu UI's tokens switch on `data-theme`, and it
+         is written for light too: absent, the library follows the OS instead.
 
          The key was `heroui-theme` until 2026-09; the one-time read below
          carries a stored choice across the rename and then forgets the old key. -->
@@ -41,9 +41,9 @@
                 ? 'dark'
                 : 'light'
               : stored
-          document.documentElement.classList.toggle('dark', resolved === 'dark')
+          document.documentElement.dataset.theme = resolved
         } catch (e) {
-          document.documentElement.classList.add('dark')
+          document.documentElement.dataset.theme = 'dark'
         }
       })()
     </script>
@@ -65,22 +65,22 @@
             if (/["';{}\\\n\r]/.test(stored)) return
             document.documentElement.style.setProperty(prop, '"' + stored + '", var(' + fallbackVar + ')')
           }
-          apply('meridian-font-sans', '--font-inter', '--font-inter-fallback')
-          apply('meridian-font-mono', '--font-mono-source', '--font-mono-source-fallback')
+          apply('meridian-font-sans', '--font-sans', '--font-sans-fallback')
+          apply('meridian-font-mono', '--font-mono', '--font-mono-fallback')
         } catch (e) {}
       })()
     </script>
     <!-- Painted before the stylesheet arrives, so the window does not flash the
-         wrong colour on the way to the app. Both values are boardui's
-         `--color-background-full` (styles/theme.css) — white light, neutral-925
-         dark — and both have to be changed with it. The window's own colour is
-         set in tauri.conf.json for the frame before that. -->
+         wrong colour on the way to the app. Both values are Yuerchu UI's
+         `--background` (components/yuerchu-ui/styles/tokens.css) — white light,
+         neutral-950 dark — and both have to be changed with it. The window's own
+         colour is set in tauri.conf.json for the frame before that. -->
     <style>
       html {
-        background-color: #ffffff;
+        background-color: oklch(100% 0 0);
       }
-      html.dark {
-        background-color: #121212;
+      html[data-theme='dark'] {
+        background-color: oklch(14.5% 0 0);
       }
     </style>
   </head>
