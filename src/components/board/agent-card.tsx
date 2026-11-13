@@ -7,7 +7,8 @@ import { Button as RacButton } from 'react-aria-components'
 import { ArrowRight, ChevronDown, GitBranch, Message } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Button, Chip, Kanban } from '@/components/base'
+import { Chip, Kanban } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import type { ConfirmOptions } from '@/components/ui/confirm-dialog'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
@@ -267,7 +268,7 @@ export function AgentCard({
         {expanded && (
           <div data-slot="board-card-detail" className="flex flex-col gap-2.5">
             {waiting?.kind === 'plan_review' && (
-              <Button size="small" onPress={() => openReview(waiting.reviewId)}>
+              <Button size="sm" onPress={() => openReview(waiting.reviewId)}>
                 {t('chat.plan.reviewReady')}
               </Button>
             )}
@@ -282,9 +283,9 @@ export function AgentCard({
             )}
             {conversationId !== null && (
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
-                leadingIcon={Message}
+                icon={<Message />}
                 className="w-fit"
                 onPress={() => onOpenConversation(conversationId)}
               >
@@ -297,22 +298,22 @@ export function AgentCard({
         {(showToReview || showToDone || showRemoveWorktree || showDelete) && (
           <div className="flex flex-wrap justify-end gap-1.5">
             {showToReview && (
-              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('review')}>
+              <Button size="sm" variant="secondary" iconRight={<ArrowRight />} onPress={() => void move('review')}>
                 {t('board.card.toReview')}
               </Button>
             )}
             {showToDone && (
-              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('done')}>
+              <Button size="sm" variant="secondary" iconRight={<ArrowRight />} onPress={() => void move('done')}>
                 {t('board.card.toDone')}
               </Button>
             )}
             {showRemoveWorktree && (
-              <Button size="small" variant="secondary" onPress={() => void removeWorktree()}>
+              <Button size="sm" variant="secondary" onPress={() => void removeWorktree()}>
                 {t('board.card.removeWorktree')}
               </Button>
             )}
             {showDelete && (
-              <Button size="small" variant="secondary" onPress={() => void removeCard()}>
+              <Button size="sm" variant="secondary" onPress={() => void removeCard()}>
                 {t('board.card.delete')}
               </Button>
             )}

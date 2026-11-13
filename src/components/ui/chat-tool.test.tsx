@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { describe, expect, it } from 'vitest'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {

@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
-import { Button, Popover, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Popover, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 
 import { api } from '@/api'
@@ -103,10 +104,9 @@ export function BackgroundTasksChip({
                   </span>
                   <TooltipTrigger delay={0}>
                     <Button
-                      iconOnly
-                      leadingIcon={FileText}
-                      size="xs"
-                      variant="neutral"
+                      icon={<FileText />}
+                      size="sm"
+                      variant="ghost"
                       aria-label={t('chat.background.output')}
                       onPress={() => setReading(task)}
                       className="touch-hitbox"
@@ -115,10 +115,9 @@ export function BackgroundTasksChip({
                   </TooltipTrigger>
                   <TooltipTrigger delay={0}>
                     <Button
-                      iconOnly
-                      leadingIcon={Stop}
-                      size="xs"
-                      variant="neutral"
+                      icon={<Stop />}
+                      size="sm"
+                      variant="ghost"
                       aria-label={t('chat.background.stop')}
                       onPress={() => onStop(task.id)}
                       className="touch-hitbox hover:text-status-danger"

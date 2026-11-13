@@ -51,33 +51,9 @@ vi.mock('@/components/base', () => {
   // One factory, not three. `vi.mock` keys on the module path, so a second
   // call for `@/components/base` replaces the first outright — the shell then
   // renders against whichever landed last and every other export is undefined.
-  const Button = ({
-    children,
-    onPress,
-    isDisabled,
-    isPending: _isPending,
-    iconOnly: _iconOnly,
-    leadingIcon: _leadingIcon,
-    variant: _variant,
-    size: _size,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onPress?: () => void
-    isDisabled?: boolean
-    isPending?: boolean
-    iconOnly?: boolean
-    leadingIcon?: React.ReactNode
-    variant?: string
-    size?: string
-  }) => (
-    <button {...props} disabled={isDisabled} onClick={onPress}>
-      {children}
-    </button>
-  )
   return {
     Alert,
     Kbd,
-    Button,
     Tooltip,
     TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Sidebar: {

@@ -1,25 +1,14 @@
 import { useState } from 'react'
 import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import {
-  Avatar,
-  Button,
-  Card,
-  Chip,
-  CloseButton,
-  Kbd,
-  LinkButton,
-  Separator,
-  Spinner,
-  ToggleButton,
-  type ButtonVariant,
-} from '@/components/base'
+import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Separator, Spinner, ToggleButton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
 import { CoreParts } from './parts'
 
-const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger', 'neutral']
-const SIZES = ['medium', 'small', 'xs'] as const
+const VARIANTS = ['primary', 'secondary', 'ghost', 'destructive'] as const
+const SIZES = ['lg', 'md', 'sm'] as const
 const CHIP_VARIANTS = ['primary', 'secondary', 'soft', 'tertiary'] as const
 const CHIP_COLORS = ['default', 'accent', 'success', 'warning', 'danger'] as const
 
@@ -29,11 +18,11 @@ function Buttons() {
       {SIZES.map((size) => (
         <Row key={size} label={size}>
           {VARIANTS.map((variant) => (
-            <Button key={variant} variant={variant} size={size} leadingIcon={variant === 'danger' ? Bin : Plus}>
+            <Button key={variant} variant={variant} size={size} icon={variant === 'destructive' ? <Bin /> : <Plus />}>
               {variant}
             </Button>
           ))}
-          <Button size={size} variant="neutral" iconOnly leadingIcon={Sparkles} aria-label="仅图标" />
+          <Button size={size} variant="ghost" icon={<Sparkles />} aria-label="仅图标" />
         </Row>
       ))}
       <Row label="状态">
@@ -42,7 +31,7 @@ function Buttons() {
         <Button variant="secondary" isDisabled>
           不可用
         </Button>
-        <Button variant="danger" isDisabled>
+        <Button variant="destructive" isDisabled>
           不可用
         </Button>
       </Row>
@@ -134,7 +123,7 @@ function Cards() {
             <Separator />
           </Card.Content>
           <Card.Footer>
-            <Button size="small" variant="secondary">
+            <Button size="sm" variant="secondary">
               添加
             </Button>
           </Card.Footer>

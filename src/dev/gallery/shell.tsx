@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Moon, Sun } from '@keyline-icons/react/two-tone'
 
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useAppTheme } from '@/lib/theme'
 import { cx } from '@/utils/cx'
 import { GROUPS, LABS, type GroupId } from './groups'
@@ -47,9 +48,8 @@ function ThemeToggle() {
   return (
     <TooltipTrigger delay={0}>
       <Button
-        iconOnly
-        leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
-        size="small"
+        icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+        size="sm"
         aria-label="切换主题"
         variant="secondary"
         onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}

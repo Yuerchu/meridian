@@ -18,7 +18,7 @@ importers:
         specifier: ~5.18.0
         version: 5.18.0(@lobehub/ui@5.18.0)(@types/react@19.3.0)(antd@6.5.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@number-flow/react':
-        specifier: ^0.6.2
+        specifier: 0.6.2
         version: 0.6.2(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@react-aria/utils':
         specifier: ^3.34.1

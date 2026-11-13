@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Alert, Button, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
@@ -92,7 +93,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     <Alert.Indicator />
                     <Alert.Content>
                       <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
-                      <Button size="small" variant="secondary" className="mt-2" onPress={() => void load()}>
+                      <Button size="sm" variant="secondary" className="mt-2" onPress={() => void load()}>
                         {t('settings.memory.retry')}
                       </Button>
                     </Alert.Content>
@@ -120,10 +121,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
                         <TooltipTrigger delay={0}>
                           <Button
-                            variant="neutral"
-                            iconOnly
-                            leadingIcon={ArrowUTurnLeft}
-                            size="small"
+                            variant="ghost"
+                            icon={<ArrowUTurnLeft />}
+                            size="sm"
                             aria-label={t('settings.memory.trash.restore')}
                             onPress={async () => {
                               await api.restoreMemories([m.id])
@@ -136,10 +136,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                         </TooltipTrigger>
                         <TooltipTrigger delay={0}>
                           <Button
-                            variant="neutral"
-                            iconOnly
-                            leadingIcon={Bin}
-                            size="small"
+                            variant="ghost"
+                            icon={<Bin />}
+                            size="sm"
                             className="hover:text-status-danger"
                             aria-label={t('settings.memory.trash.purge')}
                             onPress={async () => {

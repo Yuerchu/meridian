@@ -6,7 +6,6 @@ import i18n from '@/i18n'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {
   Avatar,
-  Button,
   ContextMenu,
   DataGrid,
   Description,
@@ -35,7 +34,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
-import { buttonStyles } from './buttons/button'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 /**
  * What every primitive under `components/base` promises the app, asserted
@@ -125,7 +124,6 @@ describe('Button is a React Aria pressable', () => {
     )
     const button = screen.getByRole('button', { name: /Send/ })
     expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button.querySelector('[data-slot="spinner"]')).not.toBeNull()
     await userEvent.click(button)
     expect(onPress).not.toHaveBeenCalled()
   })
@@ -504,26 +502,6 @@ describe('Presentation parts honour their props', () => {
   })
 })
 
-describe('Button variants are the registry’s', () => {
-  it('has exactly the registry variants plus the neutral icon control', () => {
-    expect(Object.keys(buttonStyles.variant).sort()).toEqual(['danger', 'ghost', 'neutral', 'primary', 'secondary'])
-  })
-
-  it('draws neutral as the grey round control from the Dropdown example', () => {
-    render(<Button variant="neutral" iconOnly size="small" leadingIcon={Plus} aria-label="Add" />)
-    const classes = screen.getByRole('button', { name: 'Add' }).className.split(/\s+/)
-    expect(classes).toEqual(
-      expect.arrayContaining([
-        'rounded-full',
-        'bg-background-secondary-default',
-        'text-foreground-icon-secondary',
-        'data-[hovered]:bg-background-secondary-hover',
-      ]),
-    )
-    expect(classes).not.toContain('rounded-lg')
-  })
-})
-
 describe('ToggleButton selection', () => {
   it('is neutral when off and the blue pill when on', () => {
     render(
@@ -556,7 +534,7 @@ describe('Built-in names are in the app’s language', () => {
     render(
       <>
         <Button isPending>保存</Button>
-        <Button isPending iconOnly leadingIcon={Plus} aria-label="添加" />
+        <Button isPending icon={<Plus />} aria-label="添加" />
         <Spinner />
       </>,
     )

@@ -1,4 +1,4 @@
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
   ChatTool,
   ChatToolApproval,

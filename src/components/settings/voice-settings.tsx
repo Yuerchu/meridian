@@ -4,7 +4,6 @@ import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
 import {
-  Button,
   Card,
   Description,
   Input,
@@ -15,6 +14,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
@@ -194,10 +194,9 @@ export function VoiceSettings() {
               </Card.Header>
               <TooltipTrigger delay={0}>
                 <Button
-                  iconOnly
-                  leadingIcon={Bin}
-                  size="small"
-                  variant="neutral"
+                  icon={<Bin />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={t('settings.voice.deleteModel')}
                   onPress={handleDelete}
                   isDisabled={downloading}
@@ -218,7 +217,7 @@ export function VoiceSettings() {
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="secondary" size="small" onPress={handleCancelDownload}>
+              <Button variant="secondary" size="sm" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -230,7 +229,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="small" onPress={handleDownload}>
+                  <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -238,7 +237,7 @@ export function VoiceSettings() {
                       not: the archive is on the device the picker runs on. */}
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="sm"
                     onPress={handleImport}
                     isDisabled={!can.importFromDisk}
                     isPending={importing}

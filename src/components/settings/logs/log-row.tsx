@@ -1,7 +1,8 @@
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useCopy } from '@/hooks/use-copy'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { cx } from '@/utils/cx'
@@ -103,11 +104,10 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
 
       <TooltipTrigger delay={0}>
         <Button
-          iconOnly
-          leadingIcon={failure !== null ? TriangleAlert : copied ? Check : Copy}
+          icon={failure !== null ? <TriangleAlert /> : copied ? <Check /> : <Copy />}
           data-slot="log-row-copy"
-          variant="neutral"
-          size="small"
+          variant="ghost"
+          size="sm"
           aria-label={t('settings.about.logs.copyRecord')}
           onPress={onCopy}
           // Focus-visible alone does not rescue this on a touch screen, where a

@@ -5,7 +5,8 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, Tooltip, TooltipTrigger } from '@/components/base'
+import { Kbd, Label, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
 
 import { can } from '@/lib/capabilities'
@@ -905,10 +906,9 @@ export function InputBar({
                         <span data-slot="pending-sticker-remove" className="absolute -right-2 -top-2 flex">
                           <TooltipTrigger delay={0}>
                             <Button
-                              iconOnly
-                              leadingIcon={X}
-                              size="xs"
-                              variant="neutral"
+                              icon={<X />}
+                              size="sm"
+                              variant="ghost"
                               aria-label={t('chat.removeSticker')}
                               className="touch-hitbox min-w-0 size-6 rounded-full shadow-card"
                               onPress={onRemoveSticker}

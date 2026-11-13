@@ -3,7 +3,6 @@ import { Copy, Hammer, Pen, Scissors, TriangleAlert } from '@keyline-icons/react
 
 import {
   AlertDialog,
-  Button,
   ContextMenu,
   Dropdown,
   DropdownGroup,
@@ -21,6 +20,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { ModalSize } from '@/components/base/modal'
 import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
@@ -99,14 +99,14 @@ function Hints() {
       <Row label="Tooltip">
         {(['top', 'bottom', 'start', 'end'] as const).map((placement) => (
           <TooltipTrigger key={placement} delay={0}>
-            <Button variant="secondary" size="small">
+            <Button variant="secondary" size="sm">
               {placement}
             </Button>
             <Tooltip placement={placement}>新对话</Tooltip>
           </TooltipTrigger>
         ))}
         <TooltipTrigger delay={0}>
-          <Button variant="secondary" size="small">
+          <Button variant="secondary" size="sm">
             md · 无箭头
           </Button>
           <Tooltip size="md" showArrow={false}>
@@ -138,19 +138,19 @@ function Dialogs() {
     <Stage>
       <Row label="Modal">
         {(['sm', 'md', 'lg', 'full', 'cover'] as const).map((size) => (
-          <Button key={size} variant="secondary" size="small" onPress={() => setModal(size)}>
+          <Button key={size} variant="secondary" size="sm" onPress={() => setModal(size)}>
             {size}
           </Button>
         ))}
       </Row>
       <Row label="AlertDialog">
-        <Button variant="danger" size="small" onPress={() => setAlert(true)}>
+        <Button variant="destructive" size="sm" onPress={() => setAlert(true)}>
           删除对话
         </Button>
       </Row>
       <Row label="Sheet">
         {(['right', 'left', 'bottom', 'top'] as const).map((placement) => (
-          <Button key={placement} variant="secondary" size="small" onPress={() => setSheet(placement)}>
+          <Button key={placement} variant="secondary" size="sm" onPress={() => setSheet(placement)}>
             {placement}
           </Button>
         ))}
@@ -190,7 +190,7 @@ function Dialogs() {
               <Button slot="close" variant="secondary">
                 取消
               </Button>
-              <Button slot="close" variant="danger">
+              <Button slot="close" variant="destructive">
                 删除
               </Button>
             </AlertDialog.Footer>

@@ -1,16 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Button,
-  Description,
-  Disclosure,
-  Input,
-  Label,
-  Switch,
-  TextField,
-  ToggleButton,
-} from '@/components/base'
+import { Alert, Description, Disclosure, Input, Label, Switch, TextField, ToggleButton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { assistantsWithModelConflicts } from '@/lib/assistant-model-lock'
 import { assertDecimal38_18 } from '@/lib/decimal'
@@ -936,7 +927,7 @@ function ModelConfigEditor({
             </p>
             <Button
               variant="secondary"
-              size="small"
+              size="sm"
               className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
               onPress={resetOverrides}
             >
@@ -1044,7 +1035,7 @@ function ModelConfigEditor({
             {t('common.save')}
           </Button>
           {onDelete && (
-            <Button variant="danger" onPress={() => void handleDelete()} isPending={deleting}>
+            <Button variant="destructive" onPress={() => void handleDelete()} isPending={deleting}>
               {t('common.delete')}
             </Button>
           )}
@@ -1153,7 +1144,7 @@ export function ModelPage({
           <Alert.Content>
             <Alert.Title>{t('settings.model.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
+            <Button size="sm" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
           </Alert.Content>

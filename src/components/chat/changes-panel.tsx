@@ -1,7 +1,8 @@
 import { useMemo, useState, type ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { TreeView, TreeViewItem } from '@/components/base'
 import { X } from '@keyline-icons/react/two-tone'
 
@@ -82,10 +83,9 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
         </span>
         <TooltipTrigger delay={0}>
           <Button
-            iconOnly
-            leadingIcon={X}
-            variant="neutral"
-            size="small"
+            icon={<X />}
+            variant="ghost"
+            size="sm"
             aria-label={t('common.close')}
             onPress={onClose}
             className="shrink-0"

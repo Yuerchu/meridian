@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
@@ -178,7 +179,7 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button trailingIcon={ChevronRight} size="small" variant="secondary" onPress={() => setShowLogs(true)}>
+              <Button iconRight={<ChevronRight />} size="sm" variant="secondary" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
               </Button>
             </ItemCard.Action>
@@ -204,7 +205,7 @@ export function About() {
             </ItemCard.Content>
             <ItemCard.Action>
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 aria-label={t('settings.about.copyInfo.action')}
                 isDisabled={!info}
@@ -242,10 +243,9 @@ export function About() {
                 <>
                   <TooltipTrigger delay={0}>
                     <Button
-                      iconOnly
-                      leadingIcon={pathCopy.failure !== null ? TriangleAlert : pathCopy.copied ? Check : Copy}
-                      size="small"
-                      variant="neutral"
+                      icon={pathCopy.failure !== null ? <TriangleAlert /> : pathCopy.copied ? <Check /> : <Copy />}
+                      size="sm"
+                      variant="ghost"
                       aria-label={t('settings.about.system.copyDataDir')}
                       onPress={() => void pathCopy.copy(info.dataDir)}
                     />

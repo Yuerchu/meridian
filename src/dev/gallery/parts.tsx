@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Bin, Bot, FaceSmile, Search } from '@keyline-icons/react/two-tone'
 import {
   ActionBar,
-  Button,
   Command,
   EmojiPicker,
   FloatingToc,
@@ -12,6 +11,7 @@ import {
   TreeView,
   TreeViewItem,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { NotificationBell } from '@/components/application/app-shell/notification-bell'
 import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
@@ -242,7 +242,7 @@ export function OverlayParts() {
             <span className="text-body-regular text-text-secondary">已选 3 项</span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button leadingIcon={Bin} variant="danger" onPress={() => setBar(false)}>
+            <Button icon={<Bin />} variant="destructive" onPress={() => setBar(false)}>
               删除所选
             </Button>
           </ActionBar.Content>
@@ -252,7 +252,7 @@ export function OverlayParts() {
         <NotificationBell notifications={INBOX} triggerLabel="待处理 2 项" dialogLabel="待处理" />
       </Section>
       <Section title="ConfirmDialog / 确认">
-        <Button variant="danger" onPress={() => setConfirm(true)}>
+        <Button variant="destructive" onPress={() => setConfirm(true)}>
           删除这段对话
         </Button>
         <ConfirmDialog

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Cable, Plug } from '@keyline-icons/react/two-tone'
-import { Alert, Button, Input, Switch, TextArea } from '@/components/base'
+import { Alert, Input, Switch, TextArea } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { parseStringArrayText } from '@/lib/strict-json'
@@ -304,7 +305,7 @@ function McpServerEditor({
       subtitle={transportLabel}
       footer={
         <>
-          <Button size="small" onPress={() => void handleSave()} isDisabled={!dirty} isPending={saving}>
+          <Button size="sm" onPress={() => void handleSave()} isDisabled={!dirty} isPending={saving}>
             {t('common.save')}
           </Button>
           {saved && <SavedHint />}
@@ -438,14 +439,14 @@ function McpServerEditor({
           }
         >
           {connected ? (
-            <Button size="small" variant="secondary" leadingIcon={Plug} onPress={() => void handleDisconnect()}>
+            <Button size="sm" variant="secondary" icon={<Plug />} onPress={() => void handleDisconnect()}>
               {t('settings.mcp.disconnect')}
             </Button>
           ) : (
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              leadingIcon={Cable}
+              icon={<Cable />}
               onPress={() => void handleConnect()}
               isDisabled={statusLoading}
               isPending={connecting}
@@ -530,9 +531,9 @@ function McpServerEditor({
       <SettingsCard data-slot="mcp-danger-zone">
         <SettingsRow label={t('settings.mcp.deleteServer')} description={t('settings.mcp.deleteServerHint')}>
           <Button
-            size="small"
-            variant="danger"
-            leadingIcon={Bin}
+            size="sm"
+            variant="destructive"
+            icon={<Bin />}
             isPending={deleting}
             onPress={() => void handleDelete()}
           >

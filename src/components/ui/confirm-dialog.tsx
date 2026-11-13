@@ -1,6 +1,7 @@
 import { useId, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertDialog, Button, Sheet } from '@/components/base'
+import { AlertDialog, Sheet } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useIsMobile } from '@/hooks/use-mobile'
 
@@ -84,7 +85,7 @@ export function ConfirmDialog({
       </Button>
       {altLabel != null && (
         <Button
-          variant="danger"
+          variant="destructive"
           onPress={() => {
             onAlt?.()
             onOpenChange(false)
@@ -98,7 +99,7 @@ export function ConfirmDialog({
           promise from `onOpenChange`, and a close it did not order means
           no. */}
       <Button
-        variant={status === 'danger' ? 'danger' : 'primary'}
+        variant={status === 'danger' ? 'destructive' : 'primary'}
         onPress={() => {
           onConfirm()
           onOpenChange(false)

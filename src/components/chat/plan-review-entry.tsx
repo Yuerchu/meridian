@@ -4,7 +4,8 @@ import { Button as AriaButton } from 'react-aria-components'
 import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Button, Chip, Input, Spinner } from '@/components/base'
+import { Chip, Input, Spinner } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { ChatToolPresentationContext } from '@/components/ui/chat-tool'
@@ -255,10 +256,10 @@ export function PlanReviewEntryView({
             autoFocus
           />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="small" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
+            <Button size="sm" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
-            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={onSendBack}>
+            <Button size="sm" icon={<ArrowUTurnLeft />} isDisabled={!note.trim()} onPress={onSendBack}>
               {t('chat.plan.sendBack')}
             </Button>
           </div>
@@ -279,18 +280,18 @@ export function PlanReviewEntryView({
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="small" onPress={onOpen}>
+            <Button size="sm" onPress={onOpen}>
               {t('chat.plan.review')}
             </Button>
             {ui.step !== 'draft' && (
               <>
-                <Button size="small" variant="secondary" leadingIcon={Check} onPress={onApprove}>
+                <Button size="sm" variant="secondary" icon={<Check />} onPress={onApprove}>
                   {t('chat.plan.approve')}
                 </Button>
                 <Button
-                  size="small"
+                  size="sm"
                   variant="secondary"
-                  leadingIcon={ArrowUTurnLeft}
+                  icon={<ArrowUTurnLeft />}
                   onPress={() => onUiChange({ step: 'feedback' })}
                 >
                   {t('chat.plan.revise')}
@@ -373,7 +374,7 @@ export function PlanReviewEntryView({
           >
             {t('chat.plan.reviewHistory')}
           </p>
-          <Button size="small" variant="secondary" onPress={onOpen}>
+          <Button size="sm" variant="secondary" onPress={onOpen}>
             {t('chat.plan.review')}
           </Button>
         </div>

@@ -1,17 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  Chip,
-  ItemCard,
-  ItemCardGroup,
-  Separator,
-  Spinner,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Chip, ItemCard, ItemCardGroup, Separator, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -95,7 +86,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
           {t('settings.ime.lm.title')}
         </p>
         {can.importFromDisk && canImport && (
-          <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
+          <Button size="sm" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
             {t('settings.ime.lm.import')}
           </Button>
         )}
@@ -154,10 +145,9 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                     <ItemCard.Action>
                       <TooltipTrigger delay={0}>
                         <Button
-                          iconOnly
-                          leadingIcon={Bin}
-                          size="small"
-                          variant="neutral"
+                          icon={<Bin />}
+                          size="sm"
+                          variant="ghost"
                           aria-label={t('settings.ime.lm.remove', { name })}
                           onPress={() => handleRemove(bundle)}
                         />
@@ -176,7 +166,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
       </p>
 
       <div data-slot="ime-hints" className="flex items-center gap-3 pt-1">
-        <Button size="small" variant="secondary" onPress={handleRefreshHints}>
+        <Button size="sm" variant="secondary" onPress={handleRefreshHints}>
           {t('settings.ime.hints.refresh')}
         </Button>
         {hints !== null && (

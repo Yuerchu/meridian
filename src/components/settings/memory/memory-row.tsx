@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, ChevronRight, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Button, Checkbox, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Checkbox, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { MemoryInfoResponse } from '@/types'
 import { SettingsTag } from '../primitives'
 import { memoryOriginLabel, memoryScopeLabel, memoryTypeLabel } from './labels'
@@ -165,10 +166,9 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
             <TooltipTrigger delay={0}>
               <Button
-                variant="neutral"
-                iconOnly
-                leadingIcon={Bin}
-                size="small"
+                variant="ghost"
+                icon={<Bin />}
+                size="sm"
                 aria-label={t('settings.memory.delete')}
                 onPress={async () => {
                   await api.deleteMemories([memory.id])
@@ -179,7 +179,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               <Tooltip>{t('settings.memory.delete')}</Tooltip>
             </TooltipTrigger>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               isDisabled={saving || draft === memory.content}
               onPress={() => void saveDraft()}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Alert, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -305,7 +306,7 @@ export function AutoReviewSettings() {
             <Alert.Title>{t('settings.autoReview.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoading(true)

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Alert, Button, EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Alert, EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Row, Section, Stage } from './shell'
 
 const ALERT_STATUSES = ['default', 'info', 'success', 'warning', 'danger'] as const
@@ -42,7 +43,7 @@ function Empty() {
               <EmptyState.Description>添加一个，给智能体更多工具。（{size}）</EmptyState.Description>
             </EmptyState.Header>
             <EmptyState.Content>
-              <Button size="small" variant="secondary">
+              <Button size="sm" variant="secondary">
                 添加
               </Button>
             </EmptyState.Content>
@@ -71,7 +72,7 @@ function Progress() {
             <Meter.Fill className="bg-status-success transition-[width] duration-75" />
           </Meter.Track>
         </Meter>
-        <Button size="xs" variant="secondary" onPress={() => setLevel((v) => (v + 25) % 125)}>
+        <Button size="sm" variant="secondary" onPress={() => setLevel((v) => (v + 25) % 125)}>
           变化
         </Button>
       </Row>

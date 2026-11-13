@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { Bell, Gauge, Settings, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
   BACKDROP_MOTION,
   MODAL_BACKDROP,
@@ -283,7 +283,7 @@ function Brand() {
   return (
     <div className="flex flex-wrap items-center gap-6">
       <MeridianMark key={take} intro={take > 0} className="size-16" />
-      <Button variant="secondary" size="small" onPress={() => setTake((n) => n + 1)}>
+      <Button variant="secondary" size="sm" onPress={() => setTake((n) => n + 1)}>
         重放开场
       </Button>
       <div className="flex items-end gap-4 text-foreground-icon-secondary">

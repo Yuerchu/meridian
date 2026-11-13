@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Disclosure, Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
 import { EmptyState } from '@/components/base'
@@ -195,10 +196,9 @@ function RowActions({
         <>
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              leadingIcon={Sparkles}
-              size="small"
-              variant="neutral"
+              icon={<Sparkles />}
+              size="sm"
+              variant="ghost"
               aria-label={busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
               isPending={busy === 'suggest'}
               isDisabled={busy !== null || !emoji.file_name}
@@ -211,10 +211,9 @@ function RowActions({
           </TooltipTrigger>
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              leadingIcon={Check}
-              size="small"
-              variant="neutral"
+              icon={<Check />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.emoji.confirmSemantic')}
               isPending={busy === 'confirm'}
               isDisabled={busy !== null || !shownName(emoji).trim()}
@@ -230,10 +229,9 @@ function RowActions({
       {canDelete && (
         <TooltipTrigger delay={0}>
           <Button
-            iconOnly
-            leadingIcon={Bin}
-            size="small"
-            variant="neutral"
+            icon={<Bin />}
+            size="sm"
+            variant="ghost"
             className="hover:text-status-danger"
             aria-label={t('settings.emoji.deleteEmoji')}
             onPress={() => onDelete(emoji.id)}
@@ -541,17 +539,12 @@ function PackCard({
                     {onImport && (
                       // The picker returns paths on this device and the import
                       // is read by whichever machine the backend is on.
-                      <Button
-                        leadingIcon={Upload}
-                        variant="secondary"
-                        onPress={onImport}
-                        isDisabled={!can.importFromDisk}
-                      >
+                      <Button icon={<Upload />} variant="secondary" onPress={onImport} isDisabled={!can.importFromDisk}>
                         {t('settings.emoji.import')}
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button leadingIcon={Bin} variant="danger" className="ml-auto" onPress={onDelete}>
+                      <Button icon={<Bin />} variant="destructive" className="ml-auto" onPress={onDelete}>
                         {t('common.delete')}
                       </Button>
                     )}
@@ -757,7 +750,7 @@ export function EmojiSettings() {
             if (e.key === 'Enter') handleCreate()
           }}
         />
-        <Button leadingIcon={Plus} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
+        <Button icon={<Plus />} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           {t('settings.emoji.newPack')}
         </Button>
       </div>
@@ -804,7 +797,7 @@ export function EmojiSettings() {
           </ActionBar.Prefix>
           <ActionBar.Content>
             <Button
-              leadingIcon={Sparkles}
+              icon={<Sparkles />}
               variant="secondary"
               isPending={bulkSuggest !== null}
               isDisabled={suggestableSelected.length === 0 || bulkSuggest !== null}
@@ -814,17 +807,21 @@ export function EmojiSettings() {
                 ? t('settings.emoji.suggestSelectedProgress', bulkSuggest)
                 : t('settings.emoji.suggestSelected')}
             </Button>
-            <Button leadingIcon={Bin} variant="danger" onPress={handleDeleteSelected} isDisabled={bulkSuggest !== null}>
+            <Button
+              icon={<Bin />}
+              variant="destructive"
+              onPress={handleDeleteSelected}
+              isDisabled={bulkSuggest !== null}
+            >
               {t('settings.emoji.deleteSelected')}
             </Button>
           </ActionBar.Content>
           <ActionBar.Suffix>
             <TooltipTrigger delay={0}>
               <Button
-                iconOnly
-                leadingIcon={X}
-                size="small"
-                variant="neutral"
+                icon={<X />}
+                size="sm"
+                variant="ghost"
                 aria-label={t('settings.emoji.clearSelection')}
                 onPress={() => setSelection(null)}
               />

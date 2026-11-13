@@ -94,7 +94,7 @@
   "dependencies": {
     "@keyline-icons/react": "^1.8.0",
     "@lobehub/icons": "~5.18.0",
-    "@number-flow/react": "^0.6.2",
+    "@number-flow/react": "0.6.2",
     "@react-aria/utils": "^3.34.1",
     "@react-stately/utils": "^3.12.1",
     "@tailwindcss/typography": "^0.5.20",

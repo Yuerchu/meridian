@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button } from '@/components/base'
+import { Alert } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { api } from '@/api'
 import type { ProviderInfoResponse } from '@/types'
@@ -87,7 +88,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
             <Alert.Title>{t('settings.provider.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoadError(null)

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
 import {
-  Button,
   Checkbox,
   Description,
   Input,
@@ -14,6 +13,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
@@ -187,10 +187,9 @@ export function VoiceCorpusSettings() {
                 <ItemCard.Action>
                   <TooltipTrigger delay={0}>
                     <Button
-                      iconOnly
-                      leadingIcon={Bin}
-                      size="small"
-                      variant="neutral"
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
                       isDisabled={busy}
                       onPress={() => deleteSession(session)}
                       aria-label={t('settings.voiceCorpus.deleteSession')}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
-import { Alert, Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { EmptyState } from '@/components/base'
 import { api } from '@/api'
@@ -147,10 +148,9 @@ export function AndroidFileAccess() {
                 </div>
                 <TooltipTrigger delay={0}>
                   <Button
-                    variant="neutral"
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
+                    variant="ghost"
+                    icon={<X />}
+                    size="sm"
                     className="shrink-0"
                     onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
@@ -161,7 +161,7 @@ export function AndroidFileAccess() {
             ))}
           </ul>
         )}
-        <Button leadingIcon={FolderOpen} variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
+        <Button icon={<FolderOpen />} variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
           {t('settings.fileAccess.addDir')}
         </Button>
       </div>

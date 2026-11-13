@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, Modal, TextField } from '@/components/base'
+import { Input, Modal, TextField } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { useHistoryLevel } from '@/hooks/use-history-level'
 

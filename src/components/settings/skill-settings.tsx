@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Alert,
-  Button,
   Card,
   Checkbox,
   Chip,
@@ -17,6 +16,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -174,7 +174,7 @@ function SkillEditor({
             <Alert.Content>
               <Alert.Title>{t('settings.skills.bodyLoadError')}</Alert.Title>
               {bodyError && <Alert.Description className="break-all">{bodyError}</Alert.Description>}
-              <Button size="small" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
+              <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
                 {t('common.retry')}
               </Button>
             </Alert.Content>
@@ -211,10 +211,9 @@ function SkillEditor({
         {onDelete && !isBuiltin && (
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              leadingIcon={Bin}
-              size="small"
-              variant="neutral"
+              icon={<Bin />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.skills.delete')}
               className="ml-auto hover:text-status-danger"
               onPress={onDelete}
@@ -302,10 +301,10 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button leadingIcon={RefreshCw} variant="secondary" onPress={handleRescan} isPending={rescanning}>
+            <Button icon={<RefreshCw />} variant="secondary" onPress={handleRescan} isPending={rescanning}>
               {t('settings.skills.rescan')}
             </Button>
-            <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
+            <Button icon={<Plus />} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               {t('settings.skills.new')}
             </Button>
           </>

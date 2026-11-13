@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
 import {
   Alert,
-  Button,
   Card,
   Chip,
   Description,
@@ -15,6 +14,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -211,10 +211,9 @@ function CustomToolEditor({
           <TooltipTrigger delay={0}>
             <Button
               type="button"
-              iconOnly
-              leadingIcon={Bin}
-              size="small"
-              variant="neutral"
+              icon={<Bin />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.tools.delete')}
               className="ml-auto hover:text-status-danger"
               onPress={onDelete}
@@ -273,7 +272,7 @@ export function ToolMarketplace() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => void refresh()}>
+            <Button size="sm" variant="secondary" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
           </Alert.Content>
@@ -356,7 +355,7 @@ export function ToolMarketplace() {
           <h3 data-slot="custom-tools-title" className="text-body-medium">
             {t('settings.tools.customSection')}
           </h3>
-          <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
+          <Button icon={<Plus />} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
             {t('settings.tools.new')}
           </Button>
         </div>

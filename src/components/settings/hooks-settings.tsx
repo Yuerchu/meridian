@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { Alert, Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { api } from '@/api'
@@ -360,7 +361,7 @@ export function HooksSettings() {
             <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoading(true)
@@ -534,7 +535,7 @@ export function HooksSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger" onPress={handleStop}>
+          <Button variant="destructive" onPress={handleStop}>
             {t('settings.hooks.stop')}
           </Button>
         ) : (

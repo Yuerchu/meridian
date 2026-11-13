@@ -4,7 +4,6 @@ import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
 import {
   Alert,
-  Button,
   Checkbox,
   Description,
   Disclosure,
@@ -14,6 +13,7 @@ import {
   TextArea,
   TextField,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -529,7 +529,7 @@ function AssistantEditor({
         {saved && <SavedHint />}
         {onDelete && (
           <Button
-            variant="danger"
+            variant="destructive"
             className="ml-auto"
             onPress={() => {
               setSaveError(null)
@@ -631,7 +631,7 @@ export function AssistantSettings() {
             <Alert.Title>{t('settings.assistant.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoadError(null)
@@ -655,7 +655,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button leadingIcon={Plus} variant="secondary" onPress={handleCreate}>
+          <Button icon={<Plus />} variant="secondary" onPress={handleCreate}>
             {t('settings.assistant.new')}
           </Button>
         }

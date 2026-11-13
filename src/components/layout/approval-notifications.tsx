@@ -10,7 +10,7 @@ import { ToolArgsSummary, escalationPromptKey, toolLabel } from '@/components/ch
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
 import { cx } from '@/utils/cx'
 import {
-  ACTION_VARIANT,
+  BOARDUI_ACTION_VARIANT,
   MAX_VISIBLE,
   attentionActionIds,
   attentionActionLabel,
@@ -164,7 +164,7 @@ export function ApprovalNotification({
           {attentionActionLabel(t, item, id)}
         </>
       ),
-      variant: ACTION_VARIANT[id],
+      variant: BOARDUI_ACTION_VARIANT[id],
       onPress: () => act(item, id),
     }
   })

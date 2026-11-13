@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Alert, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
@@ -140,7 +141,7 @@ export function AcpSettings() {
           <Alert.Content>
             <Alert.Title>{t('settings.acp.loadError')}</Alert.Title>
             <Alert.Description className="break-all">{loadError}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
+            <Button size="sm" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
           </Alert.Content>

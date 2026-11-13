@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, TextField } from '@/components/base'
+import { Description, Input, Label, TextField } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ItemCard } from '@/components/base'
 
 import { api } from '@/api'

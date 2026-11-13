@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Check } from '@keyline-icons/react/two-tone'
-import { Button, Modal } from '@/components/base'
+import { Modal } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { useCopy } from '@/hooks/use-copy'
 
@@ -82,7 +83,7 @@ function SelectTextDialog({ text }: { text: string }) {
         <Button slot="close" variant="secondary">
           {t('common.cancel')}
         </Button>
-        <Button leadingIcon={copied ? Check : undefined} onPress={() => void copy(text)}>
+        <Button icon={copied ? <Check /> : undefined} onPress={() => void copy(text)}>
           {t(copied ? 'common.copied' : 'contextMenu.copyAll')}
         </Button>
         <CopyAnnouncement copied={copied} failure={null} />

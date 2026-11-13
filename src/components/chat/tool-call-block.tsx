@@ -49,7 +49,8 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
   ChatTool,
   ChatToolApproval,
@@ -324,7 +325,7 @@ function QuestionBlock({
           {q.question}
         </span>
         <Button
-          leadingIcon={ArrowUTurnLeft}
+          icon={<ArrowUTurnLeft />}
           variant="secondary"
           onPress={() => onUnskip(q.id)}
           className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
@@ -355,7 +356,7 @@ function QuestionBlock({
         </div>
         {!q.required && (
           <Button
-            leadingIcon={SkipForward}
+            icon={<SkipForward />}
             variant="secondary"
             onPress={() => onSkip(q.id)}
             className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
@@ -654,7 +655,7 @@ export function AskUserBlock({
             </p>
           )}
           <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
-            <Button leadingIcon={Send} type="submit" isPending={sending}>
+            <Button icon={<Send />} type="submit" isPending={sending}>
               {t('chat.tool.askUserSubmit')}
             </Button>
             {/* A disabled button with no reason beside it reads as broken. Only
@@ -821,7 +822,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border-button-default/50 px-3 py-1.5">
-      <Button variant="secondary" size="small" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
+      <Button variant="secondary" size="sm" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -1109,7 +1110,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         // content in place rather than going anywhere.
         <Button
           variant="secondary"
-          size="small"
+          size="sm"
           className="mt-1 self-start rounded-lg px-2 text-caption-1-regular"
           onPress={() => setOpen((current) => !current)}
         >
@@ -1396,8 +1397,8 @@ export function PendingApproval({
               reader announces, and `aria-hidden` keeps the hint from being read
               as part of the button's name. */}
           <Button
-            leadingIcon={X}
-            variant="danger"
+            icon={<X />}
+            variant="destructive"
             aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
             onPress={() => setUi('feedback')}
           >
@@ -1405,7 +1406,7 @@ export function PendingApproval({
             <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
           <Button
-            leadingIcon={Check}
+            icon={<Check />}
             aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
             onPress={() => decide(() => api.approveToolCall(approvalId))}
           >
@@ -1443,7 +1444,7 @@ export function PendingApproval({
         <Button variant="secondary" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button leadingIcon={X} variant="danger" onPress={deny}>
+        <Button icon={<X />} variant="destructive" onPress={deny}>
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
       </ChatToolApproval>
@@ -1803,13 +1804,13 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         <div data-slot="enter-plan-actions" className={cx(divider, section)}>
           <ChatToolApproval>
             <Button
-              leadingIcon={X}
+              icon={<X />}
               variant="secondary"
               onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}
             >
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button leadingIcon={Compass} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button icon={<Compass />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
               {t('chat.plan.startPlanning')}
             </Button>
           </ChatToolApproval>
@@ -1949,17 +1950,17 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 <Button variant="secondary" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={sendBack}>
+                <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={sendBack}>
                   {t('chat.plan.sendBack')}
                 </Button>
               </ChatToolApproval>
             </div>
           ) : (
             <ChatToolApproval>
-              <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={() => setUi('feedback')}>
+              <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
                 {t('chat.plan.revise')}
               </Button>
-              <Button leadingIcon={Check} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              <Button icon={<Check />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
