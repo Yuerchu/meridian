@@ -1,0 +1,33 @@
+@layer components {
+  .ui-label {
+    font: var(--text-body-medium);
+    color: var(--text);
+  }
+
+  /* 必填：标签后面一个星号。React Aria 在必填字段的根元素上加 data-required；
+     输入框本身有 aria-required，读屏会读"必填"，所以星号的替代文字为空，免得读两遍 */
+  [data-required] > .ui-label::after {
+    margin-inline-start: var(--space-1);
+    color: var(--danger-fg);
+    content: "*" / "";
+  }
+
+  .ui-description {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-field-error {
+    font: var(--text-caption);
+    color: var(--danger-fg);
+    /* 只在校验失败时挂载，所以每次出现都会播放一次 */
+    animation: ui-field-error-in var(--dur-standard) var(--ease-enter);
+  }
+
+  @keyframes ui-field-error-in {
+    from {
+      opacity: 0;
+      transform: translateY(calc(-1 * var(--space-1)));
+    }
+  }
+}

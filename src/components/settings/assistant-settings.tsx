@@ -9,9 +9,10 @@ import {
   DisclosureGroup,
   Input,
   Label,
-  TextArea,
-  TextField,
+  TextField as BoardTextField,
 } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
@@ -233,28 +234,27 @@ function AssistantEditor({
 
   return (
     <div data-slot="assistant-editor" className="space-y-4 px-1 pb-4">
-      <TextField>
-        <Label>{t('settings.assistant.name')}</Label>
-        <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
-      </TextField>
+      <TextField
+        label={t('settings.assistant.name')}
+        name={`assistantName-${assistant.id}`}
+        value={name}
+        onChange={setName}
+      />
 
-      <TextField>
-        <Label>{t('settings.assistant.systemPrompt')}</Label>
-        <TextArea
-          name={`assistantSystemPrompt-${assistant.id}`}
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void handleSave()
-            }
-          }}
-          rows={6}
-          className="resize-none font-mono text-caption-1-regular"
-        />
-      </TextField>
+      <TextArea
+        label={t('settings.assistant.systemPrompt')}
+        name={`assistantSystemPrompt-${assistant.id}`}
+        value={systemPrompt}
+        onChange={setSystemPrompt}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            void handleSave()
+          }
+        }}
+        rows={6}
+      />
 
       <ProviderModelPicker
         providers={providers}
@@ -269,7 +269,7 @@ function AssistantEditor({
       />
 
       <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField type="number">
+        <BoardTextField type="number">
           <Label>{t('settings.assistant.temperature')}</Label>
           <Input
             name={`assistantTemperature-${assistant.id}`}
@@ -281,8 +281,8 @@ function AssistantEditor({
             max={2}
             step={0.1}
           />
-        </TextField>
-        <TextField type="number" isInvalid={modelConflicts.includes('context')}>
+        </BoardTextField>
+        <BoardTextField type="number" isInvalid={modelConflicts.includes('context')}>
           <Label>{t('settings.assistant.contextLimit')}</Label>
           <Input
             name={`assistantContextLimit-${assistant.id}`}
@@ -301,7 +301,7 @@ function AssistantEditor({
                 : t('settings.assistant.contextLimitCap', { window: boundWindow })}
             </Description>
           )}
-        </TextField>
+        </BoardTextField>
       </div>
 
       <div data-slot="assistant-auto-compact" className="space-y-1.5">

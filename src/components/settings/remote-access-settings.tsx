@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, Separator, TextField } from '@/components/base'
+import { Input, Label, Separator, TextField as BoardTextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -275,17 +276,15 @@ export function RemoteAccessSettings() {
       </div>
 
       <div data-slot="remote-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.remote.host')}</Label>
-          <Input
-            name="remoteAccessHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="0.0.0.0"
-          />
-          <Description>{t('settings.remote.hostHint')}</Description>
-        </TextField>
-        <TextField type="number">
+        <TextField
+          label={t('settings.remote.host')}
+          name="remoteAccessHost"
+          value={config.host}
+          onChange={(e) => setConfig({ ...config, host: e })}
+          placeholder="0.0.0.0"
+          description={t('settings.remote.hostHint')}
+        />
+        <BoardTextField type="number">
           <Label>{t('settings.remote.port')}</Label>
           <Input
             name="remoteAccessPort"
@@ -296,7 +295,7 @@ export function RemoteAccessSettings() {
             onChange={(e) => setPortInput(e.target.value)}
             placeholder="8787"
           />
-        </TextField>
+        </BoardTextField>
       </div>
 
       <div data-slot="remote-token" className="space-y-1.5">

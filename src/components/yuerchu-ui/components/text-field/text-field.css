@@ -1,0 +1,212 @@
+@layer components {
+  .ui-text-field {
+    --ui-input-height: var(--control-md);
+    --ui-input-radius: var(--radius-control);
+    --ui-input-padding: var(--space-3);
+    --icon-size: var(--icon-md);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-text-field[data-size="sm"] {
+    --ui-input-height: var(--control-sm);
+    --ui-input-radius: calc(var(--radius-control) - 2px);
+    --ui-input-padding: var(--space-2);
+    --icon-size: var(--icon-sm);
+  }
+
+  .ui-text-field[data-size="lg"] {
+    --ui-input-height: var(--control-lg);
+    --ui-input-radius: calc(var(--radius-control) + 2px);
+    --ui-input-padding: var(--space-4);
+    --icon-size: var(--icon-lg);
+  }
+
+  .ui-text-field__control {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+
+  .ui-text-field__icon {
+    position: absolute;
+    inset-inline-start: var(--ui-input-padding);
+    display: inline-flex;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+
+  .ui-text-field__icon svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .ui-text-field__control[data-has-icon] .ui-input {
+    padding-inline-start: calc(var(--ui-input-padding) + var(--icon-size) + var(--space-2));
+  }
+
+  /* ---------- 输入框本体 ---------- */
+  .ui-input {
+    width: 100%;
+    min-width: 0;
+    height: var(--ui-input-height, var(--control-md));
+    /* 多行输入框（TextArea）通过 --ui-input-padding-block 加上下内边距、--ui-input-height 改成 auto，见 DESIGN.md §6.2.1 */
+    padding: var(--ui-input-padding-block, 0) var(--ui-input-padding, var(--space-3));
+    margin: 0;
+    border: 1px solid var(--border-control);
+    border-radius: var(--ui-input-radius, var(--radius-control));
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-text-field[data-size="sm"] .ui-input {
+    font: var(--text-small);
+  }
+
+  .ui-input::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
+  }
+
+  .ui-input[data-hovered]:not([data-disabled]) {
+    border-color: var(--border-control-hover);
+  }
+
+  /* 日期、时间输入框（DateInput）是 div，聚焦的是里面的分段：用 data-focus-within */
+  .ui-input:is([data-focused], [data-focus-within]) {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .ui-input[data-invalid] {
+    border-color: var(--danger);
+  }
+
+  .ui-input[data-invalid]:is([data-focused], [data-focus-within]) {
+    box-shadow: 0 0 0 3px var(--danger-bg);
+  }
+
+  .ui-input[data-disabled] {
+    border-color: var(--border);
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-text-field[data-readonly] .ui-input {
+    background: var(--surface-sunken);
+  }
+
+  /* 浏览器自动填充会给输入框涂底色：用内阴影盖回去，聚焦时保留光晕 */
+  .ui-input:autofill {
+    box-shadow: inset 0 0 0 100px var(--surface);
+    -webkit-text-fill-color: var(--text);
+  }
+
+  .ui-input:autofill[data-focused] {
+    box-shadow:
+      inset 0 0 0 100px var(--surface),
+      var(--focus-glow);
+  }
+
+  /* ---------- 前后缀：边框画在外层，输入框透明，三者排成一行（写在输入框样式之后，覆盖它的边框和光晕） ---------- */
+  .ui-text-field__control[data-has-affix] {
+    box-sizing: border-box;
+    height: var(--ui-input-height);
+    border: 1px solid var(--border-control);
+    border-radius: var(--ui-input-radius);
+    background: var(--surface);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-text-field__control[data-has-affix]:has(.ui-input[data-hovered]:not([data-disabled])) {
+    border-color: var(--border-control-hover);
+  }
+
+  .ui-text-field__control[data-has-affix]:has(.ui-input[data-focused]) {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .ui-text-field__control[data-has-affix]:has(.ui-input[data-invalid]) {
+    border-color: var(--danger);
+  }
+
+  .ui-text-field__control[data-has-affix]:has(.ui-input[data-invalid][data-focused]) {
+    box-shadow: 0 0 0 3px var(--danger-bg);
+  }
+
+  .ui-text-field__control[data-has-affix]:has(.ui-input[data-disabled]) {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  .ui-text-field[data-readonly] .ui-text-field__control[data-has-affix] {
+    background: var(--surface-sunken);
+  }
+
+  .ui-text-field__control[data-has-affix] .ui-input {
+    flex: 1;
+    height: 100%;
+    border-color: transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ui-text-field__control[data-has-affix] .ui-input:autofill {
+    box-shadow: inset 0 0 0 100px var(--surface);
+  }
+
+  .ui-text-field__control[data-has-affix] .ui-text-field__affix[data-side="start"] + .ui-input {
+    padding-inline-start: var(--space-1);
+  }
+
+  .ui-text-field__control[data-has-affix] .ui-input:has(+ .ui-text-field__affix) {
+    padding-inline-end: var(--space-1);
+  }
+
+  .ui-text-field__affix {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--text-body);
+    white-space: nowrap;
+    cursor: text;
+    user-select: none;
+  }
+
+  .ui-text-field__affix[data-side="start"] {
+    padding-inline-start: var(--ui-input-padding);
+  }
+
+  .ui-text-field__affix[data-side="end"] {
+    padding-inline-end: var(--ui-input-padding);
+  }
+
+  .ui-text-field[data-size="sm"] .ui-text-field__affix {
+    font: var(--text-small);
+  }
+
+  .ui-text-field[data-disabled] .ui-text-field__affix {
+    color: var(--text-muted);
+  }
+
+  /* 触屏：iOS 在输入框字号小于 16px 时会放大页面 */
+  @media (pointer: coarse) {
+    .ui-input,
+    .ui-text-field[data-size="sm"] .ui-input,
+    .ui-text-field__affix,
+    .ui-text-field[data-size="sm"] .ui-text-field__affix {
+      font: var(--text-body-lg);
+    }
+  }
+}

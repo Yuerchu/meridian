@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Chip, Label, Link, TextArea, TextField } from '@/components/base'
+import { Chip, Link } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -130,8 +131,7 @@ export function PlanCommentsPane({
                 placeholder={t('planReview.comments.placeholder')}
                 value={comment.body}
                 rows={2}
-                className="resize-none"
-                onChange={(event) => onChangeComment(comment.id, event.target.value)}
+                onChange={(value) => onChangeComment(comment.id, value)}
               />
             )}
             {comment.state === 'orphaned' && (
@@ -156,16 +156,15 @@ export function PlanCommentsPane({
             </div>
           )
         ) : (
-          <TextField data-slot="plan-global-note-field" className="space-y-1.5">
-            <Label className="text-body-medium">{t('planReview.comments.globalNote')}</Label>
-            <TextArea
-              placeholder={t('planReview.comments.globalPlaceholder')}
-              value={globalNote}
-              rows={2}
-              className="resize-none"
-              onChange={(event) => onGlobalNoteChange(event.target.value)}
-            />
-          </TextField>
+          <TextArea
+            data-slot="plan-global-note-field"
+            className="space-y-1.5"
+            label={t('planReview.comments.globalNote')}
+            placeholder={t('planReview.comments.globalPlaceholder')}
+            value={globalNote}
+            rows={2}
+            onChange={onGlobalNoteChange}
+          />
         )}
       </div>
     </section>

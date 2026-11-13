@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { Input, Label, Select, SelectItem, TextField as BoardTextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -436,16 +437,14 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.hooks.host')}</Label>
-          <Input
-            name="hooksHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="127.0.0.1"
-          />
-        </TextField>
-        <TextField type="number">
+        <TextField
+          label={t('settings.hooks.host')}
+          name="hooksHost"
+          value={config.host}
+          onChange={(e) => setConfig({ ...config, host: e })}
+          placeholder="127.0.0.1"
+        />
+        <BoardTextField type="number">
           <Label>{t('settings.hooks.port')}</Label>
           <Input
             name="hooksPort"
@@ -456,11 +455,11 @@ export function HooksSettings() {
             onChange={(e) => setPortInput(e.target.value)}
             placeholder="8765"
           />
-        </TextField>
+        </BoardTextField>
       </div>
 
       <div data-slot="hooks-timeout" className="space-y-1.5">
-        <TextField type="number">
+        <BoardTextField type="number">
           <Label>{t('settings.hooks.timeout')}</Label>
           <Input
             name="hooksTimeout"
@@ -472,14 +471,14 @@ export function HooksSettings() {
             value={timeoutInput}
             onChange={(e) => setTimeoutInput(e.target.value)}
           />
-        </TextField>
+        </BoardTextField>
         <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
 
       <div data-slot="hooks-max-rounds" className="space-y-1.5">
-        <TextField type="number">
+        <BoardTextField type="number">
           <Label>{t('settings.hooks.maxRounds')}</Label>
           <Input
             name="hooksMaxRounds"
@@ -489,7 +488,7 @@ export function HooksSettings() {
             value={roundsInput}
             onChange={(e) => setRoundsInput(e.target.value)}
           />
-        </TextField>
+        </BoardTextField>
         <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>

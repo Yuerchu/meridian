@@ -1,19 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  CellSwitch,
-  Checkbox,
-  CheckboxGroup,
-  Description,
-  ItemCard,
-  ItemCardGroup,
-  Label,
-  Separator,
-  Spinner,
-  TextArea,
-  TextField,
-} from '@/components/base'
+import { CellSwitch, Checkbox, CheckboxGroup, ItemCard, ItemCardGroup, Separator, Spinner } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -593,29 +582,25 @@ export function ImeSettings() {
         </p>
       </div>
 
-      <TextField>
-        <Label>{t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}</Label>
-        <TextArea
-          name="imePrivateApps"
-          rows={3}
-          value={privateAppsInput}
-          onChange={(e) => setPrivateAppsInput(e.target.value)}
-          placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
-        />
-        <Description>{t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}
+        name="imePrivateApps"
+        rows={3}
+        value={privateAppsInput}
+        onChange={setPrivateAppsInput}
+        placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
+        description={t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}
+      />
 
-      <TextField>
-        <Label>{t('settings.ime.contextApps')}</Label>
-        <TextArea
-          name="imeContextApps"
-          rows={2}
-          value={contextAppsInput}
-          onChange={(e) => setContextAppsInput(e.target.value)}
-          placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
-        />
-        <Description>{t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t('settings.ime.contextApps')}
+        name="imeContextApps"
+        rows={2}
+        value={contextAppsInput}
+        onChange={setContextAppsInput}
+        placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
+        description={t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}
+      />
 
       <CellSwitch
         aria-label={t('settings.ime.debugLog')}

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, TextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -68,19 +68,19 @@ export function RenameDialog({
       // The keyboard has to be padded for by hand (see above).
       className="pb-[var(--ime-bottom,0px)]"
     >
-      <TextField aria-label={heading} autoFocus>
-        <Input
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return
-            if (e.key === 'Enter') {
-              e.preventDefault()
-              submit()
-            }
-          }}
-        />
-      </TextField>
+      <TextField
+        aria-label={heading}
+        autoFocus
+        value={value}
+        onChange={setValue}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            submit()
+          }
+        }}
+      />
 
       <DialogFooter>
         <Button slot="close" variant="secondary">
