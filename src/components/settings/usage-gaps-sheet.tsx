@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Alert, Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
@@ -74,7 +75,7 @@ export function UsageGapsSheet({
                   <Alert.Indicator />
                   <Alert.Content>
                     <Alert.Description>{t('settings.usage.gaps.loadError')}</Alert.Description>
-                    <Button size="small" variant="secondary" className="mt-2" onPress={load}>
+                    <Button size="sm" variant="secondary" className="mt-2" onPress={load}>
                       {t('settings.usage.retry')}
                     </Button>
                   </Alert.Content>
@@ -146,10 +147,9 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
         </div>
         {gap.conversation_title !== null && (
           <Button
-            variant="neutral"
-            iconOnly
-            leadingIcon={SquareArrowUpRight}
-            size="small"
+            variant="ghost"
+            icon={<SquareArrowUpRight />}
+            size="sm"
             aria-label={t('settings.usage.gaps.open')}
             onPress={onOpen}
           />

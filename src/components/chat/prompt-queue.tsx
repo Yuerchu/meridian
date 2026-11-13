@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
 import { Check, CircleQuestion, Clock, Paperclip, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PromptInput } from '@/components/base'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
@@ -121,7 +122,7 @@ export function PromptQueue({
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
           <Button
-            size="small"
+            size="sm"
             variant="secondary"
             className="touch-hitbox px-2 text-caption-1-regular"
             onPress={onRelease}

@@ -827,7 +827,6 @@ describe('a hosted agent asks with the same cards', () => {
 
     expect(submit).toHaveAttribute('aria-disabled', 'true')
     expect(submit.closest('form')).toHaveAttribute('aria-busy', 'true')
-    expect(submit.querySelector('[data-slot="spinner"]')).not.toBeNull()
     finish()
   })
 

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
 import {
   Alert,
-  Button,
   Chip,
   ItemCard,
   ItemCardGroup,
@@ -13,6 +12,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -161,17 +161,17 @@ export function ImeLearningSection() {
         {learning !== null && (
           <div className="flex shrink-0 items-center gap-1.5">
             {can.exportToDisk && (
-              <Button size="small" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
+              <Button size="sm" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
                 {t('settings.ime.learned.export')}
               </Button>
             )}
             {can.importFromDisk && (
-              <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy}>
+              <Button size="sm" variant="secondary" onPress={handleImport} isDisabled={busy}>
                 {t('settings.ime.learned.import')}
               </Button>
             )}
             {(learning.words.length > 0 || learning.transitions > 0) && (
-              <Button size="small" variant="secondary" onPress={() => setOpen(!open)}>
+              <Button size="sm" variant="secondary" onPress={() => setOpen(!open)}>
                 {open ? t('settings.ime.learned.close') : t('settings.ime.learned.manage')}
               </Button>
             )}
@@ -247,10 +247,9 @@ export function ImeLearningSection() {
                     <ItemCard.Action>
                       <TooltipTrigger delay={0}>
                         <Button
-                          iconOnly
-                          leadingIcon={Bin}
-                          size="small"
-                          variant="neutral"
+                          icon={<Bin />}
+                          size="sm"
+                          variant="ghost"
                           aria-label={t('settings.ime.learned.forget', { word: word.text })}
                           onPress={() => handleForget(word)}
                         />
@@ -268,7 +267,7 @@ export function ImeLearningSection() {
             </p>
           )}
 
-          <Button variant="danger" size="small" onPress={handleForgetAll} isDisabled={busy} isPending={busy}>
+          <Button variant="destructive" size="sm" onPress={handleForgetAll} isDisabled={busy} isPending={busy}>
             {t('settings.ime.learned.forgetAll')}
           </Button>
         </div>

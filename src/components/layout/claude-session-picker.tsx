@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -253,17 +254,16 @@ export function ClaudeSessionPicker({
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
               {can.browseForDirectory && (
-                <Button leadingIcon={FolderOpen} variant="secondary" onPress={() => void browse()} className="shrink-0">
+                <Button icon={<FolderOpen />} variant="secondary" onPress={() => void browse()} className="shrink-0">
                   {t('sessionPicker.folder')}
                 </Button>
               )}
               {folder && (
                 <TooltipTrigger delay={0}>
                   <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
+                    icon={<X />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('sessionPicker.allProjects')}
                     onPress={() => scopeTo('')}
                     className="shrink-0"
@@ -313,7 +313,7 @@ export function ClaudeSessionPicker({
                   >
                     {error}
                   </p>
-                  <Button size="small" variant="secondary" onPress={() => void load(folder)}>
+                  <Button size="sm" variant="secondary" onPress={() => void load(folder)}>
                     {t('sessionPicker.retry')}
                   </Button>
                 </div>
@@ -460,14 +460,14 @@ function SessionRow({
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="small" variant="secondary" onPress={onOpen} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="small" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
           {/* Hidden from the accessibility tree: Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`

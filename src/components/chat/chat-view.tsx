@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Messages, X } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState as ProEmptyState } from '@/components/base'
@@ -1054,10 +1055,9 @@ function ChatViewInner({
                   </span>
                   <TooltipTrigger delay={0}>
                     <Button
-                      iconOnly
-                      leadingIcon={X}
-                      size="xs"
-                      variant="neutral"
+                      icon={<X />}
+                      size="sm"
+                      variant="ghost"
                       aria-label={t('chat.convRef.remove', { name })}
                       onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
                       className="touch-hitbox size-5 min-w-0 rounded-full"
@@ -1079,7 +1079,7 @@ function ChatViewInner({
               {reviewBlockedMessage}
             </p>
             {pendingPlanReview && (
-              <Button size="small" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+              <Button size="sm" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
                 {reviewBlockedAction}
               </Button>
             )}

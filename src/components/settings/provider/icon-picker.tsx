@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, ListBox, Sheet } from '@/components/base'
+import { Input, ListBox, Sheet } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProviderMark } from '@/components/ui/provider-icon'
 
 /** The one key that is not a key: putting the mark back to whatever the catalog says. */

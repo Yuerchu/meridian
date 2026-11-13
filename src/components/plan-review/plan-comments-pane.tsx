@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import type { PlanCommentInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -103,10 +104,9 @@ export function PlanCommentsPane({
               {!isReadOnly && (
                 <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={Bin}
-                    size="small"
-                    variant="neutral"
+                    icon={<Bin />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"
                     onPress={() => onDeleteComment(comment.id)}

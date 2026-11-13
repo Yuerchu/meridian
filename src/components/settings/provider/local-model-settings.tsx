@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button } from '@/components/base'
+import { Alert } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import type { LocalInferenceBackend, LocalModelInfoResponse } from '@/types'
@@ -88,7 +89,7 @@ export function LocalModelSettings({
         stacked
       >
         <Button
-          size="small"
+          size="sm"
           variant="secondary"
           onPress={inspect}
           isPending={checking}

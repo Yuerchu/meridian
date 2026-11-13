@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, Button, DisclosureGroup, Input, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, DisclosureGroup, Input, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -84,17 +85,17 @@ export function MemorySettings() {
           // trash is somewhere to look, a new memory is the thing to do.
           <>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              leadingIcon={Bin}
+              icon={<Bin />}
               onPress={() => setTrashOpen(true)}
               data-slot="memory-trash-open"
             >
               {t('settings.memory.trash.title')}
             </Button>
             <Button
-              size="small"
-              leadingIcon={Plus}
+              size="sm"
+              icon={<Plus />}
               onPress={() => setShowAdd(true)}
               isDisabled={!canAdd}
               data-slot="memory-new"
@@ -205,10 +206,10 @@ export function MemorySettings() {
                 )}
               </SettingsRow>
               <div data-slot="memory-add-actions" className="flex items-center justify-end gap-2 py-2.5 pr-2.5">
-                <Button size="small" variant="secondary" onPress={() => setShowAdd(false)}>
+                <Button size="sm" variant="secondary" onPress={() => setShowAdd(false)}>
                   {t('common.cancel')}
                 </Button>
-                <Button size="small" onPress={() => void handleAdd()} isDisabled={!newKey.trim() || !newContent.trim()}>
+                <Button size="sm" onPress={() => void handleAdd()} isDisabled={!newKey.trim() || !newContent.trim()}>
                   {t('settings.memory.add')}
                 </Button>
               </div>
@@ -222,7 +223,7 @@ export function MemorySettings() {
               <Alert.Indicator />
               <Alert.Content>
                 <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="small" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
+                <Button size="sm" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
               </Alert.Content>
@@ -296,8 +297,8 @@ export function MemorySettings() {
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
-                  leadingIcon={Bin}
-                  variant="danger"
+                  icon={<Bin />}
+                  variant="destructive"
                   onPress={async () => {
                     const ok = await confirm({
                       title: t('settings.memory.deleteConfirmTitle'),
@@ -322,10 +323,9 @@ export function MemorySettings() {
               <ActionBar.Suffix>
                 <TooltipTrigger delay={0}>
                   <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
+                    icon={<X />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('settings.memory.clearSelection')}
                     onPress={browser.clearSelection}
                   />

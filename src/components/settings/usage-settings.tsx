@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Alert,
-  Button,
   Label,
   Skeleton,
   Spinner,
@@ -13,6 +12,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { KPI } from '@/components/base'
@@ -545,7 +545,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                 {t('settings.usage.loadError')}
               </Hint>
             </Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setReload((value) => value + 1)}>
+            <Button size="sm" variant="secondary" onPress={() => setReload((value) => value + 1)}>
               {t('settings.usage.retry')}
             </Button>
           </Alert.Content>
@@ -623,7 +623,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           )}
           {hasGaps && (
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               className="self-start"
               data-slot="usage-gaps-show"
@@ -1460,10 +1460,9 @@ function BucketTable({
           return (
             <TooltipTrigger>
               <Button
-                iconOnly
-                leadingIcon={SquareArrowUpRight}
-                size="small"
-                variant="neutral"
+                icon={<SquareArrowUpRight />}
+                size="sm"
+                variant="ghost"
                 aria-label={label}
                 onPress={() => onOpenConversation(conversationId)}
               />

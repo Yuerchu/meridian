@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
+import { ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'
@@ -274,10 +275,10 @@ export default function ResponsiveLab() {
           </Field>
 
           <div data-slot="responsive-lab-actions" className="flex gap-2">
-            <Button size="small" onPress={measure}>
+            <Button size="sm" onPress={measure}>
               Measure
             </Button>
-            <Button size="small" variant="secondary" onPress={sweep}>
+            <Button size="sm" variant="secondary" onPress={sweep}>
               Sweep widths
             </Button>
           </div>

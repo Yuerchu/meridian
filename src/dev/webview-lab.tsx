@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
 import {
-  Button,
   Checkbox,
   ContextMenu,
   Disclosure,
@@ -40,6 +39,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { Composer } from '@/components/chat/composer'
 
@@ -268,7 +268,7 @@ function SidebarProbe() {
       </div>
       <div data-slot="sidebar-probe-actions" className="flex flex-wrap gap-2">
         <Button
-          size="small"
+          size="sm"
           variant="secondary"
           onPress={() =>
             setAttrs(
@@ -362,11 +362,11 @@ function PromptInputProbe() {
           {stops}
         </span>
         {' · '}
-        <Button size="small" variant="ghost" onPress={() => setStreaming((s) => !s)}>
+        <Button size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </Button>
         {' · '}
-        <Button size="small" variant="ghost" onPress={() => setSteerable((s) => !s)}>
+        <Button size="sm" variant="ghost" onPress={() => setSteerable((s) => !s)}>
           {steerable ? '关掉可插话' : '开可插话'}
         </Button>
       </p>
@@ -471,7 +471,7 @@ export default function WebViewLab() {
         <Section title="探测结果" hint="复制这段发回给我">
           <div data-slot="webview-lab-report-actions" className="flex gap-2">
             <Button
-              size="small"
+              size="sm"
               onPress={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
@@ -533,7 +533,7 @@ export default function WebViewLab() {
               {/* eslint-disable-next-line no-restricted-syntax -- probe: measures whether utilities beat .button */}
               <Button className="h-auto p-1">h-auto p-1</Button>
               {}
-              <Button iconOnly leadingIcon={Plus} aria-label="size-8" className="size-8" />
+              <Button icon={<Plus />} aria-label="size-8" className="size-8" />
             </div>
 
             <Slider defaultValue={40} className="max-w-xs" aria-label="滑块" />
@@ -725,18 +725,12 @@ export default function WebViewLab() {
                         </div>
                         <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
                           <TooltipTrigger delay={0}>
-                            <Button iconOnly leadingIcon={Plus} size="small" variant="neutral" aria-label="加号" />
+                            <Button icon={<Plus />} size="sm" variant="ghost" aria-label="加号" />
                             <Tooltip>加号</Tooltip>
                           </TooltipTrigger>
                           <span data-slot="webview-lab-composer-spacer" className="flex-1" />
                           <TooltipTrigger delay={0}>
-                            <Button
-                              iconOnly
-                              leadingIcon={ArrowUp}
-                              size="small"
-                              aria-label="发送"
-                              className="rounded-full"
-                            />
+                            <Button icon={<ArrowUp />} size="sm" aria-label="发送" className="rounded-full" />
                             <Tooltip>发送</Tooltip>
                           </TooltipTrigger>
                         </InputGroup.Suffix>

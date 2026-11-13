@@ -1,7 +1,8 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Button, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
 import { FolderTree, Search, X } from '@keyline-icons/react/two-tone'
@@ -328,25 +329,23 @@ export function AppShell(props: ShellProps) {
               {activeId && !isMobile && page === 'chat' && !activeReviewId && (
                 <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={FolderTree}
-                    size="small"
-                    // eslint-disable-next-line meridian-ui/no-variant-as-state -- on-state of the changes-panel icon toggle: ghost marks it open, aria-pressed carries the state
-                    variant={changesOpen ? 'ghost' : 'neutral'}
+                    icon={<FolderTree />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('chat.changes.toggle')}
+                    // The library has no icon-only toggle yet (Yuerchu/ui#565): the
+                    // state reaches assistive technology, not the screen.
                     aria-pressed={changesOpen}
                     onPress={() => setChangesOpen((open) => !open)}
-                    className="size-11 md:size-8"
                   />
                   <Tooltip placement="bottom">{t('chat.changes.toggle')}</Tooltip>
                 </TooltipTrigger>
               )}
               <TooltipTrigger>
                 <Button
-                  iconOnly
-                  leadingIcon={Search}
-                  size="small"
-                  variant="neutral"
+                  icon={<Search />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
                   onPress={() => setPaletteOpen(true)}
@@ -384,10 +383,9 @@ export function AppShell(props: ShellProps) {
                 </Alert.Content>
                 <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
+                    icon={<X />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('common.close')}
                     onPress={() => setActionError(null)}
                     className="touch-hitbox shrink-0"

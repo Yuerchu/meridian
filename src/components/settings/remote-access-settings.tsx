@@ -1,16 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Button,
-  Description,
-  Input,
-  Label,
-  Separator,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert, Description, Input, Label, Separator, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
@@ -232,7 +223,7 @@ export function RemoteAccessSettings() {
             <Alert.Title>{t('settings.remote.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               className="mt-2"
               onPress={() => {
@@ -326,7 +317,7 @@ export function RemoteAccessSettings() {
               character for character, and it is long on purpose. */}
           <Button
             variant="secondary"
-            leadingIcon={copied && copiedAddress === TOKEN_COPY_KEY ? Check : Copy}
+            icon={copied && copiedAddress === TOKEN_COPY_KEY ? <Check /> : <Copy />}
             isDisabled={!config.token}
             onPress={() => config.token && void copyText(config.token, TOKEN_COPY_KEY)}
           >
@@ -357,7 +348,7 @@ export function RemoteAccessSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger" onPress={handleStop}>
+          <Button variant="destructive" onPress={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
@@ -414,10 +405,9 @@ export function RemoteAccessSettings() {
                     <ItemCard.Action>
                       <TooltipTrigger delay={0}>
                         <Button
-                          iconOnly
-                          leadingIcon={copied && copiedAddress === dialable ? Check : Copy}
-                          size="small"
-                          variant="neutral"
+                          icon={copied && copiedAddress === dialable ? <Check /> : <Copy />}
+                          size="sm"
+                          variant="ghost"
                           aria-label={t('settings.remote.copyAddress')}
                           onPress={() => void copyText(dialable, dialable)}
                         />

@@ -2,7 +2,8 @@ import type { ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from '@keyline-icons/react/two-tone'
 
-import { Alert, Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Alert, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { cx } from '@/utils/cx'
 
 interface ErrorAlertProps extends Omit<ComponentProps<'div'>, 'title' | 'role'> {
@@ -54,7 +55,7 @@ export function ErrorAlert({
           {message}
         </Alert.Description>
         {onRetry && (
-          <Button size="small" variant="secondary" className="mt-2" isPending={retrying} onPress={onRetry}>
+          <Button size="sm" variant="secondary" className="mt-2" isPending={retrying} onPress={onRetry}>
             {retryLabel ?? t('common.retry')}
           </Button>
         )}
@@ -62,10 +63,9 @@ export function ErrorAlert({
       {onDismiss && (
         <TooltipTrigger delay={0}>
           <Button
-            iconOnly
-            leadingIcon={X}
-            size="small"
-            variant="neutral"
+            icon={<X />}
+            size="sm"
+            variant="ghost"
             aria-label={t('common.dismiss')}
             onPress={onDismiss}
             className="touch-hitbox shrink-0"

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Input, Label, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin, Plus } from '@keyline-icons/react/two-tone'
 import { blankTier, type TierDraft } from './pricing'
 
@@ -55,10 +56,9 @@ export function PriceTierEditor({
             </TextField>
             <TooltipTrigger>
               <Button
-                iconOnly
-                leadingIcon={Bin}
-                size="small"
-                variant="neutral"
+                icon={<Bin />}
+                size="sm"
+                variant="ghost"
                 aria-label={t('settings.model.removeTier')}
                 className="touch-hitbox hover:text-status-danger"
                 onPress={() => remove(index)}
@@ -113,8 +113,8 @@ export function PriceTierEditor({
         </div>
       ))}
       <Button
-        leadingIcon={Plus}
-        size="small"
+        icon={<Plus />}
+        size="sm"
         variant="secondary"
         className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
         onPress={add}

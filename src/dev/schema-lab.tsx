@@ -25,7 +25,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { cx } from '@/utils/cx'
 import { useAppTheme } from '@/lib/theme'
 import {
@@ -465,11 +466,10 @@ function DetailPanel({
           </div>
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              leadingIcon={X}
+              icon={<X />}
               aria-label="关闭详情"
-              variant="neutral"
-              size="small"
+              variant="ghost"
+              size="sm"
               className="ml-auto"
               onPress={onClose}
             />
@@ -646,7 +646,7 @@ function Lab() {
         <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用
         </ToggleButton>
-        <Button variant="secondary" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        <Button variant="secondary" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
@@ -657,7 +657,7 @@ function Lab() {
               <TooltipTrigger key={g.id} delay={300}>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="sm"
                   onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
                   className={cx('h-7 gap-1.5 rounded-full px-2.5 text-caption-1-regular', off && 'opacity-40')}
@@ -676,11 +676,10 @@ function Lab() {
           })}
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
+              icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
               aria-label="切换主题"
               variant="secondary"
-              size="small"
+              size="sm"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             />
             <Tooltip placement="bottom">切换主题</Tooltip>

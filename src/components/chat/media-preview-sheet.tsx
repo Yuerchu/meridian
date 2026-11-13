@@ -4,7 +4,8 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { Button, Sheet } from '@/components/base'
+import { Sheet } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { assetSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'
 import type { ToolMediaResponse } from '@/types'
@@ -99,12 +100,7 @@ export function MediaPreviewSheet({
               </div>
               {canSave && (
                 <div data-slot="media-preview-actions" className="flex shrink-0 justify-end gap-2">
-                  <Button
-                    leadingIcon={Download}
-                    variant="secondary"
-                    onPress={() => void saveToDisk()}
-                    isPending={saving}
-                  >
+                  <Button icon={<Download />} variant="secondary" onPress={() => void saveToDisk()} isPending={saving}>
                     {t(saved ? 'chat.media.saved' : 'chat.media.save')}
                   </Button>
                 </div>

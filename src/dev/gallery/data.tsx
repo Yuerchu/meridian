@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Check, FileText, Folder, Plug } from '@keyline-icons/react/two-tone'
 
 import {
-  Button,
   DataGrid,
   Disclosure,
   DisclosureGroup,
@@ -14,6 +13,7 @@ import {
   type DataGridColumn,
   type DataGridSelection,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Section, Stage } from './shell'
 import { DataParts } from './parts'
 
@@ -146,7 +146,7 @@ function ItemCards() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button size="small" variant="secondary">
+              <Button size="sm" variant="secondary">
                 编辑
               </Button>
             </ItemCard.Action>

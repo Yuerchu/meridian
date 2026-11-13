@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
   Alert,
-  Button,
   CellSwitch,
   Checkbox,
   CheckboxGroup,
@@ -18,6 +17,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -336,7 +336,7 @@ export function ImeSettings() {
             <Alert.Title>{t('settings.ime.loadError')}</Alert.Title>
             {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               className="mt-2"
               onPress={() => {
@@ -466,7 +466,7 @@ export function ImeSettings() {
             </Button>
             {hostRunning ? (
               <Button
-                variant="danger"
+                variant="destructive"
                 isDisabled={busy !== null}
                 isPending={busy === 'stop'}
                 onPress={() => run('stop', api.stopImeHost)}
@@ -652,7 +652,7 @@ export function ImeSettings() {
           {can.importFromDisk && (
             <div data-slot="ime-dictionaries-actions" className="flex flex-wrap items-center gap-2">
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 onPress={handleDownload}
                 isDisabled={importing || downloading}
@@ -661,7 +661,7 @@ export function ImeSettings() {
                 {t('settings.ime.downloadRimeIce')}
               </Button>
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 onPress={handleImport}
                 isDisabled={importing || downloading}
@@ -708,7 +708,7 @@ export function ImeSettings() {
               </CheckboxGroup>
               <div className="flex items-center gap-2">
                 <Button
-                  size="small"
+                  size="sm"
                   variant="primary"
                   onPress={handleImportChosen}
                   isDisabled={chosen.length === 0 || importing}
@@ -716,7 +716,7 @@ export function ImeSettings() {
                 >
                   {t('settings.ime.importChosen')}
                 </Button>
-                <Button size="small" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
+                <Button size="sm" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
                   {t('common.cancel')}
                 </Button>
               </div>
@@ -786,10 +786,9 @@ export function ImeSettings() {
                     </CellSwitch>
                     <TooltipTrigger delay={0}>
                       <Button
-                        iconOnly
-                        leadingIcon={Bin}
-                        size="small"
-                        variant="neutral"
+                        icon={<Bin />}
+                        size="sm"
+                        variant="ghost"
                         aria-label={t('settings.ime.removeDictionary', { name: dict.name })}
                         onPress={() => handleRemoveDictionary(dict)}
                       />

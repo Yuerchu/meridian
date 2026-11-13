@@ -4,7 +4,6 @@ import { useTranslation } from 'react-i18next'
 import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
 import {
   Alert,
-  Button,
   Chip,
   Dropdown,
   DropdownItem,
@@ -14,6 +13,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'
 
@@ -190,8 +190,8 @@ function SourceEditor({
             {t('planReview.source.hint')}
           </p>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
@@ -811,7 +811,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button trailingIcon={ChevronDown} leadingIcon={Clock} variant="secondary" size="small">
+            <Button iconRight={<ChevronDown />} icon={<Clock />} variant="secondary" size="sm">
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
@@ -846,14 +846,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button
-              iconOnly
-              leadingIcon={X}
-              variant="neutral"
-              size="small"
-              aria-label={t('common.close')}
-              onPress={onClose}
-            />
+            <Button icon={<X />} variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose} />
             <Tooltip>{t('common.close')}</Tooltip>
           </TooltipTrigger>
         </div>
@@ -880,7 +873,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                     <Button
                       key={action.label}
                       variant="secondary"
-                      size="small"
+                      size="sm"
                       isDisabled={action.pending}
                       onPress={action.run}
                     >
@@ -904,7 +897,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {progress.message}
             </p>
             {progress.resumable && (
-              <Button size="small" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
+              <Button size="sm" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
                 {t('planReview.continueDelivery')}
               </Button>
             )}
@@ -944,8 +937,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t(`planReview.save.${saveState}`)}
           </span>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
             className="plan-review-comments-trigger"
             onPress={() => setCommentsOpen(true)}

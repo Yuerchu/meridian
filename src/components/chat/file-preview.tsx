@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { Check, Copy, FileText, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
-import { Button, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Hint } from '@/components/ui/hint'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'
@@ -317,7 +318,7 @@ function PreviewSheet({
                 </Button>
                 <CopyAnnouncement copied={copied} failure={null} />
                 {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
-                  <Button leadingIcon={SquareArrowUpRight} variant="secondary" onPress={openInEditor}>
+                  <Button icon={<SquareArrowUpRight />} variant="secondary" onPress={openInEditor}>
                     {t('chat.filePreview.openInEditor')}
                   </Button>
                 )}

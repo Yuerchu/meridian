@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleX, Play } from '@keyline-icons/react/two-tone'
-import { Button, Card, Meter } from '@/components/base'
+import { Card, Meter } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
@@ -290,16 +291,16 @@ export function DeveloperSettings() {
               button here is the Android-only one — so the case with the most
               buttons is also the narrowest screen they ever appear on. */}
           <Card.Footer className="flex-wrap gap-2">
-            <Button leadingIcon={Play} variant="secondary" size="small" onPress={() => record(true)} isDisabled={busy}>
+            <Button icon={<Play />} variant="secondary" size="sm" onPress={() => record(true)} isDisabled={busy}>
               {t('settings.developer.probe.runWorklet')}
             </Button>
-            <Button variant="secondary" size="small" onPress={() => record(false)} isDisabled={busy}>
+            <Button variant="secondary" size="sm" onPress={() => record(false)} isDisabled={busy}>
               {t('settings.developer.probe.runScriptProcessor')}
             </Button>
             {/* Android only: the desktop transcribes from a Rust-side recording
                 session, and reaches it through the composer's own button. */}
             {isAndroid && (
-              <Button variant="secondary" size="small" onPress={transcribe} isDisabled={busy}>
+              <Button variant="secondary" size="sm" onPress={transcribe} isDisabled={busy}>
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}

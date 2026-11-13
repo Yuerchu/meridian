@@ -4,7 +4,8 @@ import { RevealHostContext } from '@/hooks/use-revealed-text'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -147,7 +148,7 @@ function LoadEarlierTurns({
   return (
     <div data-slot="transcript-load-earlier" className="flex justify-center py-1">
       <Button
-        size="small"
+        size="sm"
         variant="secondary"
         onPress={() => {
           onLoad()

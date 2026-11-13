@@ -4,7 +4,6 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
   Alert,
-  Button,
   DataGrid,
   Description,
   Input,
@@ -16,6 +15,7 @@ import {
   TextField,
   type DataGridColumn,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -843,7 +843,7 @@ function ProviderEditor({
                 />
                 {!isRemote && (
                   <Button
-                    size="small"
+                    size="sm"
                     variant="secondary"
                     onPress={async () => {
                       const file = await pickModelFile()
@@ -960,7 +960,7 @@ function ProviderEditor({
       {/* Save writes the card above and nothing below it: the key has its own
           button, the models are their own pages. */}
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button size="small" onPress={handleSave} isPending={saving}>
+        <Button size="sm" onPress={handleSave} isPending={saving}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint />}
@@ -1036,7 +1036,7 @@ function ProviderEditor({
                     />
                   )}
                   <Button
-                    leadingIcon={Key}
+                    icon={<Key />}
                     variant="secondary"
                     className="shrink-0"
                     onPress={handleSaveKey}
@@ -1095,8 +1095,8 @@ function ProviderEditor({
           <SettingsCard>
             <SettingsRow label={t('settings.provider.balance')} data-slot="provider-balance-header">
               <Button
-                size="small"
-                leadingIcon={RefreshCw}
+                size="sm"
+                icon={<RefreshCw />}
                 variant="secondary"
                 onPress={handleFetchBalance}
                 isDisabled={keyStatus !== 'set'}
@@ -1165,7 +1165,7 @@ function ProviderEditor({
             {t('settings.provider.models')}
           </SettingsSectionLabel>
           <div data-slot="provider-models-actions" className="flex shrink-0 items-center gap-1">
-            <Button size="small" leadingIcon={Plus} variant="secondary" onPress={() => setAddingModel(true)}>
+            <Button size="sm" icon={<Plus />} variant="secondary" onPress={() => setAddingModel(true)}>
               {t('settings.provider.addModel')}
             </Button>
             {/* `keyStatus` is a proxy for "a request can be made", and it is only
@@ -1175,8 +1175,8 @@ function ProviderEditor({
                 here kept the button permanently grey on the rows the exemption
                 was written for. */}
             <Button
-              size="small"
-              leadingIcon={RefreshCw}
+              size="sm"
+              icon={<RefreshCw />}
               variant="secondary"
               onPress={handleFetchModels}
               isDisabled={activeAuth?.credential_kind !== 'none' && !usesChatGptLogin(provider) && keyStatus !== 'set'}
@@ -1303,7 +1303,7 @@ function ProviderEditor({
             label={t('settings.provider.deleteProvider')}
             description={t('settings.provider.deleteProviderHint')}
           >
-            <Button size="small" leadingIcon={Bin} variant="danger" onPress={handleDelete} isPending={deleting}>
+            <Button size="sm" icon={<Bin />} variant="destructive" onPress={handleDelete} isPending={deleting}>
               {deleting ? t('settings.provider.deletingProvider') : t('common.delete')}
             </Button>
           </SettingsRow>

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Button, ListBox, Modal } from '@/components/base'
+import { ListBox, Modal } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Message } from '@keyline-icons/react/two-tone'
 
 import type { ProjectInfoResponse } from '@/types'

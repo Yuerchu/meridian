@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Button, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useStickerUrl } from '@/lib/sticker-urls'
 import { cx } from '@/utils/cx'
@@ -97,9 +98,9 @@ export function StickerImage({
         >
           <Image aria-hidden className="size-6" />
           <Button
-            leadingIcon={RefreshCw}
+            icon={<RefreshCw />}
             variant="secondary"
-            size="small"
+            size="sm"
             className="touch-hitbox px-1 text-caption-1-regular"
             onPress={() => setAttempt((current) => current + 1)}
           >
@@ -175,10 +176,9 @@ export function InlineSticker({
         >
           <TooltipTrigger delay={0}>
             <Button
-              iconOnly
-              size="xs"
-              variant="neutral"
-              leadingIcon={RefreshCw}
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw />}
               aria-label={retryLabel}
               className="touch-hitbox"
               onPress={() => setAttempt((current) => current + 1)}

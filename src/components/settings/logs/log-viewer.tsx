@@ -5,7 +5,8 @@ import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/t
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { Button, InputGroup, Skeleton } from '@/components/base'
+import { InputGroup, Skeleton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'
@@ -55,7 +56,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button leadingIcon={ChevronLeft} variant="secondary" size="small" onPress={onBack}>
+        <Button icon={<ChevronLeft />} variant="secondary" size="sm" onPress={onBack}>
           {t('settings.about.logs.back')}
         </Button>
         <h2 data-slot="log-viewer-title" className="text-title-3-medium">
@@ -64,24 +65,18 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
           <Button
             variant="secondary"
-            size="small"
+            size="sm"
             onPress={logs.refresh}
             isDisabled={logs.loading}
             isPending={logs.refreshing}
-            leadingIcon={RefreshCw}
+            icon={<RefreshCw />}
           >
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button
-            leadingIcon={Download}
-            variant="secondary"
-            size="small"
-            onPress={onExport}
-            isDisabled={!can.exportToDisk}
-          >
+          <Button icon={<Download />} variant="secondary" size="sm" onPress={onExport} isDisabled={!can.exportToDisk}>
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
@@ -190,7 +185,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="secondary" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
+                <Button variant="secondary" size="sm" onPress={logs.loadOlder} isPending={logs.loadingMore}>
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

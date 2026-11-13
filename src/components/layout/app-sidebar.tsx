@@ -30,7 +30,6 @@ import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
   Alert,
-  Button,
   Dropdown,
   DropdownItem,
   DropdownPopover,
@@ -41,6 +40,7 @@ import {
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
 import {
@@ -255,7 +255,7 @@ function NewProjectForm({
           picker at all. */}
       {can.browseForDirectory ? (
         <Button
-          leadingIcon={FolderOpen}
+          icon={<FolderOpen />}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
@@ -305,10 +305,9 @@ function NewProjectForm({
             as "multiplication x". */}
         <TooltipTrigger delay={0}>
           <Button
-            iconOnly
-            leadingIcon={X}
-            size="small"
-            variant="neutral"
+            icon={<X />}
+            size="sm"
+            variant="ghost"
             aria-label={t('common.cancel')}
             onPress={onCancel}
             isDisabled={saving}
@@ -372,7 +371,7 @@ function NewHostedSessionForm({
           folders would be pointing at the wrong filesystem. */}
       {can.browseForDirectory ? (
         <Button
-          leadingIcon={FolderOpen}
+          icon={<FolderOpen />}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
@@ -420,10 +419,9 @@ function NewHostedSessionForm({
         </Button>
         <TooltipTrigger delay={0}>
           <Button
-            iconOnly
-            leadingIcon={X}
-            size="small"
-            variant="neutral"
+            icon={<X />}
+            size="sm"
+            variant="ghost"
             aria-label={t('common.cancel')}
             onPress={onCancel}
             isDisabled={starting}
@@ -668,10 +666,9 @@ function ConversationGroup({
           >
             <TooltipTrigger delay={0}>
               <Button
-                iconOnly
-                leadingIcon={ChevronRight}
-                size="xs"
-                variant="neutral"
+                icon={<ChevronRight />}
+                size="sm"
+                variant="ghost"
                 aria-expanded={!folded}
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
@@ -711,10 +708,9 @@ function ConversationGroup({
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
               <TooltipTrigger delay={0}>
                 <Button
-                  iconOnly
-                  leadingIcon={Plus}
-                  size="xs"
-                  variant="neutral"
+                  icon={<Plus />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
                   onPress={onNewConversation}
                   className="touch-hitbox"
@@ -1526,10 +1522,9 @@ export function AppSidebar({
             </Alert.Content>
             <TooltipTrigger delay={0}>
               <Button
-                iconOnly
-                leadingIcon={X}
-                size="small"
-                variant="neutral"
+                icon={<X />}
+                size="sm"
+                variant="ghost"
                 aria-label={t('common.close')}
                 onPress={() => setActionError(null)}
                 className="touch-hitbox shrink-0"

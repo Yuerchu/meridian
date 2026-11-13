@@ -1,7 +1,8 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Eye, EyeOff } from '@keyline-icons/react/two-tone'
-import { Button, Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Input, Tooltip, TooltipTrigger } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SettingsAddRow, SettingsCard, SettingsSectionLabel } from '../primitives'
 import { newPair, type KeyValuePair } from './key-value'
 
@@ -53,10 +54,9 @@ export function KeyValueEditor({
           <TooltipTrigger delay={0}>
             <Button
               data-slot="mcp-kv-reveal"
-              iconOnly
-              size="small"
-              variant="neutral"
-              leadingIcon={revealed ? EyeOff : Eye}
+              size="sm"
+              variant="ghost"
+              icon={revealed ? <EyeOff /> : <Eye />}
               aria-label={toggleLabel}
               aria-pressed={revealed}
               onPress={() => setRevealed((value) => !value)}
@@ -98,10 +98,9 @@ export function KeyValueEditor({
             <TooltipTrigger delay={0}>
               <Button
                 data-slot="mcp-kv-remove"
-                iconOnly
-                size="small"
-                variant="neutral"
-                leadingIcon={Bin}
+                size="sm"
+                variant="ghost"
+                icon={<Bin />}
                 aria-label={t('settings.mcp.kv.remove', { index: index + 1 })}
                 onPress={() => onChange(pairs.filter((candidate) => candidate.id !== pair.id))}
               />

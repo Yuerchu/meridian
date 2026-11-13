@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Link } from '@/components/base'
+import { Link } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
