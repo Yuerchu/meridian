@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/base'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -290,13 +291,13 @@ export function GeneralSettings() {
             triggerClassName="max-w-xs"
           />
           <div data-slot="general-search-key-row" className="flex items-center gap-2">
-            <Input
-              type="password"
+            <PasswordField
               aria-label={t('settings.provider.apiKey')}
               name="searchApiKey"
-              autoComplete="off"
+              // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+              autoComplete="current-password"
               value={searchApiKey}
-              onChange={(e) => setSearchApiKey(e.target.value)}
+              onChange={setSearchApiKey}
               onKeyDown={(e) => {
                 if (e.nativeEvent.isComposing) return
                 if (e.key === 'Enter') handleSaveSearchKey()
