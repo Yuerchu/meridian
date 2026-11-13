@@ -18,7 +18,6 @@ import { GROUPS, type GroupId } from './gallery/groups'
 import { GalleryFrame, GalleryIndex } from './gallery/shell'
 
 const PAGES: Record<GroupId, LazyExoticComponent<ComponentType>> = {
-  foundations: lazy(() => import('./gallery/foundations')),
   core: lazy(() => import('./gallery/core')),
   forms: lazy(() => import('./gallery/forms')),
   overlays: lazy(() => import('./gallery/overlays')),
@@ -68,7 +67,7 @@ export default function Playground() {
   if (!group) return <GalleryIndex />
   const Page = PAGES[group.id]
   return (
-    <GalleryFrame current={group.id} wide={group.id === 'foundations'}>
+    <GalleryFrame current={group.id}>
       <Suspense fallback={<Spinner aria-label="加载中" />}>
         <Page />
       </Suspense>
