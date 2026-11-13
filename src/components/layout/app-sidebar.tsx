@@ -28,7 +28,8 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Dropdown, DropdownItem, DropdownPopover, Input, Kbd, Label, ToggleButton } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, Input, Kbd, Label, ToggleButton } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
@@ -1505,22 +1506,8 @@ export function AppSidebar({
 
       <Sidebar.Footer>
         {actionError && (
-          <Alert status="danger" role="alert" data-slot="sidebar-action-error">
-            <Alert.Indicator />
-            <Alert.Content className="min-w-0">
-              <Alert.Description className="break-words">{actionError}</Alert.Description>
-            </Alert.Content>
-            <TooltipTrigger>
-              <Button
-                icon={<X />}
-                size="sm"
-                variant="ghost"
-                aria-label={t('common.close')}
-                onPress={() => setActionError(null)}
-                className="touch-hitbox shrink-0"
-              />
-              <Tooltip>{t('common.close')}</Tooltip>
-            </TooltipTrigger>
+          <Alert tone="danger" shouldAnnounce data-slot="sidebar-action-error" onDismiss={() => setActionError(null)}>
+            {actionError}
           </Alert>
         )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>

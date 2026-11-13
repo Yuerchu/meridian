@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { Input, Label, Select, SelectItem, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
@@ -355,11 +356,11 @@ export function HooksSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.hooks.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.hooks.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
@@ -370,7 +371,9 @@ export function HooksSettings() {
             >
               {t('settings.hooks.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

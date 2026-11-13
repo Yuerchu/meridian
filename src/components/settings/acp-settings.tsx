@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
@@ -136,15 +137,18 @@ export function AcpSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
-        <Alert data-slot="acp-load-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.acp.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
+        <Alert
+          data-slot="acp-load-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.acp.loadError')}
+          actions={
             <Button size="sm" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

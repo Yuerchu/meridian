@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Alert, Chip, ItemCard, ItemCardGroup, Separator, Spinner } from '@/components/base'
+import { Chip, ItemCard, ItemCardGroup, Separator, Spinner } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
@@ -100,12 +101,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
       )}
 
       {status && !status.runtime_found && status.bundles.length > 0 && (
-        <Alert status="warning">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{t('settings.ime.lm.noRuntime')}</Alert.Description>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning">{t('settings.ime.lm.noRuntime')}</Alert>
       )}
 
       {status &&

@@ -35,21 +35,7 @@ vi.mock('@/components/base', () => {
   const Kbd = Object.assign(({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>, {
     Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   })
-  const Alert = Object.assign(
-    ({ children, status: _status, ...props }: React.HTMLAttributes<HTMLDivElement> & { status?: string }) => (
-      <div {...props}>{children}</div>
-    ),
-    {
-      Indicator: () => null,
-      Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-      Description: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
-    },
-  )
-  // One factory, not three. `vi.mock` keys on the module path, so a second
-  // call for `@/components/base` replaces the first outright — the shell then
-  // renders against whichever landed last and every other export is undefined.
   return {
-    Alert,
     Kbd,
     Sidebar: {
       Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

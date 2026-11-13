@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs } from '@/components/base'
+import { Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
@@ -527,18 +528,18 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       </div>
 
       {error && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>
-              <Hint className="min-w-0 break-words" label={error}>
-                {t('settings.usage.loadError')}
-              </Hint>
-            </Alert.Description>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          actions={
             <Button size="sm" variant="secondary" onPress={() => setReload((value) => value + 1)}>
               {t('settings.usage.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          <Hint className="min-w-0 break-words" label={error}>
+            {t('settings.usage.loadError')}
+          </Hint>
         </Alert>
       )}
 

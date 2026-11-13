@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import {
-  Alert,
   CellSwitch,
   Checkbox,
   CheckboxGroup,
@@ -15,6 +14,7 @@ import {
   TextArea,
   TextField,
 } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
@@ -329,15 +329,15 @@ export function ImeSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.ime.title')} subtitle={t('settings.ime.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.ime.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.ime.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData(android)
@@ -345,7 +345,9 @@ export function ImeSettings() {
             >
               {t('settings.ime.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -733,18 +735,22 @@ export function ImeSettings() {
           </p>
         )}
         {reports.map((report) => (
-          <Alert key={report.file} status={report.accepted > 0 ? 'success' : 'warning'}>
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>
+          <Alert
+            shouldAnnounce
+            key={report.file}
+            tone={report.accepted > 0 ? 'success' : 'warning'}
+            heading={
+              <>
                 {report.cache_hit
                   ? t('settings.ime.importCached', { name: report.name })
                   : t('settings.ime.importDone', { name: report.name, count: report.accepted })}
-              </Alert.Title>
-              {report.notes.length > 0 && (
-                <Alert.Description className="whitespace-pre-line">{report.notes.join('\n')}</Alert.Description>
-              )}
-            </Alert.Content>
+              </>
+            }
+          >
+            {report.notes.map((note, index) => (
+              // One note per line. Notes may repeat and are never reordered, so the index is the key.
+              <p key={index}>{note}</p>
+            ))}
           </Alert>
         ))}
         {dictionaries.length === 0 ? (

@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import { Alert, Chip, ItemCard, ItemCardGroup, SearchField, Separator, Spinner } from '@/components/base'
+import { Chip, ItemCard, ItemCardGroup, SearchField, Separator, Spinner } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
@@ -177,20 +178,14 @@ export function ImeLearningSection() {
       )}
 
       {error && (
-        <Alert status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{error}</Alert.Description>
-          </Alert.Content>
+        <Alert shouldAnnounce tone="danger">
+          {error}
         </Alert>
       )}
 
       {notice && (
-        <Alert status="success">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{notice}</Alert.Description>
-          </Alert.Content>
+        <Alert shouldAnnounce tone="success">
+          {notice}
         </Alert>
       )}
 

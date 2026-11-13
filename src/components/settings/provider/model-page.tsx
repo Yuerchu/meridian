@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Description, Disclosure, Input, Label, Switch, TextField, ToggleButton } from '@/components/base'
+import { Description, Disclosure, Input, Label, Switch, TextField, ToggleButton } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { assistantsWithModelConflicts } from '@/lib/assistant-model-lock'
@@ -622,12 +623,8 @@ function ModelConfigEditor({
   const form = (
     <div data-slot="model-config-editor" className="space-y-2">
       {apiFormat === 'litert_lm' && capsError !== null && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.localModel.capabilitiesError')}</Alert.Title>
-            <Alert.Description>{capsError}</Alert.Description>
-          </Alert.Content>
+        <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.capabilitiesError')}>
+          {capsError}
         </Alert>
       )}
       {localInfo !== null && (
@@ -1139,15 +1136,17 @@ export function ModelPage({
   if (loadError !== null) {
     return (
       <SettingsPage title={modelId}>
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.model.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.model.loadError')}
+          actions={
             <Button size="sm" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPage>
     )

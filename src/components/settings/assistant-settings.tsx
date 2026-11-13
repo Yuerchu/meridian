@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
 import {
-  Alert,
   Checkbox,
   Description,
   Disclosure,
@@ -13,6 +12,7 @@ import {
   TextArea,
   TextField,
 } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -625,11 +625,11 @@ export function AssistantSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.assistant.title')} subtitle={t('settings.assistant.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.assistant.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.assistant.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
@@ -643,7 +643,9 @@ export function AssistantSettings() {
             >
               {t('settings.assistant.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

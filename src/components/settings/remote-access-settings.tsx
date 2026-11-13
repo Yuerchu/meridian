@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Description, Input, Label, Separator, TextField } from '@/components/base'
+import { Description, Input, Label, Separator, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -218,15 +219,15 @@ export function RemoteAccessSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.remote.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.remote.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData()
@@ -234,7 +235,9 @@ export function RemoteAccessSettings() {
             >
               {t('settings.remote.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

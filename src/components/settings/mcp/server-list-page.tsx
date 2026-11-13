@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowInDownDashedPanel, Plug } from '@keyline-icons/react/two-tone'
-import { Alert } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import type { McpConnectionStatusInfoResponse, McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
@@ -103,14 +103,16 @@ export function McpServerListPage({
       }
     >
       {loadError && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description className="break-all">{t('settings.mcp.loadError')}</Alert.Description>
-            <Button size="sm" variant="secondary" className="mt-2" onPress={() => void refresh()}>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => void refresh()}>
               {t('settings.mcp.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {t('settings.mcp.loadError')}
         </Alert>
       )}
       {meter && (

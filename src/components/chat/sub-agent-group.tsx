@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Chip, ListBox, Spinner } from '@/components/base'
+import { Chip, ListBox, Spinner } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { ToolFields } from '@/components/ui/tool-value'
@@ -426,11 +427,8 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
 
       {rows.map((row) =>
         row.report?.stranded ? (
-          <Alert key={row.call.call_id} data-slot="sub-agent-stranded" status="warning" className="m-2 mt-0">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Description>{row.report.stranded}</Alert.Description>
-            </Alert.Content>
+          <Alert key={row.call.call_id} data-slot="sub-agent-stranded" tone="warning" className="m-2 mt-0">
+            {row.report.stranded}
           </Alert>
         ) : null,
       )}

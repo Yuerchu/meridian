@@ -6,6 +6,7 @@
     "commit": "82104ea193a0cb1b0e4a658c7d08c1240b63408b"
   },
   "entries": [
+    "components/alert/alert.tsx",
     "components/button/button.tsx",
     "components/tooltip/tooltip.tsx",
     "styles/index.css"
@@ -16,6 +17,9 @@
     "react-aria-components": "^1.22.1"
   },
   "files": {
+    "components/alert/alert.css": "16b193d878a402e04f097afc4c71fae927af89fd9df498151b14ff8ad814c16a",
+    "components/alert/alert.strings.ts": "b5a02fe0fe996db2460bf2449f74c4e265fb9d8e0141de04d092bb6822755084",
+    "components/alert/alert.tsx": "c8d9d644250cedac0b1724eb0e8e1a0533caf5057e9981b47cb07a9deb7db995",
     "components/button/button.css": "74d13e9de69c483069d12497ad6dd74e51acb00ce5e0b5b86e69e02215235f0f",
     "components/button/button.tsx": "ea56f0035d1ea94a12457dabe4b2292c78bf1729b2527ab0ebbb700d766dd054",
     "components/reveal/reveal-trace.ts": "92026d13d9bcbb4d4056d1916cc7f8a8fe2cce3fdf50c27823b1825d1ca49b72",
@@ -27,6 +31,7 @@
     "components/tooltip/tooltip.tsx": "da978ab833daa455157a78708ef933b5b8a1610564e975f95531f73969680fed",
     "lib/announce.ts": "9cd02f46f7ef4365ac1d0cc9f1d8ea6ffeba056ed38f959bae91978e6dd130d5",
     "lib/class-name.ts": "b5be3daa8273f305b48e7ad966b6bcee3a99e7555a6670093129004299f28109",
+    "lib/i18n.ts": "173816ed71bb076f4ef7993be46bb2d266448b297d33106dfba7f6ee65f8dae7",
     "lib/icons.LICENSE": "c9eaf07fee7f7eed72daec177408132b0a48eca8db0c831e1f7bf28e3b1ccefc",
     "lib/icons.tsx": "e7b184eadaa8effc0c5bfdaa680e11c76927d0affefdb677d47540feb34b2f76",
     "lib/motion-tokens.ts": "4e8d91668b89de45898338e77dab16a41d52ed7fb904fa105821e3424866026c",

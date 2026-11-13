@@ -52,6 +52,13 @@ and rewritten code follows these rules:
   `sm`).
 - **Theme and motion** are `data-theme` and `data-motion` on `<html>`; no
   `.dark` class, no reduced-motion branch in JS.
+- **Before replacing a base component, list what it put on the DOM by
+  itself** — `role`, `aria-*`, `data-*`, default delays, default variants —
+  and decide each against the library's default. A codemod sees only what the
+  callers wrote. boardui's `Alert` set `role="alert"` on every alert without
+  being asked; the library announces only with `shouldAnnounce`, so every alert
+  whose caller had not repeated the role went silent, and two tests out of
+  thirty-five call sites were all that noticed.
 - The CSS gate is the library's stylelint rules, once they accept a consumer's
   prefix and token files (Yuerchu/ui#564). Until then, review against this list.
 

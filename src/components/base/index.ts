@@ -1,6 +1,5 @@
 export { ActionBar } from './action-bar'
 export { ActivityHeatmap } from './activity-heatmap'
-export { Alert } from './alert'
 export { AlertDialog } from './alert-dialog'
 export { AreaChart } from './area-chart'
 export { BarChart } from './bar-chart'

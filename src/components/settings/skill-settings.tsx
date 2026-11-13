@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
-  Alert,
   Card,
   Checkbox,
   Chip,
@@ -14,6 +13,7 @@ import {
   TextArea,
   TextField,
 } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
@@ -168,15 +168,18 @@ function SkillEditor({
             {t('common.loading')}
           </p>
         ) : bodyState === 'error' ? (
-          <Alert data-slot="skill-editor-body-error" status="danger" role="alert">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{t('settings.skills.bodyLoadError')}</Alert.Title>
-              {bodyError && <Alert.Description className="break-all">{bodyError}</Alert.Description>}
+          <Alert
+            data-slot="skill-editor-body-error"
+            tone="danger"
+            shouldAnnounce
+            heading={t('settings.skills.bodyLoadError')}
+            actions={
               <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
                 {t('common.retry')}
               </Button>
-            </Alert.Content>
+            }
+          >
+            {bodyError}
           </Alert>
         ) : (
           <TextArea

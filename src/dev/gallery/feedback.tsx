@@ -1,30 +1,22 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Alert, EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Row, Section, Stage } from './shell'
 
-const ALERT_STATUSES = ['default', 'info', 'success', 'warning', 'danger'] as const
+const ALERT_TONES = ['neutral', 'success', 'warning', 'danger'] as const
 
 function Alerts() {
   return (
     <Stage>
-      {ALERT_STATUSES.map((status) => (
-        <Alert key={status} status={status}>
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{status}</Alert.Title>
-            <Alert.Description>命令将以完整权限运行。</Alert.Description>
-          </Alert.Content>
+      {ALERT_TONES.map((tone) => (
+        <Alert key={tone} tone={tone} heading={tone}>
+          命令将以完整权限运行。
         </Alert>
       ))}
-      <Alert status="danger">
-        <Alert.Indicator />
-        <Alert.Content>
-          <Alert.Description>只有描述：无法加载终端、沙箱和网页搜索设置。</Alert.Description>
-        </Alert.Content>
-      </Alert>
+      <Alert tone="danger">只有描述：无法加载终端、沙箱和网页搜索设置。</Alert>
     </Stage>
   )
 }
