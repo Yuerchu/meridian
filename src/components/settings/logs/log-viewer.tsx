@@ -7,7 +7,7 @@ import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { InputGroup, Skeleton } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
@@ -138,11 +138,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
       >
         {unavailable ? (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.about.logs.unavailable')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState heading={t('settings.about.logs.unavailable')} headingLevel={3} size="sm" />
         ) : logs.error ? (
           <p data-slot="log-viewer-error" role="alert" className="p-6 text-body-regular text-status-danger">
             {t('settings.about.logs.loadError')}
@@ -162,13 +158,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         ) : logs.entries.length === 0 ? (
           // Two different nothings: a filter that matched none, and a window
           // with nothing in it. Only the first has anything to undo.
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>
-                {logs.isFiltered ? t('settings.about.logs.empty') : t('settings.about.logs.emptyRange')}
-              </EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState
+            heading={logs.isFiltered ? t('settings.about.logs.empty') : t('settings.about.logs.emptyRange')}
+            headingLevel={3}
+            size="sm"
+          />
         ) : (
           <>
             {logs.entries.map((entry) => (

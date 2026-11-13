@@ -6,7 +6,7 @@ import { Card, Chip, Sheet, Spinner } from '@/components/base'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -103,11 +103,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     {t('settings.memory.trash.loadError')}
                   </Alert>
                 ) : rows.length === 0 ? (
-                  <EmptyState size="sm">
-                    <EmptyState.Header>
-                      <EmptyState.Title>{t('settings.memory.trash.empty')}</EmptyState.Title>
-                    </EmptyState.Header>
-                  </EmptyState>
+                  <EmptyState heading={t('settings.memory.trash.empty')} headingLevel={3} size="sm" />
                 ) : null}
                 {/* Secondary, not the default surface: the drawer itself is
                 `--overlay`, which is the same colour as `--surface`, so only the

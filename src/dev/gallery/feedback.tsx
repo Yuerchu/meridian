@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Row, Section, Stage } from './shell'
@@ -23,23 +24,21 @@ function Alerts() {
 
 function Empty() {
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      {(['sm', 'md', 'lg'] as const).map((size) => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {(['sm', 'md'] as const).map((size) => (
         <Stage key={size} className="items-center">
-          <EmptyState size={size}>
-            <EmptyState.Header>
-              <EmptyState.Media>
-                <Plug />
-              </EmptyState.Media>
-              <EmptyState.Title>还没有 MCP 服务器</EmptyState.Title>
-              <EmptyState.Description>添加一个，给智能体更多工具。（{size}）</EmptyState.Description>
-            </EmptyState.Header>
-            <EmptyState.Content>
+          <EmptyState
+            heading="还没有 MCP 服务器"
+            headingLevel={3}
+            description={<>添加一个，给智能体更多工具。（{size}）</>}
+            icon={<Plug />}
+            actions={
               <Button size="sm" variant="secondary">
                 添加
               </Button>
-            </EmptyState.Content>
-          </EmptyState>
+            }
+            size={size}
+          />
         </Stage>
       ))}
     </div>

@@ -5,7 +5,7 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
 import type { SafRootListResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -114,11 +114,7 @@ export function AndroidFileAccess() {
           {t('settings.fileAccess.safDirs')}
         </p>
         {safRoots.length === 0 ? (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.fileAccess.safEmpty')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState heading={t('settings.fileAccess.safEmpty')} headingLevel={3} size="sm" />
         ) : (
           <ul data-slot="file-access-saf-list" className="space-y-1">
             {safRoots.map((root) => (
