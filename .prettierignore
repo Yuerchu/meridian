@@ -1,5 +1,8 @@
 # Rust 归 rustfmt 管;生成物与锁文件不重排
 src-tauri/
+# Yuerchu UI 原样复制，格式归它自己的仓库；pnpm ui:check 保证逐字一致
+src/components/yuerchu-ui/
+yuerchu-ui.json
 dist/
 pnpm-lock.yaml
 skills-lock.json

@@ -9,18 +9,17 @@ precedence = "closest"
 SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
-# Components synced from @yuerchu/ui: source-available, Meridian only.
-# They may be used, modified and distributed as part of Meridian (and its
-# forks), but not extracted into another product or component library.
+# Copied from Yuerchu UI (scripts/yuerchu-ui.mjs); not AGPL. Source-available, usable
+# only as part of Meridian or a work based on it. See LICENSING.md, "Yuerchu UI".
 [[annotations]]
 path = "src/components/yuerchu-ui/**"
 precedence = "override"
 SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
 SPDX-License-Identifier = "LicenseRef-Yuerchu-UI"
 
-# The design system itself (tokens and the design rules) is MIT.
+# The design tokens and the motion values they are generated from are MIT.
 [[annotations]]
-path = ["src/components/yuerchu-ui/styles/tokens.css", "src/components/yuerchu-ui/DESIGN.md"]
+path = ["src/components/yuerchu-ui/styles/tokens.css", "src/components/yuerchu-ui/lib/motion-tokens.ts"]
 precedence = "override"
 SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
 SPDX-License-Identifier = "MIT"
