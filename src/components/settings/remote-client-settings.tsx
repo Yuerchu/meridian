@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, TextField as BoardTextField } from '@/components/base'
+import { Input, Label, TextField as BoardTextField } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { ItemCard } from '@/components/base'
 
 import { api } from '@/api'
@@ -154,17 +155,16 @@ export function RemoteClientSettings() {
         </BoardTextField>
       </div>
 
-      <BoardTextField type="password">
-        <Label>{t('settings.client.token')}</Label>
-        <Input
-          name="remoteClientToken"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          className="max-w-xs"
-        />
-        <Description>{t('settings.client.tokenHint')}</Description>
-      </BoardTextField>
+      <PasswordField
+        label={t('settings.client.token')}
+        description={t('settings.client.tokenHint')}
+        name="remoteClientToken"
+        // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+        autoComplete="current-password"
+        value={token}
+        onChange={setToken}
+        className="max-w-xs"
+      />
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
         <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>

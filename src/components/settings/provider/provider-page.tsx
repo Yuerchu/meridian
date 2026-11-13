@@ -6,6 +6,7 @@ import { DataGrid, Input, Sheet, Spinner, Switch, TextArea, type DataGridColumn 
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -1007,14 +1008,14 @@ function ProviderEditor({
                       fieldClassName="min-w-0 flex-1 font-mono"
                     />
                   ) : (
-                    <Input
+                    <PasswordField
                       aria-labelledby={labelId}
-                      type="password"
                       name={`providerApiKey-${provider.id}`}
-                      autoComplete="off"
+                      // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                      autoComplete="current-password"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1022,10 +1023,9 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.apiKeyPlaceholder')
                       }
-                      // The shell is what sits in this row (`className` reaches the
-                      // inner <input>); without `flex-1 min-w-0` the row grew to the
-                      // input's intrinsic width plus the button and ran off a phone.
-                      fieldClassName="min-w-0 flex-1"
+                      // Without `flex-1 min-w-0` the row grew to the input's
+                      // intrinsic width plus the button and ran off a phone.
+                      className="min-w-0 flex-1"
                     />
                   )}
                   <Button

@@ -7,6 +7,7 @@ import { TextField } from '@/components/yuerchu-ui/components/text-field/text-fi
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
 import { cx } from '@/utils/cx'
@@ -389,16 +390,15 @@ export function OneBotSettings() {
         </BoardTextField>
       </div>
 
-      <BoardTextField type="password">
-        <Label>{t('settings.onebot.accessToken')}</Label>
-        <Input
-          name="onebotAccessToken"
-          autoComplete="off"
-          value={config.access_token ?? ''}
-          onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
-          placeholder={t('settings.onebot.accessTokenPlaceholder')}
-        />
-      </BoardTextField>
+      <PasswordField
+        label={t('settings.onebot.accessToken')}
+        name="onebotAccessToken"
+        // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+        autoComplete="current-password"
+        value={config.access_token ?? ''}
+        onChange={(value) => setConfig({ ...config, access_token: value || null })}
+        placeholder={t('settings.onebot.accessTokenPlaceholder')}
+      />
 
       <SettingsSelect
         label={t('settings.onebot.assistant')}
