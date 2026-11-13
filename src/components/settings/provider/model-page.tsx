@@ -1,15 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Description,
-  Disclosure,
-  Input,
-  Label,
-  Switch,
-  TextField as BoardTextField,
-  ToggleButton,
-} from '@/components/base'
+import { Disclosure, Input, Switch, ToggleButton } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
@@ -661,51 +655,48 @@ function ModelConfigEditor({
         </SettingsRow>
       )}
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <BoardTextField isRequired isInvalid={invalidLimits.has('contextWindow')}>
-          <Label isRequired>{t('settings.model.contextWindow')}</Label>
-          <Input
-            ref={limitRefs.contextWindow}
-            name={`modelContextWindow-${modelId}`}
-            inputMode="numeric"
-            value={contextWindow}
-            onChange={(e) => {
-              setContextWindow(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </BoardTextField>
-        <BoardTextField isRequired isInvalid={invalidLimits.has('compactThreshold')}>
-          <Label isRequired>{t('settings.model.compactThreshold')}</Label>
-          <Input
-            ref={limitRefs.compactThreshold}
-            name={`modelCompactThreshold-${modelId}`}
-            inputMode="numeric"
-            value={compactThreshold}
-            onChange={(e) => {
-              setCompactThreshold(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </BoardTextField>
-      </div>
-      <BoardTextField isInvalid={invalidLimits.has('maxOutput')} isRequired={apiFormat === 'litert_lm'}>
-        <Label isRequired={apiFormat === 'litert_lm'}>{t('settings.model.maxOutput')}</Label>
-        <Input
-          ref={limitRefs.maxOutput}
-          name={`modelMaxOutput-${modelId}`}
-          inputMode="numeric"
-          value={maxOutput}
-          onChange={(e) => {
-            setMaxOutput(e.target.value)
+        <NumberField
+          isRequired
+          isInvalid={invalidLimits.has('contextWindow')}
+          label={t('settings.model.contextWindow')}
+          value={draftToNumber(contextWindow)}
+          onChange={(value) => {
+            setContextWindow(numberToDraft(value))
             setDirty(true)
           }}
-          placeholder={t('settings.model.optional')}
-          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
+          ref={limitRefs.contextWindow}
+          name={`modelContextWindow-${modelId}`}
+          formatOptions={{ maximumFractionDigits: 0 }}
         />
-        <Description className="text-caption-1-regular">{t('settings.model.maxOutputHint')}</Description>
-      </BoardTextField>
+        <NumberField
+          isRequired
+          isInvalid={invalidLimits.has('compactThreshold')}
+          label={t('settings.model.compactThreshold')}
+          value={draftToNumber(compactThreshold)}
+          onChange={(value) => {
+            setCompactThreshold(numberToDraft(value))
+            setDirty(true)
+          }}
+          ref={limitRefs.compactThreshold}
+          name={`modelCompactThreshold-${modelId}`}
+          formatOptions={{ maximumFractionDigits: 0 }}
+        />
+      </div>
+      <NumberField
+        isInvalid={invalidLimits.has('maxOutput')}
+        isRequired={apiFormat === 'litert_lm'}
+        label={t('settings.model.maxOutput')}
+        description={t('settings.model.maxOutputHint')}
+        value={draftToNumber(maxOutput)}
+        onChange={(value) => {
+          setMaxOutput(numberToDraft(value))
+          setDirty(true)
+        }}
+        ref={limitRefs.maxOutput}
+        name={`modelMaxOutput-${modelId}`}
+        placeholder={t('settings.model.optional')}
+        formatOptions={{ maximumFractionDigits: 0 }}
+      />
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}

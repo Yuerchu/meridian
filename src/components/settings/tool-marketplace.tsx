@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import { Card, Chip, Disclosure, DisclosureGroup, Input, Label, TextField as BoardTextField } from '@/components/base'
+import { Card, Chip, Disclosure, DisclosureGroup } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -161,18 +163,16 @@ function CustomToolEditor({
         placeholder="--input {{input}} --output {{output}}"
         description={t('settings.tools.argsTemplateHint')}
       />
-      <BoardTextField type="number" isInvalid={invalid.has('timeout')}>
-        <Label>{t('settings.tools.timeout')}</Label>
-        <Input
-          ref={timeoutRef}
-          name="customToolTimeout"
-          inputMode="numeric"
-          min={1}
-          value={timeoutMs}
-          onChange={(e) => setTimeoutMs(e.target.value)}
-          className="w-32"
-        />
-      </BoardTextField>
+      <NumberField
+        isInvalid={invalid.has('timeout')}
+        label={t('settings.tools.timeout')}
+        value={draftToNumber(timeoutMs)}
+        onChange={(value) => setTimeoutMs(numberToDraft(value))}
+        ref={timeoutRef}
+        name="customToolTimeout"
+        minValue={1}
+        formatOptions={PLAIN_INTEGER}
+      />
       {invalid.size > 0 && (
         <p data-slot="custom-tool-validation" role="alert" className="text-caption-1-regular text-status-danger">
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}

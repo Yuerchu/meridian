@@ -1,7 +1,9 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Label, Separator, TextField as BoardTextField } from '@/components/base'
+import { Input, Separator } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -284,18 +286,16 @@ export function RemoteAccessSettings() {
           placeholder="0.0.0.0"
           description={t('settings.remote.hostHint')}
         />
-        <BoardTextField type="number">
-          <Label>{t('settings.remote.port')}</Label>
-          <Input
-            name="remoteAccessPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="8787"
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.remote.port')}
+          value={draftToNumber(portInput)}
+          onChange={(value) => setPortInput(numberToDraft(value))}
+          name="remoteAccessPort"
+          minValue={1}
+          maxValue={65535}
+          placeholder="8787"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
       <div data-slot="remote-token" className="space-y-1.5">

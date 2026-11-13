@@ -121,6 +121,9 @@ describe('ModelPage', () => {
     expect(onDeleted).not.toHaveBeenCalled()
   })
 
+  // The number field takes no letters at all, so "unreadable" can no longer be
+  // typed; what has to hold is that the field left empty is refused, not saved
+  // as a default window.
   it('refuses an unreadable context window instead of saving a default', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -128,10 +131,11 @@ describe('ModelPage', () => {
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
     await user.clear(ctx)
     await user.type(ctx, 'abc')
+    expect(ctx).toHaveValue('')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      i18n.t('settings.model.limitInvalidError', { field: i18n.t('settings.model.contextWindow') }),
+      i18n.t('settings.model.limitRequiredError', { field: i18n.t('settings.model.contextWindow') }),
     )
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
   })
@@ -166,11 +170,11 @@ describe('ModelPage', () => {
     renderPage()
 
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
-    await waitFor(() => expect(ctx).toHaveValue('64000'))
+    await waitFor(() => expect(ctx).toHaveValue('64,000'))
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') })).toHaveValue(
-      String(safeThreshold(64000, 8000)),
+      safeThreshold(64000, 8000).toLocaleString('en-US'),
     )
-    expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('8000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.maxOutput') })).toHaveValue('8,000')
   })
 
   it('suggests no threshold when the output ceiling is unknown', async () => {
@@ -184,10 +188,10 @@ describe('ModelPage', () => {
     renderPage()
 
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
-    await waitFor(() => expect(ctx).toHaveValue('64000'))
+    await waitFor(() => expect(ctx).toHaveValue('64,000'))
     // A reserve of nothing would be a threshold for a zero-token reply.
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') })).toHaveValue('')
-    expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.maxOutput') })).toHaveValue('')
   })
 
   it('says it saved', async () => {

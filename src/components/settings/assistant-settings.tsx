@@ -2,16 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
-import {
-  Checkbox,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextField as BoardTextField,
-} from '@/components/base'
+import { Checkbox, Disclosure, DisclosureGroup, Input } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft } from '@/lib/number-draft'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -269,39 +263,38 @@ function AssistantEditor({
       />
 
       <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <BoardTextField type="number">
-          <Label>{t('settings.assistant.temperature')}</Label>
-          <Input
-            name={`assistantTemperature-${assistant.id}`}
-            inputMode="decimal"
-            value={temperature}
-            onChange={(e) => setTemperature(e.target.value)}
-            placeholder={t('settings.assistant.providerDefault')}
-            min={0}
-            max={2}
-            step={0.1}
-          />
-        </BoardTextField>
-        <BoardTextField type="number" isInvalid={modelConflicts.includes('context')}>
-          <Label>{t('settings.assistant.contextLimit')}</Label>
-          <Input
-            name={`assistantContextLimit-${assistant.id}`}
-            inputMode="numeric"
-            value={contextLimit}
-            onChange={(e) => setContextLimit(e.target.value)}
-            placeholder={t('settings.assistant.contextLimitFromModel')}
-          />
-          {boundWindow !== null && (
-            <Description
-              data-slot="assistant-context-cap"
-              className={modelConflicts.includes('context') ? 'text-status-danger' : undefined}
-            >
-              {modelConflicts.includes('context')
-                ? t('settings.assistant.contextLimitExceedsModel', { window: boundWindow })
-                : t('settings.assistant.contextLimitCap', { window: boundWindow })}
-            </Description>
-          )}
-        </BoardTextField>
+        <NumberField
+          label={t('settings.assistant.temperature')}
+          value={draftToNumber(temperature)}
+          onChange={(value) => setTemperature(numberToDraft(value))}
+          name={`assistantTemperature-${assistant.id}`}
+          placeholder={t('settings.assistant.providerDefault')}
+          minValue={0}
+          maxValue={2}
+          step={0.1}
+          formatOptions={{ maximumFractionDigits: 2 }}
+        />
+        {/* Over the model's window it is an error, said as one; under it, the
+            window is the cap the field is read against. */}
+        <NumberField
+          label={t('settings.assistant.contextLimit')}
+          name={`assistantContextLimit-${assistant.id}`}
+          value={draftToNumber(contextLimit)}
+          onChange={(value) => setContextLimit(numberToDraft(value))}
+          placeholder={t('settings.assistant.contextLimitFromModel')}
+          formatOptions={{ maximumFractionDigits: 0 }}
+          isInvalid={modelConflicts.includes('context')}
+          errorMessage={
+            boundWindow !== null ? t('settings.assistant.contextLimitExceedsModel', { window: boundWindow }) : undefined
+          }
+          description={
+            boundWindow !== null && !modelConflicts.includes('context') ? (
+              <span data-slot="assistant-context-cap">
+                {t('settings.assistant.contextLimitCap', { window: boundWindow })}
+              </span>
+            ) : undefined
+          }
+        />
       </div>
 
       <div data-slot="assistant-auto-compact" className="space-y-1.5">

@@ -2,9 +2,10 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Checkbox, Description, Input, Label, Separator, Spinner, TextField } from '@/components/base'
+import { Checkbox, Separator, Spinner } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
@@ -196,16 +197,19 @@ export function VoiceCorpusSettings() {
         </ItemCardGroup>
       )}
 
-      <TextField>
-        <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
-        <div data-slot="voice-corpus-forget-row" className="flex gap-2">
-          <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
-          <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
-            {t('settings.voiceCorpus.forget')}
-          </Button>
-        </div>
-        <Description>{t('settings.voiceCorpus.forgetSenderHint')}</Description>
-      </TextField>
+      <div data-slot="voice-corpus-forget-row" className="flex items-start gap-2">
+        <TextField
+          label={t('settings.voiceCorpus.forgetSender')}
+          description={t('settings.voiceCorpus.forgetSenderHint')}
+          value={senderInput}
+          onChange={setSenderInput}
+          placeholder="12345"
+          className="flex-1"
+        />
+        <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
+          {t('settings.voiceCorpus.forget')}
+        </Button>
+      </div>
 
       {can.exportToDisk && (
         <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
@@ -215,7 +219,9 @@ export function VoiceCorpusSettings() {
           <Checkbox className="text-body-regular" isSelected={includeSender} onChange={setIncludeSender}>
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
-          <Description>{t('settings.voiceCorpus.exportHint')}</Description>
+          <p data-slot="voice-corpus-export-hint" className="text-caption-1-regular text-text-secondary">
+            {t('settings.voiceCorpus.exportHint')}
+          </p>
           <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
             {t('settings.voiceCorpus.export')}
           </Button>

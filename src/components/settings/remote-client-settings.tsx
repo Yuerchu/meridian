@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Label, TextField as BoardTextField } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { ItemCard } from '@/components/base'
@@ -141,18 +142,16 @@ export function RemoteClientSettings() {
           onChange={setHost}
           placeholder="192.168.1.20"
         />
-        <BoardTextField type="number">
-          <Label>{t('settings.client.port')}</Label>
-          <Input
-            min={1}
-            max={65535}
-            name="remoteClientPort"
-            inputMode="numeric"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            placeholder="8787"
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.client.port')}
+          value={draftToNumber(port)}
+          onChange={(value) => setPort(numberToDraft(value))}
+          minValue={1}
+          maxValue={65535}
+          name="remoteClientPort"
+          placeholder="8787"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
       <PasswordField

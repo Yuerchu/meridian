@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Label, Select, SelectItem, TextField as BoardTextField } from '@/components/base'
+import { Input, Select, SelectItem } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -444,51 +446,43 @@ export function HooksSettings() {
           onChange={(e) => setConfig({ ...config, host: e })}
           placeholder="127.0.0.1"
         />
-        <BoardTextField type="number">
-          <Label>{t('settings.hooks.port')}</Label>
-          <Input
-            name="hooksPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="8765"
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.hooks.port')}
+          value={draftToNumber(portInput)}
+          onChange={(value) => setPortInput(numberToDraft(value))}
+          name="hooksPort"
+          minValue={1}
+          maxValue={65535}
+          placeholder="8765"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
       <div data-slot="hooks-timeout" className="space-y-1.5">
-        <BoardTextField type="number">
-          <Label>{t('settings.hooks.timeout')}</Label>
-          <Input
-            name="hooksTimeout"
-            inputMode="numeric"
-            min={10}
-            // Mirrors MAX_TIMEOUT_SECS in hooks/mod.rs. The backend clamps too —
-            // this is only so the field cannot offer a number that cannot happen.
-            max={1200}
-            value={timeoutInput}
-            onChange={(e) => setTimeoutInput(e.target.value)}
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.hooks.timeout')}
+          value={draftToNumber(timeoutInput)}
+          onChange={(value) => setTimeoutInput(numberToDraft(value))}
+          name="hooksTimeout"
+          minValue={10}
+          maxValue={1200}
+          formatOptions={PLAIN_INTEGER}
+        />
         <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
 
       <div data-slot="hooks-max-rounds" className="space-y-1.5">
-        <BoardTextField type="number">
-          <Label>{t('settings.hooks.maxRounds')}</Label>
-          <Input
-            name="hooksMaxRounds"
-            inputMode="numeric"
-            min={0}
-            max={20}
-            value={roundsInput}
-            onChange={(e) => setRoundsInput(e.target.value)}
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.hooks.maxRounds')}
+          value={draftToNumber(roundsInput)}
+          onChange={(value) => setRoundsInput(numberToDraft(value))}
+          name="hooksMaxRounds"
+          minValue={0}
+          maxValue={20}
+          formatOptions={PLAIN_INTEGER}
+        />
         <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
