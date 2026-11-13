@@ -3,6 +3,7 @@ import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/tw
 
 import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Separator, Spinner, ToggleButton } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { MeridianMark } from '@/components/ui/meridian-mark'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
 import { CoreParts } from './parts'
@@ -147,6 +148,21 @@ function Spinners() {
   )
 }
 
+/** The brand mark, with its opening drawn again on demand. */
+function Mark() {
+  const [take, setTake] = useState(0)
+  return (
+    <Stage>
+      <Row label="MeridianMark">
+        <MeridianMark key={take} intro={take > 0} className="size-16" />
+        <Button variant="secondary" size="sm" onPress={() => setTake((n) => n + 1)}>
+          重放开场
+        </Button>
+      </Row>
+    </Stage>
+  )
+}
+
 export default function Core() {
   return (
     <>
@@ -167,6 +183,9 @@ export default function Core() {
       </Section>
       <Section title="Spinner">
         <Spinners />
+      </Section>
+      <Section title="MeridianMark">
+        <Mark />
       </Section>
       <CoreParts />
     </>
