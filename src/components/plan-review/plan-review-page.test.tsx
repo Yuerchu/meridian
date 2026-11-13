@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -77,23 +77,6 @@ vi.mock('@/components/base', async () => {
   const TextArea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
     <textarea id={useContext(FieldId)} {...props} />
   )
-  const Button = ({
-    children,
-    onPress,
-    isDisabled,
-    isPending: _isPending,
-    iconOnly: _iconOnly,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onPress?: () => void
-    isDisabled?: boolean
-    isPending?: boolean
-    iconOnly?: boolean
-  }) => (
-    <button {...props} disabled={isDisabled} onClick={onPress}>
-      {children}
-    </button>
-  )
   // One factory, not three: `vi.mock` keys on the module path, so a later call
   // for the same path replaces the earlier one entirely rather than merging.
   const Dropdown = Object.assign(pass, {
@@ -107,12 +90,6 @@ vi.mock('@/components/base', async () => {
   const DropdownItem = ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
     <button onClick={onAction}>{children}</button>
   )
-  const Tooltip = Object.assign(pass, {
-    Content: pass,
-    Trigger: ({ children, render }: { children?: React.ReactNode; render?: (props: object) => React.ReactNode }) =>
-      render ? render({ children }) : <>{children}</>,
-  })
-  const TooltipTrigger = ({ children }: { children?: React.ReactNode }) => <>{children}</>
   const Link = ({
     children,
     onPress,
@@ -141,46 +118,7 @@ vi.mock('@/components/base', async () => {
       ),
     },
   )
-  const Alert = ({
-    children,
-    status,
-    icon: _icon,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & { status?: string; icon?: React.ReactNode }) => (
-    <div role="alert" data-status={status} {...props}>
-      {children}
-    </div>
-  )
-  // What `ConfirmDialog` draws, reduced to the two answers. The real Cancel is
-  // a `slot="close"` button that only a React Aria dialog can wire up.
-  const AlertDialog = {
-    Backdrop: ({
-      children,
-      isOpen,
-      onOpenChange,
-    }: {
-      children?: React.ReactNode
-      isOpen?: boolean
-      onOpenChange?: (open: boolean) => void
-    }) =>
-      isOpen ? (
-        <div role="alertdialog">
-          {children}
-          <button onClick={() => onOpenChange?.(false)}>dismiss</button>
-        </div>
-      ) : null,
-    Container: pass,
-    Dialog: pass,
-    Header: pass,
-    Icon: () => null,
-    Heading: pass,
-    Body: pass,
-    Footer: pass,
-  }
   return {
-    Alert,
-    AlertDialog,
-    Button,
     Chip: pass,
     Description: pass,
     Dropdown,
@@ -193,8 +131,6 @@ vi.mock('@/components/base', async () => {
     Skeleton: () => <div />,
     TextArea,
     TextField,
-    Tooltip,
-    TooltipTrigger,
   }
 })
 
@@ -655,14 +591,15 @@ describe('PlanReviewPage unsaved work', () => {
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('planReview.unsaved.parts:planReview.unsaved.part.note')
 
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(mocks.getPlanReview).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('planReview.comments.globalNote')).toHaveValue('Ship it')
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.reload' }))
-    await screen.findByRole('alertdialog')
-    // The dialog's confirming button carries the same label as the banner's.
-    const [, confirmReload] = screen.getAllByRole('button', { name: 'planReview.reload' })
+    // The dialog's confirming button carries the same label as the banner's,
+    // which the open modal has taken out of reach.
+    const reloadDialog = await screen.findByRole('alertdialog')
+    const confirmReload = within(reloadDialog).getByRole('button', { name: 'planReview.reload' })
     await userEvent.click(confirmReload)
     await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledTimes(2))
   })
@@ -675,7 +612,7 @@ describe('PlanReviewPage unsaved work', () => {
     })
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('planReview.leave.title')
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(answer).toBe(false))
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
@@ -709,12 +646,12 @@ describe('PlanReviewPage unsaved work', () => {
 
     await userEvent.click(discard)
     expect(await screen.findByRole('alertdialog')).toHaveTextContent('planReview.discardConfirm.body')
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(mocks.discardPlanReviewDraft).not.toHaveBeenCalled()
 
     await userEvent.click(discard)
-    await screen.findByRole('alertdialog')
-    const [, confirmDiscard] = screen.getAllByRole('button', { name: 'planReview.discard' })
+    const discardDialog = await screen.findByRole('alertdialog')
+    const confirmDiscard = within(discardDialog).getByRole('button', { name: 'planReview.discard' })
     await userEvent.click(confirmDiscard)
     await waitFor(() => expect(mocks.discardPlanReviewDraft).toHaveBeenCalledTimes(1))
   })

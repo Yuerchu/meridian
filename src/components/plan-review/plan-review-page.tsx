@@ -443,10 +443,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     }
     if (!hasLocalChanges()) return true
     return confirm({
-      title: t('planReview.leave.title'),
-      body: describeUnsaved(),
+      heading: t('planReview.leave.title'),
+      description: describeUnsaved(),
       confirmLabel: t('planReview.leave.confirm'),
-      status: 'danger',
+      tone: 'danger',
     })
   }
   const requestLeaveRef = useRef(requestLeave)
@@ -459,10 +459,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     if (
       hasLocalChanges() &&
       !(await confirm({
-        title: t('planReview.reloadConfirm.title'),
-        body: describeUnsaved(),
+        heading: t('planReview.reloadConfirm.title'),
+        description: describeUnsaved(),
         confirmLabel: t('planReview.reload'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return
@@ -626,10 +626,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const discard = async () => {
     if (
       !(await confirm({
-        title: t('planReview.discardConfirm.title'),
-        body: t('planReview.discardConfirm.body'),
+        heading: t('planReview.discardConfirm.title'),
+        description: t('planReview.discardConfirm.body'),
         confirmLabel: t('planReview.discard'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return

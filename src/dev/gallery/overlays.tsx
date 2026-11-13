@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Copy, Hammer, Pen, Scissors, TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import {
-  AlertDialog,
   ContextMenu,
   Dropdown,
   DropdownGroup,
@@ -11,7 +10,6 @@ import {
   DropdownTrigger,
   Input,
   Kbd,
-  Modal,
   Notification,
   NotificationViewport,
   Popover,
@@ -20,7 +18,7 @@ import {
 } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import type { ModalSize } from '@/components/base/modal'
+import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/components/yuerchu-ui/components/dialog/dialog'
 import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { useHotkey } from '@/hooks/use-hotkey'
@@ -128,13 +126,13 @@ function Hints() {
 }
 
 function Dialogs() {
-  const [modal, setModal] = useState<ModalSize | null>(null)
+  const [modal, setModal] = useState<NonNullable<DialogProps['size']> | null>(null)
   const [alert, setAlert] = useState(false)
   const [sheet, setSheet] = useState<SheetPlacement | null>(null)
   return (
     <Stage>
-      <Row label="Modal">
-        {(['sm', 'md', 'lg', 'full', 'cover'] as const).map((size) => (
+      <Row label="Dialog">
+        {(['sm', 'md', 'lg', 'xl', 'full'] as const).map((size) => (
           <Button key={size} variant="secondary" size="sm" onPress={() => setModal(size)}>
             {size}
           </Button>
@@ -153,47 +151,31 @@ function Dialogs() {
         ))}
       </Row>
 
-      <Modal.Backdrop isOpen={modal !== null} onOpenChange={(open) => !open && setModal(null)}>
-        <Modal.Container size={modal ?? 'md'} placement="center">
-          <Modal.Dialog>
-            <Modal.CloseTrigger aria-label="关闭" />
-            <Modal.Header>
-              <Modal.Heading>重命名对话</Modal.Heading>
-            </Modal.Header>
-            <Modal.Body>
-              <TextField aria-label="标题" defaultValue="英语学习入门指南">
-                <Input />
-              </TextField>
-            </Modal.Body>
-            <Modal.Footer>
-              <Button slot="close" variant="secondary">
-                取消
-              </Button>
-              <Button slot="close">保存</Button>
-            </Modal.Footer>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
+      <Dialog
+        isOpen={modal !== null}
+        onOpenChange={(open) => !open && setModal(null)}
+        size={modal ?? 'md'}
+        heading="重命名对话"
+      >
+        <TextField aria-label="标题" defaultValue="英语学习入门指南">
+          <Input />
+        </TextField>
+        <DialogFooter>
+          <Button slot="close" variant="secondary">
+            取消
+          </Button>
+          <Button slot="close">保存</Button>
+        </DialogFooter>
+      </Dialog>
 
-      <AlertDialog.Backdrop isOpen={alert} onOpenChange={setAlert}>
-        <AlertDialog.Container>
-          <AlertDialog.Dialog aria-describedby="pg-alert-body">
-            <AlertDialog.Header>
-              <AlertDialog.Icon status="danger" />
-              <AlertDialog.Heading>删除这段对话？</AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body id="pg-alert-body">删除后可以在几秒内撤销。</AlertDialog.Body>
-            <AlertDialog.Footer>
-              <Button slot="close" variant="secondary">
-                取消
-              </Button>
-              <Button slot="close" variant="destructive">
-                删除
-              </Button>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
+      <AlertDialog
+        isOpen={alert}
+        onOpenChange={setAlert}
+        heading="删除这段对话？"
+        description="删除后可以在几秒内撤销。"
+        confirmLabel="删除"
+        tone="danger"
+      />
 
       <Sheet isOpen={sheet !== null} placement={sheet ?? 'right'} onOpenChange={(open) => !open && setSheet(null)}>
         <Sheet.Backdrop>
@@ -345,7 +327,7 @@ export default function Overlays() {
       <Section title="Tooltip / Popover">
         <Hints />
       </Section>
-      <Section title="Modal / AlertDialog / Sheet">
+      <Section title="Dialog / AlertDialog / Sheet">
         <Dialogs />
       </Section>
       <Section title="Notification">

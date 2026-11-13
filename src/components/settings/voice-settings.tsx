@@ -124,8 +124,7 @@ export function VoiceSettings() {
   const handleDelete = async () => {
     if (
       !(await confirm({
-        body: t('settings.voice.deleteModelConfirm'),
-        status: 'warning',
+        description: t('settings.voice.deleteModelConfirm'),
         confirmLabel: t('common.delete'),
       }))
     )

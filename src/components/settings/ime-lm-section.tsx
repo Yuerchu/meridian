@@ -58,8 +58,8 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
     const name = bundle.id ?? bundle.dir_name
     if (
       !(await confirm({
-        body: t('settings.ime.lm.removeConfirm', { name }),
-        status: 'danger',
+        description: t('settings.ime.lm.removeConfirm', { name }),
+        tone: 'danger',
         confirmLabel: t('common.delete'),
       }))
     )

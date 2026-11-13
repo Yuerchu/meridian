@@ -556,7 +556,7 @@ export function AssistantSettings() {
 
   const requestLeave = useCallback(async () => {
     if (!dirtyAssistantId) return true
-    return confirm({ body: t('settings.unsavedChanges'), status: 'warning', confirmLabel: t('common.discardChanges') })
+    return confirm({ description: t('settings.unsavedChanges'), confirmLabel: t('common.discardChanges') })
   }, [confirm, dirtyAssistantId, t])
   useSettingsDirtyRegistration('assistants', 'assistant-editor', dirtyAssistantId !== null)
 
@@ -608,7 +608,14 @@ export function AssistantSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.assistant'), confirmLabel: t('common.delete') }))) return
+      if (
+        !(await confirm({
+          description: t('settings.confirmDelete.assistant'),
+          confirmLabel: t('common.delete'),
+          tone: 'danger',
+        }))
+      )
+        return
       await api.deleteAssistant(id)
       setDirtyAssistantId(null)
       if (expandedId === id) setExpandedId(null)

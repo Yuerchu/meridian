@@ -619,7 +619,14 @@ export function EmojiSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.emojiPack'), confirmLabel: t('common.delete') }))) return
+      if (
+        !(await confirm({
+          description: t('settings.confirmDelete.emojiPack'),
+          confirmLabel: t('common.delete'),
+          tone: 'danger',
+        }))
+      )
+        return
       await api.deleteEmojiPack(id)
       setSelection(null)
       await refresh()
@@ -645,7 +652,14 @@ export function EmojiSettings() {
 
   const handleDeleteEmoji = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.emoji'), confirmLabel: t('common.delete') }))) return
+      if (
+        !(await confirm({
+          description: t('settings.confirmDelete.emoji'),
+          confirmLabel: t('common.delete'),
+          tone: 'danger',
+        }))
+      )
+        return
       await api.deleteEmoji(id)
       forgetStickerUrl(id)
       await refresh()
@@ -657,8 +671,9 @@ export function EmojiSettings() {
     if (selectedIds.length === 0) return
     if (
       !(await confirm({
-        body: t('settings.confirmDelete.emojis', { count: selectedIds.length }),
+        description: t('settings.confirmDelete.emojis', { count: selectedIds.length }),
         confirmLabel: t('common.delete'),
+        tone: 'danger',
       }))
     )
       return

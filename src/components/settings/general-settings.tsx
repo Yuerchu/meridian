@@ -149,8 +149,7 @@ export function GeneralSettings() {
     if (
       searchApiKey.trim() &&
       !(await confirm({
-        body: t('settings.unsavedChanges'),
-        status: 'warning',
+        description: t('settings.unsavedChanges'),
         confirmLabel: t('common.discardChanges'),
       }))
     ) {

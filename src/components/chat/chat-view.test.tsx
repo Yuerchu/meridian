@@ -655,7 +655,7 @@ describe('ChatView composer dispatch', () => {
       retryWithoutSandbox: null,
     })
 
-    render(mocks.confirm.mock.calls[0][0].body)
+    render(mocks.confirm.mock.calls[0][0].description)
     expect(screen.getByText('echo hello')).toBeInTheDocument()
     expect(screen.getByText('C:/repo with spaces')).toBeInTheDocument()
   })

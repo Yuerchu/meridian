@@ -10,7 +10,7 @@ import { api } from '@/api'
 import { Chip, Kanban } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
-import type { ConfirmOptions } from '@/components/ui/confirm-dialog'
+import type { ConfirmOptions } from '@/hooks/use-confirm'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import { titleIfTruncated } from '@/lib/truncation'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
@@ -191,8 +191,9 @@ export function AgentCard({
   const removeCard = async () => {
     if (
       !(await confirm({
-        body: t('board.card.deleteConfirm', { title: task.title }),
+        description: t('board.card.deleteConfirm', { title: task.title }),
         confirmLabel: t('board.card.delete'),
+        tone: 'danger',
       }))
     ) {
       return

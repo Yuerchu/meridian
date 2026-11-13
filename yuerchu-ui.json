@@ -8,6 +8,7 @@
   "entries": [
     "components/alert/alert.tsx",
     "components/button/button.tsx",
+    "components/dialog/dialog.tsx",
     "components/empty-state/empty-state.tsx",
     "components/tooltip/tooltip.tsx",
     "styles/index.css"
@@ -23,6 +24,9 @@
     "components/alert/alert.tsx": "c8d9d644250cedac0b1724eb0e8e1a0533caf5057e9981b47cb07a9deb7db995",
     "components/button/button.css": "74d13e9de69c483069d12497ad6dd74e51acb00ce5e0b5b86e69e02215235f0f",
     "components/button/button.tsx": "ea56f0035d1ea94a12457dabe4b2292c78bf1729b2527ab0ebbb700d766dd054",
+    "components/dialog/dialog.css": "c2f52747b3c62c90b8a550fce6f580e4e8c87e75cc77d2aac384ef4aed1f0c53",
+    "components/dialog/dialog.strings.ts": "55e2008260467282d6ad5341cfb065554b99070441df701323ed9ef7b8494ae7",
+    "components/dialog/dialog.tsx": "cf2b5fa688dbb32fb95e6cac2b11138398ad2cea53ba08ce147a106ec4878a2d",
     "components/empty-state/empty-state.css": "7f1c902d9705cf3e55dd0e18bb17d12461f195ba5e22484bb2048ddc5c6b63f7",
     "components/empty-state/empty-state.tsx": "733561ae9000abd7f0fd447b8ed779f0e81e6e89a88c1f6c30e8f99ac08420c0",
     "components/reveal/reveal-trace.ts": "92026d13d9bcbb4d4056d1916cc7f8a8fe2cce3fdf50c27823b1825d1ca49b72",

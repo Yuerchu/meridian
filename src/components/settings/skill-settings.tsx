@@ -439,8 +439,9 @@ export function SkillSettings() {
                             : async () => {
                                 if (
                                   !(await confirm({
-                                    body: t('settings.confirmDelete.skill'),
+                                    description: t('settings.confirmDelete.skill'),
                                     confirmLabel: t('common.delete'),
+                                    tone: 'danger',
                                   }))
                                 )
                                   return

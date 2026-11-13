@@ -1052,7 +1052,13 @@ export function AppSidebar({
       // command holds the lease a delete needs. Everything else goes at once,
       // with an undo offer (`stores/undo-store.ts`).
       if (isBusy(id)) {
-        if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
+        if (
+          await confirm({
+            description: t('confirm.deleteConversation'),
+            confirmLabel: t('common.delete'),
+            tone: 'danger',
+          })
+        )
           reportFailure('sidebar.deleteFailed', onDelete(id))
         return
       }
@@ -1100,7 +1106,7 @@ export function AppSidebar({
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteProject'), confirmLabel: t('common.delete') }))
+      if (await confirm({ description: t('confirm.deleteProject'), confirmLabel: t('common.delete'), tone: 'danger' }))
         reportFailure('sidebar.deleteProjectFailed', onDeleteProject(id))
     },
   })

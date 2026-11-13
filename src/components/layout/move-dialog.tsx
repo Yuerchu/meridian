@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { ListBox, Modal } from '@/components/base'
+import { ListBox } from '@/components/base'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Message } from '@keyline-icons/react/two-tone'
 
@@ -69,38 +70,38 @@ export function MoveDialog({
   const allKeys = [NONE, ...projects.map((project) => project.id)]
 
   return (
-    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container placement="center" size="sm" className="pb-[var(--ime-bottom,0px)]">
-        <Modal.Dialog data-slot="move-dialog">
-          <Modal.Header>
-            <Modal.Heading>{t('moveDialog.title')}</Modal.Heading>
-          </Modal.Header>
-          <Modal.Body className="flex flex-col gap-1">
-            {error && (
-              <p data-slot="move-dialog-error" role="alert" className="mb-1 text-caption-1-regular text-status-danger">
-                {error}
-              </p>
-            )}
-            <ListBox
-              data-slot="move-dialog-destinations"
-              aria-label={t('moveDialog.title')}
-              className="gap-1"
-              disabledKeys={isPending ? allKeys : [currentProjectId ?? NONE]}
-              onAction={(key) => void choose(key === NONE ? null : String(key))}
-            >
-              {destination(null, <Message className="size-4 text-text-secondary" />, t('moveDialog.noProject'))}
-              {projects.map((project) =>
-                destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
-              )}
-            </ListBox>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button slot="close" variant="secondary" isDisabled={isPending}>
-              {t('common.cancel')}
-            </Button>
-          </Modal.Footer>
-        </Modal.Dialog>
-      </Modal.Container>
-    </Modal.Backdrop>
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      heading={t('moveDialog.title')}
+      size="sm"
+      // The phone keyboard is not in the dialog's own sizing: pad for it by hand.
+      className="pb-[var(--ime-bottom,0px)]"
+    >
+      <div className="flex flex-col gap-1">
+        {error && (
+          <p data-slot="move-dialog-error" role="alert" className="mb-1 text-caption-1-regular text-status-danger">
+            {error}
+          </p>
+        )}
+        <ListBox
+          data-slot="move-dialog-destinations"
+          aria-label={t('moveDialog.title')}
+          className="gap-1"
+          disabledKeys={isPending ? allKeys : [currentProjectId ?? NONE]}
+          onAction={(key) => void choose(key === NONE ? null : String(key))}
+        >
+          {destination(null, <Message className="size-4 text-text-secondary" />, t('moveDialog.noProject'))}
+          {projects.map((project) =>
+            destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
+          )}
+        </ListBox>
+      </div>
+      <DialogFooter>
+        <Button slot="close" variant="secondary" isDisabled={isPending}>
+          {t('common.cancel')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   )
 }

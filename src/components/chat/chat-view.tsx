@@ -582,9 +582,8 @@ function ChatViewInner({
           // it runs could not be read and nothing ran at all.
           const unread = result.status === 'settings_unreadable'
           const approved = await confirm({
-            status: 'warning',
-            title: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
-            body: (
+            heading: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
+            description: (
               <div data-slot="shell-retry-body" className="space-y-3">
                 <p data-slot="shell-retry-text">{t(unread ? 'chat.shell.unreadableBody' : 'chat.shell.retryBody')}</p>
                 <dl

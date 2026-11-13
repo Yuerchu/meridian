@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Modal } from '@/components/base'
+// A full-screen page with its own back bar, not a dialog: the library's Dialog
+// draws its own header and close button. It goes when the settings drill-downs
+// move onto a page stack (Yuerchu/ui#559); until then it keeps boardui's Modal,
+// imported by path so nothing new reaches it through the barrel.
+import { Modal } from '@/components/base/modal'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowLeft } from '@keyline-icons/react/two-tone'
 

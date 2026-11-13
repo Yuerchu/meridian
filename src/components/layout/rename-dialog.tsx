@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Modal, TextField } from '@/components/base'
+import { Input, TextField } from '@/components/base'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { useHistoryLevel } from '@/hooks/use-history-level'
@@ -59,37 +60,36 @@ export function RenameDialog({
   }
 
   return (
-    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container placement="center" size="sm" className="pb-[var(--ime-bottom,0px)]">
-        <Modal.Dialog data-slot="rename-dialog">
-          <Modal.Header>
-            <Modal.Heading>{heading}</Modal.Heading>
-          </Modal.Header>
-          <Modal.Body>
-            <TextField aria-label={heading} autoFocus>
-              <Input
-                value={value}
-                onChange={(e) => setValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing) return
-                  if (e.key === 'Enter') {
-                    e.preventDefault()
-                    submit()
-                  }
-                }}
-              />
-            </TextField>
-          </Modal.Body>
-          <Modal.Footer>
-            <Button slot="close" variant="secondary">
-              {t('common.cancel')}
-            </Button>
-            <Button onPress={submit} isDisabled={!canSave}>
-              {t('common.save')}
-            </Button>
-          </Modal.Footer>
-        </Modal.Dialog>
-      </Modal.Container>
-    </Modal.Backdrop>
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      heading={heading}
+      size="sm"
+      // The keyboard has to be padded for by hand (see above).
+      className="pb-[var(--ime-bottom,0px)]"
+    >
+      <TextField aria-label={heading} autoFocus>
+        <Input
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              submit()
+            }
+          }}
+        />
+      </TextField>
+
+      <DialogFooter>
+        <Button slot="close" variant="secondary">
+          {t('common.cancel')}
+        </Button>
+        <Button onPress={submit} isDisabled={!canSave}>
+          {t('common.save')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   )
 }

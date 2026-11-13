@@ -260,7 +260,8 @@ export const UserMessage = React.memo(function UserMessage({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.(message.id)
+    if (await confirm({ description: t('confirm.deleteMessage'), confirmLabel: t('common.delete'), tone: 'danger' }))
+      onDelete?.(message.id)
   }, [confirm, t, onDelete, message.id])
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
@@ -304,7 +305,7 @@ export const UserMessage = React.memo(function UserMessage({
   const handleCancelEdit = useCallback(async () => {
     if (
       editText.trim() !== message.content.trim() &&
-      !(await confirm({ body: t('chat.discardEdit'), confirmLabel: t('common.discardChanges'), status: 'warning' }))
+      !(await confirm({ description: t('chat.discardEdit'), confirmLabel: t('common.discardChanges') }))
     ) {
       return
     }
@@ -942,7 +943,8 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.()
+    if (await confirm({ description: t('confirm.deleteMessage'), confirmLabel: t('common.delete'), tone: 'danger' }))
+      onDelete?.()
   }, [confirm, t, onDelete])
 
   const isStreaming = turn.status === 'streaming'

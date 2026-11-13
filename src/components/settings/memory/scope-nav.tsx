@@ -209,9 +209,10 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             className="w-full justify-start text-body-regular"
             onPress={async () => {
               const ok = await confirm({
-                title: t('settings.memory.person.forgetConfirmTitle'),
-                body: t('settings.memory.person.forgetConfirmBody'),
+                heading: t('settings.memory.person.forgetConfirmTitle'),
+                description: t('settings.memory.person.forgetConfirmBody'),
                 confirmLabel: t('settings.memory.person.forget'),
+                tone: 'danger',
               })
               if (!ok) return
               await api.forgetMemorySubject(selectedPerson.scope_id)
