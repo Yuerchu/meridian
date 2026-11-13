@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { api } from '@/api'
@@ -300,11 +301,11 @@ export function AutoReviewSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.autoReview.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.autoReview.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.autoReview.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
@@ -315,7 +316,9 @@ export function AutoReviewSettings() {
             >
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

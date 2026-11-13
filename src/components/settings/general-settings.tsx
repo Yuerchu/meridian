@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Input, Skeleton } from '@/components/base'
+import { Input, Skeleton } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -231,15 +232,18 @@ export function GeneralSettings() {
         </div>
       )}
       {prefsState === 'error' && (
-        <Alert data-slot="general-prefs-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.general.loadError')}</Alert.Title>
-            {prefsLoadError && <Alert.Description className="break-all">{prefsLoadError}</Alert.Description>}
+        <Alert
+          data-slot="general-prefs-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.general.loadError')}
+          actions={
             <Button size="sm" variant="secondary" onPress={() => setPrefsAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {prefsLoadError}
         </Alert>
       )}
 

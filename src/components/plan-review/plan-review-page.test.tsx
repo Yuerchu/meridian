@@ -639,7 +639,7 @@ describe('PlanReviewPage unsaved work', () => {
   it('announces a failed save as a danger alert and retries the same draft', async () => {
     await openWithFailedSave()
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveAttribute('data-status', 'danger')
+    expect(alert).toHaveAttribute('data-tone', 'danger')
     expect(alert).toHaveTextContent('planReview.save.error:Error: disk full')
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Cable, Plug } from '@keyline-icons/react/two-tone'
-import { Alert, Input, Switch, TextArea } from '@/components/base'
+import { Input, Switch, TextArea } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -58,12 +59,12 @@ export function McpServerPage({
   if (!server) {
     return (
       <SettingsPage title={t('settings.mcp.title')}>
-        <Alert status={loadError ? 'danger' : 'warning'} role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{loadError ? t('settings.mcp.loadError') : t('settings.mcp.serverGone')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
-          </Alert.Content>
+        <Alert
+          tone={loadError ? 'danger' : 'warning'}
+          shouldAnnounce
+          heading={<>{loadError ? t('settings.mcp.loadError') : t('settings.mcp.serverGone')}</>}
+        >
+          {loadError}
         </Alert>
       </SettingsPage>
     )
@@ -468,11 +469,8 @@ function McpServerEditor({
       </SettingsSection>
 
       {error && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description className="break-all">{error}</Alert.Description>
-          </Alert.Content>
+        <Alert tone="danger" shouldAnnounce>
+          {error}
         </Alert>
       )}
 

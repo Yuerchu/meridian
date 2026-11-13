@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
-import { Alert } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -104,12 +104,8 @@ export function AndroidFileAccess() {
       </div>
 
       {error && (
-        <Alert data-slot="file-access-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.fileAccess.error')}</Alert.Title>
-            <Alert.Description className="break-all">{error}</Alert.Description>
-          </Alert.Content>
+        <Alert data-slot="file-access-error" tone="danger" shouldAnnounce heading={t('settings.fileAccess.error')}>
+          {error}
         </Alert>
       )}
 

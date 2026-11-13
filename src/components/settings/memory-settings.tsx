@@ -4,7 +4,8 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, DisclosureGroup, Input, TextArea } from '@/components/base'
+import { DisclosureGroup, Input, TextArea } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
@@ -220,14 +221,16 @@ export function MemorySettings() {
           {browser.loading ? (
             <SettingsSkeleton rows={3} />
           ) : browser.error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="sm" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
+            <Alert
+              shouldAnnounce
+              tone="danger"
+              actions={
+                <Button size="sm" variant="secondary" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
-              </Alert.Content>
+              }
+            >
+              {t('settings.memory.loadError')}
             </Alert>
           ) : browser.visible.length === 0 && !showAdd ? (
             <EmptyState size="sm">

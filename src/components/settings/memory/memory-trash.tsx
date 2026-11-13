@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Alert, Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
@@ -90,14 +91,16 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     <Spinner aria-hidden="true" />
                   </div>
                 ) : error ? (
-                  <Alert status="danger" role="alert">
-                    <Alert.Indicator />
-                    <Alert.Content>
-                      <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
-                      <Button size="sm" variant="secondary" className="mt-2" onPress={() => void load()}>
+                  <Alert
+                    tone="danger"
+                    shouldAnnounce
+                    actions={
+                      <Button size="sm" variant="secondary" onPress={() => void load()}>
                         {t('settings.memory.retry')}
                       </Button>
-                    </Alert.Content>
+                    }
+                  >
+                    {t('settings.memory.trash.loadError')}
                   </Alert>
                 ) : rows.length === 0 ? (
                   <EmptyState size="sm">

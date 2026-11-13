@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
@@ -71,14 +72,16 @@ export function UsageGapsSheet({
 
             <Sheet.Body className="space-y-2">
               {error ? (
-                <Alert status="danger" role="alert">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>{t('settings.usage.gaps.loadError')}</Alert.Description>
-                    <Button size="sm" variant="secondary" className="mt-2" onPress={load}>
+                <Alert
+                  tone="danger"
+                  shouldAnnounce
+                  actions={
+                    <Button size="sm" variant="secondary" onPress={load}>
                       {t('settings.usage.retry')}
                     </Button>
-                  </Alert.Content>
+                  }
+                >
+                  {t('settings.usage.gaps.loadError')}
                 </Alert>
               ) : !found ? (
                 <div role="status" aria-label={t('common.loading')} className="flex justify-center p-6">

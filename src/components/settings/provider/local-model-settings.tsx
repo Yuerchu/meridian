@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
@@ -98,12 +98,8 @@ export function LocalModelSettings({
           {t(info === null ? 'settings.localModel.inspect' : 'settings.localModel.inspectAgain')}
         </Button>
         {error !== null && (
-          <Alert status="danger" role="alert">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{t('settings.localModel.inspectError')}</Alert.Title>
-              <Alert.Description className="break-all">{error}</Alert.Description>
-            </Alert.Content>
+          <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.inspectError')}>
+            {error}
           </Alert>
         )}
       </SettingsRow>

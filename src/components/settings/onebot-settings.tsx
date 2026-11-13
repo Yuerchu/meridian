@@ -2,7 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Alert, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
 import { ItemCard } from '@/components/base'
@@ -315,15 +316,15 @@ export function OneBotSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.onebot.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.onebot.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.onebot.loadError')}
+          actions={
             <Button
               size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData()
@@ -331,7 +332,9 @@ export function OneBotSettings() {
             >
               {t('settings.onebot.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )

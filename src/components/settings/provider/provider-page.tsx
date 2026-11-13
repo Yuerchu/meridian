@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
 import {
-  Alert,
   DataGrid,
   Description,
   Input,
@@ -15,6 +14,7 @@ import {
   TextField,
   type DataGridColumn,
 } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -966,12 +966,8 @@ function ProviderEditor({
         {saved && <SavedHint />}
       </div>
       {saveError && (
-        <Alert data-slot="provider-save-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.saveError')}</Alert.Title>
-            <Alert.Description className="break-all">{saveError}</Alert.Description>
-          </Alert.Content>
+        <Alert data-slot="provider-save-error" tone="danger" shouldAnnounce heading={t('settings.provider.saveError')}>
+          {saveError}
         </Alert>
       )}
 
@@ -1361,12 +1357,7 @@ export function ProviderPage({
   if (!provider) {
     return (
       <SettingsPage title={t('settings.provider.title')}>
-        <Alert status="warning" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.selectProvider')}</Alert.Title>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning" shouldAnnounce heading={t('settings.provider.selectProvider')} />
       </SettingsPage>
     )
   }

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
-import { Alert, Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton, TextArea } from '@/components/base'
+import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
+import { Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton, TextArea } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
@@ -851,27 +852,27 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <div data-slot="plan-review-problem-list" className="mx-auto max-w-[96rem] space-y-2">
             {problems.map((problem) => (
               <Alert
+                shouldAnnounce
                 key={problem.key}
-                status={problem.status}
+                tone={problem.status}
                 data-problem={problem.key}
-                icon={<TriangleAlert className="size-4" />}
+                actions={
+                  problem.actions && problem.actions.length > 0
+                    ? problem.actions.map((action) => (
+                        <Button
+                          key={action.label}
+                          variant="secondary"
+                          size="sm"
+                          isDisabled={action.pending}
+                          onPress={action.run}
+                        >
+                          {action.label}
+                        </Button>
+                      ))
+                    : undefined
+                }
               >
-                <div data-slot="plan-review-problem-row" className="flex flex-wrap items-center gap-2">
-                  <p data-slot="plan-review-problem-message" className="min-w-0 flex-1 break-words text-body-regular">
-                    {problem.message}
-                  </p>
-                  {problem.actions?.map((action) => (
-                    <Button
-                      key={action.label}
-                      variant="secondary"
-                      size="sm"
-                      isDisabled={action.pending}
-                      onPress={action.run}
-                    >
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
+                <p data-slot="plan-review-problem-message">{problem.message}</p>
               </Alert>
             ))}
           </div>

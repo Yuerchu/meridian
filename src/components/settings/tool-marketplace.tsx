@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import { Alert, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@/components/base'
+import { Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/base'
@@ -257,14 +258,16 @@ export function ToolMarketplace() {
       <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
 
       {loadError && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          actions={
             <Button size="sm" variant="secondary" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {t('settings.tools.loadError')}
         </Alert>
       )}
 

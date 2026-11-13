@@ -1,0 +1,7 @@
+@layer components {
+  /* A backend message keeps its own line breaks: a stack of causes, a path
+     list, a compiler's output read back to the person. */
+  .m-error-alert__message {
+    white-space: pre-wrap;
+  }
+}
