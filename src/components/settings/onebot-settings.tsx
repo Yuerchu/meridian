@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { Description, Input, Label, TextField as BoardTextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -366,16 +368,14 @@ export function OneBotSettings() {
       </div>
 
       <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.onebot.host')}</Label>
-          <Input
-            name="onebotHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="127.0.0.1"
-          />
-        </TextField>
-        <TextField type="number">
+        <TextField
+          label={t('settings.onebot.host')}
+          name="onebotHost"
+          value={config.host}
+          onChange={(e) => setConfig({ ...config, host: e })}
+          placeholder="127.0.0.1"
+        />
+        <BoardTextField type="number">
           <Label>{t('settings.onebot.port')}</Label>
           <Input
             name="onebotPort"
@@ -386,10 +386,10 @@ export function OneBotSettings() {
             onChange={(e) => setPortInput(e.target.value)}
             placeholder="6700"
           />
-        </TextField>
+        </BoardTextField>
       </div>
 
-      <TextField type="password">
+      <BoardTextField type="password">
         <Label>{t('settings.onebot.accessToken')}</Label>
         <Input
           name="onebotAccessToken"
@@ -398,7 +398,7 @@ export function OneBotSettings() {
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
           placeholder={t('settings.onebot.accessTokenPlaceholder')}
         />
-      </TextField>
+      </BoardTextField>
 
       <SettingsSelect
         label={t('settings.onebot.assistant')}
@@ -408,16 +408,14 @@ export function OneBotSettings() {
         description={t('settings.onebot.assistantHint')}
       />
 
-      <TextField>
-        <Label>{t('settings.onebot.adminUsers')}</Label>
-        <Input
-          name="onebotAdminUsers"
-          value={adminInput}
-          onChange={(e) => setAdminInput(e.target.value)}
-          placeholder="12345, 67890"
-        />
-        <Description>{t('settings.onebot.adminUsersHint')}</Description>
-      </TextField>
+      <TextField
+        label={t('settings.onebot.adminUsers')}
+        name="onebotAdminUsers"
+        value={adminInput}
+        onChange={setAdminInput}
+        placeholder="12345, 67890"
+        description={t('settings.onebot.adminUsersHint')}
+      />
 
       <div className="space-y-3">
         <div className="space-y-1">
@@ -425,29 +423,26 @@ export function OneBotSettings() {
           <p className="text-caption-1-regular text-text-secondary">{t('settings.onebot.replies.hint')}</p>
         </div>
         {REPLY_SLOTS.map((slot) => (
-          <TextField key={slot}>
-            <Label>{t(`settings.onebot.replies.${slot}`)}</Label>
-            <TextArea
-              rows={3}
-              value={replyDrafts[slot]}
-              placeholder={config.reply_seeds[slot]}
-              onChange={(e) => setReplyDrafts({ ...replyDrafts, [slot]: e.target.value })}
-            />
-            <Description>{t('settings.onebot.replies.lineHint')}</Description>
-          </TextField>
+          <TextArea
+            key={slot}
+            label={t(`settings.onebot.replies.${slot}`)}
+            rows={3}
+            value={replyDrafts[slot]}
+            placeholder={config.reply_seeds[slot]}
+            onChange={(e) => setReplyDrafts({ ...replyDrafts, [slot]: e })}
+            description={t('settings.onebot.replies.lineHint')}
+          />
         ))}
       </div>
 
-      <TextField>
-        <Label>{t('settings.onebot.voiceCapture')}</Label>
-        <Input
-          name="onebotVoiceCapture"
-          value={voiceCaptureInput}
-          onChange={(e) => setVoiceCaptureInput(e.target.value)}
-          placeholder="10001@group:123, 10001@private:456"
-        />
-        <Description>{t('settings.onebot.voiceCaptureHint')}</Description>
-      </TextField>
+      <TextField
+        label={t('settings.onebot.voiceCapture')}
+        name="onebotVoiceCapture"
+        value={voiceCaptureInput}
+        onChange={setVoiceCaptureInput}
+        placeholder="10001@group:123, 10001@private:456"
+        description={t('settings.onebot.voiceCaptureHint')}
+      />
 
       <div data-slot="onebot-voice-send" className="space-y-1.5">
         <CellSwitch
@@ -472,41 +467,35 @@ export function OneBotSettings() {
 
       {config.voice_send_enabled && (
         <>
-          <TextField>
-            <Label>{t('settings.onebot.voiceSendGroups')}</Label>
-            <Input
-              name="onebotVoiceSendGroups"
-              value={voiceSendInput}
-              onChange={(e) => setVoiceSendInput(e.target.value)}
-              placeholder="10001@group:123"
-            />
-            <Description>{t('settings.onebot.voiceSendGroupsHint')}</Description>
-          </TextField>
+          <TextField
+            label={t('settings.onebot.voiceSendGroups')}
+            name="onebotVoiceSendGroups"
+            value={voiceSendInput}
+            onChange={setVoiceSendInput}
+            placeholder="10001@group:123"
+            description={t('settings.onebot.voiceSendGroupsHint')}
+          />
 
           <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-            <TextField>
-              <Label>{t('settings.onebot.voiceTtsModel')}</Label>
-              <Input
-                name="onebotVoiceModel"
-                value={config.voice_tts_model}
-                onChange={(e) => setConfig({ ...config, voice_tts_model: e.target.value })}
-                placeholder="s2.1-pro-free"
-              />
-              <Description>{t('settings.onebot.voiceTtsModelHint')}</Description>
-            </TextField>
-            <TextField>
-              <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
-              <Input
-                name="onebotVoiceReference"
-                value={config.voice_tts_reference_id}
-                onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e.target.value })}
-                placeholder="9a9cf477…"
-              />
-              <Description>{t('settings.onebot.voiceTtsVoiceHint')}</Description>
-            </TextField>
+            <TextField
+              label={t('settings.onebot.voiceTtsModel')}
+              name="onebotVoiceModel"
+              value={config.voice_tts_model}
+              onChange={(e) => setConfig({ ...config, voice_tts_model: e })}
+              placeholder="s2.1-pro-free"
+              description={t('settings.onebot.voiceTtsModelHint')}
+            />
+            <TextField
+              label={t('settings.onebot.voiceTtsVoice')}
+              name="onebotVoiceReference"
+              value={config.voice_tts_reference_id}
+              onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e })}
+              placeholder="9a9cf477…"
+              description={t('settings.onebot.voiceTtsVoiceHint')}
+            />
           </div>
 
-          <TextField>
+          <BoardTextField>
             <Label>{t('settings.onebot.fishKey')}</Label>
             <Input
               type="password"
@@ -517,7 +506,7 @@ export function OneBotSettings() {
               placeholder={fishKeySet ? '••••••••' : ''}
             />
             <Description>{t('settings.onebot.fishKeyHint')}</Description>
-          </TextField>
+          </BoardTextField>
 
           {/* The one failure this feature has that announces itself nowhere.
               Four things have to be present or `send_voice` is withheld from
@@ -544,16 +533,14 @@ export function OneBotSettings() {
         </>
       )}
 
-      <TextField>
-        <Label>{t('settings.onebot.ackEmoji')}</Label>
-        <Input
-          name="onebotAckEmoji"
-          value={config.ack_emoji_id}
-          onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
-          placeholder="76"
-        />
-        <Description>{t('settings.onebot.ackEmojiHint')}</Description>
-      </TextField>
+      <TextField
+        label={t('settings.onebot.ackEmoji')}
+        name="onebotAckEmoji"
+        value={config.ack_emoji_id}
+        onChange={(e) => setConfig({ ...config, ack_emoji_id: e })}
+        placeholder="76"
+        description={t('settings.onebot.ackEmojiHint')}
+      />
 
       {error && (
         <p data-slot="onebot-error" role="alert" className="text-caption-1-regular text-status-danger break-all">

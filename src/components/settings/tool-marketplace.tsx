@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import { Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@/components/base'
+import { Card, Chip, Disclosure, DisclosureGroup, Input, Label, TextField as BoardTextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -119,17 +120,15 @@ function CustomToolEditor({
       }}
     >
       <div data-slot="custom-tool-fields" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField isInvalid={invalid.has('name')}>
-          <Label>{t('settings.tools.name')}</Label>
-          <Input
-            ref={nameRef}
-            name="customToolName"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="my_tool"
-            className="font-mono text-caption-1-regular"
-          />
-        </TextField>
+        <TextField
+          isInvalid={invalid.has('name')}
+          label={t('settings.tools.name')}
+          ref={nameRef}
+          name="customToolName"
+          value={name}
+          onChange={setName}
+          placeholder="my_tool"
+        />
         <SettingsSelect
           label={t('settings.tools.permission')}
           value={permission}
@@ -137,38 +136,32 @@ function CustomToolEditor({
           onChange={setPermission}
         />
       </div>
-      <TextField isInvalid={invalid.has('description')}>
-        <Label>{t('settings.tools.description')}</Label>
-        <Input
-          ref={descriptionRef}
-          name="customToolDescription"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </TextField>
-      <TextField isInvalid={invalid.has('command')}>
-        <Label>{t('settings.tools.command')}</Label>
-        <Input
-          ref={commandRef}
-          name="customToolCommand"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="python script.py"
-          className="font-mono text-caption-1-regular"
-        />
-      </TextField>
-      <TextField>
-        <Label>{t('settings.tools.argsTemplate')}</Label>
-        <Input
-          name="customToolArgs"
-          value={argsTemplate}
-          onChange={(e) => setArgsTemplate(e.target.value)}
-          placeholder="--input {{input}} --output {{output}}"
-          className="font-mono text-caption-1-regular"
-        />
-        <Description>{t('settings.tools.argsTemplateHint')}</Description>
-      </TextField>
-      <TextField type="number" isInvalid={invalid.has('timeout')}>
+      <TextField
+        isInvalid={invalid.has('description')}
+        label={t('settings.tools.description')}
+        ref={descriptionRef}
+        name="customToolDescription"
+        value={description}
+        onChange={setDescription}
+      />
+      <TextField
+        isInvalid={invalid.has('command')}
+        label={t('settings.tools.command')}
+        ref={commandRef}
+        name="customToolCommand"
+        value={command}
+        onChange={setCommand}
+        placeholder="python script.py"
+      />
+      <TextField
+        label={t('settings.tools.argsTemplate')}
+        name="customToolArgs"
+        value={argsTemplate}
+        onChange={setArgsTemplate}
+        placeholder="--input {{input}} --output {{output}}"
+        description={t('settings.tools.argsTemplateHint')}
+      />
+      <BoardTextField type="number" isInvalid={invalid.has('timeout')}>
         <Label>{t('settings.tools.timeout')}</Label>
         <Input
           ref={timeoutRef}
@@ -179,7 +172,7 @@ function CustomToolEditor({
           onChange={(e) => setTimeoutMs(e.target.value)}
           className="w-32"
         />
-      </TextField>
+      </BoardTextField>
       {invalid.size > 0 && (
         <p data-slot="custom-tool-validation" role="alert" className="text-caption-1-regular text-status-danger">
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}

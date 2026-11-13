@@ -5,10 +5,7 @@ import {
   CellSwitch,
   Checkbox,
   CheckboxGroup,
-  Description,
-  Input,
   InputGroup,
-  Label,
   Radio,
   RadioGroup,
   SearchField,
@@ -17,9 +14,9 @@ import {
   SelectItem,
   Slider,
   Switch,
-  TextArea,
-  TextField,
 } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { Row, Section, Stage } from './shell'
 
@@ -28,29 +25,18 @@ function TextFields() {
   return (
     <Stage>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField>
-          <Label>名称</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" />
-          <Description>只能用小写字母、数字和下划线。</Description>
-        </TextField>
-        <TextField isInvalid defaultValue="-1">
-          <Label>超时（秒）</Label>
-          <Input />
-          <Description>必须是正整数。</Description>
-        </TextField>
-        <TextField isDisabled defaultValue="npx -y @modelcontextprotocol/server">
-          <Label>命令</Label>
-          <Input />
-        </TextField>
-        <TextField size="small">
-          <Label>small</Label>
-          <Input placeholder="较小的字段" />
-        </TextField>
+        <TextField
+          label="名称"
+          value={name}
+          onChange={setName}
+          placeholder="my_tool"
+          description="只能用小写字母、数字和下划线。"
+        />
+        <TextField isInvalid defaultValue="-1" label="超时（秒）" description="必须是正整数。" />
+        <TextField isDisabled defaultValue="npx -y @modelcontextprotocol/server" label="命令" />
+        <TextField size="sm" label="sm" placeholder="较小的字段" />
       </div>
-      <TextField>
-        <Label>参数</Label>
-        <TextArea rows={3} placeholder={'每行一个参数'} />
-      </TextField>
+      <TextArea label="参数" rows={3} placeholder={'每行一个参数'} />
       <div className="grid gap-4 sm:grid-cols-2">
         <SearchField aria-label="搜索表情">
           <SearchField.Group>

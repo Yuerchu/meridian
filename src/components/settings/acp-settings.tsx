@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
@@ -171,33 +172,28 @@ export function AcpSettings() {
         actions={saved ? <SavedHint /> : null}
       />
 
-      <TextField>
-        <Label>{t('settings.acp.command')}</Label>
-        <Input
-          name="acpCommand"
-          value={config.command}
-          onChange={(e) => setConfig({ ...config, command: e.target.value })}
-          placeholder={DEFAULTS.command}
-        />
-        <Description>{t('settings.acp.commandHint')}</Description>
-      </TextField>
+      <TextField
+        label={t('settings.acp.command')}
+        name="acpCommand"
+        value={config.command}
+        onChange={(e) => setConfig({ ...config, command: e })}
+        placeholder={DEFAULTS.command}
+        description={t('settings.acp.commandHint')}
+      />
 
-      <TextField>
-        <Label>{t('settings.acp.args')}</Label>
-        <TextArea
-          name="acpArgs"
-          rows={3}
-          spellCheck={false}
-          value={argsText}
-          onChange={(e) => setArgsText(e.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
-          }}
-          className="font-mono text-caption-1-regular"
-        />
-        <Description>{t('settings.acp.argsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t('settings.acp.args')}
+        name="acpArgs"
+        rows={3}
+        spellCheck="false"
+        value={argsText}
+        onChange={setArgsText}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
+        }}
+        description={t('settings.acp.argsHint')}
+      />
 
       {saveError && (
         <p data-slot="acp-save-error" role="alert" className="text-caption-1-regular text-status-danger break-all">

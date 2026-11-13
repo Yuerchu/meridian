@@ -14,8 +14,8 @@ import {
   NotificationViewport,
   Popover,
   Sheet,
-  TextField,
 } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/components/yuerchu-ui/components/dialog/dialog'
@@ -157,9 +157,7 @@ function Dialogs() {
         size={modal ?? 'md'}
         heading="重命名对话"
       >
-        <TextField aria-label="标题" defaultValue="英语学习入门指南">
-          <Input />
-        </TextField>
+        <TextField aria-label="标题" defaultValue="英语学习入门指南" />
         <DialogFooter>
           <Button slot="close" variant="secondary">
             取消

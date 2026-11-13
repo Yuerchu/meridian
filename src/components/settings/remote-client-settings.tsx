@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, TextField } from '@/components/base'
+import { Description, Input, Label, TextField as BoardTextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ItemCard } from '@/components/base'
 
@@ -132,16 +133,14 @@ export function RemoteClientSettings() {
       </p>
 
       <div data-slot="remote-client-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.client.host')}</Label>
-          <Input
-            name="remoteClientHost"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            placeholder="192.168.1.20"
-          />
-        </TextField>
-        <TextField type="number">
+        <TextField
+          label={t('settings.client.host')}
+          name="remoteClientHost"
+          value={host}
+          onChange={setHost}
+          placeholder="192.168.1.20"
+        />
+        <BoardTextField type="number">
           <Label>{t('settings.client.port')}</Label>
           <Input
             min={1}
@@ -152,10 +151,10 @@ export function RemoteClientSettings() {
             onChange={(e) => setPort(e.target.value)}
             placeholder="8787"
           />
-        </TextField>
+        </BoardTextField>
       </div>
 
-      <TextField type="password">
+      <BoardTextField type="password">
         <Label>{t('settings.client.token')}</Label>
         <Input
           name="remoteClientToken"
@@ -165,7 +164,7 @@ export function RemoteClientSettings() {
           className="max-w-xs"
         />
         <Description>{t('settings.client.tokenHint')}</Description>
-      </TextField>
+      </BoardTextField>
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
         <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>

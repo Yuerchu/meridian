@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
+import { Description, Input, Label, Select, SelectItem, TextField as BoardTextField } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -200,11 +201,7 @@ function RuleBox({
   onChange: (next: string) => void
 }) {
   return (
-    <TextField>
-      <Label>{label}</Label>
-      <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-      <Description>{hint}</Description>
-    </TextField>
+    <TextArea label={label} rows={3} value={value} placeholder={placeholder} onChange={onChange} description={hint} />
   )
 }
 
@@ -335,7 +332,7 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <TextField>
+      <BoardTextField>
         <Label>{t('settings.approvals.ttl')}</Label>
         <Input
           type="number"
@@ -351,7 +348,7 @@ export function AutoReviewSettings() {
             {t('settings.approvals.ttlNever')}
           </p>
         )}
-      </TextField>
+      </BoardTextField>
 
       <div data-slot="autoreview-enable" className="space-y-1.5">
         <CellSwitch

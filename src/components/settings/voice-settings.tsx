@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Card, Description, Input, Label, ProgressCircle, Spinner, TextField } from '@/components/base'
+import { Card, ProgressCircle, Spinner } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
@@ -252,21 +253,19 @@ export function VoiceSettings() {
         </Card>
       </div>
 
-      <TextField type="url">
-        <Label>{t('settings.voice.mirror')}</Label>
-        <Input
-          value={mirrorUrl}
-          name="voiceDownloadUrl"
-          inputMode="url"
-          spellCheck={false}
-          onChange={(e) => handleMirrorChange(e.target.value)}
-          onBlur={persistMirror}
-          placeholder={t('settings.voice.mirrorPlaceholder')}
-          className="w-full"
-          disabled={downloading}
-        />
-        <Description>{t('settings.voice.mirrorHint')}</Description>
-      </TextField>
+      <TextField
+        type="url"
+        label={t('settings.voice.mirror')}
+        value={mirrorUrl}
+        name="voiceDownloadUrl"
+        inputMode="url"
+        spellCheck="false"
+        onChange={handleMirrorChange}
+        onBlur={persistMirror}
+        placeholder={t('settings.voice.mirrorPlaceholder')}
+        isDisabled={downloading}
+        description={t('settings.voice.mirrorHint')}
+      />
 
       <SettingsSelect
         label={t('settings.voice.filterLevel')}

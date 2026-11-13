@@ -2,18 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  DataGrid,
-  Description,
-  Input,
-  Label,
-  Sheet,
-  Spinner,
-  Switch,
-  TextArea,
-  TextField,
-  type DataGridColumn,
-} from '@/components/base'
+import { DataGrid, Input, Sheet, Spinner, Switch, TextArea, type DataGridColumn } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
@@ -1263,21 +1253,19 @@ function ProviderEditor({
                   <Sheet.Heading>{t('settings.provider.addModel')}</Sheet.Heading>
                 </Sheet.Header>
                 <Sheet.Body className="space-y-2">
-                  <TextField>
-                    <Label>{t('settings.provider.modelId')}</Label>
-                    <Input
-                      name={`newModelId-${provider.id}`}
-                      autoComplete="off"
-                      value={newModelId}
-                      onChange={(event) => setNewModelId(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.nativeEvent.isComposing) return
-                        if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
-                      }}
-                      placeholder="gpt-6-preview"
-                    />
-                    <Description className="text-caption-1-regular">{t('settings.provider.addModelHint')}</Description>
-                  </TextField>
+                  <TextField
+                    label={t('settings.provider.modelId')}
+                    name={`newModelId-${provider.id}`}
+                    autoComplete="off"
+                    value={newModelId}
+                    onChange={setNewModelId}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return
+                      if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
+                    }}
+                    placeholder="gpt-6-preview"
+                    description={t('settings.provider.addModelHint')}
+                  />
                 </Sheet.Body>
                 <Sheet.Footer>
                   <Button slot="close" variant="secondary">

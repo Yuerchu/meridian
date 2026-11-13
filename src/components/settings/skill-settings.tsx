@@ -10,9 +10,11 @@ import {
   DisclosureGroup,
   Input,
   Label,
-  TextArea,
-  TextField,
+  TextArea as BoardTextArea,
+  TextField as BoardTextField,
 } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -123,7 +125,7 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <TextField>
+        <BoardTextField>
           <Label>{t('settings.skills.dirName')}</Label>
           <Input
             value={dirName}
@@ -137,31 +139,26 @@ function SkillEditor({
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
-        </TextField>
+        </BoardTextField>
       )}
 
-      <TextField>
-        <Label>{t('settings.skills.displayName')}</Label>
-        <Input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder={skill?.llm_name ?? dirName}
-        />
-      </TextField>
+      <TextField
+        label={t('settings.skills.displayName')}
+        value={displayName}
+        onChange={setDisplayName}
+        placeholder={skill?.llm_name ?? dirName}
+      />
 
-      <TextField>
-        <Label>{t('settings.skills.description')}</Label>
-        <TextArea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={skill != null && !contentsEditable}
-          rows={2}
-          className="resize-none text-caption-1-regular"
-        />
-        <Description>{t('settings.skills.descriptionHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t('settings.skills.description')}
+        value={description}
+        onChange={setDescription}
+        isDisabled={skill != null && !contentsEditable}
+        rows={2}
+        description={t('settings.skills.descriptionHint')}
+      />
 
-      <TextField>
+      <BoardTextField>
         <Label>{t('settings.skills.body')}</Label>
         {bodyState === 'loading' ? (
           <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
@@ -182,7 +179,7 @@ function SkillEditor({
             {bodyError}
           </Alert>
         ) : (
-          <TextArea
+          <BoardTextArea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
@@ -191,7 +188,7 @@ function SkillEditor({
           />
         )}
         <Description>{t('settings.skills.bodyHint')}</Description>
-      </TextField>
+      </BoardTextField>
 
       {isBuiltin && (
         <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">
