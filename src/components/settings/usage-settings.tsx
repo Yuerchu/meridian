@@ -4,7 +4,7 @@ import { Label, Skeleton, Spinner, Tab, TabList, TabPanel, Tabs } from '@/compon
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
 import { KPI } from '@/components/base'
 import { ActivityHeatmap, BarChart, BarList, ChartCard, ChartLegend, DonutChart } from '@/components/base'
@@ -546,12 +546,12 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
       {!report && loading ? (
         <UsageSkeleton />
       ) : !report ? null : total.messages === 0 ? (
-        <EmptyState size="sm">
-          <EmptyState.Header>
-            <EmptyState.Title>{t('settings.usage.empty')}</EmptyState.Title>
-            <EmptyState.Description>{t('settings.usage.emptyHint')}</EmptyState.Description>
-          </EmptyState.Header>
-        </EmptyState>
+        <EmptyState
+          heading={t('settings.usage.empty')}
+          headingLevel={3}
+          description={t('settings.usage.emptyHint')}
+          size="sm"
+        />
       ) : (
         <>
           <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">

@@ -8,7 +8,7 @@ import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tool
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ActionBar } from '@/components/base'
 import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Pagination } from '@/components/base'
 import { api } from '@/api'
 import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
@@ -433,13 +433,7 @@ function StickerGrid({
         // A collected pack has no ceiling, so the grid keeps its own scroller
         // instead of making the settings page arbitrarily long.
         scrollContainerClassName="max-h-96 overflow-y-auto overscroll-contain"
-        renderEmptyState={() => (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.emoji.noStickers')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
+        renderEmptyState={() => <EmptyState heading={t('settings.emoji.noStickers')} headingLevel={3} size="sm" />}
       />
       <Pagination
         page={current}
@@ -772,13 +766,7 @@ export function EmojiSettings() {
             onSuggest={handleSuggest}
           />
         ))}
-        {details.length === 0 && (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.emoji.noPacks')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
+        {details.length === 0 && <EmptyState heading={t('settings.emoji.noPacks')} headingLevel={3} size="sm" />}
       </div>
 
       {/* Through a portal, because ActionBar renders itself in place and it is

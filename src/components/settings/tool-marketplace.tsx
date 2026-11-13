@@ -5,7 +5,7 @@ import { Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, Tex
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -441,11 +441,7 @@ export function ToolMarketplace() {
             )
           })}
           {customTools.length === 0 && !showCreate && (
-            <EmptyState size="sm">
-              <EmptyState.Header>
-                <EmptyState.Title>{t('settings.tools.noCustom')}</EmptyState.Title>
-              </EmptyState.Header>
-            </EmptyState>
+            <EmptyState heading={t('settings.tools.noCustom')} headingLevel={3} size="sm" />
           )}
         </DisclosureGroup>
       </div>

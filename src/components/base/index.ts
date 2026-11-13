@@ -31,7 +31,6 @@ export {
   DropdownDivider,
 } from './dropdown/dropdown'
 export { EmojiPicker } from './emoji-picker'
-export { EmptyState } from './empty-state'
 export { FloatingToc } from './floating-toc'
 export { HoverCard } from './hover-card'
 export { InlineSelect } from './inline-select'

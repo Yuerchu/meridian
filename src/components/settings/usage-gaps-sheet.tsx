@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Card, Chip, Sheet, Spinner } from '@/components/base'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -88,11 +88,7 @@ export function UsageGapsSheet({
                   <Spinner aria-hidden="true" />
                 </div>
               ) : found.items.length === 0 ? (
-                <EmptyState size="sm">
-                  <EmptyState.Header>
-                    <EmptyState.Title>{t('settings.usage.gaps.empty')}</EmptyState.Title>
-                  </EmptyState.Header>
-                </EmptyState>
+                <EmptyState heading={t('settings.usage.gaps.empty')} headingLevel={3} size="sm" />
               ) : (
                 <>
                   {found.total > found.items.length && (

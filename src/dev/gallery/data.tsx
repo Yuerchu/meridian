@@ -5,7 +5,6 @@ import {
   DataGrid,
   Disclosure,
   DisclosureGroup,
-  EmptyState,
   ItemCard,
   ItemCardGroup,
   ListBox,
@@ -13,6 +12,7 @@ import {
   type DataGridColumn,
   type DataGridSelection,
 } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Section, Stage } from './shell'
 import { DataParts } from './parts'
@@ -60,13 +60,7 @@ function Grids() {
         columns={COLUMNS}
         data={[]}
         getRowId={(s) => s.id}
-        renderEmptyState={() => (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>还没有 MCP 服务器</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
+        renderEmptyState={() => <EmptyState heading="还没有 MCP 服务器" headingLevel={3} size="sm" />}
       />
     </div>
   )

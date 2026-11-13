@@ -8,7 +8,7 @@ import { DisclosureGroup, Input, TextArea } from '@/components/base'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { EmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
@@ -233,11 +233,7 @@ export function MemorySettings() {
               {t('settings.memory.loadError')}
             </Alert>
           ) : browser.visible.length === 0 && !showAdd ? (
-            <EmptyState size="sm">
-              <EmptyState.Header>
-                <EmptyState.Title>{t('settings.memory.empty')}</EmptyState.Title>
-              </EmptyState.Header>
-            </EmptyState>
+            <EmptyState heading={t('settings.memory.empty')} headingLevel={3} size="sm" />
           ) : null}
 
           {/* One open at a time is the group's own default

@@ -7,7 +7,7 @@ import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tool
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Messages, X } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
-import { EmptyState as ProEmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
@@ -1012,18 +1012,18 @@ function ChatViewInner({
               // conversation that could not be loaded tells the reader it is
               // empty, which is the one thing nobody knows.
               messages.length === 0 && !error && !loadError ? (
-                <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
-                  <ProEmptyState.Header>
-                    <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
-                    <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
-                  </ProEmptyState.Header>
-                  <ProEmptyState.Content className="w-full max-w-2xl">
+                <EmptyState
+                  heading={t('chat.empty.subtitle')}
+                  headingLevel={3}
+                  description={t('chat.startHint')}
+                  actions={
                     <StarterPrompts
                       disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
                       onSelect={setInput}
                     />
-                  </ProEmptyState.Content>
-                </ProEmptyState>
+                  }
+                  className="flex-1 justify-center px-4 py-10"
+                />
               ) : null
             }
             scrollToBottomLabel={t('chat.scrollToBottom')}
