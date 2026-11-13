@@ -186,7 +186,6 @@ const inDs = (file: string) => DS_DIRS.some((dir) => file.startsWith(dir + sep))
 const ALLOWED_UNPREVIEWED = new Map<string, string>([
   ['CopyAnnouncement', 'an sr-only live region: there is nothing on screen to look at'],
   ['FileInput', 'a hidden <input type="file"> opened imperatively; it draws nothing'],
-  ['Description', "boardui's, left only inside number fields until they move to the library NumberField (next commit)"],
   [
     'Modal',
     "boardui's, kept only by the settings drill-down until a page stack replaces it (Yuerchu/ui#559); " +

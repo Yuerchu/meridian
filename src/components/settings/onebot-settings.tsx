@@ -2,8 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Description, Input, Label, TextField as BoardTextField } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -376,18 +377,16 @@ export function OneBotSettings() {
           onChange={(e) => setConfig({ ...config, host: e })}
           placeholder="127.0.0.1"
         />
-        <BoardTextField type="number">
-          <Label>{t('settings.onebot.port')}</Label>
-          <Input
-            name="onebotPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="6700"
-          />
-        </BoardTextField>
+        <NumberField
+          label={t('settings.onebot.port')}
+          value={draftToNumber(portInput)}
+          onChange={(value) => setPortInput(numberToDraft(value))}
+          name="onebotPort"
+          minValue={1}
+          maxValue={65535}
+          placeholder="6700"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
       <PasswordField
@@ -495,18 +494,19 @@ export function OneBotSettings() {
             />
           </div>
 
-          <BoardTextField>
-            <Label>{t('settings.onebot.fishKey')}</Label>
-            <Input
-              type="password"
-              name="onebotFishAudioKey"
-              autoComplete="off"
-              value={fishKey}
-              onChange={(e) => setFishKey(e.target.value)}
-              placeholder={fishKeySet ? '••••••••' : ''}
-            />
-            <Description>{t('settings.onebot.fishKeyHint')}</Description>
-          </BoardTextField>
+          {/* A key already in the keychain is drawn as saved, not as dots in the
+              placeholder: the field stays empty (an empty draft keeps the stored
+              key), and typing anything starts a new one. */}
+          <PasswordField
+            label={t('settings.onebot.fishKey')}
+            description={t('settings.onebot.fishKeyHint')}
+            name="onebotFishAudioKey"
+            // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+            autoComplete="current-password"
+            value={fishKey}
+            onChange={setFishKey}
+            hasSavedPassword={fishKeySet && fishKey === ''}
+          />
 
           {/* The one failure this feature has that announces itself nowhere.
               Four things have to be present or `send_voice` is withheld from

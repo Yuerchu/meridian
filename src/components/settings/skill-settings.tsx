@@ -1,18 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  Card,
-  Checkbox,
-  Chip,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextArea as BoardTextArea,
-  TextField as BoardTextField,
-} from '@/components/base'
+import { Card, Checkbox, Chip, Disclosure, DisclosureGroup } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -125,21 +114,15 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <BoardTextField>
-          <Label>{t('settings.skills.dirName')}</Label>
-          <Input
-            value={dirName}
-            onChange={(e) => setDirName(e.target.value)}
-            placeholder="my-skill"
-            className="font-mono text-caption-1-regular"
-          />
-          <Description>{t('settings.skills.dirNameHint')}</Description>
-          {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
-              {t('settings.skills.dirNameInvalid')}
-            </p>
-          )}
-        </BoardTextField>
+        <TextField
+          label={t('settings.skills.dirName')}
+          description={t('settings.skills.dirNameHint')}
+          value={dirName}
+          onChange={setDirName}
+          placeholder="my-skill"
+          isInvalid={dirName.trim().length > 0 && !dirNameValid}
+          errorMessage={t('settings.skills.dirNameInvalid')}
+        />
       )}
 
       <TextField
@@ -158,37 +141,36 @@ function SkillEditor({
         description={t('settings.skills.descriptionHint')}
       />
 
-      <BoardTextField>
-        <Label>{t('settings.skills.body')}</Label>
-        {bodyState === 'loading' ? (
-          <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
-            {t('common.loading')}
-          </p>
-        ) : bodyState === 'error' ? (
-          <Alert
-            data-slot="skill-editor-body-error"
-            tone="danger"
-            shouldAnnounce
-            heading={t('settings.skills.bodyLoadError')}
-            actions={
-              <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
-                {t('common.retry')}
-              </Button>
-            }
-          >
-            {bodyError}
-          </Alert>
-        ) : (
-          <BoardTextArea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={isBuiltin}
-            rows={10}
-            className="resize-none font-mono text-caption-1-regular"
-          />
-        )}
-        <Description>{t('settings.skills.bodyHint')}</Description>
-      </BoardTextField>
+      {/* Loading, failed and loaded are three different things on screen, not
+          three fillings of one field. */}
+      {bodyState === 'loading' ? (
+        <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
+          {t('common.loading')}
+        </p>
+      ) : bodyState === 'error' ? (
+        <Alert
+          data-slot="skill-editor-body-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.skills.bodyLoadError')}
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
+        >
+          {bodyError}
+        </Alert>
+      ) : (
+        <TextArea
+          label={t('settings.skills.body')}
+          description={t('settings.skills.bodyHint')}
+          value={body}
+          onChange={setBody}
+          isDisabled={isBuiltin}
+          rows={10}
+        />
+      )}
 
       {isBuiltin && (
         <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">

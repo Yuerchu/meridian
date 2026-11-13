@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Description, Input, Label, Select, SelectItem, TextField as BoardTextField } from '@/components/base'
+import { Input, Select, SelectItem } from '@/components/base'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CellSwitch } from '@/components/base'
@@ -332,23 +334,21 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <BoardTextField>
-        <Label>{t('settings.approvals.ttl')}</Label>
-        <Input
-          type="number"
-          min={0}
-          max={MAX_TTL_MINUTES}
-          className="max-w-32"
-          value={settings.ttl}
-          onChange={(e) => setSettings({ ...settings, ttl: e.target.value })}
-        />
-        <Description>{t('settings.approvals.ttlHint')}</Description>
-        {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
-            {t('settings.approvals.ttlNever')}
-          </p>
-        )}
-      </BoardTextField>
+      <NumberField
+        label={t('settings.approvals.ttl')}
+        description={t('settings.approvals.ttlHint')}
+        value={draftToNumber(settings.ttl)}
+        onChange={(value) => setSettings({ ...settings, ttl: numberToDraft(value) })}
+        minValue={0}
+        maxValue={MAX_TTL_MINUTES}
+        formatOptions={PLAIN_INTEGER}
+        className="max-w-32"
+      />
+      {normaliseTtl(settings.ttl) === 0 && (
+        <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
+          {t('settings.approvals.ttlNever')}
+        </p>
+      )}
 
       <div data-slot="autoreview-enable" className="space-y-1.5">
         <CellSwitch
