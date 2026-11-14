@@ -1,13 +1,15 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Separator } from '@/components/base'
+
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { CellSwitch } from '@/components/base'
+
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
@@ -56,7 +58,6 @@ export function RemoteAccessSettings() {
   const [addresses, setAddresses] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
-  const [revealToken, setRevealToken] = useState(false)
   const [copied, markCopied] = useTemporaryFlag()
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -250,17 +251,15 @@ export function RemoteAccessSettings() {
       <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
 
       <div data-slot="remote-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.remote.enable')}
           aria-describedby="remote-enabled-hint"
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.remote.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.remote.enable')}
+        </Switch>
         <p
           id="remote-enabled-hint"
           data-slot="remote-enable-hint"
@@ -298,23 +297,18 @@ export function RemoteAccessSettings() {
         />
       </div>
 
+      {/* A generated key shown read-only, with copy: the library's rule is not to
+          mask a key nobody types, so there is no reveal toggle. */}
       <div data-slot="remote-token" className="space-y-1.5">
-        <p data-slot="remote-token-label" className="text-caption-1-medium text-text-secondary">
-          {t('settings.remote.token')}
-        </p>
-        <div data-slot="remote-token-row" className="flex flex-wrap items-center gap-2">
-          <Input
-            aria-label={t('settings.remote.token')}
+        <div data-slot="remote-token-row" className="flex flex-wrap items-end gap-2">
+          <TextField
+            label={t('settings.remote.token')}
             name="remoteAccessToken"
-            autoComplete="off"
-            readOnly
-            type={revealToken ? 'text' : 'password'}
+            isReadOnly
+            spellCheck="false"
             value={config.token ?? ''}
             placeholder={t('settings.remote.tokenPending')}
           />
-          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
-            {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
-          </Button>
           {/* Copied rather than revealed and retyped: the other device needs it
               character for character, and it is long on purpose. */}
           <Button

@@ -1,7 +1,9 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import { Chip, ItemCard, ItemCardGroup, SearchField, Separator, Spinner } from '@/components/base'
+import { Chip, ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -206,13 +208,12 @@ export function ImeLearningSection() {
 
       {open && learning !== null && (
         <div data-slot="ime-learned-list" className="space-y-2">
-          <SearchField aria-label={t('settings.ime.learned.search')} value={query} onChange={setQuery}>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder={t('settings.ime.learned.search')} />
-              <SearchField.ClearButton aria-label={t('settings.ime.learned.clearSearch')} />
-            </SearchField.Group>
-          </SearchField>
+          <SearchField
+            aria-label={t('settings.ime.learned.search')}
+            value={query}
+            onChange={setQuery}
+            placeholder={t('settings.ime.learned.search')}
+          />
 
           {matching.length === 0 ? (
             <p data-slot="ime-learned-none" className="text-caption-1-regular text-text-secondary">

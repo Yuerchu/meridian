@@ -1,12 +1,14 @@
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Select, SelectItem } from '@/components/base'
+import { Select, SelectItem } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { CellSwitch } from '@/components/base'
+import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
+
 import { ItemCard } from '@/components/base'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
@@ -144,18 +146,16 @@ function ModelPicker({
           ))}
         </Select>
       ) : (
-        <Input
+        <TextField
           aria-label={t('settings.assistant.model')}
           value={modelId}
-          // Typed straight into local state and only committed on blur, so a
-          // half-typed model id is not persisted a character at a time.
           onChange={(e) => {
-            setModelId(e.target.value)
+            setModelId(e)
             onDirtyChange?.(true)
           }}
           onBlur={() => emit(providerId, modelId)}
           placeholder={t('settings.assistant.modelPlaceholder')}
-          disabled={!providerId}
+          isDisabled={!providerId}
         />
       )}
     </div>
@@ -177,7 +177,6 @@ export function HooksSettings() {
   const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [revealToken, setRevealToken] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
@@ -386,17 +385,15 @@ export function HooksSettings() {
       <SettingsHeader title={t('settings.hooks.title')} />
 
       <div data-slot="hooks-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.hooks.enable')}
           aria-describedby={enableHintId}
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.hooks.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.hooks.enable')}
+        </Switch>
         <p data-slot="hooks-enable-hint" id={enableHintId} className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.enableHint')}
         </p>
@@ -488,30 +485,23 @@ export function HooksSettings() {
         </p>
       </div>
 
-      <div data-slot="hooks-token" className="space-y-1.5">
-        <p data-slot="hooks-token-label" className="block text-caption-1-medium text-text-secondary">
-          {t('settings.hooks.token')}
-        </p>
-        <div data-slot="hooks-token-row" className="flex items-center gap-2">
-          <Input
-            aria-label={t('settings.hooks.token')}
-            name="hooksToken"
-            autoComplete="off"
-            readOnly
-            type={revealToken ? 'text' : 'password'}
-            value={config.token ?? ''}
-            placeholder={t('settings.hooks.tokenPending')}
-          />
-          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
-            {revealToken ? t('settings.hooks.hide') : t('settings.hooks.reveal')}
-          </Button>
-          <Button variant="secondary" onPress={handleRegenerate}>
-            {t('settings.hooks.regenerate')}
-          </Button>
-        </div>
-        <p data-slot="hooks-token-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.hooks.tokenHint')}
-        </p>
+      {/* A generated key shown read-only, with copy: the library's rule is not to
+          mask a key nobody types, so there is no reveal toggle. */}
+      <div data-slot="hooks-token" className="flex items-end gap-2">
+        <TextField
+          label={t('settings.hooks.token')}
+          description={t('settings.hooks.tokenHint')}
+          name="hooksToken"
+          isReadOnly
+          spellCheck="false"
+          value={config.token ?? ''}
+          placeholder={t('settings.hooks.tokenPending')}
+          className="min-w-0 flex-1"
+        />
+        <CopyButton value={config.token ?? ''} isDisabled={!config.token} />
+        <Button variant="secondary" onPress={handleRegenerate}>
+          {t('settings.hooks.regenerate')}
+        </Button>
       </div>
 
       {error && (

@@ -28,7 +28,8 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Dropdown, DropdownItem, DropdownPopover, Input, Kbd, Label, ToggleButton } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, Kbd, Label, ToggleButton } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -225,13 +226,11 @@ function NewProjectForm({
 
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
-      <Input
-        type="text"
+      <TextField
         aria-label={t('sidebar.projectName')}
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => setName(e)}
         placeholder={t('sidebar.projectName')}
-        className="text-caption-1-regular"
         autoFocus
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
@@ -262,13 +261,11 @@ function NewProjectForm({
           </span>
         </Button>
       ) : (
-        <Input
-          type="text"
+        <TextField
           aria-label={t('sidebar.hostPath')}
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => setPath(e)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-caption-1-regular"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') void submit()
@@ -377,13 +374,11 @@ function NewHostedSessionForm({
           </span>
         </Button>
       ) : (
-        <Input
-          type="text"
+        <TextField
           aria-label={t('sidebar.hostPath')}
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => setPath(e)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-caption-1-regular"
           autoFocus
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return

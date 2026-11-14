@@ -4,7 +4,8 @@ import { Button as AriaButton } from 'react-aria-components'
 import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Chip, Input, Spinner } from '@/components/base'
+import { Chip, Spinner } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
@@ -239,20 +240,18 @@ export function PlanReviewEntryView({
     <div data-slot="plan-review-entry-actions" className="flex flex-col gap-2">
       {ui.step === 'feedback' ? (
         <div data-slot="plan-review-entry-feedback" className="flex flex-col gap-2">
-          <Input
-            type="text"
+          <TextField
             name="plan-feedback"
             autoComplete="off"
             aria-label={t('chat.plan.feedbackLabel')}
             value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
+            onChange={(e) => onNoteChange(e)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter') onSendBack()
             }}
             placeholder={t('chat.plan.feedbackPlaceholder')}
-            className="text-caption-1-regular"
-            fieldClassName={FIELD_ON_CARD}
+            className={FIELD_ON_CARD}
             autoFocus
           />
           <div className="flex flex-wrap justify-end gap-2">

@@ -120,20 +120,6 @@
       },
       "patches": []
     },
-    "switch": {
-      "files": ["src/components/base/switch/switch.tsx"],
-      "upstream": {
-        "src/components/base/switch/switch.tsx": "4b853b8886c471f482e3b2c5a4a6c6436ab30f7d6122f43f571f94d10f5d6c22"
-      },
-      "patches": []
-    },
-    "switch-card": {
-      "files": ["src/components/base/switch/switch-card.tsx"],
-      "upstream": {
-        "src/components/base/switch/switch-card.tsx": "4c7cbbbf636ea92a9b2318a655e1ab38c88b85018be4d3a978f6383476c095f4"
-      },
-      "patches": []
-    },
     "select": {
       "files": ["src/components/base/dropdown/menu-styles.ts", "src/components/base/select/select.tsx"],
       "upstream": {

@@ -1,7 +1,8 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useState } from 'react'
 import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Separator, Spinner, ToggleButton } from '@/components/base'
+import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { noop } from './fixtures'

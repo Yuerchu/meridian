@@ -1,10 +1,11 @@
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { CellSwitch } from '@/components/base'
+
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
 import type { SafRootListResponse } from '@/types'
@@ -160,17 +161,15 @@ export function AndroidFileAccess() {
       </div>
 
       <div data-slot="file-access-manage" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.fileAccess.manageToggle')}
           aria-describedby="manage-storage-hint"
           isSelected={manageEnabled}
           onChange={handleManageToggle}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.fileAccess.manageToggle')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.fileAccess.manageToggle')}
+        </Switch>
         <p
           id="manage-storage-hint"
           data-slot="file-access-manage-hint"

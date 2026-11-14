@@ -2,8 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
-import { Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton, TextArea } from '@/components/base'
+import { Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton } from '@/components/base'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { TextArea as AriaTextArea } from 'react-aria-components'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
@@ -157,16 +158,14 @@ function SourceEditor({
   const { t } = useTranslation()
   return (
     <div data-slot="plan-source-editor" className="flex h-full min-h-0 flex-col">
-      <TextArea
+      {/* A source editor filling its pane, not a form field: React Aria's bare
+          textarea, without the library field's label and auto-height. */}
+      <AriaTextArea
         ref={textareaRef}
         aria-label={t('planReview.source.label')}
         value={value}
         readOnly={isReadOnly}
-        // The layout classes go on the field shell, which is the flex child
-        // of the column; `className` reaches only the `<textarea>` inside it,
-        // and a percentage height there cannot stretch a content-sized shell.
-        fieldClassName="plan-review-source min-h-0 flex-1 rounded-none p-0"
-        className="font-mono"
+        className="plan-review-source min-h-0 flex-1 font-mono"
         onChange={(event) => onChange(event.target.value)}
         onSelect={(event) => {
           const target = event.currentTarget

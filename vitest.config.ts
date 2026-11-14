@@ -10,10 +10,9 @@ export default mergeConfig(
       setupFiles: ['./src/test/setup.ts'],
       include: ['src/**/*.test.{ts,tsx}'],
       css: false,
-      // Half the cores, not all but one. Yuerchu UI's Button mounts its label and
-      // icon animations up front (Yuerchu/ui#566), which made the heaviest settings
-      // files 35% slower; with every core running jsdom they crossed the 5 s test
-      // timeout under load while passing alone. Revisit when #566 lands.
+      // Limit concurrent jsdom environments on shared development machines.
+      // Button's eager animation mounting is fixed upstream (#566); its separate
+      // mount regression test guards that mechanism without timing assertions.
       maxWorkers: '50%',
     },
   }),

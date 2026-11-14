@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
-import { Checkbox, Disclosure, DisclosureGroup, Input } from '@/components/base'
+import { Checkbox, Disclosure, DisclosureGroup } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft } from '@/lib/number-draft'
@@ -322,14 +322,13 @@ function AssistantEditor({
         )}
         {thinkingEnabled && (
           <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
-            <Input
-              type="number"
+            <NumberField
               name={`assistantThinkingBudget-${assistant.id}`}
               aria-label={t('settings.assistant.thinkingBudget')}
-              inputMode="numeric"
-              value={thinkingBudget}
-              onChange={(e) => setThinkingBudget(e.target.value)}
+              value={draftToNumber(thinkingBudget)}
+              onChange={(value) => setThinkingBudget(numberToDraft(value))}
               placeholder={t('settings.assistant.thinkingBudget')}
+              formatOptions={{ maximumFractionDigits: 0 }}
             />
             <p data-slot="assistant-thinking-budget-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.assistant.thinkingBudgetHint')}

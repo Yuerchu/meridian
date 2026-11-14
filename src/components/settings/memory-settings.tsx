@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { DisclosureGroup, Input, TextArea } from '@/components/base'
+import { DisclosureGroup } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -125,14 +127,13 @@ export function MemorySettings() {
 
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div data-slot="memory-toolbar" className="flex items-center gap-2">
-            <Input
-              type="text"
+            <TextField
               aria-label={t('settings.memory.search')}
               name="memorySearch"
               value={browser.search}
-              onChange={(e) => browser.setSearch(e.target.value)}
+              onChange={(e) => browser.setSearch(e)}
               placeholder={t('settings.memory.search')}
-              fieldClassName="flex-1"
+              className="flex-1"
             />
             <SettingsSelect
               ariaLabel={t('settings.memory.originFilter')}
@@ -160,15 +161,13 @@ export function MemorySettings() {
             <SettingsCard data-slot="memory-add-form">
               <SettingsRow label={t('settings.memory.key')} stacked>
                 {({ labelId }) => (
-                  <Input
-                    type="text"
+                  <TextField
                     aria-labelledby={labelId}
                     name="memoryKey"
                     value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    spellCheck={false}
-                    fieldClassName="w-full @sm/pane:w-64"
-                    className="font-mono"
+                    onChange={(e) => setNewKey(e)}
+                    spellCheck="false"
+                    className="w-full @sm/pane:w-64"
                     autoFocus
                   />
                 )}
@@ -194,7 +193,7 @@ export function MemorySettings() {
                     aria-labelledby={labelId}
                     name="memoryContent"
                     value={newContent}
-                    onChange={(e) => setNewContent(e.target.value)}
+                    onChange={(e) => setNewContent(e)}
                     onKeyDown={(event) => {
                       if (event.nativeEvent.isComposing) return
                       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -203,7 +202,7 @@ export function MemorySettings() {
                       }
                     }}
                     rows={3}
-                    fieldClassName="w-full"
+                    className="w-full"
                   />
                 )}
               </SettingsRow>

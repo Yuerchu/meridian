@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { SearchField, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -241,13 +242,12 @@ export function ClaudeSessionPicker({
           {/* SearchField, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
-          <SearchField aria-label={t('sessionPicker.search')} value={query} onChange={setQuery} className="flex-1">
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder={t('sessionPicker.search')} />
-              <SearchField.ClearButton aria-label={t('sessionPicker.clearSearch')} />
-            </SearchField.Group>
-          </SearchField>
+          <SearchField
+            aria-label={t('sessionPicker.search')}
+            value={query}
+            onChange={setQuery}
+            placeholder={t('sessionPicker.search')}
+          />
           {/* The adapter runs on the machine the backend is on, so a picker
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}

@@ -1,0 +1,53 @@
+@layer components {
+  /* 尺寸、输入框、左侧图标沿用 .ui-text-field（text-field.css），这里只加右侧的清除按钮 */
+  .ui-search-field {
+    --ui-search-clear-inset: var(--space-1);
+    --ui-search-clear-size: calc(var(--ui-input-height) - 2 * var(--ui-search-clear-inset));
+  }
+
+  .ui-search-field .ui-input {
+    padding-inline-end: calc(var(--ui-search-clear-size) + var(--ui-search-clear-inset) + var(--space-1));
+  }
+
+  /* 浏览器自带的清除按钮：和我们的重复 */
+  .ui-search-field .ui-input::-webkit-search-cancel-button,
+  .ui-search-field .ui-input::-webkit-search-decoration {
+    appearance: none;
+  }
+
+  .ui-search-field__clear {
+    position: absolute;
+    inset-inline-end: var(--ui-search-clear-inset);
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-search-clear-size);
+    height: var(--ui-search-clear-size);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--ui-input-radius) - var(--ui-search-clear-inset));
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-search-field__clear svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .ui-search-field__clear[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  /* 没有内容时不显示清除按钮 */
+  .ui-search-field[data-empty] .ui-search-field__clear {
+    display: none;
+  }
+}

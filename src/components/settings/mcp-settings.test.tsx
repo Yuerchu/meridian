@@ -95,10 +95,12 @@ describe('McpSettings pages', () => {
     expect(secret).toHaveAttribute('type', 'password')
     expect(secret).toHaveValue('Bearer secret-token')
 
-    await user.click(screen.getByRole('button', { name: i18n.t('settings.mcp.kv.showValues') }))
-    expect(screen.getByLabelText('Value 1')).toHaveAttribute('type', 'text')
-
     await user.click(screen.getByRole('button', { name: i18n.t('settings.mcp.kv.addHeader') }))
+    const firstRow = secret.closest<HTMLElement>('[data-slot="mcp-kv-row"]')!
+    await user.click(within(firstRow).getByRole('button', { name: 'Show password' }))
+    expect(screen.getByLabelText('Value 1')).toHaveAttribute('type', 'text')
+    expect(screen.getByLabelText('Value 2')).toHaveAttribute('type', 'password')
+
     await user.type(screen.getByRole('textbox', { name: 'Name 2' }), 'X-Trace')
     await user.type(screen.getByLabelText('Value 2'), 'on')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))

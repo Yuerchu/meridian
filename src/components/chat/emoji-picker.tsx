@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Search } from '@keyline-icons/react/two-tone'
-import { PromptInput, ScrollShadow, SearchField } from '@/components/base'
+import { PromptInput, ScrollShadow } from '@/components/base'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { EmojiPicker as ProEmojiPicker } from '@/components/base'
 import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
@@ -237,16 +238,13 @@ export function EmojiPicker({
         className="w-[24rem] max-w-[calc(100vw-2rem)]"
       >
         <ProEmojiPicker.Content className="@container/stickers">
-          <SearchField aria-label={t('chat.emojiSearch')} value={search} onChange={setSearch}>
-            {/* The popover is `background-primary`, which in dark is the search
-                well's own neutral-800; the registry's search fields off a settings
-                card take the secondary fill instead (`settings-storage.tsx`). */}
-            <SearchField.Group className="bg-background-secondary-default">
-              <SearchField.SearchIcon />
-              <SearchField.Input autoFocus placeholder={t('chat.emojiSearch')} />
-              <SearchField.ClearButton />
-            </SearchField.Group>
-          </SearchField>
+          <SearchField
+            aria-label={t('chat.emojiSearch')}
+            value={search}
+            onChange={setSearch}
+            autoFocus
+            placeholder={t('chat.emojiSearch')}
+          />
 
           {selectError && (
             <ErrorAlert

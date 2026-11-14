@@ -2,21 +2,23 @@ import { useState } from 'react'
 import { Search } from '@keyline-icons/react/two-tone'
 
 import {
-  CellSwitch,
   Checkbox,
   CheckboxGroup,
   InputGroup,
   Radio,
   RadioGroup,
-  SearchField,
   Segment,
   Select,
   SelectItem,
   Slider,
-  Switch,
 } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
+import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
 import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { Row, Section, Stage } from './shell'
 
@@ -36,15 +38,12 @@ function TextFields() {
         <TextField isDisabled defaultValue="npx -y @modelcontextprotocol/server" label="命令" />
         <TextField size="sm" label="sm" placeholder="较小的字段" />
       </div>
+      <NumberField label="超时（秒）" defaultValue={30} minValue={1} maxValue={600} />
+      <PasswordField label="密码（演示）" autoComplete="current-password" defaultValue="demo-only" />
+      <CopyButton value="demo-only" label="复制演示文本" />
       <TextArea label="参数" rows={3} placeholder={'每行一个参数'} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <SearchField aria-label="搜索表情">
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder="SearchField" />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
+        <SearchField aria-label="搜索表情" placeholder="SearchField" />
         <InputGroup>
           <InputGroup.Prefix>
             <Search className="size-4" />
@@ -98,29 +97,17 @@ function Switches() {
   const [on, setOn] = useState(true)
   return (
     <Stage>
-      {(['pill', 'rectangle'] as const).map((shape) => (
-        <Row key={shape} label={shape}>
-          {(['sm', 'md', 'lg'] as const).map((size) => (
-            <Switch key={size} size={size} shape={shape} isSelected={on} onChange={setOn}>
-              <span className="text-body-2-medium text-text-secondary">{size}</span>
-            </Switch>
-          ))}
-          <Switch shape={shape} isDisabled>
-            <span className="text-body-2-medium text-text-secondary">禁用</span>
+      <Row label="Switch 尺寸">
+        {(['sm', 'md'] as const).map((size) => (
+          <Switch key={size} size={size} isSelected={on} onChange={setOn}>
+            {size}
           </Switch>
-        </Row>
-      ))}
-      <div className="flex flex-col gap-1">
-        <CellSwitch aria-label="远程访问" aria-describedby="pg-cell-hint" defaultSelected>
-          <CellSwitch.Trigger>
-            <CellSwitch.Label>远程访问</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p id="pg-cell-hint" className="text-caption-1-regular text-text-secondary">
-          CellSwitch：整行可点，说明写在行外。
-        </p>
-      </div>
+        ))}
+        <Switch isDisabled>禁用</Switch>
+      </Row>
+      <Switch variant="card" defaultSelected description="整行可点，说明与名称分别播报。">
+        远程访问
+      </Switch>
     </Stage>
   )
 }

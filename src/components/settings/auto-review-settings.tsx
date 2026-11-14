@@ -1,12 +1,14 @@
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, Select, SelectItem } from '@/components/base'
+import { Select, SelectItem } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { CellSwitch } from '@/components/base'
+
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -176,13 +178,13 @@ function ModelPicker({
           ))}
         </Select>
       ) : (
-        <Input
+        <TextField
           aria-label={t('settings.assistant.model')}
           value={modelId}
-          onChange={(e) => setModelId(e.target.value)}
+          onChange={(e) => setModelId(e)}
           onBlur={() => emit(providerId, modelId)}
           placeholder={t('settings.assistant.modelPlaceholder')}
-          disabled={!providerId}
+          isDisabled={!providerId}
         />
       )}
     </div>
@@ -351,17 +353,15 @@ export function AutoReviewSettings() {
       )}
 
       <div data-slot="autoreview-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.autoReview.enable')}
           aria-describedby="autoreview-enabled-hint"
           isSelected={settings.enabled}
           onChange={(selected) => setSettings({ ...settings, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.autoReview.enable')}
+        </Switch>
         <p
           id="autoreview-enabled-hint"
           data-slot="autoreview-enable-hint"
@@ -391,17 +391,15 @@ export function AutoReviewSettings() {
       </div>
 
       <div data-slot="autoreview-escalate" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.autoReview.escalate')}
           aria-describedby="autoreview-escalate-hint"
           isSelected={settings.escalate}
           onChange={(selected) => setSettings({ ...settings, escalate: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.escalate')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.autoReview.escalate')}
+        </Switch>
         <p
           id="autoreview-escalate-hint"
           data-slot="autoreview-escalate-hint"

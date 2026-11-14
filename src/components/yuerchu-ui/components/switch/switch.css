@@ -1,0 +1,216 @@
+@layer components {
+  .ui-switch {
+    --ui-switch-height: calc(var(--icon-lg) + var(--space-1) / 2);
+    --ui-switch-inset: var(--space-1);
+
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--text);
+    font: var(--text-body);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .ui-switch[data-size="sm"] {
+    --ui-switch-height: var(--icon-md);
+    --ui-switch-inset: calc(var(--space-1) - 1px);
+
+    font: var(--text-small);
+  }
+
+  @media (pointer: coarse) {
+    .ui-switch,
+    .ui-switch[data-size="sm"] {
+      --ui-switch-height: calc(var(--icon-lg) + var(--space-2) - 2px);
+      --ui-switch-inset: var(--space-1);
+    }
+  }
+
+  /* ---------- 轨道 ---------- */
+  .ui-switch__track {
+    --ui-switch-width: calc(var(--ui-switch-height) * 1.8);
+    /* 关闭态圆点小一圈，开启态铺满轨道内高（Material 3 的做法：大小本身也表示状态） */
+    --ui-switch-thumb: calc(var(--ui-switch-height) - 2 * var(--ui-switch-inset));
+    --ui-switch-thumb-on: calc(var(--ui-switch-height) - 2 * var(--ui-switch-inset) + var(--space-1));
+
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    width: var(--ui-switch-width);
+    height: var(--ui-switch-height);
+    margin-block: calc((1lh - var(--ui-switch-height)) / 2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: var(--control-track);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-switch__thumb {
+    position: absolute;
+    inset-inline-start: calc(var(--ui-switch-inset) - 1px);
+    width: var(--ui-switch-thumb);
+    height: var(--ui-switch-thumb);
+    border-radius: var(--radius-pill);
+    background: var(--control-off);
+    transition:
+      translate var(--dur-spring) var(--ease-spring),
+      width var(--dur-spring) var(--ease-spring),
+      height var(--dur-spring) var(--ease-spring),
+      inset-inline-start var(--dur-spring) var(--ease-spring),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 按下时圆点横向拉长，像被手指按扁 */
+  .ui-switch[data-pressed]:not([data-disabled], [data-readonly]) .ui-switch__thumb {
+    width: calc(var(--ui-switch-thumb) + var(--space-1));
+  }
+
+  .ui-switch[data-hovered]:not([data-disabled]) .ui-switch__thumb {
+    background: var(--text);
+  }
+
+  /* ---------- 开启 ---------- */
+  .ui-switch[data-selected] .ui-switch__track {
+    background: var(--control-on);
+  }
+
+  .ui-switch[data-selected][data-hovered]:not([data-disabled]) .ui-switch__track {
+    background: var(--control-on-hover);
+  }
+
+  .ui-switch[data-selected] .ui-switch__thumb,
+  .ui-switch[data-selected][data-hovered]:not([data-disabled]) .ui-switch__thumb {
+    inset-inline-start: calc(var(--ui-switch-width) - var(--ui-switch-thumb-on) - (var(--ui-switch-height) - var(--ui-switch-thumb-on)) / 2 - 1px);
+    width: var(--ui-switch-thumb-on);
+    height: var(--ui-switch-thumb-on);
+    background: var(--control-on-fg);
+  }
+
+  .ui-switch[data-selected][data-pressed]:not([data-disabled], [data-readonly]) .ui-switch__thumb {
+    inset-inline-start: calc(var(--ui-switch-width) - var(--ui-switch-thumb-on) - var(--space-1) - (var(--ui-switch-height) - var(--ui-switch-thumb-on)) / 2 - 1px);
+    width: calc(var(--ui-switch-thumb-on) + var(--space-1));
+  }
+
+  /* 焦点环画在轨道上（焦点在隐藏的 input 上，label 只带 data-focus-visible，base.css 不在整行上画） */
+  .ui-switch[data-focus-visible] .ui-switch__track {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* ---------- 禁用、只读 ---------- */
+  .ui-switch[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-switch[data-disabled] .ui-switch__track {
+    background: var(--surface-muted);
+  }
+
+  .ui-switch[data-disabled] .ui-switch__thumb {
+    background: var(--text-muted);
+  }
+
+  .ui-switch[data-disabled][data-selected] .ui-switch__track {
+    background: var(--text-muted);
+  }
+
+  .ui-switch[data-disabled][data-selected] .ui-switch__thumb {
+    background: var(--surface);
+  }
+
+  .ui-switch[data-readonly] {
+    cursor: default;
+  }
+
+  /* ---------- 文字 ---------- */
+  .ui-switch__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ui-switch__description {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-switch[data-disabled] .ui-switch__description {
+    color: var(--text-muted);
+  }
+
+  /* 高对比度模式：轨道补边框，开启态用系统高亮色 */
+  /* ---------- 卡片（variant="card"）：整张卡片可以点，开关在右边。打开时卡片本身不变：开关已经表示状态，
+     设置页里好几项都开着时一片深色边框会很乱（单选、多选的卡片选中时边框会加深） ---------- */
+  .ui-switch[data-variant="card"] {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-switch[data-variant="card"] .ui-switch__text {
+    flex: 1;
+  }
+
+  .ui-switch[data-variant="card"] .ui-switch__label {
+    font: var(--text-body-medium);
+  }
+
+  .ui-switch[data-variant="card"][data-hovered]:not([data-disabled]) {
+    background: var(--surface-sunken);
+  }
+
+  .ui-switch[data-variant="card"][data-invalid] {
+    border-color: var(--danger);
+  }
+
+  .ui-switch[data-variant="card"][data-disabled] {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  @media (forced-colors: active) {
+    .ui-switch__track {
+      border-color: CanvasText;
+    }
+
+    .ui-switch__thumb {
+      background: CanvasText;
+    }
+
+    .ui-switch[data-selected] .ui-switch__track {
+      border-color: Highlight;
+      background: Highlight;
+    }
+
+    .ui-switch[data-selected] .ui-switch__thumb {
+      background: HighlightText;
+    }
+
+    .ui-switch[data-focus-visible] .ui-switch__track {
+      outline-color: Highlight;
+    }
+
+    .ui-switch[data-disabled] .ui-switch__track {
+      border-color: GrayText;
+    }
+
+    .ui-switch[data-disabled] .ui-switch__thumb {
+      background: GrayText;
+    }
+  }
+}

@@ -24,7 +24,8 @@ import { ConversationRefChips } from './conversation-ref-chips'
 import { MarkdownContent } from './markdown-content'
 import { useRevealedText } from '@/hooks/use-revealed-text'
 import { CopyButton } from '@/components/ui/copy-button'
-import { Avatar, Label, TextArea } from '@/components/base'
+import { Avatar, Label } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
 import { ContextMenu } from '@/components/base'
 import {
@@ -372,17 +373,15 @@ export const UserMessage = React.memo(function UserMessage({
             // with the text reflowing under the caret.
             <Bubble align="end" variant="outline" className="w-full max-w-full">
               <BubbleContent>
+                {/* The library's TextArea grows with what is typed; the edit box
+                    no longer measures its own scrollHeight. */}
                 <TextArea
                   ref={editRef}
                   aria-label={t('chat.editMessage')}
                   value={editText}
-                  onChange={(e) => {
-                    setEditText(e.target.value)
-                    e.target.style.height = 'auto'
-                    e.target.style.height = e.target.scrollHeight + 'px'
-                  }}
+                  onChange={setEditText}
                   onKeyDown={handleEditKeyDown}
-                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-body-regular leading-relaxed resize-none outline-none focus-visible:ring-0"
+                  className="w-full min-w-[200px]"
                   rows={1}
                 />
                 <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">

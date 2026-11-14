@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
-import { Chip, Disclosure, Input } from '@/components/base'
+import { Chip, Disclosure } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ActionBar } from '@/components/base'
@@ -103,13 +104,13 @@ function EditableCell({
   const cancelled = useRef(false)
 
   return (
-    <Input
+    <TextField
       aria-label={ariaLabel}
       value={draft}
       placeholder={placeholder}
-      size="small"
-      fieldClassName="min-w-0 flex-1"
-      onChange={(event) => setDraft(event.target.value)}
+      size="sm"
+      className="min-w-0 flex-1"
+      onChange={setDraft}
       onBlur={() => {
         if (cancelled.current) {
           cancelled.current = false
@@ -750,11 +751,11 @@ export function EmojiSettings() {
       <EmojiEmbedderSettings />
 
       <div data-slot="pack-create" className="flex gap-2">
-        <Input
+        <TextField
           value={newPackName}
-          onChange={(e) => setNewPackName(e.target.value)}
+          onChange={(e) => setNewPackName(e)}
           placeholder={t('settings.emoji.packName')}
-          fieldClassName="min-w-0 flex-1"
+          className="min-w-0 flex-1"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') handleCreate()
