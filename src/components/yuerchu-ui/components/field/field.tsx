@@ -1,7 +1,7 @@
 "use client";
 
 import type { FieldErrorProps as AriaFieldErrorProps, LabelProps as AriaLabelProps, TextProps } from "react-aria-components";
-import { FieldError as AriaFieldError, Label as AriaLabel, Text, useLocale } from "react-aria-components";
+import { FieldError as AriaFieldError, Label as AriaLabel, Text } from "react-aria-components";
 import { useStrings } from "../../lib/i18n";
 import { withUiClass } from "../../lib/class-name";
 import { fieldStrings } from "./field.strings";

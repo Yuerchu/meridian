@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Cable, Plug } from '@keyline-icons/react/two-tone'
-import { Input, Switch, TextArea } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
@@ -324,12 +326,12 @@ function McpServerEditor({
       <SettingsCard data-slot="mcp-server-identity">
         <SettingsRow label={t('settings.mcp.name')} stacked>
           {({ labelId }) => (
-            <Input
+            <TextField
               aria-labelledby={labelId}
               name={`mcpName-${server.id}`}
               value={name}
-              onChange={(event) => setName(event.target.value)}
-              fieldClassName="w-full @sm/pane:w-64"
+              onChange={(event) => setName(event)}
+              className="w-full @sm/pane:w-64"
             />
           )}
         </SettingsRow>
@@ -358,17 +360,16 @@ function McpServerEditor({
           <SettingsSection label={t('settings.mcp.endpoint')}>
             <SettingsRow label={t('settings.mcp.url')} stacked className="@sm/pane:flex-col @sm/pane:items-stretch">
               {({ labelId }) => (
-                <Input
+                <TextField
                   aria-labelledby={labelId}
                   name={`mcpUrl-${server.id}`}
                   type="url"
                   inputMode="url"
-                  spellCheck={false}
+                  spellCheck="false"
                   value={url}
-                  onChange={(event) => setUrl(event.target.value)}
+                  onChange={(event) => setUrl(event)}
                   placeholder="https://example.com/mcp"
-                  fieldClassName="w-full"
-                  className="font-mono"
+                  className="w-full"
                 />
               )}
             </SettingsRow>
@@ -387,15 +388,14 @@ function McpServerEditor({
           <SettingsSection label={t('settings.mcp.launch')}>
             <SettingsRow label={t('settings.mcp.command')} stacked>
               {({ labelId }) => (
-                <Input
+                <TextField
                   aria-labelledby={labelId}
                   name={`mcpCommand-${server.id}`}
-                  spellCheck={false}
+                  spellCheck="false"
                   value={command}
-                  onChange={(event) => setCommand(event.target.value)}
+                  onChange={(event) => setCommand(event)}
                   placeholder="npx"
-                  fieldClassName="w-full @sm/pane:w-80"
-                  className="font-mono"
+                  className="w-full @sm/pane:w-80"
                 />
               )}
             </SettingsRow>
@@ -410,13 +410,12 @@ function McpServerEditor({
                   aria-labelledby={labelId}
                   aria-describedby={descriptionId}
                   name={`mcpArgs-${server.id}`}
-                  spellCheck={false}
+                  spellCheck="false"
                   rows={2}
                   value={args}
-                  onChange={(event) => setArgs(event.target.value)}
+                  onChange={(event) => setArgs(event)}
                   placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
-                  fieldClassName="w-full"
-                  className="font-mono"
+                  className="w-full"
                 />
               )}
             </SettingsRow>

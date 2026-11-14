@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, ChevronRight, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Checkbox, Disclosure, TextArea } from '@/components/base'
+import { Checkbox, Disclosure } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { MemoryInfoResponse } from '@/types'
@@ -138,7 +139,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             aria-label={t('settings.memory.content')}
             name={`memoryContent-${memory.id}`}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => setDraft(e)}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return
               if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {

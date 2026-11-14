@@ -49,7 +49,8 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { Checkbox, CheckboxGroup, Chip, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
   ChatTool,
@@ -458,19 +459,17 @@ function QuestionBlock({
               {t('chat.tool.other')}
             </span>
           )}
-          <Input
+          <TextField
             data-slot="question-answer"
-            type="text"
             name={`${q.id}-notes`}
             autoComplete="off"
             aria-labelledby={questionId}
             aria-describedby={invalid ? errorId : undefined}
             aria-invalid={invalid || undefined}
             value={value.notes}
-            onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
+            onChange={(e) => onChange(q.id, { ...value, notes: e })}
             placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-            className="text-body-2-regular"
-            fieldClassName={FIELD_ON_CARD}
+            className={FIELD_ON_CARD}
           />
         </div>
       )}
@@ -1424,20 +1423,18 @@ export function PendingApproval({
 
   return (
     <div data-slot="approval-feedback" className="space-y-2">
-      <Input
-        type="text"
+      <TextField
         name="tool-denial-reason"
         autoComplete="off"
         aria-label={t('chat.tool.denyReason')}
         value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
+        onChange={(e) => setFeedback(e)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
           if (e.key === 'Enter') deny()
         }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
-        className="text-caption-1-regular"
-        fieldClassName={FIELD_ON_CARD}
+        className={FIELD_ON_CARD}
         autoFocus
       />
       <ChatToolApproval className="pt-0">
@@ -1930,20 +1927,18 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <div data-slot="exit-plan-actions" className={cx(divider, section)}>
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
-              <Input
-                type="text"
+              <TextField
                 name="plan-feedback"
                 autoComplete="off"
                 aria-label={t('chat.plan.feedbackLabel')}
                 value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
+                onChange={(e) => setFeedback(e)}
                 onKeyDown={(e) => {
                   if (e.nativeEvent.isComposing) return
                   if (e.key === 'Enter') sendBack()
                 }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
-                className="text-caption-1-regular"
-                fieldClassName={FIELD_ON_CARD}
+                className={FIELD_ON_CARD}
                 autoFocus
               />
               <ChatToolApproval className="pt-0">

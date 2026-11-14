@@ -1,7 +1,8 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useTranslation } from 'react-i18next'
 import { Info } from '@keyline-icons/react/two-tone'
 
-import { Popover, Separator } from '@/components/base'
+import { Popover } from '@/components/base'
 import { ActionButton } from '@/components/ui/action-button'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { formatDuration, formatTps, tokensPerSecond } from '@/lib/turns'

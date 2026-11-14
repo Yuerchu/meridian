@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TextArea } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SettingsCard, SettingsRow } from '../primitives'
 import { SettingsPage } from '../settings-page'
@@ -68,13 +68,12 @@ export function McpImportPage({
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
               name="mcpImportJson"
-              spellCheck={false}
-              fieldClassName="w-full"
-              className="h-48 font-mono"
+              spellCheck="false"
+              className="w-full"
               placeholder={t('settings.mcp.importJsonPlaceholder')}
               value={text}
               onChange={(event) => {
-                setText(event.target.value)
+                setText(event)
                 setError(null)
               }}
               onKeyDown={(event) => {

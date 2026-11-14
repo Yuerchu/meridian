@@ -1,3 +1,4 @@
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
@@ -9,7 +10,7 @@ import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
-import { CellSwitch } from '@/components/base'
+
 import { ItemCard } from '@/components/base'
 import { cx } from '@/utils/cx'
 import type {
@@ -349,17 +350,15 @@ export function OneBotSettings() {
       <SettingsHeader title={t('settings.onebot.title')} />
 
       <div data-slot="onebot-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.onebot.enable')}
           aria-describedby="onebot-enabled-hint"
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.onebot.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.onebot.enable')}
+        </Switch>
         <p
           id="onebot-enabled-hint"
           data-slot="onebot-enable-hint"
@@ -444,17 +443,15 @@ export function OneBotSettings() {
       />
 
       <div data-slot="onebot-voice-send" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.onebot.voiceSend')}
           aria-describedby="onebot-voice-send-hint"
           isSelected={config.voice_send_enabled}
           onChange={(selected) => setConfig({ ...config, voice_send_enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.onebot.voiceSend')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.onebot.voiceSend')}
+        </Switch>
         <p
           id="onebot-voice-send-hint"
           data-slot="onebot-voice-send-hint"

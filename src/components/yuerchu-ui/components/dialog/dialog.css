@@ -147,6 +147,15 @@
     color: var(--text-secondary);
   }
 
+  /* description 是元素（一段说明加一个列表、<dl>）时外层是 div：块之间留一点距离，去掉浏览器默认的上下外边距 */
+  .ui-dialog__description > :is(p, ul, ol, dl) {
+    margin-block: 0;
+  }
+
+  .ui-dialog__description > * + :is(p, ul, ol, dl, div) {
+    margin-block-start: var(--space-2);
+  }
+
   /* 带上根类名：比 .ui-button 的优先级高，不依赖 CSS 加载顺序 */
   .ui-dialog .ui-dialog__close {
     position: absolute;

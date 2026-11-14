@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Copy, List, Pen, RefreshCw } from '@keyline-icons/react/two-tone'
-import { PromptInput, Switch } from '@/components/base'
+import { PromptInput } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { ComposerLoader } from '@/components/application/composer-loader/composer-loader'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { ActionButton } from '@/components/ui/action-button'

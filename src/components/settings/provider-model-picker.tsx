@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Input, Label, TextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 
 import { SettingsSelect } from './primitives'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -109,17 +109,15 @@ export function ProviderModelPicker({
         />
       ) : (
         <TextField
+          {...(labelMode === 'aria'
+            ? { 'aria-label': t('settings.assistant.model') }
+            : { label: t('settings.assistant.model') })}
           isDisabled={isModelDisabledWithoutProvider && !providerId}
-          aria-label={labelMode === 'aria' ? t('settings.assistant.model') : undefined}
-        >
-          {labelMode === 'label' && <Label>{t('settings.assistant.model')}</Label>}
-          <Input
-            value={modelId}
-            onChange={(e) => onChange(providerId, e.target.value)}
-            onBlur={() => onCommit?.(providerId, modelId)}
-            placeholder={t('settings.assistant.modelPlaceholder')}
-          />
-        </TextField>
+          value={modelId}
+          onChange={(value) => onChange(providerId, value)}
+          onBlur={() => onCommit?.(providerId, modelId)}
+          placeholder={t('settings.assistant.modelPlaceholder')}
+        />
       )}
     </div>
   )

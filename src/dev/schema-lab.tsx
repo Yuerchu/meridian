@@ -25,7 +25,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Chip, Input, ListBox, ToggleButton } from '@/components/base'
+import { Chip, ListBox, ToggleButton } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { cx } from '@/utils/cx'
@@ -630,19 +631,17 @@ function Lab() {
         >
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
-        <Input
-          type="search"
+        <TextField
           aria-label="搜索表名或字段"
           placeholder="搜表名 / 字段，回车跳转"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => setQuery(e)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return
             const q = query.trim().toLowerCase()
             const found = TABLES.find((t) => t.name.toLowerCase().includes(q))
             if (found) jump(found.name)
           }}
-          className="w-56"
         />
         <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用

@@ -22,7 +22,6 @@ import {
   Checkbox,
   ContextMenu,
   Disclosure,
-  Input,
   InputGroup,
   Kbd,
   Label,
@@ -33,10 +32,11 @@ import {
   SelectItem,
   Sidebar,
   Slider,
-  Switch,
-  TextArea,
-  TextField,
+  TextField as BoardTextField,
 } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -405,7 +405,7 @@ export default function WebViewLab() {
     }
     probeEl('[data-slot="button"]', 'background-color', 'Button')
     probeEl('[data-slot="button"]', 'border-radius', 'Button')
-    probeEl('[data-slot="switch-control"]', 'background-color', 'Switch 轨道')
+    probeEl('.ui-switch__track', 'background-color', 'Switch 轨道')
     probeEl('[data-slot="progress-circle"]', 'color', 'ProgressCircle')
 
     // `:has()` is the one feature used heavily enough for selector matching cost
@@ -513,8 +513,8 @@ export default function WebViewLab() {
             </div>
 
             <div data-slot="webview-lab-inputs" className="max-w-sm space-y-2">
-              <Input placeholder="Input：单行输入" />
-              <TextArea placeholder="TextArea：多行输入" rows={2} />
+              <TextField aria-label="单行输入" placeholder="Input：单行输入" />
+              <TextArea aria-label="多行输入" placeholder="TextArea：多行输入" rows={2} />
             </div>
 
             {/* Button's sizes are Tailwind utility classes merged through
@@ -713,7 +713,8 @@ export default function WebViewLab() {
                   {/* ContextMenu.Trigger 不带 render prop 时渲染成一个普通 div，
                       默认就是 block；`w-full` 是为了让它撑满输入框的宽度。 */}
                   <ContextMenu.Trigger className="block w-full">
-                    <TextField aria-label="发送消息">
+                    {/* The boardui composer probe, rewritten with the composer itself (Yuerchu/ui#547). */}
+                    <BoardTextField aria-label="发送消息">
                       <InputGroup className="flex flex-col gap-2 rounded-2xl py-2">
                         <div data-slot="webview-lab-composer-textarea" className="relative w-full">
                           <InputGroup.TextArea
@@ -734,7 +735,7 @@ export default function WebViewLab() {
                           </TooltipTrigger>
                         </InputGroup.Suffix>
                       </InputGroup>
-                    </TextField>
+                    </BoardTextField>
                   </ContextMenu.Trigger>
                   <ContextMenu.Popover>
                     <ContextMenu.Menu aria-label="发送消息">

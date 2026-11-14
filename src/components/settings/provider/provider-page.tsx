@@ -2,8 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import { DataGrid, Input, Sheet, Spinner, Switch, TextArea, type DataGridColumn } from '@/components/base'
+import { DataGrid, Sheet, Spinner, type DataGridColumn } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
@@ -757,12 +759,12 @@ function ProviderEditor({
       <SettingsCard data-slot="provider-identity">
         <SettingsRow label={t('settings.provider.name')} stacked>
           {({ labelId }) => (
-            <Input
+            <TextField
               aria-labelledby={labelId}
               name={`providerName-${provider.id}`}
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              fieldClassName="w-full @sm/pane:w-64"
+              onChange={(e) => setName(e)}
+              className="w-full @sm/pane:w-64"
             />
           )}
         </SettingsRow>
@@ -829,15 +831,15 @@ function ProviderEditor({
           >
             {({ labelId }) => (
               <div data-slot="model-path-row" className="flex w-full gap-2">
-                <Input
+                <TextField
                   aria-labelledby={labelId}
                   name={`providerModelPath-${provider.id}`}
-                  disabled={isRemote}
-                  spellCheck={false}
+                  isDisabled={isRemote}
+                  spellCheck="false"
                   value={baseUrl === 'local://' ? '' : baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
+                  onChange={(e) => setBaseUrl(e)}
                   placeholder={t('settings.provider.modelPathPlaceholder')}
-                  fieldClassName="w-full"
+                  className="w-full"
                 />
                 {!isRemote && (
                   <Button
@@ -861,21 +863,21 @@ function ProviderEditor({
             className="@sm/pane:flex-col @sm/pane:items-stretch"
           >
             {({ labelId }) => (
-              <Input
+              <TextField
                 aria-labelledby={labelId}
                 name={`providerBaseUrl-${provider.id}`}
-                disabled={isRemote}
+                isDisabled={isRemote}
                 type="url"
                 inputMode="url"
-                spellCheck={false}
+                spellCheck="false"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => setBaseUrl(e)}
                 placeholder={
                   defaultUrlFor(activeAuth, apiFormat) ??
                   URL_PLACEHOLDERS[apiFormat] ??
                   URL_PLACEHOLDERS.chat_completions
                 }
-                fieldClassName="w-full"
+                className="w-full"
               />
             )}
           </SettingsRow>
@@ -931,15 +933,15 @@ function ProviderEditor({
             stacked
           >
             {({ labelId, descriptionId }) => (
-              <Input
+              <TextField
                 aria-labelledby={labelId}
                 aria-describedby={descriptionId}
                 name="codexClientVersion"
-                spellCheck={false}
+                spellCheck="false"
                 value={codexClientVersion}
-                onChange={(e) => setCodexClientVersion(e.target.value)}
+                onChange={(e) => setCodexClientVersion(e)}
                 placeholder={t('settings.provider.codexClientVersionPlaceholder')}
-                fieldClassName="w-full @sm/pane:w-48"
+                className="w-full @sm/pane:w-48"
               />
             )}
           </SettingsRow>
@@ -994,10 +996,9 @@ function ProviderEditor({
                       name={`providerApiKey-${provider.id}`}
                       autoComplete="off"
                       rows={6}
-                      resize="vertical"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1005,7 +1006,7 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.vertexServiceAccountPlaceholder')
                       }
-                      fieldClassName="min-w-0 flex-1 font-mono"
+                      className="min-w-0 flex-1"
                     />
                   ) : (
                     <PasswordField
@@ -1194,11 +1195,11 @@ function ProviderEditor({
             to what matched — gated on the matches, a query with none took the
             box away along with the text that could be corrected. */}
         {allModels.length > FILTER_THRESHOLD && (
-          <Input
+          <TextField
             aria-label={t('settings.provider.filterModels')}
             name={`modelFilter-${provider.id}`}
             value={modelFilter}
-            onChange={(event) => setModelFilter(event.target.value)}
+            onChange={(event) => setModelFilter(event)}
             placeholder={t('settings.provider.filterModels')}
           />
         )}

@@ -10,17 +10,9 @@ import {
 } from 'react-aria-components'
 import { Bot, Check, ChevronDown } from '@keyline-icons/react/two-tone'
 
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  DropdownTrigger,
-  Popover,
-  SearchField,
-  Spinner,
-  Slider,
-  Switch,
-} from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, DropdownTrigger, Popover, Spinner, Slider } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { useProviderModels } from '@/hooks/use-provider-models'
@@ -339,13 +331,12 @@ function PanelSearch({ search }: { search: ReturnType<typeof useQuickSearch> }) 
   const { t } = useTranslation()
   return (
     <div ref={search.box}>
-      <SearchField aria-label={t('composer.searchModels')} value={search.query} onChange={search.setQuery}>
-        <SearchField.Group className="h-8 bg-background-secondary-default">
-          <SearchField.SearchIcon />
-          <SearchField.Input placeholder={t('composer.searchModels')} />
-          <SearchField.ClearButton />
-        </SearchField.Group>
-      </SearchField>
+      <SearchField
+        aria-label={t('composer.searchModels')}
+        value={search.query}
+        onChange={search.setQuery}
+        placeholder={t('composer.searchModels')}
+      />
     </div>
   )
 }

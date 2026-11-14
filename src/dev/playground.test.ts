@@ -162,7 +162,7 @@ describe('playground', () => {
  * component cannot reach the product without reaching it too — otherwise it
  * drifts the same way, one unshown component at a time.
  *
- * Scope is the reusable layers: `base/`, `ui/`, `application/` and `foundations/`. Feature
+ * Scope is the reusable layers: `base/`, `ui/`, `application/`, `foundations/` and `yuerchu-ui/`. Feature
  * screens (`chat/`, `settings/`, `layout/`, …) are composites with stores and a
  * backend behind them, and the visual suite photographs those in place.
  *
@@ -175,7 +175,7 @@ describe('playground', () => {
  * the same component and a same-named export elsewhere is not.
  */
 
-const DS_DIRS = ['base', 'ui', 'application', 'foundations'].map((d) => join(SRC, 'components', d))
+const DS_DIRS = ['base', 'ui', 'application', 'foundations', 'yuerchu-ui'].map((d) => join(SRC, 'components', d))
 const inDs = (file: string) => DS_DIRS.some((dir) => file.startsWith(dir + sep))
 
 /**

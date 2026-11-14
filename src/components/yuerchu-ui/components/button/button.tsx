@@ -2,7 +2,7 @@
 
 import { AnimatePresence, animate, motion, useIsPresent } from "motion/react";
 import type { ReactNode, Ref, RefObject } from "react";
-import { createContext, isValidElement, useContext, useLayoutEffect, useRef } from "react";
+import { createContext, isValidElement, useContext, useLayoutEffect, useRef, useState } from "react";
 import type { ButtonProps as AriaButtonProps } from "react-aria-components";
 import { Button as AriaButton, Link as AriaLink } from "react-aria-components";
 import { withUiClass } from "../../lib/class-name";
@@ -113,16 +113,20 @@ function ActionButton({ variant: variantProp, size: sizeProp, icon, iconRight, c
   const isDisabled = props.isDisabled ?? group?.isDisabled;
   const hasLabel = children !== undefined && children !== null && children !== false && children !== "";
   const m = useMotionTokens();
-  // 文字是字符串或数字时逐字增量替换：相同的字平移到新位置，不同的字退场、进场，宽度跟着弹过去。其他内容不做替换动画
-  const text = typeof children === "string" || typeof children === "number" ? String(children) : undefined;
-  const labelKey = text ?? "node";
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const iconKey = contentKey(icon);
-  useWidthFollow(labelRef, labelKey, m);
   // 等待的时机同 Reveal（DESIGN.md §7.4）：很快就完成时不出现加载图标；出现后至少停留一小段时间，不闪一下。
   // 加载图标停留期间按钮仍是等待状态（拦截点击、读屏仍是"正在处理"）
   const { phase } = useLoadingPhase(props.isPending ?? false);
   const showSpinner = phase === "placeholder";
+  // 文字是字符串或数字时逐字增量替换：相同的字平移到新位置，不同的字退场、进场，宽度跟着弹过去。其他内容不做替换动画。
+  // 替换动画用到才挂（#566）：文字、图标、加载状态没变过的按钮按静态内容渲染，第一次变化时才换成动画结构
+  const text = typeof children === "string" || typeof children === "number" ? String(children) : null;
+  const label = useLiveSwap(text === null ? "node" : `text:${text}`, children);
+  const labelText = typeof label.value === "string" || typeof label.value === "number" ? String(label.value) : null;
+  // 有左侧图标时加载图标换掉它；没有时加载图标盖在文字上（pending）
+  const iconSwap = useLiveSwap(!icon ? "none" : showSpinner ? "pending" : contentKey(icon), icon && showSpinner ? <SpinnerIcon className="ui-button__spinner" /> : icon);
+  const pending = useLiveSwap(showSpinner && !icon ? "pending" : "", showSpinner && !icon);
+  const labelRef = useRef<HTMLSpanElement>(null);
+  useWidthFollow(labelRef, label.key, label.live, m);
   return (
     <AriaButton
       {...props}
@@ -136,38 +140,65 @@ function ActionButton({ variant: variantProp, size: sizeProp, icon, iconRight, c
       {() => (
         <>
           {/* 没有左侧图标时，加载图标盖在文字上方，文字淡出但仍保留宽度和可读名称 */}
-          <AnimatePresence initial={false}>
-            {showSpinner && !icon ? (
-              <Swap key="pending" className="ui-button__pending" m={m}>
-                <SpinnerIcon className="ui-button__spinner" />
-              </Swap>
-            ) : null}
-          </AnimatePresence>
+          {pending.live ? (
+            <AnimatePresence initial={false}>
+              {pending.value ? (
+                <Swap key="pending" className="ui-button__pending" m={m}>
+                  <SpinnerIcon className="ui-button__spinner" />
+                </Swap>
+              ) : null}
+            </AnimatePresence>
+          ) : null}
           {icon ? (
             <span className="ui-button__icon">
-              <AnimatePresence mode="popLayout" initial={false}>
-                <Swap key={showSpinner ? "pending" : iconKey} className="ui-button__icon-swap" m={m}>
-                  {showSpinner ? <SpinnerIcon className="ui-button__spinner" /> : icon}
-                </Swap>
-              </AnimatePresence>
+              {iconSwap.live ? (
+                <AnimatePresence mode="popLayout" initial={false}>
+                  <Swap key={iconSwap.key} className="ui-button__icon-swap" m={m}>
+                    {iconSwap.value}
+                  </Swap>
+                </AnimatePresence>
+              ) : (
+                <span className="ui-button__icon-swap">{iconSwap.value}</span>
+              )}
             </span>
           ) : null}
           {hasLabel ? (
-            <motion.span
-              ref={labelRef}
-              className="ui-button__label"
-              initial={false}
-              animate={{ opacity: showSpinner && !icon ? 0 : 1 }}
-              transition={{ duration: m.duration.fast, ease: m.ease.standard }}
-            >
-              {text !== undefined ? <TextMorph text={text} m={m} className="ui-button__text" /> : <span className="ui-button__text">{children}</span>}
-            </motion.span>
+            <span ref={labelRef} className="ui-button__label" data-faded={pending.value || undefined}>
+              {label.live && labelText !== null ? (
+                <TextMorph text={labelText} m={m} className="ui-button__text" />
+              ) : (
+                <span className="ui-button__text">{label.value}</span>
+              )}
+            </span>
           ) : null}
           {iconRight ? <span className="ui-button__icon">{iconRight}</span> : null}
         </>
       )}
     </AriaButton>
   );
+}
+
+/**
+ * 替换动画用到才挂：key 从没变过时 live 是 false，调用方按静态内容渲染（不挂 Motion 和 AnimatePresence）。
+ * key 第一次变化时分两步：先提交一次"动画结构 + 旧内容"（Motion 量到旧的位置和宽度），
+ * 紧接着在 layout effect 里换成新内容，动画从旧内容播到新内容。之后一直保持动画结构。
+ * 两步都在同一帧绘制之前完成，屏幕上看不到中间那一步。
+ */
+function useLiveSwap<T>(key: string, value: T): { live: boolean; key: string; value: T } {
+  const [state, setState] = useState({ live: false, settled: false, key });
+  const previous = useRef(value);
+  useLayoutEffect(() => {
+    if (!state.live) previous.current = value;
+  });
+  if (!state.live && key !== state.key) {
+    // 第一次变化：先用旧内容挂上动画结构（渲染中直接更新 state，不多提交一轮静态内容）
+    setState({ ...state, live: true });
+  }
+  useLayoutEffect(() => {
+    if (state.live && !state.settled) setState((s) => ({ ...s, settled: true }));
+  }, [state.live, state.settled]);
+  if (state.live && !state.settled) return { live: true, key: state.key, value: previous.current };
+  return { live: state.live, key, value };
 }
 
 const typeIds = new WeakMap<object, number>();
@@ -205,27 +236,29 @@ function Swap({ className, m, children, ref }: { className: string; m: MotionTok
   );
 }
 
-/** 文字换了以后，标签的宽度从旧宽度弹到新宽度（按钮跟着变宽变窄），而不是一下跳过去 */
-function useWidthFollow(ref: RefObject<HTMLElement | null>, key: string, m: MotionTokens) {
-  // 屏幕上现在的宽度：换文字的那一刻 DOM 已经是新文字了，旧宽度只能从这里拿
+/** 文字换了以后，标签的宽度从旧宽度弹到新宽度（按钮跟着变宽变窄），而不是一下跳过去。live 之前（文字没变过）什么都不注册 */
+function useWidthFollow(ref: RefObject<HTMLElement | null>, key: string, live: boolean, m: MotionTokens) {
+  // 屏幕上现在的宽度：换文字的那一刻 DOM 已经是新文字了，旧宽度只能从这里拿。
+  // 变成 live 的那一次提交里标签还是旧文字（useLiveSwap 的第一步），这时量到的就是旧宽度
   const shown = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+    if (!live || !el || typeof ResizeObserver === "undefined") return;
     shown.current = el.getBoundingClientRect().width;
     const observer = new ResizeObserver(() => {
       shown.current = el.getBoundingClientRect().width;
     });
     observer.observe(el);
     return () => observer.disconnect();
-  }, [ref]);
-  const first = useRef(true);
+  }, [ref, live]);
+  const last = useRef(key);
   useLayoutEffect(() => {
     const el = ref.current;
-    if (first.current || !el) {
-      first.current = false;
+    if (!live || !el || last.current === key) {
+      last.current = key;
       return;
     }
+    last.current = key;
     // 上一次还没弹完时，从它停下的地方接着弹
     const from = el.style.width ? el.getBoundingClientRect().width : shown.current;
     el.style.width = "";
@@ -242,5 +275,5 @@ function useWidthFollow(ref: RefObject<HTMLElement | null>, key: string, m: Moti
     });
     return () => animation.stop();
     // 只在文字变化时播放：m.spring 只在切换动效模式时变化，不需要因此重播
-  }, [key, ref]);
+  }, [key, ref, live]);
 }

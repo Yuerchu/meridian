@@ -2,10 +2,11 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { DialogProps as AriaDialogProps, ModalOverlayProps } from "react-aria-components";
+import type { ModalOverlayProps } from "react-aria-components";
 import { Dialog as AriaDialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { useStrings } from "../../lib/i18n";
 import { XIcon } from "../../lib/icons";
+import { TextBlock } from "../../lib/text-block";
 import { Button } from "../button/button";
 import { dialogStrings } from "./dialog.strings";
 import "./dialog.css";
@@ -24,7 +25,7 @@ export { DialogTrigger } from "react-aria-components";
 export interface DialogProps extends Omit<ModalOverlayProps, "children" | "className" | "style"> {
   /** 标题，必填。读屏打开对话框时会先读标题。（不叫 title：避免和会弹出浏览器原生提示的 title 属性混淆） */
   heading: ReactNode;
-  /** 标题下方的说明，读屏会在标题之后读出。 */
+  /** 标题下方的说明，读屏会在标题之后读出。纯文字时是一个段落；传元素时（一句话加一个列表、`<dl>`）外层换成 div，不会 p 里套块。 */
   description?: ReactNode;
   /** 内容。写成函数时可以拿到 close，用来在按钮里关闭对话框。 */
   children?: ReactNode | ((opts: { close: () => void }) => ReactNode);
@@ -59,9 +60,9 @@ export function Dialog({ heading, description, children, size = "md", isDismissa
                   {heading}
                 </Heading>
                 {description ? (
-                  <p id={descriptionId} className="ui-dialog__description">
+                  <TextBlock id={descriptionId} className="ui-dialog__description">
                     {description}
-                  </p>
+                  </TextBlock>
                 ) : null}
               </div>
               <div className="ui-dialog__body">{typeof children === "function" ? children({ close }) : children}</div>
@@ -90,7 +91,7 @@ export function DialogFooter({ children }: DialogFooterProps) {
 export interface AlertDialogProps extends Omit<ModalOverlayProps, "children" | "className" | "style" | "isDismissable"> {
   /** 标题：直接问问题，例如"删除项目 foxline？"。 */
   heading: ReactNode;
-  /** 说明后果，例如"项目里的 32 个文件会被永久删除，无法恢复。"。 */
+  /** 说明后果，例如"项目里的 32 个文件会被永久删除，无法恢复。"。要列出会受影响的几项时可以传元素（段落加列表），外层换成 div。 */
   description?: ReactNode;
   /** 确认按钮文字，写清动作（"删除项目"），不要写"确定"。 */
   confirmLabel: string;
@@ -148,9 +149,9 @@ export function AlertDialog({
                   {heading}
                 </Heading>
                 {description ? (
-                  <p id={descriptionId} className="ui-dialog__description">
+                  <TextBlock id={descriptionId} className="ui-dialog__description">
                     {description}
-                  </p>
+                  </TextBlock>
                 ) : null}
               </div>
               <DialogFooter>

@@ -1,7 +1,8 @@
-import { useId, useState } from 'react'
+import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bin, Eye, EyeOff } from '@keyline-icons/react/two-tone'
-import { Input } from '@/components/base'
+import { Bin } from '@keyline-icons/react/two-tone'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SettingsAddRow, SettingsCard, SettingsSectionLabel } from '../primitives'
@@ -12,10 +13,8 @@ import { newPair, type KeyValuePair } from './key-value'
  *
  * Both routinely hold a credential — `Authorization: Bearer …`, an
  * `API_KEY=` — and a single-line JSON field showed it in full to anyone
- * looking at the screen. So values are masked until asked for, with one
- * switch for the whole map at the end of the section's label line, where
- * settings-tools.tsx puts a section's own action. The names stay visible:
- * they are what you scan for.
+ * looking at the screen. Each value is masked until its own reveal button is
+ * pressed. The names stay visible: they are what you scan for.
  */
 export function KeyValueEditor({
   label,
@@ -33,9 +32,7 @@ export function KeyValueEditor({
   onChange: (pairs: KeyValuePair[]) => void
 }) {
   const { t } = useTranslation()
-  const [revealed, setRevealed] = useState(false)
   const headingId = useId()
-  const toggleLabel = revealed ? t('settings.mcp.kv.hideValues') : t('settings.mcp.kv.showValues')
 
   const update = (id: string, patch: Partial<Omit<KeyValuePair, 'id'>>) =>
     onChange(pairs.map((pair) => (pair.id === id ? { ...pair, ...patch } : pair)))
@@ -51,20 +48,6 @@ export function KeyValueEditor({
             </p>
           )}
         </div>
-        {pairs.length > 0 && (
-          <TooltipTrigger>
-            <Button
-              data-slot="mcp-kv-reveal"
-              size="sm"
-              variant="ghost"
-              icon={revealed ? <EyeOff /> : <Eye />}
-              aria-label={toggleLabel}
-              aria-pressed={revealed}
-              onPress={() => setRevealed((value) => !value)}
-            />
-            <Tooltip placement="top">{toggleLabel}</Tooltip>
-          </TooltipTrigger>
-        )}
       </div>
       <SettingsCard>
         {pairs.map((pair, index) => (
@@ -73,28 +56,27 @@ export function KeyValueEditor({
             data-slot="mcp-kv-row"
             className="flex w-full items-center gap-2 border-b border-separator-border py-2 pr-2.5"
           >
-            <Input
+            <TextField
               data-slot="mcp-kv-key"
               aria-label={t('settings.mcp.kv.keyLabel', { index: index + 1 })}
               autoComplete="off"
-              spellCheck={false}
+              spellCheck="false"
               value={pair.key}
               placeholder={keyPlaceholder}
-              onChange={(event) => update(pair.id, { key: event.target.value })}
-              fieldClassName="min-w-0 flex-[2]"
-              className="font-mono"
+              onChange={(event) => update(pair.id, { key: event })}
+              className="min-w-0 flex-[2]"
             />
-            <Input
+            {/* Each value reveals on its own (the library's PasswordField); a
+                header toggle showing every secret at once is gone. */}
+            <PasswordField
               data-slot="mcp-kv-value"
               aria-label={t('settings.mcp.kv.valueLabel', { index: index + 1 })}
-              type={revealed ? 'text' : 'password'}
-              autoComplete="off"
-              spellCheck={false}
+              // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+              autoComplete="current-password"
               value={pair.value}
               placeholder={t('settings.mcp.kv.valuePlaceholder')}
-              onChange={(event) => update(pair.id, { value: event.target.value })}
-              fieldClassName="min-w-0 flex-[3]"
-              className="font-mono"
+              onChange={(value) => update(pair.id, { value })}
+              className="min-w-0 flex-[3]"
             />
             <TooltipTrigger>
               <Button

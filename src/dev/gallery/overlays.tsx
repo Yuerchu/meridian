@@ -8,7 +8,6 @@ import {
   DropdownItem,
   DropdownPopover,
   DropdownTrigger,
-  Input,
   Kbd,
   Notification,
   NotificationViewport,
@@ -276,12 +275,7 @@ function HotkeyProbe() {
         <Button variant="secondary" onPress={() => setPaletteOpen(true)}>
           打开面板
         </Button>
-        <Input
-          type="text"
-          aria-label="焦点测试用输入框"
-          placeholder="在这里打字，再按 mod+k / mod+shift+k"
-          className="min-w-64 flex-1"
-        />
+        <TextField aria-label="焦点测试用输入框" placeholder="在这里打字，再按 mod+k / mod+shift+k" />
       </div>
       <p data-slot="hotkey-probe-expectation" className="text-caption-1-regular text-text-secondary">
         预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，

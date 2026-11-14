@@ -70,6 +70,28 @@ describe('Button is a React Aria pressable', () => {
     expect(onOpenChange).toHaveBeenCalledWith(false)
   })
 
+  it('keeps structured dialog descriptions out of paragraph elements', () => {
+    render(
+      <Dialog
+        isOpen
+        heading="Retry command"
+        description={
+          <dl>
+            <dt>Directory</dt>
+            <dd>workspace</dd>
+          </dl>
+        }
+      >
+        <Button slot="close">Cancel</Button>
+      </Dialog>,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Retry command' })
+    const description = document.getElementById(dialog.getAttribute('aria-describedby')!)!
+    expect(description.tagName).toBe('DIV')
+    expect(description.querySelector('dl')).not.toBeNull()
+    expect(description.closest('p')).toBeNull()
+  })
+
   it('closes a Sheet from its CloseTrigger', async () => {
     const onOpenChange = vi.fn()
     render(

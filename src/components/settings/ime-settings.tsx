@@ -1,7 +1,9 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { CellSwitch, Checkbox, CheckboxGroup, ItemCard, ItemCardGroup, Separator, Spinner } from '@/components/base'
+import { Checkbox, CheckboxGroup, ItemCard, ItemCardGroup, Spinner } from '@/components/base'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -479,18 +481,16 @@ export function ImeSettings() {
           </p>
 
           <div data-slot="ime-enable" className="space-y-1.5">
-            <CellSwitch
+            <Switch
+              variant="card"
               aria-label={t('settings.ime.enableForUser')}
               aria-describedby="ime-enable-hint"
               isSelected={status?.enabled_for_user ?? false}
               isDisabled={!registered || busy !== null}
               onChange={(selected) => run('profile', () => api.setImeProfileEnabled({ enabled: selected }))}
             >
-              <CellSwitch.Trigger className="pointer-coarse:h-11">
-                <CellSwitch.Label>{t('settings.ime.enableForUser')}</CellSwitch.Label>
-                <CellSwitch.Control />
-              </CellSwitch.Trigger>
-            </CellSwitch>
+              {t('settings.ime.enableForUser')}
+            </Switch>
             <p id="ime-enable-hint" data-slot="ime-enable-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.ime.enableForUserHint')}
             </p>
@@ -543,17 +543,15 @@ export function ImeSettings() {
       </p>
 
       <div data-slot="ime-learning" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.ime.learning')}
           aria-describedby="ime-learning-hint"
           isSelected={config.learning}
           onChange={(selected) => setConfig({ ...config, learning: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.ime.learning')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.ime.learning')}
+        </Switch>
         <p id="ime-learning-hint" data-slot="ime-learning-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.ime.learningHint')}
         </p>
@@ -562,17 +560,15 @@ export function ImeSettings() {
       <ImeLearningSection />
 
       <div data-slot="ime-prediction" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.ime.prediction')}
           aria-describedby="ime-prediction-hint"
           isSelected={config.prediction}
           onChange={(selected) => setConfig({ ...config, prediction: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.ime.prediction')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.ime.prediction')}
+        </Switch>
         <p
           id="ime-prediction-hint"
           data-slot="ime-prediction-hint"
@@ -602,16 +598,14 @@ export function ImeSettings() {
         description={t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}
       />
 
-      <CellSwitch
+      <Switch
+        variant="card"
         aria-label={t('settings.ime.debugLog')}
         isSelected={config.debug_log}
         onChange={(selected) => setConfig({ ...config, debug_log: selected })}
       >
-        <CellSwitch.Trigger className="pointer-coarse:h-11">
-          <CellSwitch.Label>{t('settings.ime.debugLog')}</CellSwitch.Label>
-          <CellSwitch.Control />
-        </CellSwitch.Trigger>
-      </CellSwitch>
+        {t('settings.ime.debugLog')}
+      </Switch>
 
       {error && (
         <p data-slot="ime-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
@@ -765,15 +759,11 @@ export function ImeSettings() {
                     <DictionaryStateLine state={dict.state} />
                   </ItemCard.Content>
                   <ItemCard.Action className="flex items-center gap-2">
-                    <CellSwitch
+                    <Switch
                       aria-label={t('settings.ime.dictionaryEnabled', { name: dict.name })}
                       isSelected={dict.enabled}
                       onChange={(selected) => handleToggleDictionary(dict.file, selected)}
-                    >
-                      <CellSwitch.Trigger>
-                        <CellSwitch.Control />
-                      </CellSwitch.Trigger>
-                    </CellSwitch>
+                    ></Switch>
                     <TooltipTrigger>
                       <Button
                         icon={<Bin />}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Disclosure, Input, Switch, ToggleButton } from '@/components/base'
+import { Disclosure, ToggleButton } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft } from '@/lib/number-draft'
@@ -1055,12 +1056,12 @@ function ModelConfigEditor({
         </SettingsRow>
         <SettingsRow label={t('settings.model.profileName')} stacked>
           {({ labelId }) => (
-            <Input
+            <TextField
               aria-labelledby={labelId}
               name={`modelProfileName-${modelId}`}
               value={profileName}
               onChange={(event) => {
-                setProfileName(event.target.value)
+                setProfileName(event)
                 setDirty(true)
               }}
             />

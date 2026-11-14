@@ -156,6 +156,12 @@
   .ui-button__label {
     display: flex;
     min-width: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 没有左侧图标时等待：加载图标盖在文字上，文字淡出但保留宽度和可读名称 */
+  .ui-button__label[data-faded] {
+    opacity: 0;
   }
 
   /* 宽度弹的过程中：文字按完整宽度排，不被压缩出省略号（否则变宽时先显示"保存…"）。

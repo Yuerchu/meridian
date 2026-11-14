@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { Switch } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SettingsNavRow, SettingsPane, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
