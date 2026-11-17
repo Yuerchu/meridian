@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Segment, Skeleton } from '@/components/base'
+import { Segment } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { CopyButton } from '@/components/ui/copy-button'
 import { errorMessage } from '@/lib/error-message'
 import { renderMermaid, type MermaidImage } from '@/lib/mermaid'
@@ -86,7 +87,7 @@ export function MermaidFence({ code, icon }: { code: string; icon: string | unde
         </div>
       ) : (
         <div data-slot="mermaid-drawing" role="status" aria-busy aria-label={t('chat.mermaid.drawing')} className="p-3">
-          <Skeleton className="h-32 w-full rounded-lg" />
+          <Skeleton shape="rect" width="100%" height="8rem" />
         </div>
       )}
     </div>

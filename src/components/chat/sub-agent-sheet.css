@@ -1,0 +1,13 @@
+@layer components {
+  .m-sub-agent-sheet__loading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-6);
+  }
+
+  .m-sub-agent-sheet__outgoing-placeholder {
+    align-self: end;
+    width: 75%;
+  }
+}

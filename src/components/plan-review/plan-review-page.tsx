@@ -1,8 +1,10 @@
+import './plan-review-page.css'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
-import { Chip, Dropdown, DropdownItem, DropdownPopover, Skeleton } from '@/components/base'
+import { Chip, Dropdown, DropdownItem, DropdownPopover } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { TextArea as AriaTextArea } from 'react-aria-components'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -95,44 +97,34 @@ function PlanReviewSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="flex h-full min-h-0 flex-col bg-background-full"
+      className="m-plan-review-page__skeleton"
     >
-      <div
-        data-slot="plan-review-skeleton-header"
-        className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border-button-default px-3 @sm:px-5"
-      >
-        <div data-slot="plan-review-skeleton-heading" className="flex-1 space-y-1.5">
-          <Skeleton className="h-4 w-28 rounded-md" />
-          <Skeleton className="h-3 w-56 rounded-md" />
+      <div data-slot="plan-review-skeleton-header" className="m-plan-review-page__skeleton-header">
+        <div data-slot="plan-review-skeleton-heading" className="m-plan-review-page__skeleton-heading">
+          <Skeleton width="7rem" />
+          <Skeleton width="14rem" />
         </div>
-        <Skeleton className="h-8 w-24 rounded-lg" />
-        <Skeleton className="size-8 rounded-lg" />
+        <Skeleton shape="rect" width="6rem" height="2rem" />
+        <Skeleton shape="rect" width="2rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-views"
-        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2 @sm:px-5"
-      >
-        <Skeleton className="h-8 w-60 rounded-lg" />
+      <div data-slot="plan-review-skeleton-views" className="m-plan-review-page__skeleton-views">
+        <Skeleton shape="rect" width="15rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-document"
-        className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8"
-      >
-        <Skeleton className="h-6 w-2/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-11/12 rounded-md" />
-        <Skeleton className="h-3.5 w-4/5 rounded-md" />
-        <Skeleton className="mt-6 h-5 w-1/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-10/12 rounded-md" />
+      <div data-slot="plan-review-skeleton-document" className="m-plan-review-page__skeleton-document">
+        <Skeleton width="66.67%" />
+        <Skeleton width="100%" />
+        <Skeleton width="91.67%" />
+        <Skeleton width="80%" />
+        <div className="m-plan-review-page__section-placeholder">
+          <Skeleton width="33.33%" />
+        </div>
+        <Skeleton width="100%" />
+        <Skeleton width="83.33%" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-decision"
-        className="flex shrink-0 items-center justify-end gap-2 border-t border-border-button-default px-3 py-3 @sm:px-5"
-      >
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
+      <div data-slot="plan-review-skeleton-decision" className="m-plan-review-page__skeleton-decision">
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
       </div>
     </div>
   )

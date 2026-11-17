@@ -5,7 +5,8 @@ import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/chec
 import { useState } from 'react'
 import { Search } from '@keyline-icons/react/two-tone'
 
-import { InputGroup, Segment } from '@/components/base'
+import { InputGroup } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
@@ -116,11 +117,17 @@ function Pickers() {
     <Stage>
       <Row label="Segment">
         {(['sm', 'md'] as const).map((size) => (
-          <Segment key={size} aria-label="范围" size={size} selectedKey={range} onSelectionChange={setRange}>
-            <Segment.Item id="day">日</Segment.Item>
-            <Segment.Item id="week">周</Segment.Item>
-            <Segment.Item id="month">月</Segment.Item>
-          </Segment>
+          <SegmentedControl
+            key={size}
+            aria-label="范围"
+            size={size}
+            selectedKey={range}
+            onSelectionChange={(key) => setRange(String(key))}
+          >
+            <Segment id="day">日</Segment>
+            <Segment id="week">周</Segment>
+            <Segment id="month">月</Segment>
+          </SegmentedControl>
         ))}
       </Row>
       <Slider label="温度" value={step} onChange={setStep} minValue={0} maxValue={100} showValue="thumb" />

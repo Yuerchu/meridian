@@ -2,7 +2,8 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Chip, Skeleton } from '@/components/base'
+import { Chip } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
@@ -66,6 +67,7 @@ const ROW_DESCRIPTION = 'w-full whitespace-normal'
  * whole string on `title` for anyone who needs to read it.
  */
 function InfoRow({ label, value, action }: { label: string; value?: string; action?: React.ReactNode }) {
+  const { t } = useTranslation()
   return (
     <ItemCard>
       <ItemCard.Content className="flex-none">
@@ -74,7 +76,9 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
       <ItemCard.Action className="min-w-0 shrink">
         <div data-slot="info-row-value" className="flex min-w-0 items-center gap-1">
           {value === undefined ? (
-            <Skeleton className="h-4 w-28 rounded-md" />
+            <span role="status" aria-busy="true" aria-label={`${label}: ${t('common.loadingLabel')}`}>
+              <Skeleton width="7rem" />
+            </span>
           ) : (
             <Hint className="text-text-secondary min-w-0 truncate text-caption-1-regular select-text" label={value}>
               {value}

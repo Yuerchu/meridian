@@ -1,6 +1,8 @@
+import './sticker-grid.css'
 import { useCallback, useEffect, useRef, useState, type Key, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ListBox, Skeleton } from '@/components/base'
+import { ListBox } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { useStickerUrl } from '@/lib/sticker-urls'
 import { useStickerPlayback } from './sticker-playback'
 import { StickerPlaybackProvider, StickerThumb } from './sticker-thumb'
@@ -202,13 +204,9 @@ export function StickerGrid({
                 className={STICKER_COLUMNS}
               >
                 {Array.from({ length: 8 }, (_, i) => (
-                  <Skeleton
-                    key={i}
-                    role="none"
-                    aria-busy={undefined}
-                    aria-hidden
-                    className="aspect-square rounded-xl"
-                  />
+                  <div key={i} className="m-sticker-grid__placeholder">
+                    <Skeleton shape="rect" width="100%" height="100%" />
+                  </div>
                 ))}
               </div>
             ) : (

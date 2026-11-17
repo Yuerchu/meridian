@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
@@ -218,7 +218,7 @@ export function GeneralSettings() {
           className="space-y-3"
         >
           {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="h-9 w-full max-w-xs" />
+            <Skeleton key={i} shape="rect" width="min(100%, 20rem)" height="2.25rem" />
           ))}
         </div>
       )}

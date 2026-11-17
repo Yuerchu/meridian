@@ -1,0 +1,6 @@
+@layer components {
+  .m-media-result__placeholder {
+    position: absolute;
+    inset: 0;
+  }
+}

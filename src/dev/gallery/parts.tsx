@@ -11,8 +11,13 @@ import {
   TreeView,
   TreeViewItem,
 } from '@/components/base'
+import { Segment as LegacySegment } from '@/components/base/segment'
+import {
+  SegmentedControl as LegacySegmentedControl,
+  SegmentedControlItem as LegacySegmentedControlItem,
+} from '@/components/base/segmented-control/segmented-control'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { NotificationBell } from '@/components/application/app-shell/notification-bell'
 import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
@@ -143,10 +148,22 @@ export function NavigationParts() {
   return (
     <>
       <Section title="SegmentedControl">
-        <SegmentedControl aria-label="传输" defaultSelectedKeys={['stdio']}>
-          <SegmentedControlItem id="stdio">stdio</SegmentedControlItem>
-          <SegmentedControlItem id="streamablehttp">HTTP</SegmentedControlItem>
+        <SegmentedControl aria-label="传输" defaultSelectedKey="stdio">
+          <Segment id="stdio">stdio</Segment>
+          <Segment id="streamablehttp">HTTP</Segment>
         </SegmentedControl>
+      </Section>
+      <Section title="Legacy Segment / 尚未迁移的调用方">
+        <LegacySegment aria-label="旧版智能体类型" defaultSelectedKeys={['native']}>
+          <LegacySegment.Item id="native">原生</LegacySegment.Item>
+          <LegacySegment.Item id="claude_code">Claude Code</LegacySegment.Item>
+        </LegacySegment>
+      </Section>
+      <Section title="Legacy SegmentedControl / 尚未迁移的调用方">
+        <LegacySegmentedControl aria-label="旧版传输" defaultSelectedKeys={['stdio']}>
+          <LegacySegmentedControlItem id="stdio">stdio</LegacySegmentedControlItem>
+          <LegacySegmentedControlItem id="streamablehttp">HTTP</LegacySegmentedControlItem>
+        </LegacySegmentedControl>
       </Section>
       <Section title="FloatingToc / 对话小地图">
         <div className="relative flex h-40 max-w-md items-center justify-end rounded-2xl bg-background-secondary-default pe-2">

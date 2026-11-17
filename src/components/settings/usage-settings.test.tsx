@@ -73,6 +73,28 @@ beforeEach(async () => {
   await i18n.changeLanguage('en')
 })
 
+it('names filters and associates the selected breakdown tab with its panel', async () => {
+  serve({ total: [bucket()], conversation: [bucket()] })
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+  const range = screen.getByRole('radio', { name: 'Last 30 days' })
+  expect(range).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getAllByRole('radiogroup')).toHaveLength(2)
+  for (const group of screen.getAllByRole('radiogroup')) expect(group).toHaveAccessibleName()
+  await user.click(range)
+  expect(range).toHaveAttribute('aria-checked', 'true')
+  const tab = await screen.findByRole('tab', { name: i18n.t('settings.usage.by.conversation') })
+  expect(tab).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tab.id)
+  const source = screen.getByRole('tab', { name: i18n.t('settings.usage.by.source') })
+  await user.click(source)
+  expect(source).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', source.id)
+  await waitFor(() =>
+    expect(mockApi.usageReport).toHaveBeenCalledWith(expect.objectContaining({ dimension: 'source' })),
+  )
+})
+
 it('shows a recoverable error when the initial report fails', async () => {
   mockApi.usageReport.mockRejectedValue(new Error('offline'))
   const user = userEvent.setup()

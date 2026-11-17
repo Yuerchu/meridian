@@ -182,6 +182,17 @@ describe('SettingsSelect', () => {
 // pages used to pick from three (lg, 3xl, 4xl), so moving between sections
 // moved the column under the reader.
 describe('the settings width', () => {
+  it('names the loading region once and hides its placeholder shapes', () => {
+    const { container } = render(<SettingsSkeleton rows={3} />)
+    const status = screen.getByRole('status')
+    expect(status).toHaveAccessibleName()
+    expect(status).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    const shapes = container.querySelectorAll('.ui-skeleton')
+    expect(shapes).toHaveLength(5)
+    for (const shape of shapes) expect(shape).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('is the registry settings-modal content pane, 532px', () => {
     const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
     expect(css).toMatch(/--content-settings:\s*33\.25rem;/)
@@ -198,8 +209,14 @@ describe('the settings width', () => {
     for (const slot of ['settings-pane', 'settings-skeleton', 'settings-page']) {
       const el = container.querySelector(`[data-slot="${slot}"]`)
       expect(el, slot).not.toBeNull()
-      expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
-      expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+      if (slot === 'settings-skeleton') {
+        expect(el).toHaveClass('m-settings-skeleton')
+        const css = readFileSync(resolve(__dirname, 'primitives.css'), 'utf8')
+        expect(css).toMatch(/max-width:\s*var\(--content-settings\)/)
+      } else {
+        expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
+        expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+      }
     }
   })
 })
