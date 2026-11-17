@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@keyline-icons/react/two-tone'
 
-import { Pagination, Sidebar, Tab, TabList, TabPanel, Tabs } from '@/components/base'
+import { Pagination, Sidebar } from '@/components/base'
+import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
 import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 import { Row, Section, Stage } from './shell'
 import { NavigationParts } from './parts'
@@ -12,23 +13,17 @@ function TabsCase() {
     <Stage>
       <Tabs defaultSelectedKey="usage">
         <TabList aria-label="设置分区">
-          <Tab id="usage" icon={Gauge} count={3}>
+          <Tab id="usage" icon={<Gauge />} count={3}>
             用量
           </Tab>
-          <Tab id="mcp" icon={Plug}>
+          <Tab id="mcp" icon={<Plug />}>
             MCP
           </Tab>
           <Tab id="general">通用</Tab>
         </TabList>
-        <TabPanel id="usage" className="text-body-2-regular text-text-secondary">
-          用量面板
-        </TabPanel>
-        <TabPanel id="mcp" className="text-body-2-regular text-text-secondary">
-          MCP 面板
-        </TabPanel>
-        <TabPanel id="general" className="text-body-2-regular text-text-secondary">
-          通用面板
-        </TabPanel>
+        <TabPanel id="usage">用量面板</TabPanel>
+        <TabPanel id="mcp">MCP 面板</TabPanel>
+        <TabPanel id="general">通用面板</TabPanel>
       </Tabs>
       {(['blue', 'gray'] as const).map((variant) => (
         <Row key={variant} label={`PillTab · ${variant}`}>

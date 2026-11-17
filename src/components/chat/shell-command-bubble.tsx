@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, Terminal } from '@keyline-icons/react/two-tone'
-import { Skeleton, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
@@ -200,13 +201,9 @@ export function ShellCommandBubble({
             </>
           )}
           {state.status === 'loading' && (
-            <Skeleton
-              data-slot="shell-command-placeholder"
-              className="h-16 rounded-xl"
-              role="status"
-              aria-busy
-              aria-label={t('chat.shell.loading')}
-            />
+            <div data-slot="shell-command-placeholder" role="status" aria-busy aria-label={t('chat.shell.loading')}>
+              <Skeleton shape="rect" height="4rem" />
+            </div>
           )}
           {state.status === 'unavailable' && (
             <p

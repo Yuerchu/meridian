@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Meter, Skeleton } from '@/components/base'
+import { Meter } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -74,12 +75,12 @@ function Skeletons() {
   return (
     <Stage>
       <div role="status" aria-busy aria-label="加载中" className="flex flex-col gap-3">
-        <Skeleton className="h-5 w-40 rounded-md" />
-        <Skeleton className="h-4 w-full rounded-md" />
-        <Skeleton className="h-4 w-3/4 rounded-md" />
+        <Skeleton width="10rem" />
+        <Skeleton />
+        <Skeleton width="75%" />
         <div className="flex gap-3">
-          <Skeleton className="size-9 rounded-full" />
-          <Skeleton className="h-9 flex-1 rounded-2lg" />
+          <Skeleton shape="circle" width="2.25rem" />
+          <Skeleton shape="rect" height="2.25rem" />
         </div>
       </div>
     </Stage>

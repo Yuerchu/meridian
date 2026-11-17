@@ -1,7 +1,8 @@
+import './emoji-renderer.css'
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
@@ -83,13 +84,15 @@ export function StickerImage({
   return (
     <div ref={box} data-slot="sticker-box" className={cx(className, 'shrink-0')} {...pointer}>
       {load.status === 'loading' ? (
-        <Skeleton
+        <div
           data-slot="sticker-placeholder"
-          className="size-full rounded-xl"
+          className="m-emoji-renderer__placeholder"
           role="status"
           aria-busy
           aria-label={t('chat.emoji.loading', { name: label })}
-        />
+        >
+          <Skeleton shape="rect" width="100%" height="100%" />
+        </div>
       ) : load.status === 'error' ? (
         <div
           data-slot="sticker-error"

@@ -1,9 +1,10 @@
+import './primitives.css'
 import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
-import { Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
@@ -575,19 +576,19 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cx('mx-auto w-full max-w-settings space-y-6', className)}
+      className={['m-settings-skeleton', className].filter(Boolean).join(' ')}
       {...props}
     >
-      <div data-slot="settings-skeleton-header" className="space-y-2">
-        <Skeleton className="h-5 w-40 rounded-md" />
-        <Skeleton className="h-3 w-64 rounded-md" />
+      <div data-slot="settings-skeleton-header" className="m-settings-skeleton__header">
+        <Skeleton width="10rem" />
+        <Skeleton width="16rem" />
       </div>
       {/* One card of rows, sized to `SettingsRow`'s 52px rather than the 44px
           the navigation row used to be, so nothing moves when the real thing
           replaces it. */}
-      <div data-slot="settings-skeleton-rows" className="space-y-1">
+      <div data-slot="settings-skeleton-rows" className="m-settings-skeleton__rows">
         {Array.from({ length: rows }, (_, i) => (
-          <Skeleton key={i} className="h-[52px] w-full rounded-2xl" />
+          <Skeleton key={i} shape="rect" width="100%" height="52px" />
         ))}
       </div>
     </div>

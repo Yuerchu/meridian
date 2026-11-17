@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { RefreshCw } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
@@ -60,7 +60,7 @@ export function CodexAccount() {
           aria-busy="true"
           aria-label={t('settings.provider.codexAccount')}
         >
-          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton shape="rect" width="100%" height="4rem" />
         </div>
       ) : (
         status && (

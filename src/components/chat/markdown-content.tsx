@@ -1,3 +1,4 @@
+import './markdown-content.css'
 import React, { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
@@ -6,7 +7,8 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { LinkButton, Skeleton } from '@/components/base'
+import { LinkButton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import type { Components } from 'react-markdown'
 
@@ -573,13 +575,9 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
         }}
       />
       {!loaded && (
-        <Skeleton
-          aria-hidden="true"
-          className="absolute inset-0"
-          render={(props) => (
-            <span data-slot="markdown-image-placeholder" {...(props as React.ComponentProps<'span'>)} />
-          )}
-        />
+        <span data-slot="markdown-image-placeholder" className="m-markdown-content__placeholder" aria-hidden="true">
+          <Skeleton shape="rect" width="100%" height="100%" />
+        </span>
       )}
     </span>
   )

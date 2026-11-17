@@ -5,7 +5,8 @@ import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/t
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { InputGroup, Skeleton } from '@/components/base'
+import { InputGroup } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { LogRow } from './log-row'
@@ -150,7 +151,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             className="space-y-3 p-3"
           >
             {Array.from({ length: 5 }, (_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} shape="rect" width="100%" height="3rem" />
             ))}
           </div>
         ) : logs.entries.length === 0 ? (
