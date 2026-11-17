@@ -97,7 +97,6 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           value={logs.level}
           options={levelOptions}
           onChange={logs.setLevel}
-          triggerClassName="w-44"
         />
 
         <InputGroup className="max-w-xs flex-1">
@@ -118,7 +117,6 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           value={logs.range}
           options={rangeOptions}
           onChange={logs.setRange}
-          triggerClassName="w-40"
         />
 
         {logs.entries.length > 0 && (

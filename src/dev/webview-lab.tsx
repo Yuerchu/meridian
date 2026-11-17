@@ -1,3 +1,5 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import './webview-lab.css'
 import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
@@ -31,8 +33,6 @@ import {
   Kbd,
   Label,
   Markdown,
-  Select,
-  SelectItem,
   Sidebar,
   TextField as BoardTextField,
 } from '@/components/base'
@@ -553,16 +553,16 @@ export default function WebViewLab() {
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
                   id（不是 key/value），非纯文本内容还要补 textValue */}
-              <Select defaultSelectedKey="opus" aria-label="模型" className="w-44">
-                <SelectItem id="opus" textValue="Opus">
+              <Select defaultSelectedKey="opus" aria-label="模型">
+                <ListBoxItem id="opus" textValue="Opus">
                   Opus
-                </SelectItem>
-                <SelectItem id="sonnet" textValue="Sonnet">
+                </ListBoxItem>
+                <ListBoxItem id="sonnet" textValue="Sonnet">
                   Sonnet
-                </SelectItem>
-                <SelectItem id="haiku" textValue="Haiku">
+                </ListBoxItem>
+                <ListBoxItem id="haiku" textValue="Haiku">
                   Haiku
-                </SelectItem>
+                </ListBoxItem>
               </Select>
             </div>
 

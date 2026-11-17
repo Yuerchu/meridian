@@ -1,9 +1,11 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useState } from 'react'
 import { Search } from '@keyline-icons/react/two-tone'
 
-import { InputGroup, Segment, Select, SelectItem } from '@/components/base'
+import { InputGroup, Segment } from '@/components/base'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
@@ -131,15 +133,15 @@ function Pickers() {
             selectedKey={model}
             onSelectionChange={(key) => setModel(String(key))}
           >
-            <SelectItem id="sonnet" textValue="claude-sonnet-5">
+            <ListBoxItem id="sonnet" textValue="claude-sonnet-5">
               claude-sonnet-5
-            </SelectItem>
-            <SelectItem id="opus" textValue="claude-opus-5">
+            </ListBoxItem>
+            <ListBoxItem id="opus" textValue="claude-opus-5">
               claude-opus-5
-            </SelectItem>
-            <SelectItem id="gpt" textValue="gpt-5.6-sol">
+            </ListBoxItem>
+            <ListBoxItem id="gpt" textValue="gpt-5.6-sol">
               gpt-5.6-sol
-            </SelectItem>
+            </ListBoxItem>
           </Select>
         ))}
       </div>

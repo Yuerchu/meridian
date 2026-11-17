@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -75,6 +75,69 @@ describe('SettingsRow', () => {
 })
 
 describe('SettingsSelect', () => {
+  it('preserves descriptions, external names and disabled settings', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <>
+        <span id="level-label">Log level</span>
+        <SettingsSelect
+          ariaLabelledBy="level-label"
+          description="Only affects displayed logs"
+          value="all"
+          options={OPTIONS}
+          onChange={onChange}
+          disabled
+        />
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: /Log level/ })
+    expect(trigger).toBeDisabled()
+    expect(trigger).toHaveAccessibleDescription('Only affects displayed logs')
+    await user.click(trigger)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('dismisses with Escape and outside press without changing the selection', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={onChange} />)
+    const trigger = screen.getByRole('button', { name: /Level/ })
+    await user.click(trigger)
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await user.click(trigger)
+    await user.click(document.body)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps the none sentinel selectable and cannot clear with Delete', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <SettingsSelect
+        ariaLabel="Provider"
+        value="provider"
+        options={[
+          { value: '_none', label: 'None' },
+          { value: 'provider', label: 'Provider A' },
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /Provider/ })
+    trigger.focus()
+    await user.keyboard('{Delete}')
+    expect(onChange).not.toHaveBeenCalled()
+    await user.click(trigger)
+    await user.click(await screen.findByRole('option', { name: 'None' }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('_none')
+  })
+
   it('hands the caller its own value type back, never a key or null', async () => {
     const user = userEvent.setup()
     // Typed as the union rather than `string`: if the component widened what it

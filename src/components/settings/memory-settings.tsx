@@ -140,7 +140,6 @@ export function MemorySettings() {
               value={browser.originFilter}
               options={originOptions}
               onChange={browser.setOriginFilter}
-              triggerClassName="w-auto"
             />
           </div>
 
@@ -179,7 +178,6 @@ export function MemorySettings() {
                     value={newType}
                     options={typeOptions}
                     onChange={setNewType}
-                    triggerClassName="w-auto"
                   />
                 )}
               </SettingsRow>

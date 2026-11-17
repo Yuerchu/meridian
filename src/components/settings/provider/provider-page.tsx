@@ -15,7 +15,6 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
 import {
   SavedHint,
-  SETTINGS_ROW_SELECT_TRIGGER,
   SettingsCard,
   SettingsRow,
   SettingsSectionLabel,
@@ -793,7 +792,6 @@ function ProviderEditor({
               options={typeOptions}
               onChange={handleProviderTypeChange}
               disabled={isRemote}
-              triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
             />
           )}
         </SettingsRow>
@@ -816,7 +814,6 @@ function ProviderEditor({
                 }))}
                 onChange={handleAuthOptionChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
           </SettingsRow>
@@ -900,7 +897,6 @@ function ProviderEditor({
                 }
                 onChange={handleApiFormatChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
           </SettingsRow>

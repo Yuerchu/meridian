@@ -1,3 +1,5 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
@@ -24,8 +26,6 @@ import {
   Notification,
   NotificationViewport,
   SearchField,
-  Select,
-  SelectItem,
   Sheet,
   Sidebar,
   Spinner,
@@ -281,9 +281,9 @@ describe('Text controls are React Aria inputs', () => {
   it('Select is named by its label slot', () => {
     render(
       <Select label="Model" selectedKey="a">
-        <SelectItem id="a" textValue="Alpha">
+        <ListBoxItem id="a" textValue="Alpha">
           Alpha
-        </SelectItem>
+        </ListBoxItem>
       </Select>,
     )
     expect(screen.getByRole('button', { name: /Model/ })).toBeInTheDocument()
