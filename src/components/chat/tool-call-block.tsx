@@ -1,3 +1,4 @@
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Fragment, useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -49,7 +50,8 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Checkbox, CheckboxGroup, Chip, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { Chip, Kbd, Spinner } from '@/components/base'
+import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
@@ -256,43 +258,6 @@ function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
   return '(no answer)'
 }
 
-/**
- * An option as BoardUI Pro's questionnaire draws one: a bordered row, filled
- * when hovered or chosen, its edge a step darker when chosen or pressed. Kept
- * a step smaller than Pro's (13px over 12px) because it sits in a bubble, not
- * on a page.
- */
-function optionRow(state: { isSelected: boolean; isHovered: boolean; isPressed: boolean; isFocusVisible: boolean }) {
-  return cx(
-    'w-full items-center gap-3 rounded-2xl border px-3 py-2 whitespace-normal transition-colors duration-150 ease',
-    // The label wrapper the base control draws around its children: the body
-    // takes the row, and a key badge sits at its end.
-    '[&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:items-center [&>span:last-child]:gap-3',
-    state.isSelected || state.isPressed ? 'border-border-button-hover' : 'border-border-button-default',
-    state.isPressed
-      ? 'bg-background-primary-active'
-      : state.isSelected || state.isHovered
-        ? 'bg-background-primary-hover'
-        : 'bg-background-primary-default',
-    state.isFocusVisible && 'ring-2 ring-border-focus-ring',
-  )
-}
-
-function OptionBody({ label, description }: { label: string; description?: string | null }) {
-  return (
-    <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-      <span data-slot="question-option-label" className="block text-body-2-medium text-text-primary">
-        {label}
-      </span>
-      {description && (
-        <span data-slot="question-option-description" className="block text-caption-1-regular text-text-secondary">
-          {description}
-        </span>
-      )}
-    </span>
-  )
-}
-
 function QuestionBlock({
   q,
   value,
@@ -377,11 +342,10 @@ function QuestionBlock({
             name={q.id}
             value={Array.isArray(value.selected) ? value.selected : []}
             onChange={(selected) => onChange(q.id, { ...value, selected })}
-            className="gap-2"
           >
             {q.options!.map((opt) => (
-              <Checkbox key={opt.label} value={opt.label} className={optionRow}>
-                <OptionBody label={opt.label} description={opt.description} />
+              <Checkbox key={opt.label} value={opt.label} variant="card" description={opt.description}>
+                {opt.label}
               </Checkbox>
             ))}
           </CheckboxGroup>
@@ -412,27 +376,11 @@ function QuestionBlock({
               name={q.id}
               value={typeof value.selected === 'string' ? value.selected : ''}
               onChange={(selected) => onChange(q.id, { ...value, selected })}
-              className="gap-2"
             >
               {q.options!.map((opt, index) => (
-                <Radio
-                  key={opt.label}
-                  value={opt.label}
-                  // The base radio's dot is its one `aria-hidden` child (the first
-                  // is React Aria's visually hidden input); the row's fill and
-                  // edge say which is chosen, as in Pro's questionnaire.
-                  className={(state) => cx(optionRow(state), '[&>span[aria-hidden=true]]:hidden')}
-                >
-                  <OptionBody label={opt.label} description={opt.description} />
-                  {index < 9 && (
-                    <Kbd
-                      aria-hidden
-                      data-slot="question-option-key"
-                      className="shrink-0 rounded-sm px-1.5 text-text-secondary"
-                    >
-                      {index + 1}
-                    </Kbd>
-                  )}
+                <Radio key={opt.label} value={opt.label} variant="card" description={opt.description}>
+                  {opt.label}
+                  {index < 9 && <span aria-hidden="true"> ({index + 1})</span>}
                 </Radio>
               ))}
             </RadioGroup>

@@ -1,0 +1,21 @@
+@layer components {
+  .m-overlays__error-trigger {
+    border-radius: var(--radius-pill);
+    padding: var(--space-1);
+    color: var(--danger-fg);
+  }
+  .m-overlays__error-trigger[data-focus-visible] {
+    outline: 2px solid var(--accent);
+  }
+  .m-overlays__error-icon {
+    width: 20px;
+    height: 20px;
+  }
+  .m-overlays__popover {
+    --ui-popover-min-width: 0px;
+  }
+  .m-overlays__popover-body {
+    max-width: 16rem;
+    font: var(--text-small);
+  }
+}

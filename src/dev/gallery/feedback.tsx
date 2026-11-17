@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Meter, Skeleton } from '@/components/base'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -49,14 +50,12 @@ function Progress() {
   const [level, setLevel] = useState(40)
   return (
     <Stage>
-      {(['accent', 'neutral', 'success', 'warning', 'danger'] as const).map((color) => (
-        <Row key={color} label={color}>
-          {(['sm', 'md', 'lg'] as const).map((size) => (
-            <ProgressCircle key={size} size={size} color={color} value={62} aria-label={`${color} ${size}`} />
-          ))}
-          <ProgressCircle color={color} isIndeterminate aria-label={`${color} 不确定`} />
-        </Row>
-      ))}
+      <Row label="ProgressCircle">
+        {(['sm', 'md', 'lg'] as const).map((size) => (
+          <ProgressCircle key={size} size={size} value={62} showValueLabel aria-label={`进度 ${size}`} />
+        ))}
+        <ProgressCircle isIndeterminate aria-label="正在处理" />
+      </Row>
       <Row label="Meter">
         <Meter aria-label="麦克风电平" value={level} className="w-64">
           <Meter.Track className="h-2 rounded-full bg-background-secondary-default">

@@ -1,9 +1,10 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Checkbox, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -214,10 +215,10 @@ export function VoiceCorpusSettings() {
 
       {can.exportToDisk && (
         <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
-          <Checkbox className="text-body-regular" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
+          <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
             {t('settings.voiceCorpus.includeUntranscribed')}
           </Checkbox>
-          <Checkbox className="text-body-regular" isSelected={includeSender} onChange={setIncludeSender}>
+          <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
           <p data-slot="voice-corpus-export-hint" className="text-caption-1-regular text-text-secondary">

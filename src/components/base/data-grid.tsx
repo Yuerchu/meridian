@@ -14,7 +14,7 @@ import {
   type SortDescriptor,
 } from 'react-aria-components'
 import { cx } from '@/utils/cx'
-import { Checkbox } from './checkbox/checkbox'
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 
 /**
  * A data table on React Aria's `Table`, described by a column list rather
@@ -217,7 +217,7 @@ export function DataGrid<T extends object>({
         <TableHeader>
           {showSelectionCheckboxes && selectable && (
             <Column id="__selection" width={40} className="w-10 border-b border-border-button-default px-3 py-2">
-              {selectionMode === 'multiple' && <Checkbox slot="selection" size="sm" />}
+              {selectionMode === 'multiple' && <Checkbox slot="selection" />}
             </Column>
           )}
           {columns.map((col) => {
@@ -282,7 +282,7 @@ export function DataGrid<T extends object>({
             >
               {showSelectionCheckboxes && selectable && (
                 <Cell className="border-b border-border-button-default px-3 py-2">
-                  <Checkbox slot="selection" size="sm" />
+                  <Checkbox slot="selection" />
                 </Cell>
               )}
               {columns.map((col) => {

@@ -105,21 +105,6 @@
         "Readable text: placeholder and the character count text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
       ]
     },
-    "checkbox": {
-      "files": ["src/components/base/checkbox/checkbox-glyph.tsx", "src/components/base/checkbox/checkbox.tsx"],
-      "upstream": {
-        "src/components/base/checkbox/checkbox-glyph.tsx": "e71bdc6f0dd28e792be233950df90f7f8ee68252a63e3f2da46d19f84bdf7584",
-        "src/components/base/checkbox/checkbox.tsx": "592651a10aaf0e186a08862391fa99fa7d45ee75e8bfd0bc134408bb1c076f5e"
-      },
-      "patches": []
-    },
-    "radio": {
-      "files": ["src/components/base/radio/radio.tsx"],
-      "upstream": {
-        "src/components/base/radio/radio.tsx": "2d0d68454e0dfb9a836fc5f76089ea602aeaf427517885ddff2b568ac2a691ec"
-      },
-      "patches": []
-    },
     "select": {
       "files": ["src/components/base/dropdown/menu-styles.ts", "src/components/base/select/select.tsx"],
       "upstream": {
@@ -142,13 +127,6 @@
         "menu-styles MENU_ITEM_INTERACTIVE: hover:/focus-visible: → data-[hovered]/data-[focus-visible].",
         "DropdownItem variant=\"danger\" (row-actions-menu destructive actions): text-text-error-primary; isDisabled rows: cursor-not-allowed text-text-disabled."
       ]
-    },
-    "slider": {
-      "files": ["src/components/base/slider/slider.tsx"],
-      "upstream": {
-        "src/components/base/slider/slider.tsx": "7f2c73bcf5adafd1e3783051f527a0e3d2878ed98594bfed42a55c17ec5c7573"
-      },
-      "patches": []
     },
     "segmented-control": {
       "files": ["src/components/base/segmented-control/segmented-control.tsx"],

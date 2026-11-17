@@ -1,3 +1,5 @@
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -21,7 +23,6 @@ import {
   Meter,
   Notification,
   NotificationViewport,
-  Popover,
   SearchField,
   Select,
   SelectItem,
@@ -327,16 +328,16 @@ describe('Menus open from their trigger', () => {
     expect(await screen.findByRole('menuitem', { name: 'Copy' })).toBeInTheDocument()
   })
 
-  it('Popover.Trigger is a button a keyboard reaches', async () => {
+  it('PopoverButton is a button a keyboard reaches', async () => {
     render(
-      <Popover>
-        <Popover.Trigger aria-label="gauge">
+      <DialogTrigger>
+        <PopoverButton aria-label="gauge">
           <span>o</span>
-        </Popover.Trigger>
-        <Popover.Content placement="top">
-          <Popover.Dialog aria-label="details">details</Popover.Dialog>
-        </Popover.Content>
-      </Popover>,
+        </PopoverButton>
+        <Popover offset={8} placement="top">
+          <PopoverDialog aria-label="details">details</PopoverDialog>
+        </Popover>
+      </DialogTrigger>,
     )
     await userEvent.tab()
     const trigger = screen.getByRole('button', { name: 'gauge' })

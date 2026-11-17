@@ -1,9 +1,10 @@
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Checkbox, CheckboxGroup, ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -666,13 +667,10 @@ export function ImeSettings() {
           <ItemCard variant="outline">
             <ItemCard.Content className="min-w-0 space-y-3">
               <CheckboxGroup
-                aria-label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
+                label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
                 value={chosen}
                 onChange={setChosen}
               >
-                <p className="text-body-2-medium text-text-primary">
-                  {t('settings.ime.chooseRoots', { count: staged.roots.length })}
-                </p>
                 {staged.roots.map((root) => (
                   <Checkbox key={root.path} value={root.path}>
                     <span className="break-all">

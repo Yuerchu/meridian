@@ -1,8 +1,9 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
-import { Checkbox, Disclosure, DisclosureGroup } from '@/components/base'
+import { Disclosure, DisclosureGroup } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft } from '@/lib/number-draft'
@@ -301,7 +302,7 @@ function AssistantEditor({
         <p data-slot="assistant-auto-compact-label" className="block text-caption-1-regular text-text-secondary">
           {t('settings.assistant.autoCompact')}
         </p>
-        <Checkbox className="text-caption-1-regular" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
+        <Checkbox isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
           {t('settings.assistant.autoCompactHint')}
         </Checkbox>
       </div>
@@ -311,7 +312,7 @@ function AssistantEditor({
           {t('settings.assistant.thinking')}
         </p>
         <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
-          <Checkbox className="text-caption-1-regular" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
+          <Checkbox isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
             {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
@@ -394,7 +395,6 @@ function AssistantEditor({
               {allTools.map((tool) => (
                 <Checkbox
                   key={tool.name}
-                  className="py-0.5 text-caption-1-regular"
                   isSelected={selectedTools.has(tool.name)}
                   onChange={(selected) => {
                     const next = new Set(selectedTools)
@@ -429,7 +429,6 @@ function AssistantEditor({
             {allPacks.map((pack) => (
               <Checkbox
                 key={pack.id}
-                className="py-0.5 text-caption-1-regular"
                 isSelected={assignedPackIds.has(pack.id)}
                 onChange={async (selected) => {
                   if (selected) {
@@ -472,7 +471,6 @@ function AssistantEditor({
               {allSkills.map((skill) => (
                 <Checkbox
                   key={skill.dir_name}
-                  className="py-0.5 text-caption-1-regular"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
                   isDisabled={!skill.is_enabled}
                   onChange={async (selected) => {

@@ -1,3 +1,9 @@
+import './webview-lab.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
+import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 // Dev-only probe of WebView2's CSS support for the boardui + React Aria base
 // layer. Reachable at #playground/webview.
 //
@@ -19,19 +25,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
 import {
-  Checkbox,
   ContextMenu,
   Disclosure,
   InputGroup,
   Kbd,
   Label,
   Markdown,
-  Popover,
-  ProgressCircle,
   Select,
   SelectItem,
   Sidebar,
-  Slider,
   TextField as BoardTextField,
 } from '@/components/base'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -332,22 +334,19 @@ function PromptInputProbe() {
             </span>
             {/* Same shape as the composer's context gauge, which went missing
                 after the move. */}
-            <Popover>
+            <DialogTrigger>
               <TooltipTrigger>
-                <Popover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
-                  <ProgressCircle
-                    aria-hidden
-                    value={40}
-                    maxValue={100}
-                    className="size-4.5 [--progress-circle-stroke:var(--color-text-secondary)]"
-                  />
-                </Popover.Trigger>
+                <PopoverButton aria-label="上下文用量" className="m-webview-lab__popover-trigger">
+                  <span aria-hidden="true">
+                    <ProgressCircle aria-label="上下文用量" value={40} maxValue={100} size="sm" />
+                  </span>
+                </PopoverButton>
                 <Tooltip>上下文用量</Tooltip>
               </TooltipTrigger>
-              <Popover.Content placement="top" className="p-3 text-caption-1-regular">
-                用量面板
-              </Popover.Content>
-            </Popover>
+              <Popover offset={8} placement="top">
+                <PopoverDialog aria-label="上下文用量">用量面板</PopoverDialog>
+              </Popover>
+            </DialogTrigger>
           </>
         }
       />
@@ -406,7 +405,7 @@ export default function WebViewLab() {
     probeEl('[data-slot="button"]', 'background-color', 'Button')
     probeEl('[data-slot="button"]', 'border-radius', 'Button')
     probeEl('.ui-switch__track', 'background-color', 'Switch 轨道')
-    probeEl('[data-slot="progress-circle"]', 'color', 'ProgressCircle')
+    probeEl('.ui-progress-circle__fill', 'stroke', 'ProgressCircle')
 
     // `:has()` is the one feature used heavily enough for selector matching cost
     // to be worth measuring rather than assumed.
@@ -535,7 +534,7 @@ export default function WebViewLab() {
               <Button icon={<Plus />} aria-label="size-8" className="size-8" />
             </div>
 
-            <Slider defaultValue={40} className="max-w-xs" aria-label="滑块" />
+            <Slider defaultValue={40} aria-label="滑块" showValue="thumb" />
 
             <div data-slot="webview-lab-overlays" className="flex flex-wrap items-center gap-3">
               <TooltipTrigger>
@@ -543,12 +542,14 @@ export default function WebViewLab() {
                 <Tooltip>浮层定位对不对</Tooltip>
               </TooltipTrigger>
 
-              <Popover>
-                <Popover.Trigger>
+              <DialogTrigger>
+                <PopoverButton>
                   <Button variant="secondary">点开 Popover</Button>
-                </Popover.Trigger>
-                <Popover.Content className="p-3 text-body-regular">这里应该有边框和阴影</Popover.Content>
-              </Popover>
+                </PopoverButton>
+                <Popover offset={8}>
+                  <PopoverDialog aria-label="弹层样式">这里应该有边框和阴影</PopoverDialog>
+                </Popover>
+              </DialogTrigger>
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
                   id（不是 key/value），非纯文本内容还要补 textValue */}
