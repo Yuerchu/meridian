@@ -56,8 +56,8 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
         value={value}
         options={options}
         onChange={onChange}
-        triggerClassName="h-7 w-32 text-caption-1-regular"
-        itemClassName="text-caption-1-regular"
+
+        size="sm"
       />
     </div>
   )
@@ -1050,7 +1050,6 @@ function ModelConfigEditor({
               value={profileId ?? NEW_PROFILE}
               options={profileOptions}
               onChange={handleProfileChange}
-              triggerClassName="w-[202px]"
             />
           )}
         </SettingsRow>

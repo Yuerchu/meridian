@@ -105,17 +105,6 @@
         "Readable text: placeholder and the character count text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
       ]
     },
-    "select": {
-      "files": ["src/components/base/dropdown/menu-styles.ts", "src/components/base/select/select.tsx"],
-      "upstream": {
-        "src/components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db",
-        "src/components/base/select/select.tsx": "c56abf0ad7b554a363a6e2b46045489b6a94c18718324cbf06e64edf0540b116"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): trigger hover:/focus-visible: → data-[hovered]/data-[focus-visible] (menu-styles MENU_ITEM_INTERACTIVE likewise).",
-        "label / description props render the registry's own input/label Label and input/hint-text HintText inside the RAC Select (named/described trigger); root gets gap-1 like TextField. Used by settings primitives and hooks settings."
-      ]
-    },
     "dropdown": {
       "files": ["src/components/base/dropdown/dropdown.tsx", "src/components/base/dropdown/menu-styles.ts"],
       "upstream": {

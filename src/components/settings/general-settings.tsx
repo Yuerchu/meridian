@@ -192,18 +192,9 @@ export function GeneralSettings() {
         value={i18n.language}
         options={LANGUAGE_OPTIONS}
         onChange={setLocale}
-
-        triggerClassName="max-w-xs"
       />
 
-      <SettingsSelect
-        label={t('settings.general.theme')}
-        value={theme}
-        options={themeOptions}
-        onChange={setTheme}
-
-        triggerClassName="max-w-xs"
-      />
+      <SettingsSelect label={t('settings.general.theme')} value={theme} options={themeOptions} onChange={setTheme} />
 
       <div data-slot="general-fonts" className="space-y-3">
         <FontPicker label={t('settings.general.fontUi')} value={sans} onChange={setSans} families={fontFamilies} />
@@ -254,8 +245,6 @@ export function GeneralSettings() {
           options={SHELLS}
           onChange={handleShellChange}
           description={t('settings.general.shellHint')}
-
-          triggerClassName="max-w-xs"
         />
       )}
 
@@ -269,8 +258,6 @@ export function GeneralSettings() {
           description={
             sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
           }
-
-          triggerClassName="max-w-xs"
         />
       )}
 
@@ -287,8 +274,6 @@ export function GeneralSettings() {
             value={searchProvider}
             options={SEARCH_PROVIDERS}
             onChange={(value) => void handleSearchProviderChange(value)}
-
-            triggerClassName="max-w-xs"
           />
           <div data-slot="general-search-key-row" className="flex items-center gap-2">
             <PasswordField

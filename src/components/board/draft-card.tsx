@@ -1,3 +1,5 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 // A card being written: which project its worktree comes from, and what it is
 // for. Appended at the end of the column, so every card already there stays
 // where it was. Enter puts it on the board, Escape in an empty box takes it
@@ -6,7 +8,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { Chip, Kanban, PromptInput, Select, SelectItem } from '@/components/base'
+import { Chip, Kanban, PromptInput } from '@/components/base'
 import { useBoardStore } from '@/stores/board-store'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { BoardStage } from '@/types'
@@ -98,9 +100,9 @@ export function DraftCard({
             }}
           >
             {projects.map((p) => (
-              <SelectItem key={p.id} id={p.id} textValue={p.name}>
+              <ListBoxItem key={p.id} id={p.id} textValue={p.name}>
                 {p.name}
-              </SelectItem>
+              </ListBoxItem>
             ))}
           </Select>
           <PromptInput

@@ -5,7 +5,7 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import type { LocalInferenceBackend, LocalModelInfoResponse } from '@/types'
-import { SETTINGS_ROW_SELECT_TRIGGER, SettingsRow, SettingsSelect } from '../primitives'
+import { SettingsRow, SettingsSelect } from '../primitives'
 
 export function LocalModelSettings({
   providerId,
@@ -76,7 +76,7 @@ export function LocalModelSettings({
               value={backend}
               options={options}
               onChange={onBackendChange}
-              triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
+
               disabled={isRemote}
             />
           )

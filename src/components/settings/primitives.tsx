@@ -1,7 +1,9 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
-import { Select, SelectItem, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/base'
 import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
@@ -135,13 +137,6 @@ export function SettingsSection({
     </div>
   )
 }
-
-/**
- * A select sitting on a `SettingsRow`'s right: the registry's settings-general
- * `SELECT_TRIGGER`, the 32px compact trigger that hugs its value, rather than
- * the full-width form trigger a stacked field uses.
- */
-export const SETTINGS_ROW_SELECT_TRIGGER = 'h-8 w-auto gap-1 rounded-lg px-2 py-1.5'
 
 export interface SettingsRowIds {
   labelId: string
@@ -611,10 +606,7 @@ type SettingsSelectBase<T extends string> = {
   description?: React.ReactNode
   placeholder?: string
   disabled?: boolean
-  className?: string
-  triggerClassName?: string
-  /** Only the one caller that shrinks its rows needs this. */
-  itemClassName?: string
+  size?: 'sm' | 'md' | 'lg'
 }
 
 /**
@@ -634,7 +626,7 @@ export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
   )
 
 /**
- * The seven-layer `Select` every panel was writing out by hand.
+ * A named, typed setting whose selection cannot be cleared.
  *
  * The lines saved are not the reason. React Aria hands `onChange` a `Key | null`,
  * and the twenty call sites had five different ways of narrowing it back —
@@ -652,14 +644,12 @@ export function SettingsSelect<T extends string>({
   description,
   placeholder,
   disabled,
-  className,
-  triggerClassName,
-  itemClassName,
+  size,
 }: SettingsSelectProps<T>) {
   return (
     <Select
       data-slot="settings-select"
-      className={className}
+      size={size}
       label={label}
       description={description}
       aria-label={ariaLabel}
@@ -670,12 +660,11 @@ export function SettingsSelect<T extends string>({
       onSelectionChange={(key) => {
         if (key != null) onChange(String(key) as T)
       }}
-      triggerClassName={triggerClassName}
     >
       {options.map((option) => (
-        <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+        <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
           {option.label}
-        </SelectItem>
+        </ListBoxItem>
       ))}
     </Select>
   )

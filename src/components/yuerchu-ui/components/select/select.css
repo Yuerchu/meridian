@@ -1,0 +1,167 @@
+@layer components {
+  .ui-select {
+    --ui-select-height: var(--control-md);
+    --ui-select-radius: var(--radius-control);
+    --ui-select-padding: var(--space-3);
+    --icon-size: var(--icon-md);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-select[data-size="sm"] {
+    --ui-select-height: var(--control-sm);
+    --ui-select-radius: calc(var(--radius-control) - 2px);
+    --ui-select-padding: var(--space-2);
+    --icon-size: var(--icon-sm);
+  }
+
+  .ui-select[data-size="lg"] {
+    --ui-select-height: var(--control-lg);
+    --ui-select-radius: calc(var(--radius-control) + 2px);
+    --ui-select-padding: var(--space-4);
+    --icon-size: var(--icon-lg);
+  }
+
+  /* ---------- 触发器：外观和输入框一致 ---------- */
+  .ui-select__control {
+    position: relative;
+    display: flex;
+    align-items: center;
+  }
+  .ui-select__trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--ui-select-height);
+    padding: 0 var(--ui-select-padding);
+    margin: 0;
+    border: 1px solid var(--border-control);
+    border-radius: var(--ui-select-radius);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+    text-align: start;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-select[data-size="sm"] .ui-select__trigger {
+    font: var(--text-small);
+  }
+
+  .ui-select__trigger[data-hovered]:not([data-disabled]) {
+    border-color: var(--border-control-hover);
+  }
+
+  /* 打开时和输入框聚焦一样：accent 边框 + 光晕 */
+  .ui-select[data-open] .ui-select__trigger {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .ui-select[data-invalid] .ui-select__trigger {
+    border-color: var(--danger);
+  }
+
+  .ui-select[data-invalid][data-open] .ui-select__trigger {
+    box-shadow: 0 0 0 3px var(--danger-bg);
+  }
+
+  .ui-select[data-disabled] .ui-select__trigger {
+    border-color: var(--border);
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  /* 触发器显示的是选中项的完整内容（图标、文字、说明、勾）；多选时还有"、""和"等分隔文字。
+     这里全部排成行内的一行，只留图标和文字 */
+  .ui-select__value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-select__value[data-placeholder] {
+    color: var(--text-secondary);
+  }
+
+  .ui-select[data-disabled] .ui-select__value[data-placeholder] {
+    color: var(--text-muted);
+  }
+
+  .ui-select__value .ui-listbox-item__text {
+    display: inline;
+  }
+
+  .ui-select__value .ui-listbox-item__icon {
+    vertical-align: middle;
+    margin-inline-end: var(--space-2);
+  }
+
+  .ui-select__value .ui-listbox-item__description,
+  .ui-select__value .ui-listbox-item__check {
+    display: none;
+  }
+
+  /* 清除按钮叠在箭头左边：触发器给它留出位置 */
+  .ui-select__trigger[data-clearable] {
+    padding-inline-end: calc(var(--ui-select-padding) + var(--icon-size) + var(--space-2) + var(--control-sm));
+  }
+
+  .ui-select__control .ui-select__clear {
+    position: absolute;
+    inset-inline-end: calc(var(--ui-select-padding) + var(--icon-size) + var(--space-1));
+  }
+
+  .ui-select__trigger[data-clearable] .ui-select__chevron {
+    position: absolute;
+    inset-inline-end: var(--ui-select-padding);
+  }
+
+  .ui-select__chevron {
+    flex: none;
+    display: inline-flex;
+    color: var(--text-secondary);
+    transition: rotate var(--dur-standard) var(--ease-standard);
+  }
+
+  .ui-select__chevron svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .ui-select[data-open] .ui-select__chevron {
+    rotate: 180deg;
+  }
+
+  /* ---------- 弹层 ---------- */
+  /* 高度上限由 React Aria 写成行内样式（按可用空间算），这里不用管 */
+  .ui-select__popover {
+    --ui-popover-padding: var(--space-1);
+  }
+
+  /* 触屏：字号不小于 16px，避免 iOS 放大页面（触发器本身不是输入框，这里是为了和 TextField 一致） */
+  @media (pointer: coarse) {
+    .ui-select__trigger,
+    .ui-select[data-size="sm"] .ui-select__trigger {
+      font: var(--text-body-lg);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-select[data-open] .ui-select__trigger {
+      outline: 2px solid Highlight;
+    }
+  }
+}

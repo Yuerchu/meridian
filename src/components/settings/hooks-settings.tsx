@@ -1,7 +1,8 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Select, SelectItem } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
@@ -124,9 +125,9 @@ function ModelPicker({
         }}
       >
         {providerOptions.map((o) => (
-          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+          <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
             {o.label}
-          </SelectItem>
+          </ListBoxItem>
         ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
@@ -140,9 +141,9 @@ function ModelPicker({
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
       ) : (
@@ -425,9 +426,9 @@ export function HooksSettings() {
           }}
         >
           {assistantOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
         <p data-slot="hooks-assistant-hint" className="text-caption-1-regular text-text-secondary">

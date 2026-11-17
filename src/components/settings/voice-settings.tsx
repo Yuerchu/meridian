@@ -274,8 +274,6 @@ export function VoiceSettings() {
         options={filterOptions}
         onChange={handleFilterChange}
         description={t('settings.voice.filterHint')}
-
-        triggerClassName="max-w-xs"
       />
       {confirmDialog}
     </SettingsPane>
