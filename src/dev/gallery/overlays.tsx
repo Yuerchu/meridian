@@ -1,3 +1,6 @@
+import './overlays.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useState } from 'react'
 import { Copy, Hammer, Pen, Scissors, TriangleAlert } from '@keyline-icons/react/two-tone'
 
@@ -11,7 +14,6 @@ import {
   Kbd,
   Notification,
   NotificationViewport,
-  Popover,
   Sheet,
 } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -109,16 +111,16 @@ function Hints() {
         </TooltipTrigger>
       </Row>
       <Row label="Popover">
-        <Popover>
-          <Popover.Trigger className="rounded-full p-1 text-status-danger" aria-label="上下文用量出错">
-            <TriangleAlert className="size-5" aria-hidden />
-          </Popover.Trigger>
-          <Popover.Content placement="top" className="max-w-72">
-            <Popover.Dialog aria-label="上下文">
-              <p className="text-body-2-regular">读取上下文用量失败：连接被拒绝。</p>
-            </Popover.Dialog>
-          </Popover.Content>
-        </Popover>
+        <DialogTrigger>
+          <PopoverButton className="m-overlays__error-trigger" aria-label="上下文用量出错">
+            <TriangleAlert className="m-overlays__error-icon" aria-hidden />
+          </PopoverButton>
+          <Popover offset={8} placement="top" className="m-overlays__popover">
+            <PopoverDialog aria-label="上下文">
+              <p className="m-overlays__popover-body">读取上下文用量失败：连接被拒绝。</p>
+            </PopoverDialog>
+          </Popover>
+        </DialogTrigger>
       </Row>
     </Stage>
   )

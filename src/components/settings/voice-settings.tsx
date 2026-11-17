@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Card, ProgressCircle, Spinner } from '@/components/base'
+import { Card, Spinner } from '@/components/base'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -199,9 +200,9 @@ export function VoiceSettings() {
             <div data-slot="voice-model-download" className="flex items-center gap-3">
               <ProgressCircle
                 aria-label={t('settings.voice.downloading')}
-                value={progress.total ? progress.downloaded : undefined}
-                maxValue={progress.total ?? undefined}
-                isIndeterminate={!progress.total}
+                {...(progress.total
+                  ? { value: progress.downloaded, maxValue: progress.total }
+                  : { isIndeterminate: true })}
                 size="sm"
               />
               <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">

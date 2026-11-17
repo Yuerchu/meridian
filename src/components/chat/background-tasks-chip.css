@@ -1,0 +1,126 @@
+@layer components {
+  .m-background-tasks-chip__panel-1 {
+    --ui-popover-min-width: 0px;
+  }
+  .m-background-tasks-chip__panel-1-body {
+    width: min(calc(24rem - 2 * var(--space-3) - 2px), calc(100vw - 2 * var(--space-4) - 2 * var(--space-3) - 2px));
+  }
+  .m-background-tasks-chip__trigger {
+    display: inline-flex;
+    align-items: center;
+    position: relative;
+    height: calc(var(--space-1) * 7);
+    min-width: 0;
+    gap: calc(var(--space-1) * 1.5);
+    border-radius: var(--radius-pill);
+    padding-inline: calc(var(--space-1) * 1.5);
+    font: var(--text-small-medium);
+    color: var(--text-secondary);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-background-tasks-chip__trigger::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+
+  .m-background-tasks-chip__trigger:is([data-hovered], [data-pressed]):not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .m-background-tasks-chip__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+  }
+
+  .m-background-tasks-chip__count {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-background-tasks-chip__details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-background-tasks-chip__heading {
+    font: var(--text-body-medium);
+    color: var(--text);
+  }
+
+  .m-background-tasks-chip__list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-background-tasks-chip__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: calc(var(--space-1) * 1.5);
+  }
+
+  .m-background-tasks-chip__description {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-background-tasks-chip__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-small);
+    color: var(--text);
+  }
+
+  .m-background-tasks-chip__command {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+  }
+
+  .m-background-tasks-chip__elapsed {
+    flex-shrink: 0;
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .m-background-tasks-chip__output {
+    position: relative;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-background-tasks-chip__output::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+
+  .m-background-tasks-chip__stop {
+    position: relative;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-background-tasks-chip__stop::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+  .m-background-tasks-chip__trigger[data-focus-visible] {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}

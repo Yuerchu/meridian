@@ -44,6 +44,8 @@ component library and are **not** licensed under the AGPL:
 
 - `styles/tokens.css` and `lib/motion-tokens.ts` are under the MIT license
   ([LICENSES/MIT.txt](LICENSES/MIT.txt)).
+- `lib/icons.tsx` contains Keyline Icons under the MIT license; its copyright
+  notice and license are preserved in `lib/icons.LICENSE`.
 - Every other file there is under the Yuerchu UI License 1.1 (Meridian
   Edition) ([LICENSES/LicenseRef-Yuerchu-UI.txt](LICENSES/LicenseRef-Yuerchu-UI.txt)):
   source-available, usable, modifiable and redistributable only as part of

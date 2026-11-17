@@ -1,8 +1,9 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, ChevronRight, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Checkbox, Disclosure } from '@/components/base'
+import { Disclosure } from '@/components/base'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -63,15 +64,8 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
       className="flex w-full flex-col border-b border-separator-border last:border-b-0"
     >
       <div data-slot="memory-row-header" className="flex items-start gap-2.5 py-2.5 pr-2.5">
-        {/* No label of its own — the row's key names it. Nudged down to sit on
-            the summary's first line rather than between the two. */}
-        <Checkbox
-          data-slot="memory-row-check"
-          aria-label={memory.key}
-          isSelected={checked}
-          onChange={onToggleCheck}
-          className="mt-0.5"
-        />
+        {/* No visible label — the row's key names the checkbox. */}
+        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck} />
         {/* The whole summary opens the row. The checkbox is a sibling, since a
             button cannot hold another control. */}
         <Disclosure.Heading className="min-w-0 flex-1">

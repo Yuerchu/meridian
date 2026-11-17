@@ -23,3 +23,10 @@ path = ["src/components/yuerchu-ui/styles/tokens.css", "src/components/yuerchu-u
 precedence = "override"
 SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
 SPDX-License-Identifier = "MIT"
+
+# The library's bundled icons retain their original third-party attribution.
+[[annotations]]
+path = ["src/components/yuerchu-ui/lib/icons.tsx", "src/components/yuerchu-ui/lib/icons.LICENSE"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 Keyline Icons"
+SPDX-License-Identifier = "MIT"

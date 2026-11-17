@@ -1,10 +1,13 @@
+import './context-gauge.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert } from '@keyline-icons/react/two-tone'
 
-import { Link, Popover, ProgressCircle } from '@/components/base'
+import { Link } from '@/components/base'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { ErrorAlert } from '@/components/ui/error-alert'
-import { cx } from '@/utils/cx'
 
 import type { AcpUsage } from '@/hooks/use-acp-config'
 import type { ContextInfo } from '@/hooks/use-context-info'
@@ -86,23 +89,21 @@ export function ContextGauge({
   if (!hosted && context?.status === 'unavailable') {
     const label = t('chat.context.unavailable')
     return (
-      <Popover>
+      <DialogTrigger>
         <TooltipTrigger>
-          <Popover.Trigger
-            aria-label={label}
-            data-slot="context-gauge-error"
-            className="touch-hitbox inline-flex items-center rounded-full text-status-danger outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-          >
-            <TriangleAlert aria-hidden className="size-4.5" />
-          </Popover.Trigger>
+          <PopoverButton aria-label={label} data-slot="context-gauge-error" className="m-context-gauge__error-trigger">
+            <TriangleAlert aria-hidden className="m-context-gauge__error-icon" />
+          </PopoverButton>
           <Tooltip>{label}</Tooltip>
         </TooltipTrigger>
-        <Popover.Content placement="top" className="max-w-72">
-          <Popover.Dialog aria-label={t('chat.context.title')}>
-            <ErrorAlert title={label} message={context.reason} onRetry={context.retry} />
-          </Popover.Dialog>
-        </Popover.Content>
-      </Popover>
+        <Popover offset={8} placement="top" className="m-context-gauge__panel-1">
+          <PopoverDialog aria-label={t('chat.context.title')}>
+            <div className="m-context-gauge__panel-1-body">
+              <ErrorAlert title={label} message={context.reason} onRetry={context.retry} />
+            </div>
+          </PopoverDialog>
+        </Popover>
+      </DialogTrigger>
     )
   }
 
@@ -111,9 +112,6 @@ export function ContextGauge({
   const { reading, used, limit } = measured
 
   const ratio = used / limit
-  // Below the warning threshold the ring is ambient, not a reading — quieter
-  // than `color="default"`, which is a foreground shade.
-  const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
   const figures = t('chat.context.tokens', {
     used: used.toLocaleString(),
     limit: limit.toLocaleString(),
@@ -139,102 +137,79 @@ export function ContextGauge({
     // tooltip is not a place a button can live: it is announced as a
     // description, it closes when the pointer leaves on the way to what it
     // contains, and nothing in it is reachable from the keyboard.
-    <Popover>
-      {/* The dial is 18px, and on a touch screen it is the only way to what the
-          turn is costing and to compacting by hand. The expanded hit area loses
-          a pixel at the bottom — the composer shell clips and the toolbar sits
-          12px off its edge, against the 13px each side needs to reach 44 — which
-          is worth saying because it is the reason this is not simply a larger
-          button: the toolbar row is 32px, and a control taller than that pushes
-          the shell open. */}
+    <DialogTrigger>
+      {/* The compact dial keeps an expanded touch target without making the toolbar taller. */}
       <TooltipTrigger>
-        <Popover.Trigger
-          aria-label={figures}
-          className={cx(
-            'touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent-500',
-            showPercent &&
-              'h-7 gap-1 ps-1.5 pe-2 transition-colors duration-150 data-[hovered]:bg-background-primary-hover',
-          )}
-        >
-          <ProgressCircle
-            aria-hidden
-            value={used}
-            maxValue={limit}
-            isIndeterminate={compacting}
-            color={color && !compacting ? color : 'neutral'}
-            className={showPercent ? 'size-4' : 'size-4.5'}
-          />
+        <PopoverButton aria-label={figures} data-percent={showPercent || null} className="m-context-gauge__trigger">
+          <span aria-hidden="true">
+            <ProgressCircle aria-label={figures} value={used} maxValue={limit} isIndeterminate={compacting} size="sm" />
+          </span>
           {showPercent && (
-            <span data-slot="context-gauge-percent" className="text-body-2-medium tabular-nums text-text-secondary">
+            <span data-slot="context-gauge-percent" className="m-context-gauge__percent">
               {Math.round(ratio * 100)}%
             </span>
           )}
-        </Popover.Trigger>
+        </PopoverButton>
         <Tooltip>{figures}</Tooltip>
       </TooltipTrigger>
-      <Popover.Content placement="top" className="max-w-64">
-        <Popover.Dialog
-          aria-label={t('chat.context.title')}
-          className="flex flex-col gap-1 text-caption-1-regular tabular-nums"
-        >
-          {compacting && !hosted ? (
-            <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
-          ) : (
-            <>
-              <span data-slot="context-gauge-model" className="text-text-secondary">
-                {whose}
-              </span>
-              {/* Only for a conversation whose rows *are* the context. A
+      <Popover offset={8} placement="top" className="m-context-gauge__panel-2">
+        <PopoverDialog aria-label={t('chat.context.title')}>
+          <div className="m-context-gauge__panel-2-body m-context-gauge__details">
+            {compacting && !hosted ? (
+              <span data-slot="context-gauge-compacting">{t('chat.compact.inProgress')}</span>
+            ) : (
+              <>
+                <span data-slot="context-gauge-model" className="m-context-gauge__model">
+                  {whose}
+                </span>
+                {/* Only for a conversation whose rows *are* the context. A
                   hosted transcript is this app's copy of what the agent said,
                   not what it is carrying. */}
-              {!hosted && (
-                <span data-slot="context-gauge-messages">
-                  {t('chat.context.messages', { count: reading?.messageCount ?? 0 })}
-                </span>
-              )}
-              <span data-slot="context-gauge-figures">{figures}</span>
-              {hosted ? (
-                // The agent compacts its own history on its own terms, and
-                // this app has no say and no visibility. Saying so beats
-                // leaving a gap where every other conversation has a
-                // countdown.
-                <span data-slot="context-gauge-hosted-compaction" className="text-text-secondary">
-                  {t('chat.context.hostedCompaction')}
-                </span>
-              ) : (
-                <>
-                  {reading?.autoCompactEnabled && reading.compactBreaker !== 'closed' ? (
-                    // Before the countdown, and instead of it: "0% until
-                    // auto-compact" next to a number that never moves reads as
-                    // a bug in the indicator rather than as compaction having
-                    // given up.
-                    <span data-slot="context-gauge-breaker" className="text-status-warning">
-                      {t('chat.compact.circuitBreakerOpen')}
-                    </span>
-                  ) : (
-                    reading?.autoCompactEnabled &&
-                    reading.autoCompactThreshold > 0 && (
-                      <span data-slot="context-gauge-countdown">
-                        {Math.max(0, Math.round((1 - reading.estimatedTokens / reading.autoCompactThreshold) * 100))}%{' '}
-                        {t('chat.compact.untilAutoCompact')}
+                {!hosted && (
+                  <span data-slot="context-gauge-messages">
+                    {t('chat.context.messages', { count: reading?.messageCount ?? 0 })}
+                  </span>
+                )}
+                <span data-slot="context-gauge-figures">{figures}</span>
+                {hosted ? (
+                  // The agent compacts its own history on its own terms, and
+                  // this app has no say and no visibility. Saying so beats
+                  // leaving a gap where every other conversation has a
+                  // countdown.
+                  <span data-slot="context-gauge-hosted-compaction" className="m-context-gauge__hosted-note">
+                    {t('chat.context.hostedCompaction')}
+                  </span>
+                ) : (
+                  <>
+                    {reading?.autoCompactEnabled && reading.compactBreaker !== 'closed' ? (
+                      // Before the countdown, and instead of it: "0% until
+                      // auto-compact" next to a number that never moves reads as
+                      // a bug in the indicator rather than as compaction having
+                      // given up.
+                      <span data-slot="context-gauge-breaker" className="m-context-gauge__warning">
+                        {t('chat.compact.circuitBreakerOpen')}
                       </span>
-                    )
-                  )}
-                  {onCompact && !streaming && (
-                    <Link
-                      data-slot="context-gauge-compact"
-                      className="mt-1 text-caption-1-regular underline underline-offset-2"
-                      onPress={onCompact}
-                    >
-                      {t('chat.compact.manual')}
-                    </Link>
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+                    ) : (
+                      reading?.autoCompactEnabled &&
+                      reading.autoCompactThreshold > 0 && (
+                        <span data-slot="context-gauge-countdown">
+                          {Math.max(0, Math.round((1 - reading.estimatedTokens / reading.autoCompactThreshold) * 100))}%{' '}
+                          {t('chat.compact.untilAutoCompact')}
+                        </span>
+                      )
+                    )}
+                    {onCompact && !streaming && (
+                      <Link data-slot="context-gauge-compact" className="m-context-gauge__compact" onPress={onCompact}>
+                        {t('chat.compact.manual')}
+                      </Link>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }

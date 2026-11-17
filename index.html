@@ -2,6 +2,10 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <!-- Component CSS can load before the entry stylesheet; establish layer precedence before either arrives. -->
+    <style>
+      @layer theme, base, components, utilities;
+    </style>
     <!-- `user-scalable=no` because this is an application, not a page: pinching
          it scales the chrome away from the edges it is anchored to, and the
          safe-area insets are computed against a viewport that is no longer the

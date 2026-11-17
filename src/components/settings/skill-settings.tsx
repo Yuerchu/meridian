@@ -1,7 +1,8 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Card, Checkbox, Chip, Disclosure, DisclosureGroup } from '@/components/base'
+import { Card, Chip, Disclosure, DisclosureGroup } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -377,7 +378,6 @@ export function SkillSettings() {
                 </Disclosure.Heading>
                 <Checkbox
                   data-slot="skill-item-enabled"
-                  className="shrink-0 text-caption-1-regular"
                   isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
@@ -385,7 +385,6 @@ export function SkillSettings() {
                 </Checkbox>
                 <Checkbox
                   data-slot="skill-item-global"
-                  className="shrink-0 text-caption-1-regular"
                   isSelected={globalBound.has(skill.dir_name)}
                   onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
                 >

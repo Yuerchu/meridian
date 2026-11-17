@@ -1,17 +1,10 @@
+import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useState } from 'react'
 import { Search } from '@keyline-icons/react/two-tone'
 
-import {
-  Checkbox,
-  CheckboxGroup,
-  InputGroup,
-  Radio,
-  RadioGroup,
-  Segment,
-  Select,
-  SelectItem,
-  Slider,
-} from '@/components/base'
+import { InputGroup, Segment, Select, SelectItem } from '@/components/base'
+import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -61,34 +54,35 @@ function Choices() {
   return (
     <Stage>
       <div className="grid gap-6 sm:grid-cols-2">
-        <CheckboxGroup value={tools} onChange={setTools} aria-label="工具">
+        <CheckboxGroup value={tools} onChange={setTools} label="工具">
           <Checkbox value="read">读取文件</Checkbox>
           <Checkbox value="write">写入文件</Checkbox>
           <Checkbox value="run" isDisabled>
             运行命令（不可用）
           </Checkbox>
-          <Checkbox isIndeterminate>部分工具</Checkbox>
         </CheckboxGroup>
-        <RadioGroup value={mode} onChange={setMode} aria-label="审批">
-          <Radio value="ask" size="md">
+        <RadioGroup value={mode} onChange={setMode} label="审批">
+          <Radio value="ask" variant="card" description="每次执行工具前询问。">
             每次询问（推荐）
           </Radio>
-          <Radio value="accept" size="md">
+          <Radio value="accept" variant="card" description="允许在工作区内编辑文件。">
             接受编辑
           </Radio>
-          <Radio value="off" size="md">
+          <Radio value="off" variant="card" isDisabled>
             关闭
           </Radio>
         </RadioGroup>
       </div>
-      <Row label="Checkbox 尺寸">
-        <Checkbox size="sm" defaultSelected>
-          sm
-        </Checkbox>
-        <Checkbox size="md" defaultSelected>
-          md
+      <Row label="Checkbox 状态">
+        <Checkbox defaultSelected>已选中</Checkbox>
+        <Checkbox isIndeterminate>部分工具</Checkbox>
+        <Checkbox isReadOnly defaultSelected>
+          只读
         </Checkbox>
       </Row>
+      <Checkbox variant="card" description="允许在工作区内写入文件。" defaultSelected>
+        写入文件
+      </Checkbox>
     </Stage>
   )
 }
@@ -127,7 +121,7 @@ function Pickers() {
           </Segment>
         ))}
       </Row>
-      <Slider label="温度" value={step} onChange={setStep} minValue={0} maxValue={100} thumbLabel="温度" />
+      <Slider label="温度" value={step} onChange={setStep} minValue={0} maxValue={100} showValue="thumb" />
       <div className="grid gap-4 sm:grid-cols-2">
         {(['md', 'sm'] as const).map((size) => (
           <Select

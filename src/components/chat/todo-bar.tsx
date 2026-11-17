@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { ProgressCircle, Segment } from '@/components/base'
+import { Segment } from '@/components/base'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { LayoutDashboard, List } from '@keyline-icons/react/two-tone'
 import { useTranslation } from 'react-i18next'
@@ -16,21 +17,15 @@ type TodoView = 'list' | 'board'
  * Hidden from the accessibility tree: whatever holds it takes its name from its
  * text, which spells the count out, so an exposed ring has it announced twice.
  * The attribute sits on a wrapper because React Aria's ProgressBar filters
- * `aria-hidden` off its own element. `--info` has no `color` variant of its
- * own; the stroke reads a custom property, so pointing that at the token is
- * the supported way in rather than restyling the circle.
+ * `aria-hidden` off its own element. Both placements use the library's small
+ * inline ring, without overriding its size or stroke.
  */
-export function TodoRing({ todos, className }: { todos: TodoArgs; className?: string }) {
+export function TodoRing({ todos }: { todos: TodoArgs }) {
   const { t } = useTranslation()
   const { done, total } = todoProgress(todos.todos)
   return (
     <span data-slot="todo-ring" aria-hidden="true" className="shrink-0">
-      <ProgressCircle
-        aria-label={t('chat.todo.progress', { done, total })}
-        value={done}
-        maxValue={total}
-        className={cx('size-3.5 [--progress-circle-stroke:var(--color-status-info)]', className)}
-      />
+      <ProgressCircle aria-label={t('chat.todo.progress', { done, total })} value={done} maxValue={total} size="sm" />
     </span>
   )
 }
