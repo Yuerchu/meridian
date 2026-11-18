@@ -1,0 +1,30 @@
+@layer components {
+  .m-chat-view__references {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .m-chat-view__reference-content {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-chat-view__reference-icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+  }
+
+  .m-chat-view__reference-title {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-chat-view__reference-title[data-missing='true'] {
+    color: var(--danger-fg);
+  }
+}

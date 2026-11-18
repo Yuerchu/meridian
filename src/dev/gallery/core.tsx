@@ -2,9 +2,10 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { useState } from 'react'
 import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
+import { Avatar, Card, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
@@ -71,6 +72,7 @@ function Toggles() {
 }
 
 function Chips() {
+  const [tags, setTags] = useState(['项目讨论', '实现方案', '测试结果'])
   return (
     <Stage>
       {(['sm', 'md'] as const).map((size) => (
@@ -87,10 +89,21 @@ function Chips() {
           运行中
         </Badge>
       </Row>
-      <Row label="Legacy Chip / 尚未迁移的调用方">
-        <Chip size="sm" variant="soft">
-          旧版标签
-        </Chip>
+      <Row label="可移除标签">
+        <TagGroup
+          aria-label="引用的会话"
+          onRemove={(keys) => setTags((current) => current.filter((tag) => !keys.has(tag)))}
+          renderEmptyState={() => '没有引用的会话'}
+        >
+          {tags.map((tag) => (
+            <Tag key={tag} id={tag}>
+              {tag}
+            </Tag>
+          ))}
+        </TagGroup>
+        <Button variant="secondary" onPress={() => setTags(['项目讨论', '实现方案', '测试结果'])}>
+          重置
+        </Button>
       </Row>
       <Row label="Kbd">
         <Kbd>Ctrl K</Kbd>

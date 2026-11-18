@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Chip } from '@/components/base'
-import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
+import './chat-view.css'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { Messages, X } from '@keyline-icons/react/two-tone'
+import { Messages } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
@@ -1033,40 +1033,31 @@ function ChatViewInner({
           rows are: they belong to the next message, not to the one being
           typed. Pressing a chip removes it. */}
         {conversationRefs.length > 0 && (
-          <div
-            data-slot="conversation-refs-pending"
-            role="group"
-            aria-label={t('chat.convRef.pending')}
-            className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border-button-default px-4 py-2"
-          >
-            {conversationRefs.map((ref) => {
-              // A restored draft can cite a conversation deleted since.
-              const name = ref.missing ? t('chat.draft.deletedConversation') : ref.title
-              return (
-                <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
-                  <Messages className="size-3.5" aria-hidden />
-                  <span
-                    data-slot="conversation-ref-title"
-                    onPointerEnter={titleIfTruncated}
-                    data-missing={ref.missing ? '' : undefined}
-                    className="max-w-48 truncate data-[missing]:text-status-danger"
-                  >
-                    {name}
-                  </span>
-                  <TooltipTrigger>
-                    <Button
-                      icon={<X />}
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('chat.convRef.remove', { name })}
-                      onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
-                      className="touch-hitbox size-5 min-w-0 rounded-full"
-                    />
-                    <Tooltip>{t('chat.convRef.remove', { name })}</Tooltip>
-                  </TooltipTrigger>
-                </Chip>
-              )
-            })}
+          <div data-slot="conversation-refs-pending" className="m-chat-view__references">
+            <TagGroup
+              aria-label={t('chat.convRef.pending')}
+              size="sm"
+              onRemove={(keys) => setConversationRefs((prev) => prev.filter((ref) => !keys.has(ref.id)))}
+            >
+              {conversationRefs.map((ref) => {
+                const name = ref.missing ? t('chat.draft.deletedConversation') : ref.title
+                return (
+                  <Tag key={ref.id} id={ref.id} textValue={name}>
+                    <span className="m-chat-view__reference-content">
+                      <Messages className="m-chat-view__reference-icon" aria-hidden />
+                      <span
+                        data-slot="conversation-ref-title"
+                        onPointerEnter={titleIfTruncated}
+                        data-missing={ref.missing ? 'true' : 'false'}
+                        className="m-chat-view__reference-title"
+                      >
+                        {name}
+                      </span>
+                    </span>
+                  </Tag>
+                )
+              })}
+            </TagGroup>
           </div>
         )}
 
