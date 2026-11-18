@@ -22,6 +22,12 @@ if git diff --cached --name-only | grep -qE '^src-tauri/crates$'; then
   fi
 fi
 
+# src/components/yuerchu-ui 是 Yuerchu UI 的原样副本：手改一个字、多一个文件、少一个依赖，
+# 下一次 sync 都会悄悄把它冲掉或者撞上。改要改在库里再 sync（pnpm ui:sync）。
+if git diff --cached --name-only | grep -qE '^src/components/yuerchu-ui/|^yuerchu-ui\.json$|^package\.json$|^scripts/yuerchu-ui\.mjs$'; then
+  node scripts/yuerchu-ui.mjs check --staged
+fi
+
 # 动了 schema 就核一遍 src/dev/schema-data.ts:那份数据一半是说明文字,只能人写;
 # 另一半是纯结构,一旦和库对不上,那张图就开始很有说服力地骗人。现行 schema 读的是
 # core 里的 schema.snapshot.sql（SeaORM 基线建出来的库导出的 DDL），不再重放迁移。

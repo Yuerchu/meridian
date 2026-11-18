@@ -11,6 +11,59 @@ paths:
 
 # UI conventions
 
+## Migration in progress: boardui → Yuerchu UI (branch `refactor/yuerchu-ui`)
+
+The UI is moving from boardui + Tailwind to Yuerchu UI, a component library of
+our own copied into `src/components/yuerchu-ui/` by `scripts/yuerchu-ui.mjs`
+(`pnpm ui:sync`, `pnpm ui:check`; ledger `yuerchu-ui.json`). The switch is
+one-shot and has no compatibility layer: boardui's theme is already deleted, so
+every boardui class or variable still in the tree resolves to nothing until its
+file is rewritten. **Everything below this section describes the boardui system
+being removed.** Where it disagrees with this section, this section wins. New
+and rewritten code follows these rules:
+
+- **The library's rules are the constitution**: `docs/design/DESIGN.md`,
+  `A11Y.md` and `AGENTS.md` ("UI 规则") in the Yuerchu UI repository. A copied
+  file is never edited (`ui:check` fails on any byte); a missing ability or a
+  bug is an issue there, and comes back with the next sync.
+- **A library component before anything hand-made.** Import from
+  `@/components/yuerchu-ui/components/<name>/<name>`. `components/base/` is the
+  boardui layer and is deleted file by file as its callers move.
+- **No Tailwind in new or rewritten code — the business layer is plain CSS.**
+  Each component that needs styles has a sibling `<name>.css`, imported by the
+  `.tsx`, written in `@layer components`. Classes are `.m-<component>` and
+  `.m-<component>__<part>`; variants and states are `data-*` attributes (React
+  Aria's own: `data-hovered`, `data-pressed`, … with hover and press excluding
+  `[data-disabled]`), never modifier classes. Tailwind is still loaded only so
+  the screens not yet converted keep their layout; it maps no token and goes
+  with the last converted file. `cx()` and `tv()` are not used in new code.
+- **Tokens only**: colour from the library's semantic tokens (`--text`,
+  `--text-secondary`, `--surface`, `--border`, `--accent`, `--success-fg`, …),
+  never a literal or a primitive (`--neutral-*`); type as `font: var(--text-*)`;
+  spacing `--space-*`; radius `--radius-control / item / panel / surface /
+  pill`; motion `--dur-*` / `--ease-*`; z-index `--z-*`. Meridian's own tokens
+  (bubbles, safe-area insets, `--content-settings`) are in
+  `src/styles/meridian.css`, defined on the library's.
+- **Changing a library component's look from outside** is done only through the
+  `--ui-<component>-*` variables it reads, never by a second class on it.
+- **Ink is the primary action and the selection; blue (accent) is emphasis**,
+  once or twice a view. Info is neutral grey. Button variants are `primary /
+  secondary / ghost / destructive`, sizes `sm / md / lg` (boardui's `xs` goes to
+  `sm`).
+- **Theme and motion** are `data-theme` and `data-motion` on `<html>`; no
+  `.dark` class, no reduced-motion branch in JS.
+- **Before replacing a base component, list what it put on the DOM by
+  itself** — `role`, `aria-*`, `data-*`, default delays, default variants —
+  and decide each against the library's default. A codemod sees only what the
+  callers wrote. boardui's `Alert` set `role="alert"` on every alert without
+  being asked; the library announces only with `shouldAnnounce`, so every alert
+  whose caller had not repeated the role went silent, and two tests out of
+  thirty-five call sites were all that noticed.
+- The CSS gate is the library's stylelint rules, once they accept a consumer's
+  prefix and token files (Yuerchu/ui#564). Until then, review against this list.
+
+# The boardui system (being removed)
+
 Moved verbatim out of `CLAUDE.md` on 2026-09-30, when it outgrew the context
 budget; Claude Code loads it when a file matching `paths` is read. "Above",
 "below" and "see X" may name a section that is now in `CLAUDE.md` or in

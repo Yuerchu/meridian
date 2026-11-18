@@ -1,3 +1,11 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import './webview-lab.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
+import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 // Dev-only probe of WebView2's CSS support for the boardui + React Aria base
 // layer. Reachable at #playground/webview.
 //
@@ -19,27 +27,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
 import {
-  Button,
-  Checkbox,
   ContextMenu,
   Disclosure,
-  Input,
   InputGroup,
   Kbd,
   Label,
   Markdown,
-  Popover,
-  ProgressCircle,
-  Select,
-  SelectItem,
   Sidebar,
-  Slider,
-  Switch,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
+  TextField as BoardTextField,
 } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { Composer } from '@/components/chat/composer'
 
@@ -268,7 +269,7 @@ function SidebarProbe() {
       </div>
       <div data-slot="sidebar-probe-actions" className="flex flex-wrap gap-2">
         <Button
-          size="small"
+          size="sm"
           variant="secondary"
           onPress={() =>
             setAttrs(
@@ -333,22 +334,19 @@ function PromptInputProbe() {
             </span>
             {/* Same shape as the composer's context gauge, which went missing
                 after the move. */}
-            <Popover>
-              <TooltipTrigger delay={0}>
-                <Popover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
-                  <ProgressCircle
-                    aria-hidden
-                    value={40}
-                    maxValue={100}
-                    className="size-4.5 [--progress-circle-stroke:var(--color-text-secondary)]"
-                  />
-                </Popover.Trigger>
+            <DialogTrigger>
+              <TooltipTrigger>
+                <PopoverButton aria-label="上下文用量" className="m-webview-lab__popover-trigger">
+                  <span aria-hidden="true">
+                    <ProgressCircle aria-label="上下文用量" value={40} maxValue={100} size="sm" />
+                  </span>
+                </PopoverButton>
                 <Tooltip>上下文用量</Tooltip>
               </TooltipTrigger>
-              <Popover.Content placement="top" className="p-3 text-caption-1-regular">
-                用量面板
-              </Popover.Content>
-            </Popover>
+              <Popover offset={8} placement="top">
+                <PopoverDialog aria-label="上下文用量">用量面板</PopoverDialog>
+              </Popover>
+            </DialogTrigger>
           </>
         }
       />
@@ -362,11 +360,11 @@ function PromptInputProbe() {
           {stops}
         </span>
         {' · '}
-        <Button size="small" variant="ghost" onPress={() => setStreaming((s) => !s)}>
+        <Button size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </Button>
         {' · '}
-        <Button size="small" variant="ghost" onPress={() => setSteerable((s) => !s)}>
+        <Button size="sm" variant="ghost" onPress={() => setSteerable((s) => !s)}>
           {steerable ? '关掉可插话' : '开可插话'}
         </Button>
       </p>
@@ -406,8 +404,8 @@ export default function WebViewLab() {
     }
     probeEl('[data-slot="button"]', 'background-color', 'Button')
     probeEl('[data-slot="button"]', 'border-radius', 'Button')
-    probeEl('[data-slot="switch-control"]', 'background-color', 'Switch 轨道')
-    probeEl('[data-slot="progress-circle"]', 'color', 'ProgressCircle')
+    probeEl('.ui-switch__track', 'background-color', 'Switch 轨道')
+    probeEl('.ui-progress-circle__fill', 'stroke', 'ProgressCircle')
 
     // `:has()` is the one feature used heavily enough for selector matching cost
     // to be worth measuring rather than assumed.
@@ -471,7 +469,7 @@ export default function WebViewLab() {
         <Section title="探测结果" hint="复制这段发回给我">
           <div data-slot="webview-lab-report-actions" className="flex gap-2">
             <Button
-              size="small"
+              size="sm"
               onPress={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
@@ -514,8 +512,8 @@ export default function WebViewLab() {
             </div>
 
             <div data-slot="webview-lab-inputs" className="max-w-sm space-y-2">
-              <Input placeholder="Input：单行输入" />
-              <TextArea placeholder="TextArea：多行输入" rows={2} />
+              <TextField aria-label="单行输入" placeholder="Input：单行输入" />
+              <TextArea aria-label="多行输入" placeholder="TextArea：多行输入" rows={2} />
             </div>
 
             {/* Button's sizes are Tailwind utility classes merged through
@@ -533,36 +531,38 @@ export default function WebViewLab() {
               {/* eslint-disable-next-line no-restricted-syntax -- probe: measures whether utilities beat .button */}
               <Button className="h-auto p-1">h-auto p-1</Button>
               {}
-              <Button iconOnly leadingIcon={Plus} aria-label="size-8" className="size-8" />
+              <Button icon={<Plus />} aria-label="size-8" className="size-8" />
             </div>
 
-            <Slider defaultValue={40} className="max-w-xs" aria-label="滑块" />
+            <Slider defaultValue={40} aria-label="滑块" showValue="thumb" />
 
             <div data-slot="webview-lab-overlays" className="flex flex-wrap items-center gap-3">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button variant="secondary">悬停看 Tooltip</Button>
                 <Tooltip>浮层定位对不对</Tooltip>
               </TooltipTrigger>
 
-              <Popover>
-                <Popover.Trigger>
+              <DialogTrigger>
+                <PopoverButton>
                   <Button variant="secondary">点开 Popover</Button>
-                </Popover.Trigger>
-                <Popover.Content className="p-3 text-body-regular">这里应该有边框和阴影</Popover.Content>
-              </Popover>
+                </PopoverButton>
+                <Popover offset={8}>
+                  <PopoverDialog aria-label="弹层样式">这里应该有边框和阴影</PopoverDialog>
+                </Popover>
+              </DialogTrigger>
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
                   id（不是 key/value），非纯文本内容还要补 textValue */}
-              <Select defaultSelectedKey="opus" aria-label="模型" className="w-44">
-                <SelectItem id="opus" textValue="Opus">
+              <Select defaultSelectedKey="opus" aria-label="模型">
+                <ListBoxItem id="opus" textValue="Opus">
                   Opus
-                </SelectItem>
-                <SelectItem id="sonnet" textValue="Sonnet">
+                </ListBoxItem>
+                <ListBoxItem id="sonnet" textValue="Sonnet">
                   Sonnet
-                </SelectItem>
-                <SelectItem id="haiku" textValue="Haiku">
+                </ListBoxItem>
+                <ListBoxItem id="haiku" textValue="Haiku">
                   Haiku
-                </SelectItem>
+                </ListBoxItem>
               </Select>
             </div>
 
@@ -714,7 +714,8 @@ export default function WebViewLab() {
                   {/* ContextMenu.Trigger 不带 render prop 时渲染成一个普通 div，
                       默认就是 block；`w-full` 是为了让它撑满输入框的宽度。 */}
                   <ContextMenu.Trigger className="block w-full">
-                    <TextField aria-label="发送消息">
+                    {/* The boardui composer probe, rewritten with the composer itself (Yuerchu/ui#547). */}
+                    <BoardTextField aria-label="发送消息">
                       <InputGroup className="flex flex-col gap-2 rounded-2xl py-2">
                         <div data-slot="webview-lab-composer-textarea" className="relative w-full">
                           <InputGroup.TextArea
@@ -724,24 +725,18 @@ export default function WebViewLab() {
                           />
                         </div>
                         <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-                          <TooltipTrigger delay={0}>
-                            <Button iconOnly leadingIcon={Plus} size="small" variant="neutral" aria-label="加号" />
+                          <TooltipTrigger>
+                            <Button icon={<Plus />} size="sm" variant="ghost" aria-label="加号" />
                             <Tooltip>加号</Tooltip>
                           </TooltipTrigger>
                           <span data-slot="webview-lab-composer-spacer" className="flex-1" />
-                          <TooltipTrigger delay={0}>
-                            <Button
-                              iconOnly
-                              leadingIcon={ArrowUp}
-                              size="small"
-                              aria-label="发送"
-                              className="rounded-full"
-                            />
+                          <TooltipTrigger>
+                            <Button icon={<ArrowUp />} size="sm" aria-label="发送" className="rounded-full" />
                             <Tooltip>发送</Tooltip>
                           </TooltipTrigger>
                         </InputGroup.Suffix>
                       </InputGroup>
-                    </TextField>
+                    </BoardTextField>
                   </ContextMenu.Trigger>
                   <ContextMenu.Popover>
                     <ContextMenu.Menu aria-label="发送消息">

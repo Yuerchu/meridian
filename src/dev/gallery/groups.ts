@@ -4,7 +4,6 @@
  * compositions. Each is a page of its own at `#playground/<id>`.
  */
 export const GROUPS = [
-  { id: 'foundations', title: '基础层', description: '颜色、字号、圆角、阴影、渐变、动效，从样式表读出' },
   { id: 'core', title: '基础组件', description: '按钮、标签、头像、卡片、加载' },
   { id: 'forms', title: '表单', description: '输入框、选择、开关、滑块' },
   { id: 'overlays', title: '浮层', description: '菜单、提示、弹出层、对话框、抽屉、通知、命令面板' },

@@ -2,7 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -71,16 +72,15 @@ function EmojiEmbedderRow() {
               >
                 {ready ? (path ?? t('settings.emoji.embedderNone')) : '\u00a0'}
               </p>
-              <Button size="small" variant="secondary" leadingIcon={FolderOpen} onPress={() => void handleBrowse()}>
+              <Button size="sm" variant="secondary" icon={<FolderOpen />} onPress={() => void handleBrowse()}>
                 {t('settings.emoji.embedderBrowse')}
               </Button>
               {path !== null && (
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
+                    icon={<X />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('settings.emoji.embedderClear')}
                     onPress={() => persist(null)}
                   />

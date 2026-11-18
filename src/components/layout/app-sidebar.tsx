@@ -28,19 +28,11 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Input,
-  Kbd,
-  Label,
-  ToggleButton,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, Kbd, Label, ToggleButton } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
 import { Sidebar, useSidebar } from '@/components/base'
 import {
@@ -234,13 +226,11 @@ function NewProjectForm({
 
   return (
     <div data-slot="project-form" className="px-2 py-1.5 space-y-1.5">
-      <Input
-        type="text"
+      <TextField
         aria-label={t('sidebar.projectName')}
         value={name}
-        onChange={(e) => setName(e.target.value)}
+        onChange={(e) => setName(e)}
         placeholder={t('sidebar.projectName')}
-        className="text-caption-1-regular"
         autoFocus
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
@@ -255,7 +245,7 @@ function NewProjectForm({
           picker at all. */}
       {can.browseForDirectory ? (
         <Button
-          leadingIcon={FolderOpen}
+          icon={<FolderOpen />}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
@@ -271,13 +261,11 @@ function NewProjectForm({
           </span>
         </Button>
       ) : (
-        <Input
-          type="text"
+        <TextField
           aria-label={t('sidebar.hostPath')}
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => setPath(e)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-caption-1-regular"
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
             if (e.key === 'Enter') void submit()
@@ -303,12 +291,11 @@ function NewProjectForm({
         </Button>
         {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
             as "multiplication x". */}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button
-            iconOnly
-            leadingIcon={X}
-            size="small"
-            variant="neutral"
+            icon={<X />}
+            size="sm"
+            variant="ghost"
             aria-label={t('common.cancel')}
             onPress={onCancel}
             isDisabled={saving}
@@ -372,7 +359,7 @@ function NewHostedSessionForm({
           folders would be pointing at the wrong filesystem. */}
       {can.browseForDirectory ? (
         <Button
-          leadingIcon={FolderOpen}
+          icon={<FolderOpen />}
           type="button"
           variant="secondary"
           onPress={() => void handleBrowse()}
@@ -387,13 +374,11 @@ function NewHostedSessionForm({
           </span>
         </Button>
       ) : (
-        <Input
-          type="text"
+        <TextField
           aria-label={t('sidebar.hostPath')}
           value={path}
-          onChange={(e) => setPath(e.target.value)}
+          onChange={(e) => setPath(e)}
           placeholder={t('sidebar.hostPathPlaceholder')}
-          className="text-caption-1-regular"
           autoFocus
           onKeyDown={(e) => {
             if (e.nativeEvent.isComposing) return
@@ -418,12 +403,11 @@ function NewHostedSessionForm({
         >
           {t('sidebar.startHostedSession')}
         </Button>
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Button
-            iconOnly
-            leadingIcon={X}
-            size="small"
-            variant="neutral"
+            icon={<X />}
+            size="sm"
+            variant="ghost"
             aria-label={t('common.cancel')}
             onPress={onCancel}
             isDisabled={starting}
@@ -666,12 +650,11 @@ function ConversationGroup({
             data-row-id={projectId ?? undefined}
             data-row-kind={projectId ? 'project' : undefined}
           >
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
-                iconOnly
-                leadingIcon={ChevronRight}
-                size="xs"
-                variant="neutral"
+                icon={<ChevronRight />}
+                size="sm"
+                variant="ghost"
                 aria-expanded={!folded}
                 aria-label={
                   folded ? t('sidebar.unfoldGroup', { name: title }) : t('sidebar.foldGroup', { name: title })
@@ -709,12 +692,11 @@ function ConversationGroup({
               </span>
             )}
             <span data-slot="sidebar-group-actions" className="sidebar-group-actions flex shrink-0 items-center">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button
-                  iconOnly
-                  leadingIcon={Plus}
-                  size="xs"
-                  variant="neutral"
+                  icon={<Plus />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}
                   onPress={onNewConversation}
                   className="touch-hitbox"
@@ -725,7 +707,7 @@ function ConversationGroup({
                 <Dropdown>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={moreLabel}>
                       <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
@@ -1065,7 +1047,13 @@ export function AppSidebar({
       // command holds the lease a delete needs. Everything else goes at once,
       // with an undo offer (`stores/undo-store.ts`).
       if (isBusy(id)) {
-        if (await confirm({ body: t('confirm.deleteConversation'), confirmLabel: t('common.delete') }))
+        if (
+          await confirm({
+            description: t('confirm.deleteConversation'),
+            confirmLabel: t('common.delete'),
+            tone: 'danger',
+          })
+        )
           reportFailure('sidebar.deleteFailed', onDelete(id))
         return
       }
@@ -1113,7 +1101,7 @@ export function AppSidebar({
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
-      if (await confirm({ body: t('confirm.deleteProject'), confirmLabel: t('common.delete') }))
+      if (await confirm({ description: t('confirm.deleteProject'), confirmLabel: t('common.delete'), tone: 'danger' }))
         reportFailure('sidebar.deleteProjectFailed', onDeleteProject(id))
     },
   })
@@ -1289,7 +1277,7 @@ export function AppSidebar({
             pointers because DnD is disabled there and the row-actions dialog
             is the touch path; on fine pointers it appears on hover, the way a
             file tree's handle does — see `conv-grip` in `index.css`. */}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Sidebar.MenuAction
             slot="drag"
             aria-label={t('sidebar.dragConversation', { name: title })}
@@ -1333,7 +1321,7 @@ export function AppSidebar({
             {canHostSessions && (
               <Sidebar.MenuActions>
                 <Dropdown>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
                       <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
@@ -1519,23 +1507,8 @@ export function AppSidebar({
 
       <Sidebar.Footer>
         {actionError && (
-          <Alert status="danger" role="alert" data-slot="sidebar-action-error">
-            <Alert.Indicator />
-            <Alert.Content className="min-w-0">
-              <Alert.Description className="break-words">{actionError}</Alert.Description>
-            </Alert.Content>
-            <TooltipTrigger delay={0}>
-              <Button
-                iconOnly
-                leadingIcon={X}
-                size="small"
-                variant="neutral"
-                aria-label={t('common.close')}
-                onPress={() => setActionError(null)}
-                className="touch-hitbox shrink-0"
-              />
-              <Tooltip>{t('common.close')}</Tooltip>
-            </TooltipTrigger>
+          <Alert tone="danger" shouldAnnounce data-slot="sidebar-action-error" onDismiss={() => setActionError(null)}>
+            {actionError}
           </Alert>
         )}
         <Sidebar.Menu aria-label={t('sidebar.settings')}>

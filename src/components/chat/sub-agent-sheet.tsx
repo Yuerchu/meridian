@@ -1,6 +1,7 @@
+import './sub-agent-sheet.css'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { Sheet } from '@/components/base'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -123,11 +124,13 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
                   role="status"
                   aria-busy="true"
                   aria-label={t('chat.tool.panel.processLoading')}
-                  className="flex flex-col gap-3 px-6 py-6"
+                  className="m-sub-agent-sheet__loading"
                 >
-                  <Skeleton className="h-10 w-3/4 self-end rounded-2xl" />
-                  <Skeleton className="h-24 w-full rounded-2xl" />
-                  <Skeleton className="h-16 w-5/6 rounded-2xl" />
+                  <div className="m-sub-agent-sheet__outgoing-placeholder">
+                    <Skeleton shape="rect" width="100%" height="2.5rem" />
+                  </div>
+                  <Skeleton shape="rect" width="100%" height="6rem" />
+                  <Skeleton shape="rect" width="83.33%" height="4rem" />
                 </div>
               )}
             </Sheet.Body>

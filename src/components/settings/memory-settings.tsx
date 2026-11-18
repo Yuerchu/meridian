@@ -4,8 +4,13 @@ import { useTranslation } from 'react-i18next'
 import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { Alert, Button, DisclosureGroup, Input, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { DisclosureGroup } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
@@ -84,17 +89,17 @@ export function MemorySettings() {
           // trash is somewhere to look, a new memory is the thing to do.
           <>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              leadingIcon={Bin}
+              icon={<Bin />}
               onPress={() => setTrashOpen(true)}
               data-slot="memory-trash-open"
             >
               {t('settings.memory.trash.title')}
             </Button>
             <Button
-              size="small"
-              leadingIcon={Plus}
+              size="sm"
+              icon={<Plus />}
               onPress={() => setShowAdd(true)}
               isDisabled={!canAdd}
               data-slot="memory-new"
@@ -122,21 +127,19 @@ export function MemorySettings() {
 
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div data-slot="memory-toolbar" className="flex items-center gap-2">
-            <Input
-              type="text"
+            <TextField
               aria-label={t('settings.memory.search')}
               name="memorySearch"
               value={browser.search}
-              onChange={(e) => browser.setSearch(e.target.value)}
+              onChange={(e) => browser.setSearch(e)}
               placeholder={t('settings.memory.search')}
-              fieldClassName="flex-1"
+              className="flex-1"
             />
             <SettingsSelect
               ariaLabel={t('settings.memory.originFilter')}
               value={browser.originFilter}
               options={originOptions}
               onChange={browser.setOriginFilter}
-              triggerClassName="w-auto"
             />
           </div>
 
@@ -157,15 +160,13 @@ export function MemorySettings() {
             <SettingsCard data-slot="memory-add-form">
               <SettingsRow label={t('settings.memory.key')} stacked>
                 {({ labelId }) => (
-                  <Input
-                    type="text"
+                  <TextField
                     aria-labelledby={labelId}
                     name="memoryKey"
                     value={newKey}
-                    onChange={(e) => setNewKey(e.target.value)}
-                    spellCheck={false}
-                    fieldClassName="w-full @sm/pane:w-64"
-                    className="font-mono"
+                    onChange={(e) => setNewKey(e)}
+                    spellCheck="false"
+                    className="w-full @sm/pane:w-64"
                     autoFocus
                   />
                 )}
@@ -177,7 +178,6 @@ export function MemorySettings() {
                     value={newType}
                     options={typeOptions}
                     onChange={setNewType}
-                    triggerClassName="w-auto"
                   />
                 )}
               </SettingsRow>
@@ -191,7 +191,7 @@ export function MemorySettings() {
                     aria-labelledby={labelId}
                     name="memoryContent"
                     value={newContent}
-                    onChange={(e) => setNewContent(e.target.value)}
+                    onChange={(e) => setNewContent(e)}
                     onKeyDown={(event) => {
                       if (event.nativeEvent.isComposing) return
                       if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -200,15 +200,15 @@ export function MemorySettings() {
                       }
                     }}
                     rows={3}
-                    fieldClassName="w-full"
+                    className="w-full"
                   />
                 )}
               </SettingsRow>
               <div data-slot="memory-add-actions" className="flex items-center justify-end gap-2 py-2.5 pr-2.5">
-                <Button size="small" variant="secondary" onPress={() => setShowAdd(false)}>
+                <Button size="sm" variant="secondary" onPress={() => setShowAdd(false)}>
                   {t('common.cancel')}
                 </Button>
-                <Button size="small" onPress={() => void handleAdd()} isDisabled={!newKey.trim() || !newContent.trim()}>
+                <Button size="sm" onPress={() => void handleAdd()} isDisabled={!newKey.trim() || !newContent.trim()}>
                   {t('settings.memory.add')}
                 </Button>
               </div>
@@ -218,21 +218,19 @@ export function MemorySettings() {
           {browser.loading ? (
             <SettingsSkeleton rows={3} />
           ) : browser.error ? (
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Description className="break-words">{t('settings.memory.loadError')}</Alert.Description>
-                <Button size="small" variant="secondary" className="mt-2" onPress={() => void browser.refresh()}>
+            <Alert
+              shouldAnnounce
+              tone="danger"
+              actions={
+                <Button size="sm" variant="secondary" onPress={() => void browser.refresh()}>
                   {t('settings.memory.retry')}
                 </Button>
-              </Alert.Content>
+              }
+            >
+              {t('settings.memory.loadError')}
             </Alert>
           ) : browser.visible.length === 0 && !showAdd ? (
-            <EmptyState size="sm">
-              <EmptyState.Header>
-                <EmptyState.Title>{t('settings.memory.empty')}</EmptyState.Title>
-              </EmptyState.Header>
-            </EmptyState>
+            <EmptyState heading={t('settings.memory.empty')} headingLevel={3} size="sm" />
           ) : null}
 
           {/* One open at a time is the group's own default
@@ -296,13 +294,14 @@ export function MemorySettings() {
                   {t('settings.memory.selectAll')}
                 </Button>
                 <Button
-                  leadingIcon={Bin}
-                  variant="danger"
+                  icon={<Bin />}
+                  variant="destructive"
                   onPress={async () => {
                     const ok = await confirm({
-                      title: t('settings.memory.deleteConfirmTitle'),
-                      body: t('settings.memory.deleteConfirmBody'),
+                      heading: t('settings.memory.deleteConfirmTitle'),
+                      description: t('settings.memory.deleteConfirmBody'),
                       confirmLabel: t('common.delete'),
+                      tone: 'danger',
                     })
                     if (!ok) return
                     setActionError(null)
@@ -320,12 +319,11 @@ export function MemorySettings() {
                 </Button>
               </ActionBar.Content>
               <ActionBar.Suffix>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
+                    icon={<X />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('settings.memory.clearSelection')}
                     onPress={browser.clearSelection}
                   />

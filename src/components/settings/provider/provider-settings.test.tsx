@@ -221,13 +221,17 @@ async function openModel(user: ReturnType<typeof userEvent.setup>, name: string 
  * with its window blank and required: the form no longer invents 128000, so
  * somebody has to type it — and so do these tests.
  */
+// A number field commits what was typed when it loses focus, as a person
+// leaving it would; a change event alone leaves the value uncommitted.
 function fillLimits() {
-  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') }), {
-    target: { value: '128000' },
-  })
-  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') }), {
-    target: { value: '100000' },
-  })
+  for (const [name, value] of [
+    ['settings.model.contextWindow', '128000'],
+    ['settings.model.compactThreshold', '100000'],
+  ] as const) {
+    const field = screen.getByRole('textbox', { name: i18n.t(name) })
+    fireEvent.change(field, { target: { value } })
+    fireEvent.blur(field)
+  }
 }
 
 describe('ProviderSettings list/detail navigation', () => {
@@ -546,7 +550,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await openModel(user, 'gpt-5.6')
     expect(await screen.findByRole('heading', { name: 'gpt-5.6' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128,000')
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
@@ -737,7 +741,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('option', { name: 'Claude Sonnet 5' }))
 
     // The window came from the description rather than from the catalog.
-    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('200000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('200,000')
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })).toHaveValue('3')
     // And it says how far an edit here reaches.
     expect(screen.getByText(i18n.t('settings.model.sharedBy', { count: 2 }))).toBeInTheDocument()

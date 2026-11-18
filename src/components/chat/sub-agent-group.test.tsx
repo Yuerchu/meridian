@@ -4,7 +4,7 @@ import i18n from '@/i18n'
 import { api } from '@/api'
 import { useConversationStore } from '@/stores/conversation-store'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
-import { SubAgentGroup } from './sub-agent-group'
+import { SubAgentGroup, SubAgentStatusChip } from './sub-agent-group'
 import { SubAgentSheetContext } from './sub-agent-sheet-context'
 import { SubAgentSheetProvider } from './sub-agent-sheet'
 import { ToolCallBlock } from './tool-call-block'
@@ -23,6 +23,19 @@ vi.mock('@/api', () => ({
     activeUserShellTurn: vi.fn(() => Promise.resolve(null)),
   },
 }))
+
+it.each([
+  ['done', 'success'],
+  ['failed', 'danger'],
+  ['interrupted', 'warning'],
+] as const)('keeps the %s verdict as static text with its semantic badge tone', (outcome, tone) => {
+  const { container } = render(<SubAgentStatusChip outcome={outcome} />)
+  const badge = container.querySelector('.ui-badge')
+  expect(badge).toHaveAttribute('data-tone', tone)
+  expect(badge).toHaveTextContent(i18n.t(`chat.tool.panel.status.${outcome}`))
+  expect(container.querySelector('[data-outcome]')).toHaveAttribute('data-outcome', outcome)
+  expect(screen.queryByRole('button')).not.toBeInTheDocument()
+})
 
 function run(
   id: string,

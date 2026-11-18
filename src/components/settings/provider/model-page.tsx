@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Button,
-  Description,
-  Disclosure,
-  Input,
-  Label,
-  Switch,
-  TextField,
-  ToggleButton,
-} from '@/components/base'
+import { Disclosure, ToggleButton } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { assistantsWithModelConflicts } from '@/lib/assistant-model-lock'
 import { assertDecimal38_18 } from '@/lib/decimal'
@@ -60,8 +56,8 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
         value={value}
         options={options}
         onChange={onChange}
-        triggerClassName="h-7 w-32 text-caption-1-regular"
-        itemClassName="text-caption-1-regular"
+
+        size="sm"
       />
     </div>
   )
@@ -613,7 +609,14 @@ function ModelConfigEditor({
 
   const handleDelete = async () => {
     if (!onDelete || deleting) return
-    if (!(await confirm({ body: t('settings.confirmDelete.modelConfig'), confirmLabel: t('common.delete') }))) return
+    if (
+      !(await confirm({
+        description: t('settings.confirmDelete.modelConfig'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setDeleting(true)
     setPriceError(null)
     try {
@@ -631,12 +634,8 @@ function ModelConfigEditor({
   const form = (
     <div data-slot="model-config-editor" className="space-y-2">
       {apiFormat === 'litert_lm' && capsError !== null && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.localModel.capabilitiesError')}</Alert.Title>
-            <Alert.Description>{capsError}</Alert.Description>
-          </Alert.Content>
+        <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.capabilitiesError')}>
+          {capsError}
         </Alert>
       )}
       {localInfo !== null && (
@@ -657,115 +656,104 @@ function ModelConfigEditor({
         </SettingsRow>
       )}
       <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField isRequired isInvalid={invalidLimits.has('contextWindow')}>
-          <Label isRequired>{t('settings.model.contextWindow')}</Label>
-          <Input
-            ref={limitRefs.contextWindow}
-            name={`modelContextWindow-${modelId}`}
-            inputMode="numeric"
-            value={contextWindow}
-            onChange={(e) => {
-              setContextWindow(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField isRequired isInvalid={invalidLimits.has('compactThreshold')}>
-          <Label isRequired>{t('settings.model.compactThreshold')}</Label>
-          <Input
-            ref={limitRefs.compactThreshold}
-            name={`modelCompactThreshold-${modelId}`}
-            inputMode="numeric"
-            value={compactThreshold}
-            onChange={(e) => {
-              setCompactThreshold(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-      </div>
-      <TextField isInvalid={invalidLimits.has('maxOutput')} isRequired={apiFormat === 'litert_lm'}>
-        <Label isRequired={apiFormat === 'litert_lm'}>{t('settings.model.maxOutput')}</Label>
-        <Input
-          ref={limitRefs.maxOutput}
-          name={`modelMaxOutput-${modelId}`}
-          inputMode="numeric"
-          value={maxOutput}
-          onChange={(e) => {
-            setMaxOutput(e.target.value)
+        <NumberField
+          isRequired
+          isInvalid={invalidLimits.has('contextWindow')}
+          label={t('settings.model.contextWindow')}
+          value={draftToNumber(contextWindow)}
+          onChange={(value) => {
+            setContextWindow(numberToDraft(value))
             setDirty(true)
           }}
-          placeholder={t('settings.model.optional')}
-          className="h-7 pointer-coarse:h-10 text-caption-1-regular"
+          ref={limitRefs.contextWindow}
+          name={`modelContextWindow-${modelId}`}
+          formatOptions={{ maximumFractionDigits: 0 }}
         />
-        <Description className="text-caption-1-regular">{t('settings.model.maxOutputHint')}</Description>
-      </TextField>
+        <NumberField
+          isRequired
+          isInvalid={invalidLimits.has('compactThreshold')}
+          label={t('settings.model.compactThreshold')}
+          value={draftToNumber(compactThreshold)}
+          onChange={(value) => {
+            setCompactThreshold(numberToDraft(value))
+            setDirty(true)
+          }}
+          ref={limitRefs.compactThreshold}
+          name={`modelCompactThreshold-${modelId}`}
+          formatOptions={{ maximumFractionDigits: 0 }}
+        />
+      </div>
+      <NumberField
+        isInvalid={invalidLimits.has('maxOutput')}
+        isRequired={apiFormat === 'litert_lm'}
+        label={t('settings.model.maxOutput')}
+        description={t('settings.model.maxOutputHint')}
+        value={draftToNumber(maxOutput)}
+        onChange={(value) => {
+          setMaxOutput(numberToDraft(value))
+          setDirty(true)
+        }}
+        ref={limitRefs.maxOutput}
+        name={`modelMaxOutput-${modelId}`}
+        placeholder={t('settings.model.optional')}
+        formatOptions={{ maximumFractionDigits: 0 }}
+      />
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
       <div data-slot="model-config-prices" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField isInvalid={invalidPrices.has('input')}>
-          <Label>{t('settings.model.inputPrice')}</Label>
-          <Input
-            ref={priceRefs.input}
-            name={`modelInputPrice-${modelId}`}
-            inputMode="decimal"
-            value={inputPrice}
-            onChange={(e) => {
-              setInputPrice(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('output')}>
-          <Label>{t('settings.model.outputPrice')}</Label>
-          <Input
-            ref={priceRefs.output}
-            name={`modelOutputPrice-${modelId}`}
-            inputMode="decimal"
-            value={outputPrice}
-            onChange={(e) => {
-              setOutputPrice(e.target.value)
-              setDirty(true)
-            }}
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('cache')}>
-          <Label>{t('settings.model.cachePrice')}</Label>
-          <Input
-            ref={priceRefs.cache}
-            name={`modelCachePrice-${modelId}`}
-            inputMode="decimal"
-            value={cachePrice}
-            onChange={(e) => {
-              setCachePrice(e.target.value)
-              setDirty(true)
-            }}
-            placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-          <Description className="text-caption-1-regular">{t('settings.model.cachePriceHint')}</Description>
-        </TextField>
-        <TextField isInvalid={invalidPrices.has('cacheWrite')}>
-          <Label>{t('settings.model.cacheWritePrice')}</Label>
-          <Input
-            ref={priceRefs.cacheWrite}
-            name={`modelCacheWritePrice-${modelId}`}
-            inputMode="decimal"
-            value={cacheWritePrice}
-            onChange={(e) => {
-              setCacheWritePrice(e.target.value)
-              setDirty(true)
-            }}
-            placeholder="—"
-            className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-          />
-          <Description className="text-caption-1-regular">{t('settings.model.cacheWritePriceHint')}</Description>
-        </TextField>
+        <TextField
+          isInvalid={invalidPrices.has('input')}
+          label={t('settings.model.inputPrice')}
+          ref={priceRefs.input}
+          name={`modelInputPrice-${modelId}`}
+          inputMode="decimal"
+          value={inputPrice}
+          onChange={(e) => {
+            setInputPrice(e)
+            setDirty(true)
+          }}
+        />
+        <TextField
+          isInvalid={invalidPrices.has('output')}
+          label={t('settings.model.outputPrice')}
+          ref={priceRefs.output}
+          name={`modelOutputPrice-${modelId}`}
+          inputMode="decimal"
+          value={outputPrice}
+          onChange={(e) => {
+            setOutputPrice(e)
+            setDirty(true)
+          }}
+        />
+        <TextField
+          isInvalid={invalidPrices.has('cache')}
+          label={t('settings.model.cachePrice')}
+          ref={priceRefs.cache}
+          name={`modelCachePrice-${modelId}`}
+          inputMode="decimal"
+          value={cachePrice}
+          onChange={(e) => {
+            setCachePrice(e)
+            setDirty(true)
+          }}
+          placeholder="—"
+          description={t('settings.model.cachePriceHint')}
+        />
+        <TextField
+          isInvalid={invalidPrices.has('cacheWrite')}
+          label={t('settings.model.cacheWritePrice')}
+          ref={priceRefs.cacheWrite}
+          name={`modelCacheWritePrice-${modelId}`}
+          inputMode="decimal"
+          value={cacheWritePrice}
+          onChange={(e) => {
+            setCacheWritePrice(e)
+            setDirty(true)
+          }}
+          placeholder="—"
+          description={t('settings.model.cacheWritePriceHint')}
+        />
       </div>
       {/* Only where the model has any. Elsewhere this is not a switch that is
           off, it is a thing that does not exist — and an empty section reads as
@@ -795,22 +783,20 @@ function ModelConfigEditor({
               )
             })}
           </div>
-          <TextField isInvalid={invalidPrices.has('serverTool')}>
-            <Label>{t('settings.model.serverToolPrice')}</Label>
-            <Input
-              ref={priceRefs.serverTool}
-              name={`modelServerToolPrice-${modelId}`}
-              inputMode="decimal"
-              value={serverToolPrice}
-              onChange={(e) => {
-                setServerToolPrice(e.target.value)
-                setDirty(true)
-              }}
-              placeholder="5"
-              className="h-7 pointer-coarse:h-10 text-caption-1-regular"
-            />
-            <Description className="text-caption-1-regular">{t('settings.model.serverToolPriceHint')}</Description>
-          </TextField>
+          <TextField
+            isInvalid={invalidPrices.has('serverTool')}
+            label={t('settings.model.serverToolPrice')}
+            ref={priceRefs.serverTool}
+            name={`modelServerToolPrice-${modelId}`}
+            inputMode="decimal"
+            value={serverToolPrice}
+            onChange={(e) => {
+              setServerToolPrice(e)
+              setDirty(true)
+            }}
+            placeholder="5"
+            description={t('settings.model.serverToolPriceHint')}
+          />
           <p data-slot="server-tools-hint" className="text-caption-1-regular text-text-secondary">
             {t('settings.model.serverToolsHint')}
           </p>
@@ -936,7 +922,7 @@ function ModelConfigEditor({
             </p>
             <Button
               variant="secondary"
-              size="small"
+              size="sm"
               className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
               onPress={resetOverrides}
             >
@@ -1012,20 +998,18 @@ function ModelConfigEditor({
         ).map(([field, label, value, setValue]) => (
           <SettingsRow key={field} label={label}>
             {({ labelId }) => (
-              <TextField isInvalid={invalidPrices.has(field)}>
-                <Input
-                  ref={priceRefs[field]}
-                  aria-labelledby={labelId}
-                  name={`modelOverride-${field}-${modelId}`}
-                  inputMode="decimal"
-                  value={value}
-                  onChange={(event) => {
-                    setValue(event.target.value)
-                    setDirty(true)
-                  }}
-                  className="w-[202px]"
-                />
-              </TextField>
+              <TextField
+                isInvalid={invalidPrices.has(field)}
+                ref={priceRefs[field]}
+                aria-labelledby={labelId}
+                name={`modelOverride-${field}-${modelId}`}
+                inputMode="decimal"
+                value={value}
+                onChange={(event) => {
+                  setValue(event)
+                  setDirty(true)
+                }}
+              />
             )}
           </SettingsRow>
         ))}
@@ -1044,7 +1028,7 @@ function ModelConfigEditor({
             {t('common.save')}
           </Button>
           {onDelete && (
-            <Button variant="danger" onPress={() => void handleDelete()} isPending={deleting}>
+            <Button variant="destructive" onPress={() => void handleDelete()} isPending={deleting}>
               {t('common.delete')}
             </Button>
           )}
@@ -1066,18 +1050,17 @@ function ModelConfigEditor({
               value={profileId ?? NEW_PROFILE}
               options={profileOptions}
               onChange={handleProfileChange}
-              triggerClassName="w-[202px]"
             />
           )}
         </SettingsRow>
         <SettingsRow label={t('settings.model.profileName')} stacked>
           {({ labelId }) => (
-            <Input
+            <TextField
               aria-labelledby={labelId}
               name={`modelProfileName-${modelId}`}
               value={profileName}
               onChange={(event) => {
-                setProfileName(event.target.value)
+                setProfileName(event)
                 setDirty(true)
               }}
             />
@@ -1148,15 +1131,17 @@ export function ModelPage({
   if (loadError !== null) {
     return (
       <SettingsPage title={modelId}>
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.model.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.model.loadError')}
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPage>
     )

@@ -1,8 +1,14 @@
+import './background-tasks-chip.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
-import { Button, Popover, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 
 import { api } from '@/api'
@@ -54,83 +60,78 @@ export function BackgroundTasksChip({
 
   return (
     <>
-      <Popover>
-        <Popover.Trigger
+      <DialogTrigger>
+        <PopoverButton
           data-slot="background-tasks-chip"
           aria-label={label}
-          className="touch-hitbox h-7 min-w-0 gap-1.5 rounded-full px-1.5 text-body-2-medium text-text-secondary transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[pressed]:bg-background-primary-hover"
+          className="m-background-tasks-chip__trigger"
         >
           {/* Still, and not a spinner: the checklist's ring beside it is a
               circle that moves, and two of them read as one thing twice. */}
-          <SquareTerminal className="size-4 shrink-0" aria-hidden />
-          <span data-slot="background-tasks-chip-label" className="shrink-0 tabular-nums">
+          <SquareTerminal className="m-background-tasks-chip__icon" aria-hidden />
+          <span data-slot="background-tasks-chip-label" className="m-background-tasks-chip__count">
             {short}
           </span>
-        </Popover.Trigger>
-        <Popover.Content placement="top start" className="w-96 p-3">
-          <Popover.Dialog aria-label={label} className="flex flex-col gap-2">
-            <span className="text-body-medium text-text-primary">{label}</span>
-            <ul data-slot="background-task-list" className="flex flex-col">
-              {tasks.map((task) => (
-                <li
-                  key={task.id}
-                  data-slot="background-task-row"
-                  data-task-id={task.id}
-                  className="flex items-center gap-2 py-1.5"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col">
-                    <span
-                      data-slot="background-task-title"
-                      className="truncate text-body-2-regular text-text-primary"
-                      title={task.description ?? task.command ?? undefined}
-                    >
-                      {task.description || task.command || task.id}
-                    </span>
-                    {task.description && task.command && (
-                      <span className="truncate font-mono text-caption-1-regular text-text-secondary">
-                        {task.command}
-                      </span>
-                    )}
-                  </div>
-                  <span
-                    data-slot="background-task-elapsed"
-                    className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
+        </PopoverButton>
+        <Popover offset={8} placement="top start" className="m-background-tasks-chip__panel-1">
+          <PopoverDialog aria-label={label}>
+            <div className="m-background-tasks-chip__panel-1-body m-background-tasks-chip__details">
+              <span className="m-background-tasks-chip__heading">{label}</span>
+              <ul data-slot="background-task-list" className="m-background-tasks-chip__list">
+                {tasks.map((task) => (
+                  <li
+                    key={task.id}
+                    data-slot="background-task-row"
+                    data-task-id={task.id}
+                    className="m-background-tasks-chip__row"
                   >
-                    {(() => {
-                      const elapsed = elapsedLabel(now - task.started_at)
-                      return t(elapsed.key, elapsed.values)
-                    })()}
-                  </span>
-                  <TooltipTrigger delay={0}>
-                    <Button
-                      iconOnly
-                      leadingIcon={FileText}
-                      size="xs"
-                      variant="neutral"
-                      aria-label={t('chat.background.output')}
-                      onPress={() => setReading(task)}
-                      className="touch-hitbox"
-                    />
-                    <Tooltip>{t('chat.background.output')}</Tooltip>
-                  </TooltipTrigger>
-                  <TooltipTrigger delay={0}>
-                    <Button
-                      iconOnly
-                      leadingIcon={Stop}
-                      size="xs"
-                      variant="neutral"
-                      aria-label={t('chat.background.stop')}
-                      onPress={() => onStop(task.id)}
-                      className="touch-hitbox hover:text-status-danger"
-                    />
-                    <Tooltip>{t('chat.background.stop')}</Tooltip>
-                  </TooltipTrigger>
-                </li>
-              ))}
-            </ul>
-          </Popover.Dialog>
-        </Popover.Content>
-      </Popover>
+                    <div className="m-background-tasks-chip__description">
+                      <span
+                        data-slot="background-task-title"
+                        className="m-background-tasks-chip__title"
+                        title={task.description ?? task.command ?? undefined}
+                      >
+                        {task.description || task.command || task.id}
+                      </span>
+                      {task.description && task.command && (
+                        <span className="m-background-tasks-chip__command">{task.command}</span>
+                      )}
+                    </div>
+                    <span data-slot="background-task-elapsed" className="m-background-tasks-chip__elapsed">
+                      {(() => {
+                        const elapsed = elapsedLabel(now - task.started_at)
+                        return t(elapsed.key, elapsed.values)
+                      })()}
+                    </span>
+                    <TooltipTrigger>
+                      <Button
+                        icon={<FileText />}
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('chat.background.output')}
+                        onPress={() => setReading(task)}
+                        className="m-background-tasks-chip__output"
+                      />
+                      <Tooltip>{t('chat.background.output')}</Tooltip>
+                    </TooltipTrigger>
+                    <TooltipTrigger>
+                      <Button
+                        icon={<Stop />}
+                        size="sm"
+                        variant="ghost"
+                        aria-label={t('chat.background.stop')}
+                        onPress={() => onStop(task.id)}
+                        className="m-background-tasks-chip__stop"
+                      />
+                      <Tooltip>{t('chat.background.stop')}</Tooltip>
+                    </TooltipTrigger>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </PopoverDialog>
+        </Popover>
+      </DialogTrigger>
       {reading && (
         <BackgroundTaskOutputSheet conversationId={conversationId} task={reading} onClose={() => setReading(null)} />
       )}
@@ -215,7 +216,9 @@ function BackgroundTaskOutputSheet({
                 <ErrorAlert title={t('chat.background.readFailed')} message={error} />
               ) : content === null ? (
                 <div role="status" className="flex items-center gap-2 text-body-regular text-text-secondary">
-                  <Spinner size="sm" />
+                  <span aria-hidden>
+                    <Spinner size="sm" />
+                  </span>
                   {t('chat.background.loading')}
                 </div>
               ) : (

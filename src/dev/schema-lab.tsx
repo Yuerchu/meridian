@@ -25,7 +25,11 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Button, Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
+import { ListBox, ToggleButton } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { cx } from '@/utils/cx'
 import { useAppTheme } from '@/lib/theme'
 import {
@@ -344,11 +348,11 @@ function Canvas({
 // ── 详情面板 ──────────────────────────────────────────────────────────────
 
 function FlagChip({ flag }: { flag: string }) {
-  const color = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'default'
+  const tone = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'neutral'
   return (
-    <Chip size="sm" variant="soft" color={color} className={cx('font-mono', flag === 'UQ' && 'text-status-info')}>
+    <Badge size="sm" tone={tone}>
       {flag}
-    </Chip>
+    </Badge>
   )
 }
 
@@ -463,13 +467,12 @@ function DetailPanel({
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              leadingIcon={X}
+              icon={<X />}
               aria-label="关闭详情"
-              variant="neutral"
-              size="small"
+              variant="ghost"
+              size="sm"
               className="ml-auto"
               onPress={onClose}
             />
@@ -479,9 +482,9 @@ function DetailPanel({
         {table.tags && table.tags.length > 0 && (
           <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
             {table.tags.map((tag) => (
-              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-text-secondary">
+              <Badge key={tag} size="sm">
                 {tag}
-              </Chip>
+              </Badge>
             ))}
           </div>
         )}
@@ -629,24 +632,22 @@ function Lab() {
         >
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
-        <Input
-          type="search"
+        <TextField
           aria-label="搜索表名或字段"
           placeholder="搜表名 / 字段，回车跳转"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => setQuery(e)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return
             const q = query.trim().toLowerCase()
             const found = TABLES.find((t) => t.name.toLowerCase().includes(q))
             if (found) jump(found.name)
           }}
-          className="w-56"
         />
         <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用
         </ToggleButton>
-        <Button variant="secondary" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        <Button variant="secondary" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
@@ -657,7 +658,7 @@ function Lab() {
               <TooltipTrigger key={g.id} delay={300}>
                 <Button
                   variant="secondary"
-                  size="small"
+                  size="sm"
                   onPress={() => toggleGroup(g.id)}
                   aria-pressed={!off}
                   className={cx('h-7 gap-1.5 rounded-full px-2.5 text-caption-1-regular', off && 'opacity-40')}
@@ -674,13 +675,12 @@ function Lab() {
               </TooltipTrigger>
             )
           })}
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
+              icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
               aria-label="切换主题"
               variant="secondary"
-              size="small"
+              size="sm"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             />
             <Tooltip placement="bottom">切换主题</Tooltip>

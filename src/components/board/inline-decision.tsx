@@ -10,7 +10,7 @@
 // navigating away.
 import { useTranslation } from 'react-i18next'
 
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { AttentionSummary } from '@/components/layout/approval-notifications'
 import {
   ACTION_VARIANT,
@@ -41,11 +41,11 @@ export function InlineDecision({ item, onOpen }: { item: AttentionItem; onOpen: 
         <AttentionSummary item={item} shape={shape} />
       </span>
       <div className="flex flex-wrap justify-end gap-2">
-        <Button size="small" variant="secondary" onPress={onOpen}>
+        <Button size="sm" variant="secondary" onPress={onOpen}>
           {t('board.card.details')}
         </Button>
         {decisions.map((id) => (
-          <Button key={id} size="small" variant={ACTION_VARIANT[id]} onPress={() => act(item, id)}>
+          <Button key={id} size="sm" variant={ACTION_VARIANT[id]} onPress={() => act(item, id)}>
             {attentionActionLabel(t, item, id)}
           </Button>
         ))}

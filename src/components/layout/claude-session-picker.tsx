@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Button, Modal, SearchField, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -219,82 +223,76 @@ export function ClaudeSessionPicker({
   }
 
   return (
-    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container placement="center">
-        <Modal.Dialog data-slot="claude-session-picker" className="sm:max-w-2xl">
-          <Modal.Header>
-            <Modal.Heading className="flex items-center gap-2">
-              <HostedAgentGlyph size={18} />
-              {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
-            </Modal.Heading>
-            <p data-slot="session-picker-hint" className="text-caption-1-regular text-text-secondary">
-              {t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
-            </p>
-          </Modal.Header>
-
-          {/* `flex flex-col` because `.modal__body` is not one: its `flex-1` is
-              an item property, so a bare `gap-3` on it spaces nothing and the
-              search box ends up flush against the list. `min-h-0` is what lets
-              the list below shrink and scroll inside the dialog rather than
-              pushing it taller. */}
-          <Modal.Body className="flex min-h-0 flex-col gap-3">
-            <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
-              {/* SearchField, rather than an Input with an icon stuck on the
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      size="lg"
+      heading={
+        <span className="flex items-center gap-2">
+          <HostedAgentGlyph size={18} />
+          {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
+        </span>
+      }
+      description={t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
+    >
+      {/* `min-h-0` is what lets the list below shrink and scroll inside
+              the dialog rather than pushing it taller. */}
+      <div data-slot="claude-session-picker" className="flex min-h-0 flex-col gap-3">
+        <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
+          {/* SearchField, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
-              <SearchField aria-label={t('sessionPicker.search')} value={query} onChange={setQuery} className="flex-1">
-                <SearchField.Group>
-                  <SearchField.SearchIcon />
-                  <SearchField.Input placeholder={t('sessionPicker.search')} />
-                  <SearchField.ClearButton aria-label={t('sessionPicker.clearSearch')} />
-                </SearchField.Group>
-              </SearchField>
-              {/* The adapter runs on the machine the backend is on, so a picker
+          <SearchField
+            aria-label={t('sessionPicker.search')}
+            value={query}
+            onChange={setQuery}
+            placeholder={t('sessionPicker.search')}
+          />
+          {/* The adapter runs on the machine the backend is on, so a picker
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
-              {can.browseForDirectory && (
-                <Button leadingIcon={FolderOpen} variant="secondary" onPress={() => void browse()} className="shrink-0">
-                  {t('sessionPicker.folder')}
-                </Button>
-              )}
-              {folder && (
-                <TooltipTrigger delay={0}>
-                  <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
-                    aria-label={t('sessionPicker.allProjects')}
-                    onPress={() => scopeTo('')}
-                    className="shrink-0"
-                  />
-                  <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
-                </TooltipTrigger>
-              )}
-            </div>
-            {folder && (
-              <p
-                data-slot="session-picker-folder"
-                onPointerEnter={titleIfTruncated}
-                className="truncate text-caption-1-regular text-text-secondary"
-              >
-                {folder}
-              </p>
-            )}
+          {can.browseForDirectory && (
+            <Button icon={<FolderOpen />} variant="secondary" onPress={() => void browse()} className="shrink-0">
+              {t('sessionPicker.folder')}
+            </Button>
+          )}
+          {folder && (
+            <TooltipTrigger>
+              <Button
+                icon={<X />}
+                size="sm"
+                variant="ghost"
+                aria-label={t('sessionPicker.allProjects')}
+                onPress={() => scopeTo('')}
+                className="shrink-0"
+              />
+              <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
+            </TooltipTrigger>
+          )}
+        </div>
+        {folder && (
+          <p
+            data-slot="session-picker-folder"
+            onPointerEnter={titleIfTruncated}
+            className="truncate text-caption-1-regular text-text-secondary"
+          >
+            {folder}
+          </p>
+        )}
 
-            {/* The live region is the container, not the placeholder inside it.
+        {/* The live region is the container, not the placeholder inside it.
                 Announcing happens when a region that is *already* on the page
                 changes; hung on the spinner it would be unmounted at the exact
                 moment there was something to say, so "12 sessions" was never
                 read out and neither was an empty search. */}
-            <div
-              data-slot="session-picker-list"
-              role="status"
-              aria-live="polite"
-              aria-busy={sessions === null}
-              className="min-h-40 flex-1 overflow-y-auto rounded-lg border"
-            >
-              {/* The failure is asked about *first*, and that ordering is the
+        <div
+          data-slot="session-picker-list"
+          role="status"
+          aria-live="polite"
+          aria-busy={sessions === null}
+          className="min-h-40 flex-1 overflow-y-auto rounded-lg border"
+        >
+          {/* The failure is asked about *first*, and that ordering is the
                   whole of whether this state is reachable: a load clears
                   `sessions` on the way in and only sets `error` on the way out,
                   so a spinner branch tested ahead of it wins for ever and a
@@ -304,80 +302,72 @@ export function ClaudeSessionPicker({
                   and reopening it — another adapter start — and in the modes
                   with neither a folder button nor a clear button there is
                   otherwise nothing on screen that can ask again. */}
-              {error ? (
-                <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
-                  <p
-                    data-slot="session-picker-error-message"
-                    role="alert"
-                    className="text-caption-1-regular text-status-danger"
-                  >
-                    {error}
-                  </p>
-                  <Button size="small" variant="secondary" onPress={() => void load(folder)}>
-                    {t('sessionPicker.retry')}
-                  </Button>
-                </div>
-              ) : sessions === null ? (
-                // Starting an adapter takes seconds — on a machine that has
-                // never run it, long enough to download the package first.
-                <div
-                  data-slot="session-picker-loading"
-                  className="flex h-40 flex-col items-center justify-center gap-2"
-                >
-                  <Spinner />
-                  <span data-slot="session-picker-loading-label" className="text-caption-1-regular text-text-secondary">
-                    {t('sessionPicker.loading')}
-                  </span>
-                </div>
-              ) : rows.length === 0 ? (
-                <p data-slot="session-picker-empty" className="p-4 text-caption-1-regular text-text-secondary">
-                  {t('sessionPicker.empty')}
-                </p>
-              ) : (
-                <ul data-slot="session-picker-rows" aria-label={t('sessionPicker.listLabel')} className="divide-y">
-                  {rows.map((session) => (
-                    <SessionRow
-                      key={session.sessionId}
-                      session={session}
-                      mode={mode}
-                      conversationId={conversationId ?? null}
-                      busy={busy === session.sessionId}
-                      disabled={busy !== null}
-                      error={rowError && rowError.sessionId === session.sessionId ? rowError.message : null}
-                      truncated={truncated.has(session.sessionId)}
-                      // Through `stamp` rather than straight off the field: an
-                      // unreadable timestamp is 0 there, and formatting that
-                      // would put 1970 on the row instead of nothing.
-                      when={stamp(session.updatedAt) > 0 ? relative(stamp(session.updatedAt)) : null}
-                      onAct={() => void act(session)}
-                      onOpen={() => {
-                        if (!session.ownedBy) return
-                        onOpenConversation?.(session.ownedBy)
-                        onOpenChange(false)
-                      }}
-                    />
-                  ))}
-                  {hidden > 0 && (
-                    <li
-                      data-slot="session-picker-more"
-                      className="px-3 py-2 text-caption-1-regular text-text-secondary"
-                    >
-                      {t('sessionPicker.more', { count: hidden })}
-                    </li>
-                  )}
-                </ul>
-              )}
+          {error ? (
+            <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
+              <p
+                data-slot="session-picker-error-message"
+                role="alert"
+                className="text-caption-1-regular text-status-danger"
+              >
+                {error}
+              </p>
+              <Button size="sm" variant="secondary" onPress={() => void load(folder)}>
+                {t('sessionPicker.retry')}
+              </Button>
             </div>
-          </Modal.Body>
+          ) : sessions === null ? (
+            // Starting an adapter takes seconds — on a machine that has
+            // never run it, long enough to download the package first.
+            <div data-slot="session-picker-loading" className="flex h-40 flex-col items-center justify-center gap-2">
+              <Spinner />
+              <span data-slot="session-picker-loading-label" className="text-caption-1-regular text-text-secondary">
+                {t('sessionPicker.loading')}
+              </span>
+            </div>
+          ) : rows.length === 0 ? (
+            <p data-slot="session-picker-empty" className="p-4 text-caption-1-regular text-text-secondary">
+              {t('sessionPicker.empty')}
+            </p>
+          ) : (
+            <ul data-slot="session-picker-rows" aria-label={t('sessionPicker.listLabel')} className="divide-y">
+              {rows.map((session) => (
+                <SessionRow
+                  key={session.sessionId}
+                  session={session}
+                  mode={mode}
+                  conversationId={conversationId ?? null}
+                  busy={busy === session.sessionId}
+                  disabled={busy !== null}
+                  error={rowError && rowError.sessionId === session.sessionId ? rowError.message : null}
+                  truncated={truncated.has(session.sessionId)}
+                  // Through `stamp` rather than straight off the field: an
+                  // unreadable timestamp is 0 there, and formatting that
+                  // would put 1970 on the row instead of nothing.
+                  when={stamp(session.updatedAt) > 0 ? relative(stamp(session.updatedAt)) : null}
+                  onAct={() => void act(session)}
+                  onOpen={() => {
+                    if (!session.ownedBy) return
+                    onOpenConversation?.(session.ownedBy)
+                    onOpenChange(false)
+                  }}
+                />
+              ))}
+              {hidden > 0 && (
+                <li data-slot="session-picker-more" className="px-3 py-2 text-caption-1-regular text-text-secondary">
+                  {t('sessionPicker.more', { count: hidden })}
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
+      </div>
 
-          <Modal.Footer>
-            <Button slot="close" variant="secondary">
-              {t('common.close')}
-            </Button>
-          </Modal.Footer>
-        </Modal.Dialog>
-      </Modal.Container>
-    </Modal.Backdrop>
+      <DialogFooter>
+        <Button slot="close" variant="secondary">
+          {t('common.close')}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   )
 }
 
@@ -460,14 +450,14 @@ function SessionRow({
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="small" variant="secondary" onPress={onOpen} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onOpen} className="shrink-0">
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="small" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
           {/* Hidden from the accessibility tree: Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`

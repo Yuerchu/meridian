@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { createPortal } from 'react-dom'
-import { Disclosure, Spinner, Tooltip, TooltipTrigger, tv, type VariantProps } from '@/components/base'
+import { Disclosure, tv, type VariantProps } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { DisclosureStateContext } from 'react-aria-components'
 import { CircleAlert, CircleCheck, CircleX, Clock } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
@@ -287,7 +289,7 @@ function ChatToolTrigger({ className, children, endContent, subtitle, ...props }
     // and the disclosure's own context reaches through.
     if (!requiresAction && hasSubtitle) {
       return (
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           {key}
           <Tooltip placement="top">{subtitle}</Tooltip>
         </TooltipTrigger>
@@ -346,13 +348,9 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
     case 'input-streaming':
     case 'input-available':
       return (
-        <Spinner
-          size="sm"
-          color="current"
-          aria-hidden
-          data-slot="chat-tool-status-icon"
-          className={cx('shrink-0 text-text-secondary', className)}
-        />
+        <span aria-hidden data-slot="chat-tool-status-icon">
+          <Spinner size="sm" />
+        </span>
       )
     // The same mark, standing still. Spinning is the claim that something is
     // happening, and for a call that has not started it is the only thing on

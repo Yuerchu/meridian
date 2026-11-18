@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, Terminal } from '@keyline-icons/react/two-tone'
-import { Skeleton, Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
@@ -112,7 +113,7 @@ export function ShellCommandBubble({
           <Hint as="code" className="min-w-0 flex-1 truncate font-mono text-caption-1-regular" label={command}>
             {command}
           </Hint>
-          {state.status === 'loading' && <Spinner size="sm" color="current" aria-label={t('chat.shell.loading')} />}
+          {state.status === 'loading' && <Spinner size="sm" aria-label={t('chat.shell.loading')} />}
           {state.status === 'loaded' && (
             <span
               data-slot="shell-command-outcome"
@@ -200,13 +201,9 @@ export function ShellCommandBubble({
             </>
           )}
           {state.status === 'loading' && (
-            <Skeleton
-              data-slot="shell-command-placeholder"
-              className="h-16 rounded-xl"
-              role="status"
-              aria-busy
-              aria-label={t('chat.shell.loading')}
-            />
+            <div data-slot="shell-command-placeholder" role="status" aria-busy aria-label={t('chat.shell.loading')}>
+              <Skeleton shape="rect" height="4rem" />
+            </div>
           )}
           {state.status === 'unavailable' && (
             <p

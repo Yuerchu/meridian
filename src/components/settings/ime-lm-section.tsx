@@ -1,17 +1,13 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  Chip,
-  ItemCard,
-  ItemCardGroup,
-  Separator,
-  Spinner,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { ItemCard, ItemCardGroup } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -65,8 +61,8 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
     const name = bundle.id ?? bundle.dir_name
     if (
       !(await confirm({
-        body: t('settings.ime.lm.removeConfirm', { name }),
-        status: 'danger',
+        description: t('settings.ime.lm.removeConfirm', { name }),
+        tone: 'danger',
         confirmLabel: t('common.delete'),
       }))
     )
@@ -95,25 +91,20 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
           {t('settings.ime.lm.title')}
         </p>
         {can.importFromDisk && canImport && (
-          <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
+          <Button size="sm" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
             {t('settings.ime.lm.import')}
           </Button>
         )}
       </div>
 
       {status === null && !error && (
-        <p data-slot="ime-lm-loading" role="status" className="flex items-center gap-2">
-          <Spinner size="sm" />
-        </p>
+        <div data-slot="ime-lm-loading">
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        </div>
       )}
 
       {status && !status.runtime_found && status.bundles.length > 0 && (
-        <Alert status="warning">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{t('settings.ime.lm.noRuntime')}</Alert.Description>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning">{t('settings.ime.lm.noRuntime')}</Alert>
       )}
 
       {status &&
@@ -135,15 +126,11 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                           {name}
                         </span>
                         {status.active === bundle.dir_name && (
-                          <Chip size="sm" color="success" variant="soft">
+                          <Badge size="sm" tone="success">
                             {t('settings.ime.lm.active')}
-                          </Chip>
+                          </Badge>
                         )}
-                        {bundle.personal && (
-                          <Chip size="sm" variant="soft">
-                            {t('settings.ime.lm.personal')}
-                          </Chip>
-                        )}
+                        {bundle.personal && <Badge size="sm">{t('settings.ime.lm.personal')}</Badge>}
                       </ItemCard.Title>
                       <ItemCard.Description className="w-full whitespace-normal break-all">
                         {bundle.error
@@ -152,12 +139,11 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                       </ItemCard.Description>
                     </ItemCard.Content>
                     <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
+                      <TooltipTrigger>
                         <Button
-                          iconOnly
-                          leadingIcon={Bin}
-                          size="small"
-                          variant="neutral"
+                          icon={<Bin />}
+                          size="sm"
+                          variant="ghost"
                           aria-label={t('settings.ime.lm.remove', { name })}
                           onPress={() => handleRemove(bundle)}
                         />
@@ -176,7 +162,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
       </p>
 
       <div data-slot="ime-hints" className="flex items-center gap-3 pt-1">
-        <Button size="small" variant="secondary" onPress={handleRefreshHints}>
+        <Button size="sm" variant="secondary" onPress={handleRefreshHints}>
           {t('settings.ime.hints.refresh')}
         </Button>
         {hints !== null && (

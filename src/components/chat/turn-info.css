@@ -1,0 +1,65 @@
+@layer components {
+  .m-turn-info__panel-1 {
+    --ui-popover-min-width: 0px;
+  }
+  .m-turn-info__panel-1-body {
+    width: min(calc(18rem - 2 * var(--space-3) - 2px), calc(100vw - 2 * var(--space-4) - 2 * var(--space-3) - 2px));
+  }
+  .m-turn-info__row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    font: var(--text-caption);
+  }
+
+  .m-turn-info__row[data-total] {
+    font: var(--text-small-medium);
+  }
+
+  .m-turn-info__label {
+    color: var(--text-secondary);
+  }
+
+  .m-turn-info__row[data-total] .m-turn-info__label {
+    color: var(--text);
+  }
+
+  .m-turn-info__details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: calc(var(--space-1) / 2);
+  }
+
+  .m-turn-info__section {
+    display: flex;
+    flex-direction: column;
+    gap: calc(var(--space-1) * 1.5);
+  }
+
+  .m-turn-info__separator {
+    margin-bottom: var(--space-3);
+  }
+
+  .m-turn-info__heading {
+    font: var(--text-small-medium);
+    color: var(--text-secondary);
+  }
+
+  .m-turn-info__rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-turn-info__value {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-turn-info__note {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+}

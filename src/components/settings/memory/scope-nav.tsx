@@ -3,7 +3,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bookmark, UserX } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Button, Card } from '@/components/base'
+import { Card } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsInlineAction, SettingsNavRow } from '../primitives'
 import { subjectLabel } from './labels'
@@ -186,7 +187,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           )}
 
           <Button
-            leadingIcon={Bookmark}
+            icon={<Bookmark />}
             variant="secondary"
             className="w-full justify-start text-body-regular"
             onPress={async () => {
@@ -203,14 +204,15 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           </Button>
 
           <Button
-            leadingIcon={UserX}
-            variant="danger"
+            icon={<UserX />}
+            variant="destructive"
             className="w-full justify-start text-body-regular"
             onPress={async () => {
               const ok = await confirm({
-                title: t('settings.memory.person.forgetConfirmTitle'),
-                body: t('settings.memory.person.forgetConfirmBody'),
+                heading: t('settings.memory.person.forgetConfirmTitle'),
+                description: t('settings.memory.person.forgetConfirmBody'),
                 confirmLabel: t('settings.memory.person.forget'),
+                tone: 'danger',
               })
               if (!ok) return
               await api.forgetMemorySubject(selectedPerson.scope_id)

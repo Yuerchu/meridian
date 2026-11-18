@@ -1,6 +1,9 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Chip, ListBox, Spinner } from '@/components/base'
+import { ListBox } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { ToolFields } from '@/components/ui/tool-value'
@@ -123,7 +126,9 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
   const label = t(`chat.tool.panel.status.${outcome}`)
   const icon =
     outcome === 'running' ? (
-      <Spinner size="sm" color="current" />
+      <span aria-hidden>
+        <Spinner size="sm" />
+      </span>
     ) : outcome === 'done' ? (
       <CircleCheck className="size-3" />
     ) : outcome === 'failed' ? (
@@ -132,25 +137,22 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
       <Ban className="size-3" />
     )
   return (
-    // The attributes ride a span of our own: Chip keeps what it is handed to
-    // itself.
     <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
-      <Chip
+      <Badge
         size="sm"
-        variant="soft"
-        color={
+        tone={
           outcome === 'done'
             ? 'success'
             : outcome === 'failed'
               ? 'danger'
               : outcome === 'running'
-                ? 'default'
+                ? 'neutral'
                 : 'warning'
         }
       >
         {icon}
         {label}
-      </Chip>
+      </Badge>
     </span>
   )
 }
@@ -426,11 +428,8 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
 
       {rows.map((row) =>
         row.report?.stranded ? (
-          <Alert key={row.call.call_id} data-slot="sub-agent-stranded" status="warning" className="m-2 mt-0">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Description>{row.report.stranded}</Alert.Description>
-            </Alert.Content>
+          <Alert key={row.call.call_id} data-slot="sub-agent-stranded" tone="warning" className="m-2 mt-0">
+            {row.report.stranded}
           </Alert>
         ) : null,
       )}

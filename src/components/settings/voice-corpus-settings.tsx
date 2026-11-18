@@ -1,19 +1,13 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import {
-  Button,
-  Checkbox,
-  Description,
-  Input,
-  Label,
-  Separator,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { ItemCard } from '@/components/base'
 import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
@@ -94,8 +88,9 @@ export function VoiceCorpusSettings() {
   const deleteSession = async (session: VoiceCorpusSessionInfoResponse) => {
     if (
       !(await confirm({
-        body: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }),
+        description: t('settings.voiceCorpus.deleteSessionConfirm', { handle: session.handle }),
         confirmLabel: t('common.delete'),
+        tone: 'danger',
       }))
     )
       return
@@ -109,8 +104,9 @@ export function VoiceCorpusSettings() {
     if (
       !id ||
       !(await confirm({
-        body: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }),
+        description: t('settings.voiceCorpus.forgetSenderConfirm', { sender: id }),
         confirmLabel: t('settings.voiceCorpus.forget'),
+        tone: 'danger',
       }))
     )
       return
@@ -159,7 +155,9 @@ export function VoiceCorpusSettings() {
           aria-label={t('common.loading')}
           className="flex items-center gap-2 text-body-regular text-text-secondary"
         >
-          <Spinner aria-hidden="true" size="sm" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (
@@ -185,12 +183,11 @@ export function VoiceCorpusSettings() {
                   </ItemCard.Description>
                 </ItemCard.Content>
                 <ItemCard.Action>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
-                      iconOnly
-                      leadingIcon={Bin}
-                      size="small"
-                      variant="neutral"
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
                       isDisabled={busy}
                       onPress={() => deleteSession(session)}
                       aria-label={t('settings.voiceCorpus.deleteSession')}
@@ -204,26 +201,31 @@ export function VoiceCorpusSettings() {
         </ItemCardGroup>
       )}
 
-      <TextField>
-        <Label>{t('settings.voiceCorpus.forgetSender')}</Label>
-        <div data-slot="voice-corpus-forget-row" className="flex gap-2">
-          <Input value={senderInput} onChange={(e) => setSenderInput(e.target.value)} placeholder="12345" />
-          <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
-            {t('settings.voiceCorpus.forget')}
-          </Button>
-        </div>
-        <Description>{t('settings.voiceCorpus.forgetSenderHint')}</Description>
-      </TextField>
+      <div data-slot="voice-corpus-forget-row" className="flex items-start gap-2">
+        <TextField
+          label={t('settings.voiceCorpus.forgetSender')}
+          description={t('settings.voiceCorpus.forgetSenderHint')}
+          value={senderInput}
+          onChange={setSenderInput}
+          placeholder="12345"
+          className="flex-1"
+        />
+        <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
+          {t('settings.voiceCorpus.forget')}
+        </Button>
+      </div>
 
       {can.exportToDisk && (
         <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
-          <Checkbox className="text-body-regular" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
+          <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
             {t('settings.voiceCorpus.includeUntranscribed')}
           </Checkbox>
-          <Checkbox className="text-body-regular" isSelected={includeSender} onChange={setIncludeSender}>
+          <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
-          <Description>{t('settings.voiceCorpus.exportHint')}</Description>
+          <p data-slot="voice-corpus-export-hint" className="text-caption-1-regular text-text-secondary">
+            {t('settings.voiceCorpus.exportHint')}
+          </p>
           <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
             {t('settings.voiceCorpus.export')}
           </Button>

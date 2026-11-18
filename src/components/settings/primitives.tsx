@@ -1,7 +1,10 @@
+import './primitives.css'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
-import { Select, SelectItem, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
@@ -135,13 +138,6 @@ export function SettingsSection({
     </div>
   )
 }
-
-/**
- * A select sitting on a `SettingsRow`'s right: the registry's settings-general
- * `SELECT_TRIGGER`, the 32px compact trigger that hugs its value, rather than
- * the full-width form trigger a stacked field uses.
- */
-export const SETTINGS_ROW_SELECT_TRIGGER = 'h-8 w-auto gap-1 rounded-lg px-2 py-1.5'
 
 export interface SettingsRowIds {
   labelId: string
@@ -580,19 +576,19 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cx('mx-auto w-full max-w-settings space-y-6', className)}
+      className={['m-settings-skeleton', className].filter(Boolean).join(' ')}
       {...props}
     >
-      <div data-slot="settings-skeleton-header" className="space-y-2">
-        <Skeleton className="h-5 w-40 rounded-md" />
-        <Skeleton className="h-3 w-64 rounded-md" />
+      <div data-slot="settings-skeleton-header" className="m-settings-skeleton__header">
+        <Skeleton width="10rem" />
+        <Skeleton width="16rem" />
       </div>
       {/* One card of rows, sized to `SettingsRow`'s 52px rather than the 44px
           the navigation row used to be, so nothing moves when the real thing
           replaces it. */}
-      <div data-slot="settings-skeleton-rows" className="space-y-1">
+      <div data-slot="settings-skeleton-rows" className="m-settings-skeleton__rows">
         {Array.from({ length: rows }, (_, i) => (
-          <Skeleton key={i} className="h-[52px] w-full rounded-2xl" />
+          <Skeleton key={i} shape="rect" width="100%" height="52px" />
         ))}
       </div>
     </div>
@@ -611,10 +607,7 @@ type SettingsSelectBase<T extends string> = {
   description?: React.ReactNode
   placeholder?: string
   disabled?: boolean
-  className?: string
-  triggerClassName?: string
-  /** Only the one caller that shrinks its rows needs this. */
-  itemClassName?: string
+  size?: 'sm' | 'md' | 'lg'
 }
 
 /**
@@ -634,7 +627,7 @@ export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
   )
 
 /**
- * The seven-layer `Select` every panel was writing out by hand.
+ * A named, typed setting whose selection cannot be cleared.
  *
  * The lines saved are not the reason. React Aria hands `onChange` a `Key | null`,
  * and the twenty call sites had five different ways of narrowing it back —
@@ -652,14 +645,12 @@ export function SettingsSelect<T extends string>({
   description,
   placeholder,
   disabled,
-  className,
-  triggerClassName,
-  itemClassName,
+  size,
 }: SettingsSelectProps<T>) {
   return (
     <Select
       data-slot="settings-select"
-      className={className}
+      size={size}
       label={label}
       description={description}
       aria-label={ariaLabel}
@@ -670,12 +661,11 @@ export function SettingsSelect<T extends string>({
       onSelectionChange={(key) => {
         if (key != null) onChange(String(key) as T)
       }}
-      triggerClassName={triggerClassName}
     >
       {options.map((option) => (
-        <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+        <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
           {option.label}
-        </SelectItem>
+        </ListBoxItem>
       ))}
     </Select>
   )

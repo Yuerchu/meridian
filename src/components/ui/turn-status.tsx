@@ -1,5 +1,5 @@
 import * as React from 'react'
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Ban, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
@@ -13,7 +13,11 @@ function TurnStatusIcon({ status, className }: { status: TurnStatus; className?:
   const shared = cx('size-3.5 shrink-0', className)
   switch (status) {
     case 'streaming':
-      return <Spinner size="sm" color="current" aria-hidden className={cx('shrink-0 text-text-secondary', className)} />
+      return (
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
+      )
     case 'awaiting-input':
       return <CircleAlert aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user

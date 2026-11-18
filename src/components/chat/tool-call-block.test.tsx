@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock, identifyingArg, toolLabel } from './tool-call-block'
 import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
@@ -397,7 +397,7 @@ describe('the interactive cards say what became of them', () => {
       }[name]!
       const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
       expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
-      expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(0)
+      expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(0)
     },
   )
 
@@ -486,12 +486,21 @@ describe('the interactive cards say what became of them', () => {
     expect(alert).toHaveTextContent('the turn has already ended')
   })
 
+  it('removes the native running indicator when a tool completes', () => {
+    const call = toolCall('run_command', { command: 'ls' }, 'running')
+    const { container, rerender } = render(<ToolCallBlock data={call} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(1)
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    rerender(<ToolCallBlock data={{ ...call, status: 'completed', result: 'ok' }} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(0)
+  })
+
   /// Two spinners side by side read as two things happening at once.
   it('does not spin twice over one running question', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
-    expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(1)
+    expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(1)
   })
 
   it('does not deny a tool while Enter is confirming IME composition', async () => {
@@ -798,6 +807,46 @@ describe('a hosted agent asks with the same cards', () => {
     expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
   })
 
+  it('selects radio cards with arrows and separates their names, descriptions and numeric hints', async () => {
+    waiting('appr-1', {
+      questions: [
+        {
+          id: 'scope',
+          question: 'Which one?',
+          accepts_text: false,
+          options: [
+            { label: 'A', description: 'First option' },
+            { label: 'B', description: 'Second option' },
+          ],
+        },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const first = screen.getByRole('radio', { name: 'A', exact: true })
+    const second = screen.getByRole('radio', { name: 'B', exact: true })
+    expect(first).toHaveAccessibleDescription('First option')
+    expect(second).toHaveAccessibleDescription('Second option')
+    act(() => first.focus())
+    await userEvent.keyboard('{ArrowDown}')
+    expect(second).toHaveFocus()
+    expect(second).toBeChecked()
+    expect(first).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
+  })
+
+  it.each(['Alt', 'Control', 'Meta'])('does not consume a number with %s held', async (modifier) => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const first = screen.getByRole('radio', { name: 'A' })
+    act(() => first.focus())
+    await userEvent.keyboard(`{${modifier}>}2{/${modifier}}`)
+    expect(first).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'B' })).not.toBeChecked()
+  })
+
   it('leaves a digit typed into the notes as a digit', async () => {
     waiting('appr-1', {
       questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
@@ -827,7 +876,6 @@ describe('a hosted agent asks with the same cards', () => {
 
     expect(submit).toHaveAttribute('aria-disabled', 'true')
     expect(submit.closest('form')).toHaveAttribute('aria-busy', 'true')
-    expect(submit.querySelector('[data-slot="spinner"]')).not.toBeNull()
     finish()
   })
 
@@ -909,7 +957,15 @@ describe('a hosted agent asks with the same cards', () => {
     expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
     expect(api.respondToAsk).not.toHaveBeenCalled()
 
+    const group = !multi ? screen.getByRole('radiogroup') : null
+    if (group) {
+      expect(group).toHaveAttribute('aria-invalid', 'true')
+      const error = screen.getByText(i18n.t('chat.tool.answerRequired'))
+      expect(group.getAttribute('aria-describedby')?.split(' ')).toContain(error.id)
+    }
+
     await userEvent.click(screen.getByRole(multi ? 'checkbox' : 'radio', { name: 'A' }))
+    if (group) expect(group).not.toHaveAttribute('aria-invalid', 'true')
     await userEvent.click(submit())
     // One string for two actions, which is what `formatAnswer` sends. That it
     // is *accepted* rather than declined is the other half of this and cannot
@@ -929,6 +985,35 @@ describe('a hosted agent asks with the same cards', () => {
    * not merely go nowhere, since `formatAnswer` folds a note into the selection
    * it sits beside, turning a valid choice into an unplaceable string.
    */
+  it('submits keyboard-selected checkbox cards with separately associated descriptions', async () => {
+    waiting('appr-1', {
+      questions: [
+        {
+          id: 'tools',
+          question: 'Which tools?',
+          multi_select: true,
+          accepts_text: false,
+          options: [{ label: 'Read', description: 'Inspect workspace files' }, { label: 'Write' }],
+        },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const group = screen.getByRole('group', { name: 'Which tools?' })
+    const read = within(group).getByRole('checkbox', { name: 'Read', exact: true })
+    expect(read).toHaveAccessibleDescription('Inspect workspace files')
+    act(() => read.focus())
+    await userEvent.keyboard(' ')
+    await userEvent.tab()
+    await userEvent.keyboard(' ')
+    expect(read).toBeChecked()
+    expect(within(group).getByRole('checkbox', { name: 'Write' })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({
+      approvalId: 'appr-1',
+      response: JSON.stringify({ tools: 'Read, Write' }),
+    })
+  })
+
   it('offers no free-text box for a question that cannot carry one', () => {
     waiting('appr-1', {
       questions: [

@@ -2,27 +2,20 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  DataGrid,
-  Description,
-  Input,
-  Label,
-  Sheet,
-  Spinner,
-  Switch,
-  TextArea,
-  TextField,
-  type DataGridColumn,
-} from '@/components/base'
+import { DataGrid, Sheet, type DataGridColumn } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
 import {
   SavedHint,
-  SETTINGS_ROW_SELECT_TRIGGER,
   SettingsCard,
   SettingsRow,
   SettingsSectionLabel,
@@ -260,7 +253,14 @@ function ProviderEditor({
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
-    if (!(await confirm({ body: t('settings.confirmDelete.provider'), confirmLabel: t('common.delete') }))) return
+    if (
+      !(await confirm({
+        description: t('settings.confirmDelete.provider'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setDeleting(true)
     setDeleteError(null)
     try {
@@ -759,12 +759,12 @@ function ProviderEditor({
       <SettingsCard data-slot="provider-identity">
         <SettingsRow label={t('settings.provider.name')} stacked>
           {({ labelId }) => (
-            <Input
+            <TextField
               aria-labelledby={labelId}
               name={`providerName-${provider.id}`}
               value={name}
-              onChange={(e) => setName(e.target.value)}
-              fieldClassName="w-full @sm/pane:w-64"
+              onChange={(e) => setName(e)}
+              className="w-full @sm/pane:w-64"
             />
           )}
         </SettingsRow>
@@ -793,7 +793,6 @@ function ProviderEditor({
               options={typeOptions}
               onChange={handleProviderTypeChange}
               disabled={isRemote}
-              triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
             />
           )}
         </SettingsRow>
@@ -816,7 +815,6 @@ function ProviderEditor({
                 }))}
                 onChange={handleAuthOptionChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
           </SettingsRow>
@@ -831,19 +829,19 @@ function ProviderEditor({
           >
             {({ labelId }) => (
               <div data-slot="model-path-row" className="flex w-full gap-2">
-                <Input
+                <TextField
                   aria-labelledby={labelId}
                   name={`providerModelPath-${provider.id}`}
-                  disabled={isRemote}
-                  spellCheck={false}
+                  isDisabled={isRemote}
+                  spellCheck="false"
                   value={baseUrl === 'local://' ? '' : baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
+                  onChange={(e) => setBaseUrl(e)}
                   placeholder={t('settings.provider.modelPathPlaceholder')}
-                  fieldClassName="w-full"
+                  className="w-full"
                 />
                 {!isRemote && (
                   <Button
-                    size="small"
+                    size="sm"
                     variant="secondary"
                     onPress={async () => {
                       const file = await pickModelFile()
@@ -863,21 +861,21 @@ function ProviderEditor({
             className="@sm/pane:flex-col @sm/pane:items-stretch"
           >
             {({ labelId }) => (
-              <Input
+              <TextField
                 aria-labelledby={labelId}
                 name={`providerBaseUrl-${provider.id}`}
-                disabled={isRemote}
+                isDisabled={isRemote}
                 type="url"
                 inputMode="url"
-                spellCheck={false}
+                spellCheck="false"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => setBaseUrl(e)}
                 placeholder={
                   defaultUrlFor(activeAuth, apiFormat) ??
                   URL_PLACEHOLDERS[apiFormat] ??
                   URL_PLACEHOLDERS.chat_completions
                 }
-                fieldClassName="w-full"
+                className="w-full"
               />
             )}
           </SettingsRow>
@@ -900,7 +898,6 @@ function ProviderEditor({
                 }
                 onChange={handleApiFormatChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
             )}
           </SettingsRow>
@@ -933,15 +930,15 @@ function ProviderEditor({
             stacked
           >
             {({ labelId, descriptionId }) => (
-              <Input
+              <TextField
                 aria-labelledby={labelId}
                 aria-describedby={descriptionId}
                 name="codexClientVersion"
-                spellCheck={false}
+                spellCheck="false"
                 value={codexClientVersion}
-                onChange={(e) => setCodexClientVersion(e.target.value)}
+                onChange={(e) => setCodexClientVersion(e)}
                 placeholder={t('settings.provider.codexClientVersionPlaceholder')}
-                fieldClassName="w-full @sm/pane:w-48"
+                className="w-full @sm/pane:w-48"
               />
             )}
           </SettingsRow>
@@ -960,18 +957,14 @@ function ProviderEditor({
       {/* Save writes the card above and nothing below it: the key has its own
           button, the models are their own pages. */}
       <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button size="small" onPress={handleSave} isPending={saving}>
+        <Button size="sm" onPress={handleSave} isPending={saving}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint />}
       </div>
       {saveError && (
-        <Alert data-slot="provider-save-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.saveError')}</Alert.Title>
-            <Alert.Description className="break-all">{saveError}</Alert.Description>
-          </Alert.Content>
+        <Alert data-slot="provider-save-error" tone="danger" shouldAnnounce heading={t('settings.provider.saveError')}>
+          {saveError}
         </Alert>
       )}
 
@@ -1000,10 +993,9 @@ function ProviderEditor({
                       name={`providerApiKey-${provider.id}`}
                       autoComplete="off"
                       rows={6}
-                      resize="vertical"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1011,17 +1003,17 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.vertexServiceAccountPlaceholder')
                       }
-                      fieldClassName="min-w-0 flex-1 font-mono"
+                      className="min-w-0 flex-1"
                     />
                   ) : (
-                    <Input
+                    <PasswordField
                       aria-labelledby={labelId}
-                      type="password"
                       name={`providerApiKey-${provider.id}`}
-                      autoComplete="off"
+                      // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                      autoComplete="current-password"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1029,14 +1021,13 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.apiKeyPlaceholder')
                       }
-                      // The shell is what sits in this row (`className` reaches the
-                      // inner <input>); without `flex-1 min-w-0` the row grew to the
-                      // input's intrinsic width plus the button and ran off a phone.
-                      fieldClassName="min-w-0 flex-1"
+                      // Without `flex-1 min-w-0` the row grew to the input's
+                      // intrinsic width plus the button and ran off a phone.
+                      className="min-w-0 flex-1"
                     />
                   )}
                   <Button
-                    leadingIcon={Key}
+                    icon={<Key />}
                     variant="secondary"
                     className="shrink-0"
                     onPress={handleSaveKey}
@@ -1050,13 +1041,15 @@ function ProviderEditor({
             </SettingsRow>
           </SettingsCard>
           {keyStatus === 'loading' && (
-            <p
+            <div
               data-slot="provider-key-checking"
               className="flex items-center gap-1.5 px-3 text-caption-1-regular text-text-secondary"
             >
-              <Spinner size="sm" color="current" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               {t('settings.provider.apiKeyChecking')}
-            </p>
+            </div>
           )}
           {keyStatus === 'set' && (
             <p
@@ -1095,8 +1088,8 @@ function ProviderEditor({
           <SettingsCard>
             <SettingsRow label={t('settings.provider.balance')} data-slot="provider-balance-header">
               <Button
-                size="small"
-                leadingIcon={RefreshCw}
+                size="sm"
+                icon={<RefreshCw />}
                 variant="secondary"
                 onPress={handleFetchBalance}
                 isDisabled={keyStatus !== 'set'}
@@ -1165,7 +1158,7 @@ function ProviderEditor({
             {t('settings.provider.models')}
           </SettingsSectionLabel>
           <div data-slot="provider-models-actions" className="flex shrink-0 items-center gap-1">
-            <Button size="small" leadingIcon={Plus} variant="secondary" onPress={() => setAddingModel(true)}>
+            <Button size="sm" icon={<Plus />} variant="secondary" onPress={() => setAddingModel(true)}>
               {t('settings.provider.addModel')}
             </Button>
             {/* `keyStatus` is a proxy for "a request can be made", and it is only
@@ -1175,8 +1168,8 @@ function ProviderEditor({
                 here kept the button permanently grey on the rows the exemption
                 was written for. */}
             <Button
-              size="small"
-              leadingIcon={RefreshCw}
+              size="sm"
+              icon={<RefreshCw />}
               variant="secondary"
               onPress={handleFetchModels}
               isDisabled={activeAuth?.credential_kind !== 'none' && !usesChatGptLogin(provider) && keyStatus !== 'set'}
@@ -1201,11 +1194,11 @@ function ProviderEditor({
             to what matched — gated on the matches, a query with none took the
             box away along with the text that could be corrected. */}
         {allModels.length > FILTER_THRESHOLD && (
-          <Input
+          <TextField
             aria-label={t('settings.provider.filterModels')}
             name={`modelFilter-${provider.id}`}
             value={modelFilter}
-            onChange={(event) => setModelFilter(event.target.value)}
+            onChange={(event) => setModelFilter(event)}
             placeholder={t('settings.provider.filterModels')}
           />
         )}
@@ -1260,21 +1253,19 @@ function ProviderEditor({
                   <Sheet.Heading>{t('settings.provider.addModel')}</Sheet.Heading>
                 </Sheet.Header>
                 <Sheet.Body className="space-y-2">
-                  <TextField>
-                    <Label>{t('settings.provider.modelId')}</Label>
-                    <Input
-                      name={`newModelId-${provider.id}`}
-                      autoComplete="off"
-                      value={newModelId}
-                      onChange={(event) => setNewModelId(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.nativeEvent.isComposing) return
-                        if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
-                      }}
-                      placeholder="gpt-6-preview"
-                    />
-                    <Description className="text-caption-1-regular">{t('settings.provider.addModelHint')}</Description>
-                  </TextField>
+                  <TextField
+                    label={t('settings.provider.modelId')}
+                    name={`newModelId-${provider.id}`}
+                    autoComplete="off"
+                    value={newModelId}
+                    onChange={setNewModelId}
+                    onKeyDown={(event) => {
+                      if (event.nativeEvent.isComposing) return
+                      if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
+                    }}
+                    placeholder="gpt-6-preview"
+                    description={t('settings.provider.addModelHint')}
+                  />
                 </Sheet.Body>
                 <Sheet.Footer>
                   <Button slot="close" variant="secondary">
@@ -1303,7 +1294,7 @@ function ProviderEditor({
             label={t('settings.provider.deleteProvider')}
             description={t('settings.provider.deleteProviderHint')}
           >
-            <Button size="small" leadingIcon={Bin} variant="danger" onPress={handleDelete} isPending={deleting}>
+            <Button size="sm" icon={<Bin />} variant="destructive" onPress={handleDelete} isPending={deleting}>
               {deleting ? t('settings.provider.deletingProvider') : t('common.delete')}
             </Button>
           </SettingsRow>
@@ -1361,12 +1352,7 @@ export function ProviderPage({
   if (!provider) {
     return (
       <SettingsPage title={t('settings.provider.title')}>
-        <Alert status="warning" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.selectProvider')}</Alert.Title>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning" shouldAnnounce heading={t('settings.provider.selectProvider')} />
       </SettingsPage>
     )
   }

@@ -1,7 +1,10 @@
+import './emoji-renderer.css'
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Button, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useStickerUrl } from '@/lib/sticker-urls'
 import { cx } from '@/utils/cx'
@@ -81,13 +84,15 @@ export function StickerImage({
   return (
     <div ref={box} data-slot="sticker-box" className={cx(className, 'shrink-0')} {...pointer}>
       {load.status === 'loading' ? (
-        <Skeleton
+        <div
           data-slot="sticker-placeholder"
-          className="size-full rounded-xl"
+          className="m-emoji-renderer__placeholder"
           role="status"
           aria-busy
           aria-label={t('chat.emoji.loading', { name: label })}
-        />
+        >
+          <Skeleton shape="rect" width="100%" height="100%" />
+        </div>
       ) : load.status === 'error' ? (
         <div
           data-slot="sticker-error"
@@ -97,9 +102,9 @@ export function StickerImage({
         >
           <Image aria-hidden className="size-6" />
           <Button
-            leadingIcon={RefreshCw}
+            icon={<RefreshCw />}
             variant="secondary"
-            size="small"
+            size="sm"
             className="touch-hitbox px-1 text-caption-1-regular"
             onPress={() => setAttempt((current) => current + 1)}
           >
@@ -173,12 +178,11 @@ export function InlineSticker({
           data-slot={`${slot}-error`}
           className="flex size-full items-center justify-center bg-background-secondary-default/40"
         >
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              size="xs"
-              variant="neutral"
-              leadingIcon={RefreshCw}
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw />}
               aria-label={retryLabel}
               className="touch-hitbox"
               onPress={() => setAttempt((current) => current + 1)}

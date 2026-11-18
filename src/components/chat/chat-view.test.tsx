@@ -1,4 +1,7 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { I18nProvider } from 'react-aria-components'
+import i18n from '@/i18n'
 
 import type { InitialTurnDraft } from './conversation-draft'
 import type { MessageViewModel, UserCommandResultResponse, UserCommandRunRequest } from '@/types'
@@ -655,7 +658,7 @@ describe('ChatView composer dispatch', () => {
       retryWithoutSandbox: null,
     })
 
-    render(mocks.confirm.mock.calls[0][0].body)
+    render(mocks.confirm.mock.calls[0][0].description)
     expect(screen.getByText('echo hello')).toBeInTheDocument()
     expect(screen.getByText('C:/repo with spaces')).toBeInTheDocument()
   })
@@ -733,6 +736,71 @@ describe('ChatView composer draft', () => {
     mocks.sessions['conversation-1'].planReviewBarrier = false
     mocks.sessions['conversation-1'].activeShellTurnId = null
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
+  })
+
+  it.each(['{Backspace}', '{Delete}'])(
+    'removes only the focused reference with %s and focuses its neighbor',
+    async (key) => {
+      const user = userEvent.setup()
+      vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+        conversation_id: 'conversation-1',
+        body: 'draft',
+        attachments: [],
+        conversation_refs: [
+          { id: 'ref-a', title: 'Same title', exists: true },
+          { id: 'ref-b', title: 'Same title', exists: true },
+          { id: 'ref-c', title: 'Last reference', exists: true },
+        ],
+        sticker: null,
+        revision: 4,
+        updated_at: 0,
+      })
+      render(<ChatView conversationId="conversation-1" />)
+      const grid = await screen.findByRole('grid', { name: i18n.t('chat.convRef.pending') })
+      const rows = within(grid).getAllByRole('row')
+      act(() => rows[1].focus())
+      await user.keyboard(key)
+      expect(within(grid).getAllByRole('row')).toHaveLength(2)
+      expect(within(grid).getByRole('row', { name: /Last reference/ })).toHaveFocus()
+      await act(async () => latestInputBar().onSubmit())
+      expect(mocks.sendMessage).toHaveBeenCalled()
+      expect(JSON.stringify(mocks.sendMessage.mock.calls)).toContain('ref-a')
+      expect(JSON.stringify(mocks.sendMessage.mock.calls)).toContain('ref-c')
+      expect(JSON.stringify(mocks.sendMessage.mock.calls)).not.toContain('ref-b')
+    },
+  )
+
+  it('names the reference group and native remove buttons in Chinese', async () => {
+    const user = userEvent.setup()
+    await i18n.changeLanguage('zh-CN')
+    vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+      conversation_id: 'conversation-1',
+      body: '',
+      attachments: [],
+      conversation_refs: [
+        { id: 'ref-a', title: 'First', exists: true },
+        { id: 'ref-b', title: 'Second', exists: true },
+      ],
+      sticker: null,
+      revision: 4,
+      updated_at: 0,
+    })
+    try {
+      render(
+        <I18nProvider locale="zh-CN">
+          <ChatView conversationId="conversation-1" />
+        </I18nProvider>,
+      )
+      const grid = await screen.findByRole('grid', { name: i18n.t('chat.convRef.pending') })
+      const first = within(grid).getByRole('row', { name: /First/ })
+      const remove = within(first).getByRole('button')
+      expect(remove).toHaveAccessibleName(/移除|删除/)
+      await user.click(remove)
+      expect(within(grid).queryByRole('row', { name: /First/ })).not.toBeInTheDocument()
+      expect(within(grid).getByRole('row', { name: /Second/ })).toBeInTheDocument()
+    } finally {
+      await i18n.changeLanguage('en')
+    }
   })
 
   it('restores the stored draft and will not send a file that has gone', async () => {

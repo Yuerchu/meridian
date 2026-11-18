@@ -1,10 +1,14 @@
+import './plan-review-entry.css'
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton } from 'react-aria-components'
 import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Button, Chip, Input, Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleBlockButton } from '@/components/ui/bubble-block'
 import { ChatToolPresentationContext } from '@/components/ui/chat-tool'
@@ -200,9 +204,9 @@ export function PlanReviewEntryView({
   ) : null
 
   const statusChip = (
-    <Chip size="sm" variant="secondary" className="ml-auto shrink-0">
-      {t(`planReview.status.${status}`)}
-    </Chip>
+    <span className="m-plan-review-entry__status">
+      <Badge size="sm">{t(`planReview.status.${status}`)}</Badge>
+    </span>
   )
 
   const excerpt =
@@ -238,34 +242,34 @@ export function PlanReviewEntryView({
     <div data-slot="plan-review-entry-actions" className="flex flex-col gap-2">
       {ui.step === 'feedback' ? (
         <div data-slot="plan-review-entry-feedback" className="flex flex-col gap-2">
-          <Input
-            type="text"
+          <TextField
             name="plan-feedback"
             autoComplete="off"
             aria-label={t('chat.plan.feedbackLabel')}
             value={note}
-            onChange={(e) => onNoteChange(e.target.value)}
+            onChange={(e) => onNoteChange(e)}
             onKeyDown={(e) => {
               if (e.nativeEvent.isComposing) return
               if (e.key === 'Enter') onSendBack()
             }}
             placeholder={t('chat.plan.feedbackPlaceholder')}
-            className="text-caption-1-regular"
-            fieldClassName={FIELD_ON_CARD}
+            className={FIELD_ON_CARD}
             autoFocus
           />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button size="small" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
+            <Button size="sm" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
-            <Button size="small" leadingIcon={ArrowUTurnLeft} isDisabled={!note.trim()} onPress={onSendBack}>
+            <Button size="sm" icon={<ArrowUTurnLeft />} isDisabled={!note.trim()} onPress={onSendBack}>
               {t('chat.plan.sendBack')}
             </Button>
           </div>
         </div>
       ) : ui.step === 'deciding' ? (
         <div data-slot="plan-review-entry-deciding" className="flex items-center gap-2 text-text-secondary">
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span className="text-body-2-regular">{t('chat.tool.running')}</span>
         </div>
       ) : (
@@ -279,18 +283,18 @@ export function PlanReviewEntryView({
             </p>
           )}
           <div className="flex flex-wrap gap-2">
-            <Button size="small" onPress={onOpen}>
+            <Button size="sm" onPress={onOpen}>
               {t('chat.plan.review')}
             </Button>
             {ui.step !== 'draft' && (
               <>
-                <Button size="small" variant="secondary" leadingIcon={Check} onPress={onApprove}>
+                <Button size="sm" variant="secondary" icon={<Check />} onPress={onApprove}>
                   {t('chat.plan.approve')}
                 </Button>
                 <Button
-                  size="small"
+                  size="sm"
                   variant="secondary"
-                  leadingIcon={ArrowUTurnLeft}
+                  icon={<ArrowUTurnLeft />}
                   onPress={() => onUiChange({ step: 'feedback' })}
                 >
                   {t('chat.plan.revise')}
@@ -373,7 +377,7 @@ export function PlanReviewEntryView({
           >
             {t('chat.plan.reviewHistory')}
           </p>
-          <Button size="small" variant="secondary" onPress={onOpen}>
+          <Button size="sm" variant="secondary" onPress={onOpen}>
             {t('chat.plan.review')}
           </Button>
         </div>

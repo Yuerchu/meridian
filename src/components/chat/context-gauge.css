@@ -1,0 +1,101 @@
+@layer components {
+  .m-context-gauge__panel-1 {
+    --ui-popover-min-width: 0px;
+  }
+  .m-context-gauge__panel-1-body {
+    width: min(calc(18rem - 2 * var(--space-3) - 2px), calc(100vw - 2 * var(--space-4) - 2 * var(--space-3) - 2px));
+  }
+  .m-context-gauge__panel-2 {
+    --ui-popover-min-width: 0px;
+  }
+  .m-context-gauge__panel-2-body {
+    width: min(calc(16rem - 2 * var(--space-3) - 2px), calc(100vw - 2 * var(--space-4) - 2 * var(--space-3) - 2px));
+  }
+  .m-context-gauge__trigger {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+    position: relative;
+  }
+
+  .m-context-gauge__trigger[data-percent] {
+    height: calc(var(--space-1) * 7);
+    gap: var(--space-1);
+    padding-inline: calc(var(--space-1) * 1.5) var(--space-2);
+  }
+
+  .m-context-gauge__trigger[data-focus-visible] {
+    outline: 2px solid var(--accent);
+  }
+
+  .m-context-gauge__trigger[data-percent][data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-context-gauge__trigger::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+
+  .m-context-gauge__error-trigger {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+    color: var(--danger-fg);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-context-gauge__error-trigger::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+
+  .m-context-gauge__error-trigger[data-focus-visible] {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .m-context-gauge__error-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .m-context-gauge__percent {
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .m-context-gauge__details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-context-gauge__model {
+    color: var(--text-secondary);
+  }
+
+  .m-context-gauge__hosted-note {
+    color: var(--text-secondary);
+  }
+
+  .m-context-gauge__warning {
+    color: var(--warning-fg);
+  }
+
+  .m-context-gauge__compact {
+    margin-top: var(--space-1);
+    font: var(--text-caption);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+}

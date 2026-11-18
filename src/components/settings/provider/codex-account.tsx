@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { RefreshCw } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { CodexAuthStatusResponse } from '@/types'
@@ -47,7 +48,7 @@ export function CodexAccount() {
         <p data-slot="codex-account-label" className="text-caption-1-regular text-text-secondary">
           {t('settings.provider.codexAccount')}
         </p>
-        <Button leadingIcon={RefreshCw} variant="secondary" onPress={() => void check()} isPending={checking}>
+        <Button icon={<RefreshCw />} variant="secondary" onPress={() => void check()} isPending={checking}>
           {t('settings.provider.codexRecheck')}
         </Button>
       </div>
@@ -59,7 +60,7 @@ export function CodexAccount() {
           aria-busy="true"
           aria-label={t('settings.provider.codexAccount')}
         >
-          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton shape="rect" width="100%" height="4rem" />
         </div>
       ) : (
         status && (

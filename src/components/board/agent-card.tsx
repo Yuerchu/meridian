@@ -7,9 +7,11 @@ import { Button as RacButton } from 'react-aria-components'
 import { ArrowRight, ChevronDown, GitBranch, Message } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Button, Chip, Kanban } from '@/components/base'
+import { Kanban } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
-import type { ConfirmOptions } from '@/components/ui/confirm-dialog'
+import type { ConfirmOptions } from '@/hooks/use-confirm'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import { titleIfTruncated } from '@/lib/truncation'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
@@ -190,8 +192,9 @@ export function AgentCard({
   const removeCard = async () => {
     if (
       !(await confirm({
-        body: t('board.card.deleteConfirm', { title: task.title }),
+        description: t('board.card.deleteConfirm', { title: task.title }),
         confirmLabel: t('board.card.delete'),
+        tone: 'danger',
       }))
     ) {
       return
@@ -238,9 +241,9 @@ export function AgentCard({
         {(task.agent_kind !== null || branch.kind === 'read') && (
           <span className="flex min-w-0 items-center gap-1.5 text-caption-1-regular text-text-secondary">
             {task.agent_kind !== null && (
-              <Chip size="sm" variant="soft">
+              <Badge size="sm">
                 {task.agent_kind === 'claude_code' ? t('board.agent.claudeCode') : t('board.agent.native')}
-              </Chip>
+              </Badge>
             )}
             {branch.kind === 'read' && (
               <span className="flex min-w-0 items-center gap-1">
@@ -267,7 +270,7 @@ export function AgentCard({
         {expanded && (
           <div data-slot="board-card-detail" className="flex flex-col gap-2.5">
             {waiting?.kind === 'plan_review' && (
-              <Button size="small" onPress={() => openReview(waiting.reviewId)}>
+              <Button size="sm" onPress={() => openReview(waiting.reviewId)}>
                 {t('chat.plan.reviewReady')}
               </Button>
             )}
@@ -282,9 +285,9 @@ export function AgentCard({
             )}
             {conversationId !== null && (
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
-                leadingIcon={Message}
+                icon={<Message />}
                 className="w-fit"
                 onPress={() => onOpenConversation(conversationId)}
               >
@@ -297,22 +300,22 @@ export function AgentCard({
         {(showToReview || showToDone || showRemoveWorktree || showDelete) && (
           <div className="flex flex-wrap justify-end gap-1.5">
             {showToReview && (
-              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('review')}>
+              <Button size="sm" variant="secondary" iconRight={<ArrowRight />} onPress={() => void move('review')}>
                 {t('board.card.toReview')}
               </Button>
             )}
             {showToDone && (
-              <Button size="small" variant="secondary" trailingIcon={ArrowRight} onPress={() => void move('done')}>
+              <Button size="sm" variant="secondary" iconRight={<ArrowRight />} onPress={() => void move('done')}>
                 {t('board.card.toDone')}
               </Button>
             )}
             {showRemoveWorktree && (
-              <Button size="small" variant="secondary" onPress={() => void removeWorktree()}>
+              <Button size="sm" variant="secondary" onPress={() => void removeWorktree()}>
                 {t('board.card.removeWorktree')}
               </Button>
             )}
             {showDelete && (
-              <Button size="small" variant="secondary" onPress={() => void removeCard()}>
+              <Button size="sm" variant="secondary" onPress={() => void removeCard()}>
                 {t('board.card.delete')}
               </Button>
             )}

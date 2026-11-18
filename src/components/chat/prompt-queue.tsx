@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next'
 
 import { Check, CircleQuestion, Clock, Paperclip, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PromptInput } from '@/components/base'
 
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
@@ -88,7 +89,9 @@ export function PromptQueue({
       data-slot="queue-current"
       className="flex items-center gap-2 border-b border-separator-border px-3 py-2 text-caption-1-regular text-text-secondary"
     >
-      <Spinner size="sm" className="shrink-0" />
+      <span aria-hidden>
+        <Spinner size="sm" />
+      </span>
       <span data-slot="queue-running-label">{t('chat.queue.running')}</span>
     </div>
   ) : null
@@ -121,7 +124,7 @@ export function PromptQueue({
           {/* The only way to restart a held queue; the expanded hit area is
               what makes it reachable with a finger. */}
           <Button
-            size="small"
+            size="sm"
             variant="secondary"
             className="touch-hitbox px-2 text-caption-1-regular"
             onPress={onRelease}

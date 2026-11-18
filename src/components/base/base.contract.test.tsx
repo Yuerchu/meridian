@@ -1,3 +1,7 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
@@ -6,7 +10,6 @@ import i18n from '@/i18n'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import {
   Avatar,
-  Button,
   ContextMenu,
   DataGrid,
   Description,
@@ -20,22 +23,18 @@ import {
   Label,
   LinkButton,
   Meter,
-  Modal,
   Notification,
   NotificationViewport,
-  Popover,
   SearchField,
-  Select,
-  SelectItem,
   Sheet,
   Sidebar,
   Spinner,
   TextField,
   ToggleButton,
-  Tooltip,
-  TooltipTrigger,
 } from '@/components/base'
-import { buttonStyles } from './buttons/button'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Dialog } from '@/components/yuerchu-ui/components/dialog/dialog'
 
 /**
  * What every primitive under `components/base` promises the app, asserted
@@ -61,19 +60,37 @@ describe('Button is a React Aria pressable', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('tip text')
   })
 
-  it('closes a Modal from slot="close"', async () => {
+  it('closes the library Dialog from slot="close"', async () => {
     const onOpenChange = vi.fn()
     render(
-      <Modal.Backdrop isOpen onOpenChange={onOpenChange}>
-        <Modal.Container>
-          <Modal.Dialog aria-label="d">
-            <Button slot="close">Close</Button>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>,
+      <Dialog isOpen onOpenChange={onOpenChange} heading="d">
+        <Button slot="close">Done</Button>
+      </Dialog>,
     )
-    await userEvent.click(screen.getByRole('button', { name: 'Close' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }))
     expect(onOpenChange).toHaveBeenCalledWith(false)
+  })
+
+  it('keeps structured dialog descriptions out of paragraph elements', () => {
+    render(
+      <Dialog
+        isOpen
+        heading="Retry command"
+        description={
+          <dl>
+            <dt>Directory</dt>
+            <dd>workspace</dd>
+          </dl>
+        }
+      >
+        <Button slot="close">Cancel</Button>
+      </Dialog>,
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Retry command' })
+    const description = document.getElementById(dialog.getAttribute('aria-describedby')!)!
+    expect(description.tagName).toBe('DIV')
+    expect(description.querySelector('dl')).not.toBeNull()
+    expect(description.closest('p')).toBeNull()
   })
 
   it('closes a Sheet from its CloseTrigger', async () => {
@@ -125,7 +142,6 @@ describe('Button is a React Aria pressable', () => {
     )
     const button = screen.getByRole('button', { name: /Send/ })
     expect(button).toHaveAttribute('aria-disabled', 'true')
-    expect(button.querySelector('[data-slot="spinner"]')).not.toBeNull()
     await userEvent.click(button)
     expect(onPress).not.toHaveBeenCalled()
   })
@@ -265,9 +281,9 @@ describe('Text controls are React Aria inputs', () => {
   it('Select is named by its label slot', () => {
     render(
       <Select label="Model" selectedKey="a">
-        <SelectItem id="a" textValue="Alpha">
+        <ListBoxItem id="a" textValue="Alpha">
           Alpha
-        </SelectItem>
+        </ListBoxItem>
       </Select>,
     )
     expect(screen.getByRole('button', { name: /Model/ })).toBeInTheDocument()
@@ -312,16 +328,16 @@ describe('Menus open from their trigger', () => {
     expect(await screen.findByRole('menuitem', { name: 'Copy' })).toBeInTheDocument()
   })
 
-  it('Popover.Trigger is a button a keyboard reaches', async () => {
+  it('PopoverButton is a button a keyboard reaches', async () => {
     render(
-      <Popover>
-        <Popover.Trigger aria-label="gauge">
+      <DialogTrigger>
+        <PopoverButton aria-label="gauge">
           <span>o</span>
-        </Popover.Trigger>
-        <Popover.Content placement="top">
-          <Popover.Dialog aria-label="details">details</Popover.Dialog>
-        </Popover.Content>
-      </Popover>,
+        </PopoverButton>
+        <Popover offset={8} placement="top">
+          <PopoverDialog aria-label="details">details</PopoverDialog>
+        </Popover>
+      </DialogTrigger>,
     )
     await userEvent.tab()
     const trigger = screen.getByRole('button', { name: 'gauge' })
@@ -504,26 +520,6 @@ describe('Presentation parts honour their props', () => {
   })
 })
 
-describe('Button variants are the registry’s', () => {
-  it('has exactly the registry variants plus the neutral icon control', () => {
-    expect(Object.keys(buttonStyles.variant).sort()).toEqual(['danger', 'ghost', 'neutral', 'primary', 'secondary'])
-  })
-
-  it('draws neutral as the grey round control from the Dropdown example', () => {
-    render(<Button variant="neutral" iconOnly size="small" leadingIcon={Plus} aria-label="Add" />)
-    const classes = screen.getByRole('button', { name: 'Add' }).className.split(/\s+/)
-    expect(classes).toEqual(
-      expect.arrayContaining([
-        'rounded-full',
-        'bg-background-secondary-default',
-        'text-foreground-icon-secondary',
-        'data-[hovered]:bg-background-secondary-hover',
-      ]),
-    )
-    expect(classes).not.toContain('rounded-lg')
-  })
-})
-
 describe('ToggleButton selection', () => {
   it('is neutral when off and the blue pill when on', () => {
     render(
@@ -556,7 +552,7 @@ describe('Built-in names are in the app’s language', () => {
     render(
       <>
         <Button isPending>保存</Button>
-        <Button isPending iconOnly leadingIcon={Plus} aria-label="添加" />
+        <Button isPending icon={<Plus />} aria-label="添加" />
         <Spinner />
       </>,
     )

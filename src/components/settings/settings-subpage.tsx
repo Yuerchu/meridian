@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowLeft } from '@keyline-icons/react/two-tone'
 
 import { cx } from '@/utils/cx'
@@ -38,7 +38,7 @@ export function SettingsSubPage({
     <div data-slot="settings-subpage" className={cx('@container/pane mx-auto w-full space-y-4', className)} {...props}>
       <div data-slot="settings-subpage-bar" className="flex items-center gap-2">
         <Button
-          leadingIcon={ArrowLeft}
+          icon={<ArrowLeft />}
           data-slot="settings-subpage-back"
           variant="secondary"
           onPress={onBack}

@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { Switch } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { SettingsNavRow, SettingsPane, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
@@ -75,6 +75,69 @@ describe('SettingsRow', () => {
 })
 
 describe('SettingsSelect', () => {
+  it('preserves descriptions, external names and disabled settings', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <>
+        <span id="level-label">Log level</span>
+        <SettingsSelect
+          ariaLabelledBy="level-label"
+          description="Only affects displayed logs"
+          value="all"
+          options={OPTIONS}
+          onChange={onChange}
+          disabled
+        />
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: /Log level/ })
+    expect(trigger).toBeDisabled()
+    expect(trigger).toHaveAccessibleDescription('Only affects displayed logs')
+    await user.click(trigger)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('dismisses with Escape and outside press without changing the selection', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={onChange} />)
+    const trigger = screen.getByRole('button', { name: /Level/ })
+    await user.click(trigger)
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await user.click(trigger)
+    await user.click(document.body)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps the none sentinel selectable and cannot clear with Delete', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <SettingsSelect
+        ariaLabel="Provider"
+        value="provider"
+        options={[
+          { value: '_none', label: 'None' },
+          { value: 'provider', label: 'Provider A' },
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /Provider/ })
+    trigger.focus()
+    await user.keyboard('{Delete}')
+    expect(onChange).not.toHaveBeenCalled()
+    await user.click(trigger)
+    await user.click(await screen.findByRole('option', { name: 'None' }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('_none')
+  })
+
   it('hands the caller its own value type back, never a key or null', async () => {
     const user = userEvent.setup()
     // Typed as the union rather than `string`: if the component widened what it
@@ -119,9 +182,20 @@ describe('SettingsSelect', () => {
 // pages used to pick from three (lg, 3xl, 4xl), so moving between sections
 // moved the column under the reader.
 describe('the settings width', () => {
+  it('names the loading region once and hides its placeholder shapes', () => {
+    const { container } = render(<SettingsSkeleton rows={3} />)
+    const status = screen.getByRole('status')
+    expect(status).toHaveAccessibleName()
+    expect(status).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    const shapes = container.querySelectorAll('.ui-skeleton')
+    expect(shapes).toHaveLength(5)
+    for (const shape of shapes) expect(shape).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('is the registry settings-modal content pane, 532px', () => {
     const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
-    expect(css).toMatch(/--container-settings:\s*33\.25rem;/)
+    expect(css).toMatch(/--content-settings:\s*33\.25rem;/)
   })
 
   it('is the width of every page shell, and of the skeleton that stands in for one', () => {
@@ -135,8 +209,14 @@ describe('the settings width', () => {
     for (const slot of ['settings-pane', 'settings-skeleton', 'settings-page']) {
       const el = container.querySelector(`[data-slot="${slot}"]`)
       expect(el, slot).not.toBeNull()
-      expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
-      expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+      if (slot === 'settings-skeleton') {
+        expect(el).toHaveClass('m-settings-skeleton')
+        const css = readFileSync(resolve(__dirname, 'primitives.css'), 'utf8')
+        expect(css).toMatch(/max-width:\s*var\(--content-settings\)/)
+      } else {
+        expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
+        expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+      }
     }
   })
 })

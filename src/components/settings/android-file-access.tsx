@@ -1,9 +1,12 @@
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
-import { Alert, Button, Tooltip, TooltipTrigger } from '@/components/base'
-import { CellSwitch } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
 import type { SafRootListResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -102,12 +105,8 @@ export function AndroidFileAccess() {
       </div>
 
       {error && (
-        <Alert data-slot="file-access-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.fileAccess.error')}</Alert.Title>
-            <Alert.Description className="break-all">{error}</Alert.Description>
-          </Alert.Content>
+        <Alert data-slot="file-access-error" tone="danger" shouldAnnounce heading={t('settings.fileAccess.error')}>
+          {error}
         </Alert>
       )}
 
@@ -116,11 +115,7 @@ export function AndroidFileAccess() {
           {t('settings.fileAccess.safDirs')}
         </p>
         {safRoots.length === 0 ? (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.fileAccess.safEmpty')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState heading={t('settings.fileAccess.safEmpty')} headingLevel={3} size="sm" />
         ) : (
           <ul data-slot="file-access-saf-list" className="space-y-1">
             {safRoots.map((root) => (
@@ -145,12 +140,11 @@ export function AndroidFileAccess() {
                     {root.virtual_prefix}
                   </div>
                 </div>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <Button
-                    variant="neutral"
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
+                    variant="ghost"
+                    icon={<X />}
+                    size="sm"
                     className="shrink-0"
                     onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
@@ -161,23 +155,21 @@ export function AndroidFileAccess() {
             ))}
           </ul>
         )}
-        <Button leadingIcon={FolderOpen} variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
+        <Button icon={<FolderOpen />} variant="secondary" onPress={handleAddDirectory} isDisabled={picking}>
           {t('settings.fileAccess.addDir')}
         </Button>
       </div>
 
       <div data-slot="file-access-manage" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.fileAccess.manageToggle')}
           aria-describedby="manage-storage-hint"
           isSelected={manageEnabled}
           onChange={handleManageToggle}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.fileAccess.manageToggle')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.fileAccess.manageToggle')}
+        </Switch>
         <p
           id="manage-storage-hint"
           data-slot="file-access-manage-hint"

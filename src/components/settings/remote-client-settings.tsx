@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, TextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { ItemCard } from '@/components/base'
 
 import { api } from '@/api'
@@ -131,40 +135,35 @@ export function RemoteClientSettings() {
       </p>
 
       <div data-slot="remote-client-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.client.host')}</Label>
-          <Input
-            name="remoteClientHost"
-            value={host}
-            onChange={(e) => setHost(e.target.value)}
-            placeholder="192.168.1.20"
-          />
-        </TextField>
-        <TextField type="number">
-          <Label>{t('settings.client.port')}</Label>
-          <Input
-            min={1}
-            max={65535}
-            name="remoteClientPort"
-            inputMode="numeric"
-            value={port}
-            onChange={(e) => setPort(e.target.value)}
-            placeholder="8787"
-          />
-        </TextField>
+        <TextField
+          label={t('settings.client.host')}
+          name="remoteClientHost"
+          value={host}
+          onChange={setHost}
+          placeholder="192.168.1.20"
+        />
+        <NumberField
+          label={t('settings.client.port')}
+          value={draftToNumber(port)}
+          onChange={(value) => setPort(numberToDraft(value))}
+          minValue={1}
+          maxValue={65535}
+          name="remoteClientPort"
+          placeholder="8787"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
-      <TextField type="password">
-        <Label>{t('settings.client.token')}</Label>
-        <Input
-          name="remoteClientToken"
-          autoComplete="off"
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          className="max-w-xs"
-        />
-        <Description>{t('settings.client.tokenHint')}</Description>
-      </TextField>
+      <PasswordField
+        label={t('settings.client.token')}
+        description={t('settings.client.tokenHint')}
+        name="remoteClientToken"
+        // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+        autoComplete="current-password"
+        value={token}
+        onChange={setToken}
+        className="max-w-xs"
+      />
 
       <div data-slot="remote-client-actions" className="flex items-center gap-2">
         <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>

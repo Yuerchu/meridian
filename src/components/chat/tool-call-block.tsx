@@ -1,3 +1,4 @@
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Fragment, useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
@@ -49,7 +50,12 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Button, Checkbox, CheckboxGroup, Chip, Input, Kbd, Radio, RadioGroup, Spinner } from '@/components/base'
+import { Kbd } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import {
   ChatTool,
   ChatToolApproval,
@@ -254,43 +260,6 @@ function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
   return '(no answer)'
 }
 
-/**
- * An option as BoardUI Pro's questionnaire draws one: a bordered row, filled
- * when hovered or chosen, its edge a step darker when chosen or pressed. Kept
- * a step smaller than Pro's (13px over 12px) because it sits in a bubble, not
- * on a page.
- */
-function optionRow(state: { isSelected: boolean; isHovered: boolean; isPressed: boolean; isFocusVisible: boolean }) {
-  return cx(
-    'w-full items-center gap-3 rounded-2xl border px-3 py-2 whitespace-normal transition-colors duration-150 ease',
-    // The label wrapper the base control draws around its children: the body
-    // takes the row, and a key badge sits at its end.
-    '[&>span:last-child]:flex [&>span:last-child]:min-w-0 [&>span:last-child]:flex-1 [&>span:last-child]:items-center [&>span:last-child]:gap-3',
-    state.isSelected || state.isPressed ? 'border-border-button-hover' : 'border-border-button-default',
-    state.isPressed
-      ? 'bg-background-primary-active'
-      : state.isSelected || state.isHovered
-        ? 'bg-background-primary-hover'
-        : 'bg-background-primary-default',
-    state.isFocusVisible && 'ring-2 ring-border-focus-ring',
-  )
-}
-
-function OptionBody({ label, description }: { label: string; description?: string | null }) {
-  return (
-    <span data-slot="question-option-body" className="min-w-0 flex-1 text-left">
-      <span data-slot="question-option-label" className="block text-body-2-medium text-text-primary">
-        {label}
-      </span>
-      {description && (
-        <span data-slot="question-option-description" className="block text-caption-1-regular text-text-secondary">
-          {description}
-        </span>
-      )}
-    </span>
-  )
-}
-
 function QuestionBlock({
   q,
   value,
@@ -324,7 +293,7 @@ function QuestionBlock({
           {q.question}
         </span>
         <Button
-          leadingIcon={ArrowUTurnLeft}
+          icon={<ArrowUTurnLeft />}
           variant="secondary"
           onPress={() => onUnskip(q.id)}
           className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
@@ -355,7 +324,7 @@ function QuestionBlock({
         </div>
         {!q.required && (
           <Button
-            leadingIcon={SkipForward}
+            icon={<SkipForward />}
             variant="secondary"
             onPress={() => onSkip(q.id)}
             className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
@@ -375,11 +344,10 @@ function QuestionBlock({
             name={q.id}
             value={Array.isArray(value.selected) ? value.selected : []}
             onChange={(selected) => onChange(q.id, { ...value, selected })}
-            className="gap-2"
           >
             {q.options!.map((opt) => (
-              <Checkbox key={opt.label} value={opt.label} className={optionRow}>
-                <OptionBody label={opt.label} description={opt.description} />
+              <Checkbox key={opt.label} value={opt.label} variant="card" description={opt.description}>
+                {opt.label}
               </Checkbox>
             ))}
           </CheckboxGroup>
@@ -410,27 +378,11 @@ function QuestionBlock({
               name={q.id}
               value={typeof value.selected === 'string' ? value.selected : ''}
               onChange={(selected) => onChange(q.id, { ...value, selected })}
-              className="gap-2"
             >
               {q.options!.map((opt, index) => (
-                <Radio
-                  key={opt.label}
-                  value={opt.label}
-                  // The base radio's dot is its one `aria-hidden` child (the first
-                  // is React Aria's visually hidden input); the row's fill and
-                  // edge say which is chosen, as in Pro's questionnaire.
-                  className={(state) => cx(optionRow(state), '[&>span[aria-hidden=true]]:hidden')}
-                >
-                  <OptionBody label={opt.label} description={opt.description} />
-                  {index < 9 && (
-                    <Kbd
-                      aria-hidden
-                      data-slot="question-option-key"
-                      className="shrink-0 rounded-sm px-1.5 text-text-secondary"
-                    >
-                      {index + 1}
-                    </Kbd>
-                  )}
+                <Radio key={opt.label} value={opt.label} variant="card" description={opt.description}>
+                  {opt.label}
+                  {index < 9 && <span aria-hidden="true"> ({index + 1})</span>}
                 </Radio>
               ))}
             </RadioGroup>
@@ -457,19 +409,17 @@ function QuestionBlock({
               {t('chat.tool.other')}
             </span>
           )}
-          <Input
+          <TextField
             data-slot="question-answer"
-            type="text"
             name={`${q.id}-notes`}
             autoComplete="off"
             aria-labelledby={questionId}
             aria-describedby={invalid ? errorId : undefined}
             aria-invalid={invalid || undefined}
             value={value.notes}
-            onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
+            onChange={(e) => onChange(q.id, { ...value, notes: e })}
             placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-            className="text-body-2-regular"
-            fieldClassName={FIELD_ON_CARD}
+            className={FIELD_ON_CARD}
           />
         </div>
       )}
@@ -654,7 +604,7 @@ export function AskUserBlock({
             </p>
           )}
           <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
-            <Button leadingIcon={Send} type="submit" isPending={sending}>
+            <Button icon={<Send />} type="submit" isPending={sending}>
               {t('chat.tool.askUserSubmit')}
             </Button>
             {/* A disabled button with no reason beside it reads as broken. Only
@@ -821,7 +771,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
   const { t } = useTranslation()
   return (
     <div data-slot="result-toggle" className="border-t border-border-button-default/50 px-3 py-1.5">
-      <Button variant="secondary" size="small" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
+      <Button variant="secondary" size="sm" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -1109,7 +1059,7 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
         // content in place rather than going anywhere.
         <Button
           variant="secondary"
-          size="small"
+          size="sm"
           className="mt-1 self-start rounded-lg px-2 text-caption-1-regular"
           onPress={() => setOpen((current) => !current)}
         >
@@ -1270,23 +1220,23 @@ function commandChips(t: TFunction, output: CommandOutput): React.ReactNode[] {
   const chips: React.ReactNode[] = []
   if (output.exitCode !== null) {
     chips.push(
-      <Chip key="exit" size="sm" variant="soft" color={output.exitCode === 0 ? 'default' : 'danger'}>
+      <Badge key="exit" size="sm" tone={output.exitCode === 0 ? 'neutral' : 'danger'}>
         {t('chat.shell.exitCode', { code: output.exitCode })}
-      </Chip>,
+      </Badge>,
     )
   }
   if (output.timedOut) {
     chips.push(
-      <Chip key="timeout" size="sm" variant="soft" color="warning">
+      <Badge key="timeout" size="sm" tone="warning">
         {t('chat.tool.panel.timedOut')}
-      </Chip>,
+      </Badge>,
     )
   }
   if (output.truncated) {
     chips.push(
-      <Chip key="cap" size="sm" variant="soft">
+      <Badge key="cap" size="sm">
         {t('chat.shell.truncated')}
-      </Chip>,
+      </Badge>,
     )
   }
   return chips
@@ -1361,7 +1311,9 @@ export function PendingApproval({
   if (ui === 'sent') {
     return (
       <div data-slot="approval-sent" className="flex items-center gap-2 px-0.5 text-text-secondary">
-        <Spinner size="sm" color="current" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         <span data-slot="approval-sent-text" className="text-caption-1-regular">
           {t('chat.tool.running')}
         </span>
@@ -1396,8 +1348,8 @@ export function PendingApproval({
               reader announces, and `aria-hidden` keeps the hint from being read
               as part of the button's name. */}
           <Button
-            leadingIcon={X}
-            variant="danger"
+            icon={<X />}
+            variant="destructive"
             aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
             onPress={() => setUi('feedback')}
           >
@@ -1405,7 +1357,7 @@ export function PendingApproval({
             <HotkeyHint combo={DENY_HOTKEY} />
           </Button>
           <Button
-            leadingIcon={Check}
+            icon={<Check />}
             aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
             onPress={() => decide(() => api.approveToolCall(approvalId))}
           >
@@ -1423,27 +1375,25 @@ export function PendingApproval({
 
   return (
     <div data-slot="approval-feedback" className="space-y-2">
-      <Input
-        type="text"
+      <TextField
         name="tool-denial-reason"
         autoComplete="off"
         aria-label={t('chat.tool.denyReason')}
         value={feedback}
-        onChange={(e) => setFeedback(e.target.value)}
+        onChange={(e) => setFeedback(e)}
         onKeyDown={(e) => {
           if (e.nativeEvent.isComposing) return
           if (e.key === 'Enter') deny()
         }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
-        className="text-caption-1-regular"
-        fieldClassName={FIELD_ON_CARD}
+        className={FIELD_ON_CARD}
         autoFocus
       />
       <ChatToolApproval className="pt-0">
         <Button variant="secondary" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button leadingIcon={X} variant="danger" onPress={deny}>
+        <Button icon={<X />} variant="destructive" onPress={deny}>
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
       </ChatToolApproval>
@@ -1537,7 +1487,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           {data.status === 'orphaned' && <OrphanedNotice reason={data.answer_error} />}
           {!settled && data.status !== 'pending' && (
             <div data-slot="web-search-searching" className="flex items-center gap-2 text-text-secondary">
-              <Spinner size="sm" color="current" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
             </div>
           )}
@@ -1660,7 +1612,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         data-slot="web-search-searching"
         className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
       >
-        <Spinner size="sm" color="current" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
         {query && (
           <span
@@ -1803,13 +1757,13 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         <div data-slot="enter-plan-actions" className={cx(divider, section)}>
           <ChatToolApproval>
             <Button
-              leadingIcon={X}
+              icon={<X />}
               variant="secondary"
               onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}
             >
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button leadingIcon={Compass} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button icon={<Compass />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
               {t('chat.plan.startPlanning')}
             </Button>
           </ChatToolApproval>
@@ -1821,7 +1775,9 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
           data-slot="enter-plan-waiting"
           className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
         >
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span data-slot="enter-plan-waiting-text">{t('chat.tool.running')}</span>
         </div>
       )}
@@ -1929,37 +1885,35 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <div data-slot="exit-plan-actions" className={cx(divider, section)}>
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
-              <Input
-                type="text"
+              <TextField
                 name="plan-feedback"
                 autoComplete="off"
                 aria-label={t('chat.plan.feedbackLabel')}
                 value={feedback}
-                onChange={(e) => setFeedback(e.target.value)}
+                onChange={(e) => setFeedback(e)}
                 onKeyDown={(e) => {
                   if (e.nativeEvent.isComposing) return
                   if (e.key === 'Enter') sendBack()
                 }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
-                className="text-caption-1-regular"
-                fieldClassName={FIELD_ON_CARD}
+                className={FIELD_ON_CARD}
                 autoFocus
               />
               <ChatToolApproval className="pt-0">
                 <Button variant="secondary" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
-                <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={sendBack}>
+                <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={sendBack}>
                   {t('chat.plan.sendBack')}
                 </Button>
               </ChatToolApproval>
             </div>
           ) : (
             <ChatToolApproval>
-              <Button leadingIcon={ArrowUTurnLeft} variant="secondary" onPress={() => setUi('feedback')}>
+              <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
                 {t('chat.plan.revise')}
               </Button>
-              <Button leadingIcon={Check} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              <Button icon={<Check />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
@@ -1972,7 +1926,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
           data-slot="exit-plan-waiting"
           className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
         >
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span data-slot="exit-plan-waiting-text">{t('chat.tool.running')}</span>
         </div>
       )}
@@ -2455,7 +2411,12 @@ function CardOutcome({
     // decided, not yet finished. Neither has a result to show yet.
     case 'approved':
     case 'running':
-      return notice(<Spinner size="sm" color="current" className="shrink-0" />, t('chat.tool.running'))
+      return notice(
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>,
+        t('chat.tool.running'),
+      )
     // Still, because it is still. The spinner above is what claims work is
     // happening, and for this one nothing is.
     case 'queued':
@@ -2672,9 +2633,7 @@ export function ToolCallBlock({
   if (output?.truncation) {
     end.push(
       <Hint key="truncated" label={t('chat.tool.panel.truncatedTokens', { count: output.truncation.originalTokens })}>
-        <Chip size="sm" variant="soft">
-          {t('chat.tool.panel.truncated')}
-        </Chip>
+        <Badge size="sm">{t('chat.tool.panel.truncated')}</Badge>
       </Hint>,
     )
   }

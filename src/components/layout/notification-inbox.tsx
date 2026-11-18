@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { NotificationBell } from '@/components/application/app-shell/notification-bell'
 import {
@@ -17,7 +17,7 @@ import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import type { SystemNoticeInfoResponse } from '@/types'
 import { AttentionSummary } from './approval-notifications'
 import {
-  ACTION_VARIANT,
+  BOARDUI_ACTION_VARIANT,
   attentionActionIds,
   attentionActionLabel,
   attentionCategory,
@@ -105,7 +105,7 @@ export function NotificationInbox({
           actions: attentionActionIds(shape).map((id) => ({
             id,
             label: attentionActionLabel(t, item, id),
-            variant: ACTION_VARIANT[id],
+            variant: BOARDUI_ACTION_VARIANT[id],
           })),
         }
       }),
@@ -162,7 +162,7 @@ export function NotificationInbox({
               {t('notifications.inbox.here', { count: here.length })}
             </p>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setIsOpen(false)

@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next'
-import { Dropdown, DropdownItem, DropdownPopover, Label, Tooltip, TooltipTrigger } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, Label } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { MoreVertical } from '@keyline-icons/react/two-tone'
 import { Sidebar } from '@/components/base'
 
@@ -73,7 +74,7 @@ export function RowActionsMenu({
             the only way to a row's actions — right-click cannot be reached by
             touch — and a miss lands on the row itself, which switches
             conversation and closes the sheet. */}
-        <TooltipTrigger delay={0}>
+        <TooltipTrigger>
           <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
             <MoreVertical className="size-4" />
           </Sidebar.MenuAction>

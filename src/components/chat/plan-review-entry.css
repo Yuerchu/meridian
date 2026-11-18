@@ -1,0 +1,6 @@
+@layer components {
+  .m-plan-review-entry__status {
+    flex-shrink: 0;
+    margin-inline-start: auto;
+  }
+}

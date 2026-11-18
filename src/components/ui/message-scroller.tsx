@@ -9,7 +9,7 @@ import {
 
 import { cx } from '@/utils/cx'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowDown } from '@keyline-icons/react/two-tone'
 
 function MessageScrollerProvider(props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>) {
@@ -108,7 +108,7 @@ function MessageScrollerButton({
   children,
   render,
   variant = 'secondary',
-  size = 'small',
+  size = 'sm',
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Button> &
   Pick<React.ComponentProps<typeof Button>, 'variant' | 'size'>) {
@@ -130,10 +130,8 @@ function MessageScrollerButton({
         // handlers against React Aria's synthetic events, which are the same
         // objects with a wider element type.
         ((buttonProps) => (
-          // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
           <Button
-            iconOnly
-            leadingIcon={ArrowDown}
+            icon={<ArrowDown />}
             variant={variant}
             size={size}
             {...(buttonProps as React.ComponentProps<typeof Button>)}

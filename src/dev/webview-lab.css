@@ -1,0 +1,10 @@
+@layer components {
+  .m-webview-lab__popover-trigger {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--radius-pill);
+  }
+  .m-webview-lab__popover-trigger[data-focus-visible] {
+    outline: 2px solid var(--accent);
+  }
+}

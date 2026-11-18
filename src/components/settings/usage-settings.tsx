@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Button,
-  Label,
-  Skeleton,
-  Spinner,
-  Tab,
-  TabList,
-  TabPanel,
-  Tabs,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { EmptyState } from '@/components/base'
-import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import './usage-settings.css'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { KPI } from '@/components/base'
 import { ActivityHeatmap, BarChart, BarList, ChartCard, ChartLegend, DonutChart } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
@@ -533,34 +527,38 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         {/* Only once there is something to refresh. The first load draws the
             skeleton below instead, and two loading indicators for one wait is
             one too many. */}
-        {loading && report && <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />}
+        {loading && report && (
+          <span className="m-usage-settings__refreshing">
+            <Spinner size="sm" aria-label={t('common.loading')} />
+          </span>
+        )}
       </div>
 
       {error && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>
-              <Hint className="min-w-0 break-words" label={error}>
-                {t('settings.usage.loadError')}
-              </Hint>
-            </Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setReload((value) => value + 1)}>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setReload((value) => value + 1)}>
               {t('settings.usage.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          <Hint className="min-w-0 break-words" label={error}>
+            {t('settings.usage.loadError')}
+          </Hint>
         </Alert>
       )}
 
       {!report && loading ? (
         <UsageSkeleton />
       ) : !report ? null : total.messages === 0 ? (
-        <EmptyState size="sm">
-          <EmptyState.Header>
-            <EmptyState.Title>{t('settings.usage.empty')}</EmptyState.Title>
-            <EmptyState.Description>{t('settings.usage.emptyHint')}</EmptyState.Description>
-          </EmptyState.Header>
-        </EmptyState>
+        <EmptyState
+          heading={t('settings.usage.empty')}
+          headingLevel={3}
+          description={t('settings.usage.emptyHint')}
+          size="sm"
+        />
       ) : (
         <>
           <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
@@ -623,7 +621,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           )}
           {hasGaps && (
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               className="self-start"
               data-slot="usage-gaps-show"
@@ -677,13 +675,13 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
               <TabList aria-label={t('settings.usage.breakdown')}>
                 {BREAKDOWNS.map((value) => (
-                  <Tab key={value} id={value} className={TAB}>
+                  <Tab key={value} id={value}>
                     {t(`settings.usage.by.${value}`)}
                   </Tab>
                 ))}
               </TabList>
               {BREAKDOWNS.map((value) => (
-                <TabPanel key={value} id={value} className="p-0">
+                <TabPanel key={value} id={value}>
                   <BucketTable
                     // Keep the old charts while the next dimension loads, but
                     // never put those old rows under the newly selected table
@@ -713,16 +711,6 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
 }
 
 /**
- * `.tabs__tab` is `w-full`, which in a flex row makes every tab claim the whole
- * width and then shrink to an equal share — so a two-word label wraps mid-label
- * ("近 7 / 天") rather than the row growing. `whitespace-nowrap` lets the list's
- * own `w-max` do what it was already trying to do. Overriding the width instead
- * would give up the equal-width behaviour, which is what makes the pill look
- * like a segmented control at all.
- */
-const TAB = 'whitespace-nowrap'
-
-/**
  * One filter, as a labelled segmented control. These choices narrow the page;
  * they do not switch a tab panel, so they should not expose tab semantics.
  */
@@ -738,24 +726,18 @@ function Filter({
   items: [string, string][]
 }) {
   return (
-    <div data-slot="usage-filter" className="space-y-1.5">
-      <Label className="text-caption-1-regular text-text-secondary">{label}</Label>
-      {/* The registry's segmented control (the notification centre's category
-          switch): a row of buttons that toggled `variant` to show which was
-          chosen painted every unchosen one in the accent's soft fill. */}
+    <div data-slot="usage-filter" className="m-usage-settings__filter">
+      <p className="m-usage-settings__filter-label">{label}</p>
       <SegmentedControl
         data-slot="usage-filter-group"
         aria-label={label}
-        selectedKeys={[selectedKey]}
-        onSelectionChange={(keys) => {
-          const next = [...(keys as Set<string>)][0]
-          if (next !== undefined) onChange(next)
-        }}
+        selectedKey={selectedKey}
+        onSelectionChange={(key) => onChange(String(key))}
       >
         {items.map(([id, text]) => (
-          <SegmentedControlItem key={id} id={id} className={TAB}>
+          <Segment key={id} id={id}>
             {text}
-          </SegmentedControlItem>
+          </Segment>
         ))}
       </SegmentedControl>
     </div>
@@ -781,29 +763,38 @@ function UsageSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="space-y-6"
+      className="m-usage-settings__skeleton"
     >
-      <div
-        data-slot="usage-skeleton-kpis"
-        className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3"
-      >
+      <div data-slot="usage-skeleton-kpis" className="m-usage-settings__skeleton-kpis">
         {Array.from({ length: 4 }, (_, i) => (
-          <Skeleton key={i} className="h-26 w-full rounded-2xl" />
+          <Skeleton key={i} shape="rect" height="6.5rem" />
         ))}
       </div>
       {/* One block per chart card below, at about its loaded height, so the
           page does not grow by several hundred pixels when the numbers land:
           the trend, the two cost cards, the two token cards, the activity. */}
-      <Skeleton data-slot="usage-skeleton-card" className="h-72 w-full rounded-2xl" />
-      <div data-slot="usage-skeleton-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
-        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
-        <Skeleton data-slot="usage-skeleton-card" className="h-52 w-full rounded-2xl" />
+      <div data-slot="usage-skeleton-card">
+        <Skeleton shape="rect" height="18rem" />
       </div>
-      <div data-slot="usage-skeleton-token-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
-        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
-        <Skeleton data-slot="usage-skeleton-card" className="h-64 w-full rounded-2xl" />
+      <div data-slot="usage-skeleton-charts" className="m-usage-settings__skeleton-charts">
+        <div data-slot="usage-skeleton-card">
+          <Skeleton shape="rect" height="13rem" />
+        </div>
+        <div data-slot="usage-skeleton-card">
+          <Skeleton shape="rect" height="13rem" />
+        </div>
       </div>
-      <Skeleton data-slot="usage-skeleton-card" className="h-60 w-full rounded-2xl" />
+      <div data-slot="usage-skeleton-token-charts" className="m-usage-settings__skeleton-charts">
+        <div data-slot="usage-skeleton-card">
+          <Skeleton shape="rect" height="16rem" />
+        </div>
+        <div data-slot="usage-skeleton-card">
+          <Skeleton shape="rect" height="16rem" />
+        </div>
+      </div>
+      <div data-slot="usage-skeleton-card">
+        <Skeleton shape="rect" height="15rem" />
+      </div>
     </div>
   )
 }
@@ -1460,10 +1451,9 @@ function BucketTable({
           return (
             <TooltipTrigger>
               <Button
-                iconOnly
-                leadingIcon={SquareArrowUpRight}
-                size="small"
-                variant="neutral"
+                icon={<SquareArrowUpRight />}
+                size="sm"
+                variant="ghost"
                 aria-label={label}
                 onPress={() => onOpenConversation(conversationId)}
               />

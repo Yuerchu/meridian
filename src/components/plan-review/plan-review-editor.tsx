@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, type ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -18,13 +18,8 @@ import {
   Strikethrough,
 } from '@keyline-icons/react/two-tone'
 import type { JSONContent } from '@tiptap/core'
-import { Tooltip, TooltipTrigger } from '@/components/base'
-import {
-  RichTextEditor,
-  useRichTextEditor,
-  type ButtonProps,
-  type RichTextEditorFormatCommand,
-} from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from '@/components/base'
 
 import {
   mappedPlanCommentAnchors,
@@ -79,7 +74,7 @@ function FormatButton({
 }: {
   command: RichTextEditorFormatCommand
   label: string
-  icon: ButtonProps['leadingIcon']
+  icon: ComponentProps<typeof RichTextEditor.ToggleButton>['leadingIcon']
 }) {
   return <RichTextEditor.ToggleButton command={command} aria-label={label} tooltip={label} leadingIcon={icon} />
 }
@@ -146,7 +141,7 @@ export function PlanReviewEditor({
               <FormatButton command="strike" label={t('planReview.editor.strike')} icon={Strikethrough} />
               <FormatButton command="code" label={t('planReview.editor.code')} icon={Code} />
               <RichTextEditor.LinkPopover>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <RichTextEditor.LinkPopover.Trigger aria-label={t('planReview.editor.link')} leadingIcon={Link} />
                   <Tooltip>{t('planReview.editor.link')}</Tooltip>
                 </TooltipTrigger>

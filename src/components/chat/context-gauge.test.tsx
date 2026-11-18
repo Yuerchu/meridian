@@ -30,7 +30,37 @@ describe('ContextGauge', () => {
       limit: (200_000).toLocaleString(),
     })
     expect(screen.getByRole('button', { name: figures })).toBeInTheDocument()
-    expect(container.querySelector('[role="progressbar"]')).not.toBeNull()
+    const ring = container.querySelector('[role="progressbar"]')
+    expect(ring?.parentElement).toHaveAttribute('aria-hidden', 'true')
+    expect(ring).toHaveAttribute('aria-label', figures)
+    expect(ring).toHaveAttribute('aria-valuenow', '50000')
+    expect(ring).toHaveAttribute('aria-valuemax', '200000')
+    expect(ring).toHaveClass('ui-progress-circle')
+    expect(ring).toHaveAttribute('data-size', 'sm')
+    expect(screen.queryByRole('progressbar')).toBeNull()
+  })
+
+  it('clamps the ring without hiding an over-capacity reading', () => {
+    const { container } = render(
+      <ContextGauge
+        showPercent
+        context={{ status: 'ready', reading: reading({ estimatedTokens: 250_000 }), retry: () => {} }}
+      />,
+    )
+    expect(container.querySelector('[role="progressbar"]')).toHaveAttribute('aria-valuenow', '200000')
+    expect(container.querySelector('.ui-progress-circle__fill')).toHaveAttribute('stroke-dashoffset', '0')
+    expect(screen.getByText('125%')).toBeInTheDocument()
+  })
+
+  it('keeps compaction indeterminate and exposes the action through its trigger', async () => {
+    const user = userEvent.setup()
+    const { container } = render(
+      <ContextGauge compacting context={{ status: 'ready', reading: reading(), retry: () => {} }} />,
+    )
+    expect(container.querySelector('[role="progressbar"]')).not.toHaveAttribute('aria-valuenow')
+    expect(container.querySelector('.ui-progress-circle__svg')).toHaveAttribute('data-indeterminate', 'true')
+    await user.click(screen.getByRole('button'))
+    expect(await screen.findByText(i18n.t('chat.compact.inProgress'))).toBeInTheDocument()
   })
 
   /** Nothing is drawn before the first answer: there used to be a 128k

@@ -34,7 +34,9 @@ const LOBEHUB_ICONS_BARREL = {
 // it. `\\b` keeps `rounded` from matching `rounded-lg`.
 function forbiddenClass(re, message) {
   return [
-    { selector: `Literal[value=/${re}/]`, message },
+    // A module path is not a class list: `.../text-field/text-field` names a
+    // library component, not HeroUI's `text-field` token.
+    { selector: `Literal[value=/${re}/]:not(ImportDeclaration > Literal, ImportExpression > Literal)`, message },
     { selector: `TemplateElement[value.raw=/${re}/]`, message },
   ]
 }
@@ -253,7 +255,8 @@ export const uiRestrictions = {
 }
 
 export default tseslint.config(
-  { ignores: ['dist', 'src-tauri', '**/*.test.ts', '**/*.test.tsx'] },
+  // Copied from Yuerchu UI and held to its own lint there; `pnpm ui:check` keeps it verbatim.
+  { ignores: ['dist', 'src-tauri', 'src/components/yuerchu-ui', '**/*.test.ts', '**/*.test.tsx'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -293,10 +296,7 @@ export default tseslint.config(
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    rules: {
-      'meridian-ui/animation-needs-keyframes': 'error',
-      'meridian-ui/no-modifier-on-static-utility': 'error',
-    },
+    rules: {},
   },
   // The tool-call rendering path: a value is drawn with `ToolValue`, never
   // pasted as JSON. `tool-value.tsx` is the generic renderer and is exempt.

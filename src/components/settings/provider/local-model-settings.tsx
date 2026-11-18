@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import type { LocalInferenceBackend, LocalModelInfoResponse } from '@/types'
-import { SETTINGS_ROW_SELECT_TRIGGER, SettingsRow, SettingsSelect } from '../primitives'
+import { SettingsRow, SettingsSelect } from '../primitives'
 
 export function LocalModelSettings({
   providerId,
@@ -75,7 +76,7 @@ export function LocalModelSettings({
               value={backend}
               options={options}
               onChange={onBackendChange}
-              triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
+
               disabled={isRemote}
             />
           )
@@ -88,7 +89,7 @@ export function LocalModelSettings({
         stacked
       >
         <Button
-          size="small"
+          size="sm"
           variant="secondary"
           onPress={inspect}
           isPending={checking}
@@ -97,12 +98,8 @@ export function LocalModelSettings({
           {t(info === null ? 'settings.localModel.inspect' : 'settings.localModel.inspectAgain')}
         </Button>
         {error !== null && (
-          <Alert status="danger" role="alert">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{t('settings.localModel.inspectError')}</Alert.Title>
-              <Alert.Description className="break-all">{error}</Alert.Description>
-            </Alert.Content>
+          <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.inspectError')}>
+            {error}
           </Alert>
         )}
       </SettingsRow>

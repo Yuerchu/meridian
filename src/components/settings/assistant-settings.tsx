@@ -1,19 +1,15 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
-import {
-  Alert,
-  Button,
-  Checkbox,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextArea,
-  TextField,
-} from '@/components/base'
+import { Disclosure, DisclosureGroup } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft } from '@/lib/number-draft'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -233,28 +229,27 @@ function AssistantEditor({
 
   return (
     <div data-slot="assistant-editor" className="space-y-4 px-1 pb-4">
-      <TextField>
-        <Label>{t('settings.assistant.name')}</Label>
-        <Input name={`assistantName-${assistant.id}`} value={name} onChange={(e) => setName(e.target.value)} />
-      </TextField>
+      <TextField
+        label={t('settings.assistant.name')}
+        name={`assistantName-${assistant.id}`}
+        value={name}
+        onChange={setName}
+      />
 
-      <TextField>
-        <Label>{t('settings.assistant.systemPrompt')}</Label>
-        <TextArea
-          name={`assistantSystemPrompt-${assistant.id}`}
-          value={systemPrompt}
-          onChange={(e) => setSystemPrompt(e.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              void handleSave()
-            }
-          }}
-          rows={6}
-          className="resize-none font-mono text-caption-1-regular"
-        />
-      </TextField>
+      <TextArea
+        label={t('settings.assistant.systemPrompt')}
+        name={`assistantSystemPrompt-${assistant.id}`}
+        value={systemPrompt}
+        onChange={setSystemPrompt}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault()
+            void handleSave()
+          }
+        }}
+        rows={6}
+      />
 
       <ProviderModelPicker
         providers={providers}
@@ -269,46 +264,45 @@ function AssistantEditor({
       />
 
       <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField type="number">
-          <Label>{t('settings.assistant.temperature')}</Label>
-          <Input
-            name={`assistantTemperature-${assistant.id}`}
-            inputMode="decimal"
-            value={temperature}
-            onChange={(e) => setTemperature(e.target.value)}
-            placeholder={t('settings.assistant.providerDefault')}
-            min={0}
-            max={2}
-            step={0.1}
-          />
-        </TextField>
-        <TextField type="number" isInvalid={modelConflicts.includes('context')}>
-          <Label>{t('settings.assistant.contextLimit')}</Label>
-          <Input
-            name={`assistantContextLimit-${assistant.id}`}
-            inputMode="numeric"
-            value={contextLimit}
-            onChange={(e) => setContextLimit(e.target.value)}
-            placeholder={t('settings.assistant.contextLimitFromModel')}
-          />
-          {boundWindow !== null && (
-            <Description
-              data-slot="assistant-context-cap"
-              className={modelConflicts.includes('context') ? 'text-status-danger' : undefined}
-            >
-              {modelConflicts.includes('context')
-                ? t('settings.assistant.contextLimitExceedsModel', { window: boundWindow })
-                : t('settings.assistant.contextLimitCap', { window: boundWindow })}
-            </Description>
-          )}
-        </TextField>
+        <NumberField
+          label={t('settings.assistant.temperature')}
+          value={draftToNumber(temperature)}
+          onChange={(value) => setTemperature(numberToDraft(value))}
+          name={`assistantTemperature-${assistant.id}`}
+          placeholder={t('settings.assistant.providerDefault')}
+          minValue={0}
+          maxValue={2}
+          step={0.1}
+          formatOptions={{ maximumFractionDigits: 2 }}
+        />
+        {/* Over the model's window it is an error, said as one; under it, the
+            window is the cap the field is read against. */}
+        <NumberField
+          label={t('settings.assistant.contextLimit')}
+          name={`assistantContextLimit-${assistant.id}`}
+          value={draftToNumber(contextLimit)}
+          onChange={(value) => setContextLimit(numberToDraft(value))}
+          placeholder={t('settings.assistant.contextLimitFromModel')}
+          formatOptions={{ maximumFractionDigits: 0 }}
+          isInvalid={modelConflicts.includes('context')}
+          errorMessage={
+            boundWindow !== null ? t('settings.assistant.contextLimitExceedsModel', { window: boundWindow }) : undefined
+          }
+          description={
+            boundWindow !== null && !modelConflicts.includes('context') ? (
+              <span data-slot="assistant-context-cap">
+                {t('settings.assistant.contextLimitCap', { window: boundWindow })}
+              </span>
+            ) : undefined
+          }
+        />
       </div>
 
       <div data-slot="assistant-auto-compact" className="space-y-1.5">
         <p data-slot="assistant-auto-compact-label" className="block text-caption-1-regular text-text-secondary">
           {t('settings.assistant.autoCompact')}
         </p>
-        <Checkbox className="text-caption-1-regular" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
+        <Checkbox isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
           {t('settings.assistant.autoCompactHint')}
         </Checkbox>
       </div>
@@ -318,7 +312,7 @@ function AssistantEditor({
           {t('settings.assistant.thinking')}
         </p>
         <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
-          <Checkbox className="text-caption-1-regular" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
+          <Checkbox isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
             {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
@@ -329,14 +323,13 @@ function AssistantEditor({
         )}
         {thinkingEnabled && (
           <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
-            <Input
-              type="number"
+            <NumberField
               name={`assistantThinkingBudget-${assistant.id}`}
               aria-label={t('settings.assistant.thinkingBudget')}
-              inputMode="numeric"
-              value={thinkingBudget}
-              onChange={(e) => setThinkingBudget(e.target.value)}
+              value={draftToNumber(thinkingBudget)}
+              onChange={(value) => setThinkingBudget(numberToDraft(value))}
               placeholder={t('settings.assistant.thinkingBudget')}
+              formatOptions={{ maximumFractionDigits: 0 }}
             />
             <p data-slot="assistant-thinking-budget-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.assistant.thinkingBudgetHint')}
@@ -402,7 +395,6 @@ function AssistantEditor({
               {allTools.map((tool) => (
                 <Checkbox
                   key={tool.name}
-                  className="py-0.5 text-caption-1-regular"
                   isSelected={selectedTools.has(tool.name)}
                   onChange={(selected) => {
                     const next = new Set(selectedTools)
@@ -437,7 +429,6 @@ function AssistantEditor({
             {allPacks.map((pack) => (
               <Checkbox
                 key={pack.id}
-                className="py-0.5 text-caption-1-regular"
                 isSelected={assignedPackIds.has(pack.id)}
                 onChange={async (selected) => {
                   if (selected) {
@@ -480,7 +471,6 @@ function AssistantEditor({
               {allSkills.map((skill) => (
                 <Checkbox
                   key={skill.dir_name}
-                  className="py-0.5 text-caption-1-regular"
                   isSelected={boundSkillDirs.has(skill.dir_name)}
                   isDisabled={!skill.is_enabled}
                   onChange={async (selected) => {
@@ -529,7 +519,7 @@ function AssistantEditor({
         {saved && <SavedHint />}
         {onDelete && (
           <Button
-            variant="danger"
+            variant="destructive"
             className="ml-auto"
             onPress={() => {
               setSaveError(null)
@@ -556,7 +546,7 @@ export function AssistantSettings() {
 
   const requestLeave = useCallback(async () => {
     if (!dirtyAssistantId) return true
-    return confirm({ body: t('settings.unsavedChanges'), status: 'warning', confirmLabel: t('common.discardChanges') })
+    return confirm({ description: t('settings.unsavedChanges'), confirmLabel: t('common.discardChanges') })
   }, [confirm, dirtyAssistantId, t])
   useSettingsDirtyRegistration('assistants', 'assistant-editor', dirtyAssistantId !== null)
 
@@ -608,7 +598,14 @@ export function AssistantSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!(await confirm({ body: t('settings.confirmDelete.assistant'), confirmLabel: t('common.delete') }))) return
+      if (
+        !(await confirm({
+          description: t('settings.confirmDelete.assistant'),
+          confirmLabel: t('common.delete'),
+          tone: 'danger',
+        }))
+      )
+        return
       await api.deleteAssistant(id)
       setDirtyAssistantId(null)
       if (expandedId === id) setExpandedId(null)
@@ -625,13 +622,13 @@ export function AssistantSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.assistant.title')} subtitle={t('settings.assistant.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.assistant.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.assistant.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoadError(null)
@@ -643,7 +640,9 @@ export function AssistantSettings() {
             >
               {t('settings.assistant.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -655,7 +654,7 @@ export function AssistantSettings() {
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}
         actions={
-          <Button leadingIcon={Plus} variant="secondary" onPress={handleCreate}>
+          <Button icon={<Plus />} variant="secondary" onPress={handleCreate}>
             {t('settings.assistant.new')}
           </Button>
         }

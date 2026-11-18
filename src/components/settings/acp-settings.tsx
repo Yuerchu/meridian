@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
@@ -135,15 +138,18 @@ export function AcpSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.acp.title')} subtitle={t('settings.acp.subtitle')} />
-        <Alert data-slot="acp-load-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.acp.loadError')}</Alert.Title>
-            <Alert.Description className="break-all">{loadError}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
+        <Alert
+          data-slot="acp-load-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.acp.loadError')}
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setLoadAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -166,33 +172,28 @@ export function AcpSettings() {
         actions={saved ? <SavedHint /> : null}
       />
 
-      <TextField>
-        <Label>{t('settings.acp.command')}</Label>
-        <Input
-          name="acpCommand"
-          value={config.command}
-          onChange={(e) => setConfig({ ...config, command: e.target.value })}
-          placeholder={DEFAULTS.command}
-        />
-        <Description>{t('settings.acp.commandHint')}</Description>
-      </TextField>
+      <TextField
+        label={t('settings.acp.command')}
+        name="acpCommand"
+        value={config.command}
+        onChange={(e) => setConfig({ ...config, command: e })}
+        placeholder={DEFAULTS.command}
+        description={t('settings.acp.commandHint')}
+      />
 
-      <TextField>
-        <Label>{t('settings.acp.args')}</Label>
-        <TextArea
-          name="acpArgs"
-          rows={3}
-          spellCheck={false}
-          value={argsText}
-          onChange={(e) => setArgsText(e.target.value)}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
-          }}
-          className="font-mono text-caption-1-regular"
-        />
-        <Description>{t('settings.acp.argsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t('settings.acp.args')}
+        name="acpArgs"
+        rows={3}
+        spellCheck="false"
+        value={argsText}
+        onChange={setArgsText}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
+        }}
+        description={t('settings.acp.argsHint')}
+      />
 
       {saveError && (
         <p data-slot="acp-save-error" role="alert" className="text-caption-1-regular text-status-danger break-all">

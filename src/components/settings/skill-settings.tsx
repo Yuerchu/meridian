@@ -1,23 +1,15 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Chip,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { Card, Disclosure, DisclosureGroup } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -124,72 +116,63 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <TextField>
-          <Label>{t('settings.skills.dirName')}</Label>
-          <Input
-            value={dirName}
-            onChange={(e) => setDirName(e.target.value)}
-            placeholder="my-skill"
-            className="font-mono text-caption-1-regular"
-          />
-          <Description>{t('settings.skills.dirNameHint')}</Description>
-          {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
-              {t('settings.skills.dirNameInvalid')}
-            </p>
-          )}
-        </TextField>
+        <TextField
+          label={t('settings.skills.dirName')}
+          description={t('settings.skills.dirNameHint')}
+          value={dirName}
+          onChange={setDirName}
+          placeholder="my-skill"
+          isInvalid={dirName.trim().length > 0 && !dirNameValid}
+          errorMessage={t('settings.skills.dirNameInvalid')}
+        />
       )}
 
-      <TextField>
-        <Label>{t('settings.skills.displayName')}</Label>
-        <Input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder={skill?.llm_name ?? dirName}
-        />
-      </TextField>
+      <TextField
+        label={t('settings.skills.displayName')}
+        value={displayName}
+        onChange={setDisplayName}
+        placeholder={skill?.llm_name ?? dirName}
+      />
 
-      <TextField>
-        <Label>{t('settings.skills.description')}</Label>
+      <TextArea
+        label={t('settings.skills.description')}
+        value={description}
+        onChange={setDescription}
+        isDisabled={skill != null && !contentsEditable}
+        rows={2}
+        description={t('settings.skills.descriptionHint')}
+      />
+
+      {/* Loading, failed and loaded are three different things on screen, not
+          three fillings of one field. */}
+      {bodyState === 'loading' ? (
+        <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
+          {t('common.loading')}
+        </p>
+      ) : bodyState === 'error' ? (
+        <Alert
+          data-slot="skill-editor-body-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.skills.bodyLoadError')}
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
+              {t('common.retry')}
+            </Button>
+          }
+        >
+          {bodyError}
+        </Alert>
+      ) : (
         <TextArea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={skill != null && !contentsEditable}
-          rows={2}
-          className="resize-none text-caption-1-regular"
+          label={t('settings.skills.body')}
+          description={t('settings.skills.bodyHint')}
+          value={body}
+          onChange={setBody}
+          isDisabled={isBuiltin}
+          rows={10}
         />
-        <Description>{t('settings.skills.descriptionHint')}</Description>
-      </TextField>
-
-      <TextField>
-        <Label>{t('settings.skills.body')}</Label>
-        {bodyState === 'loading' ? (
-          <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
-            {t('common.loading')}
-          </p>
-        ) : bodyState === 'error' ? (
-          <Alert data-slot="skill-editor-body-error" status="danger" role="alert">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{t('settings.skills.bodyLoadError')}</Alert.Title>
-              {bodyError && <Alert.Description className="break-all">{bodyError}</Alert.Description>}
-              <Button size="small" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
-                {t('common.retry')}
-              </Button>
-            </Alert.Content>
-          </Alert>
-        ) : (
-          <TextArea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={isBuiltin}
-            rows={10}
-            className="resize-none font-mono text-caption-1-regular"
-          />
-        )}
-        <Description>{t('settings.skills.bodyHint')}</Description>
-      </TextField>
+      )}
 
       {isBuiltin && (
         <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">
@@ -209,12 +192,11 @@ function SkillEditor({
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              leadingIcon={Bin}
-              size="small"
-              variant="neutral"
+              icon={<Bin />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.skills.delete')}
               className="ml-auto hover:text-status-danger"
               onPress={onDelete}
@@ -302,10 +284,10 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button leadingIcon={RefreshCw} variant="secondary" onPress={handleRescan} isPending={rescanning}>
+            <Button icon={<RefreshCw />} variant="secondary" onPress={handleRescan} isPending={rescanning}>
               {t('settings.skills.rescan')}
             </Button>
-            <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
+            <Button icon={<Plus />} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               {t('settings.skills.new')}
             </Button>
           </>
@@ -389,15 +371,12 @@ export function SkillSettings() {
                         {skill.llm_name}
                       </span>
                     </div>
-                    <Chip data-slot="skill-item-source" className="shrink-0 text-text-secondary">
-                      {t(`settings.skills.source.${skill.source}`)}
-                    </Chip>
+                    <Badge data-slot="skill-item-source">{t(`settings.skills.source.${skill.source}`)}</Badge>
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
                 <Checkbox
                   data-slot="skill-item-enabled"
-                  className="shrink-0 text-caption-1-regular"
                   isSelected={skill.is_enabled}
                   onChange={(selected) => toggleEnabled(skill, selected)}
                 >
@@ -405,7 +384,6 @@ export function SkillSettings() {
                 </Checkbox>
                 <Checkbox
                   data-slot="skill-item-global"
-                  className="shrink-0 text-caption-1-regular"
                   isSelected={globalBound.has(skill.dir_name)}
                   onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
                 >
@@ -438,8 +416,9 @@ export function SkillSettings() {
                             : async () => {
                                 if (
                                   !(await confirm({
-                                    body: t('settings.confirmDelete.skill'),
+                                    description: t('settings.confirmDelete.skill'),
                                     confirmLabel: t('common.delete'),
+                                    tone: 'danger',
                                   }))
                                 )
                                   return
@@ -462,11 +441,7 @@ export function SkillSettings() {
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <EmptyState data-slot="skill-settings-empty" size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.skills.noSkills')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState heading={t('settings.skills.noSkills')} headingLevel={3} size="sm" />
         )}
       </DisclosureGroup>
 

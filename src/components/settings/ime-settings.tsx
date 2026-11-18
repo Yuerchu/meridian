@@ -1,23 +1,15 @@
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  CellSwitch,
-  Checkbox,
-  CheckboxGroup,
-  Description,
-  ItemCard,
-  ItemCardGroup,
-  Label,
-  Separator,
-  Spinner,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { ItemCard, ItemCardGroup } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -311,8 +303,8 @@ export function ImeSettings() {
   const handleRemoveDictionary = async (dict: ImeDictionaryInfoResponse) => {
     if (
       !(await confirm({
-        body: t('settings.ime.removeConfirm', { name: dict.name }),
-        status: 'danger',
+        description: t('settings.ime.removeConfirm', { name: dict.name }),
+        tone: 'danger',
         confirmLabel: t('common.delete'),
       }))
     )
@@ -330,15 +322,15 @@ export function ImeSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.ime.title')} subtitle={t('settings.ime.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.ime.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.ime.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData(android)
@@ -346,7 +338,9 @@ export function ImeSettings() {
             >
               {t('settings.ime.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -466,7 +460,7 @@ export function ImeSettings() {
             </Button>
             {hostRunning ? (
               <Button
-                variant="danger"
+                variant="destructive"
                 isDisabled={busy !== null}
                 isPending={busy === 'stop'}
                 onPress={() => run('stop', api.stopImeHost)}
@@ -489,18 +483,16 @@ export function ImeSettings() {
           </p>
 
           <div data-slot="ime-enable" className="space-y-1.5">
-            <CellSwitch
+            <Switch
+              variant="card"
               aria-label={t('settings.ime.enableForUser')}
               aria-describedby="ime-enable-hint"
               isSelected={status?.enabled_for_user ?? false}
               isDisabled={!registered || busy !== null}
               onChange={(selected) => run('profile', () => api.setImeProfileEnabled({ enabled: selected }))}
             >
-              <CellSwitch.Trigger className="pointer-coarse:h-11">
-                <CellSwitch.Label>{t('settings.ime.enableForUser')}</CellSwitch.Label>
-                <CellSwitch.Control />
-              </CellSwitch.Trigger>
-            </CellSwitch>
+              {t('settings.ime.enableForUser')}
+            </Switch>
             <p id="ime-enable-hint" data-slot="ime-enable-hint" className="text-caption-1-regular text-text-secondary">
               {t('settings.ime.enableForUserHint')}
             </p>
@@ -553,17 +545,15 @@ export function ImeSettings() {
       </p>
 
       <div data-slot="ime-learning" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.ime.learning')}
           aria-describedby="ime-learning-hint"
           isSelected={config.learning}
           onChange={(selected) => setConfig({ ...config, learning: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.ime.learning')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.ime.learning')}
+        </Switch>
         <p id="ime-learning-hint" data-slot="ime-learning-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.ime.learningHint')}
         </p>
@@ -572,17 +562,15 @@ export function ImeSettings() {
       <ImeLearningSection />
 
       <div data-slot="ime-prediction" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.ime.prediction')}
           aria-describedby="ime-prediction-hint"
           isSelected={config.prediction}
           onChange={(selected) => setConfig({ ...config, prediction: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.ime.prediction')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.ime.prediction')}
+        </Switch>
         <p
           id="ime-prediction-hint"
           data-slot="ime-prediction-hint"
@@ -592,40 +580,34 @@ export function ImeSettings() {
         </p>
       </div>
 
-      <TextField>
-        <Label>{t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}</Label>
-        <TextArea
-          name="imePrivateApps"
-          rows={3}
-          value={privateAppsInput}
-          onChange={(e) => setPrivateAppsInput(e.target.value)}
-          placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
-        />
-        <Description>{t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}
+        name="imePrivateApps"
+        rows={3}
+        value={privateAppsInput}
+        onChange={setPrivateAppsInput}
+        placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
+        description={t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}
+      />
 
-      <TextField>
-        <Label>{t('settings.ime.contextApps')}</Label>
-        <TextArea
-          name="imeContextApps"
-          rows={2}
-          value={contextAppsInput}
-          onChange={(e) => setContextAppsInput(e.target.value)}
-          placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
-        />
-        <Description>{t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}</Description>
-      </TextField>
+      <TextArea
+        label={t('settings.ime.contextApps')}
+        name="imeContextApps"
+        rows={2}
+        value={contextAppsInput}
+        onChange={setContextAppsInput}
+        placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
+        description={t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}
+      />
 
-      <CellSwitch
+      <Switch
+        variant="card"
         aria-label={t('settings.ime.debugLog')}
         isSelected={config.debug_log}
         onChange={(selected) => setConfig({ ...config, debug_log: selected })}
       >
-        <CellSwitch.Trigger className="pointer-coarse:h-11">
-          <CellSwitch.Label>{t('settings.ime.debugLog')}</CellSwitch.Label>
-          <CellSwitch.Control />
-        </CellSwitch.Trigger>
-      </CellSwitch>
+        {t('settings.ime.debugLog')}
+      </Switch>
 
       {error && (
         <p data-slot="ime-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
@@ -652,7 +634,7 @@ export function ImeSettings() {
           {can.importFromDisk && (
             <div data-slot="ime-dictionaries-actions" className="flex flex-wrap items-center gap-2">
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 onPress={handleDownload}
                 isDisabled={importing || downloading}
@@ -661,7 +643,7 @@ export function ImeSettings() {
                 {t('settings.ime.downloadRimeIce')}
               </Button>
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 onPress={handleImport}
                 isDisabled={importing || downloading}
@@ -673,26 +655,25 @@ export function ImeSettings() {
           )}
         </div>
         {downloading && (
-          <p
+          <div
             data-slot="ime-downloading"
             role="status"
             className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
           >
-            <Spinner size="sm" />
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
             {t('settings.ime.downloading')}
-          </p>
+          </div>
         )}
         {staged && (
           <ItemCard variant="outline">
             <ItemCard.Content className="min-w-0 space-y-3">
               <CheckboxGroup
-                aria-label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
+                label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
                 value={chosen}
                 onChange={setChosen}
               >
-                <p className="text-body-2-medium text-text-primary">
-                  {t('settings.ime.chooseRoots', { count: staged.roots.length })}
-                </p>
                 {staged.roots.map((root) => (
                   <Checkbox key={root.path} value={root.path}>
                     <span className="break-all">
@@ -708,7 +689,7 @@ export function ImeSettings() {
               </CheckboxGroup>
               <div className="flex items-center gap-2">
                 <Button
-                  size="small"
+                  size="sm"
                   variant="primary"
                   onPress={handleImportChosen}
                   isDisabled={chosen.length === 0 || importing}
@@ -716,7 +697,7 @@ export function ImeSettings() {
                 >
                   {t('settings.ime.importChosen')}
                 </Button>
-                <Button size="small" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
+                <Button size="sm" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
                   {t('common.cancel')}
                 </Button>
               </div>
@@ -724,28 +705,34 @@ export function ImeSettings() {
           </ItemCard>
         )}
         {importing && (
-          <p
+          <div
             data-slot="ime-importing"
             role="status"
             className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
           >
-            <Spinner size="sm" />
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
             {t('settings.ime.importing')}
-          </p>
+          </div>
         )}
         {reports.map((report) => (
-          <Alert key={report.file} status={report.accepted > 0 ? 'success' : 'warning'}>
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>
+          <Alert
+            shouldAnnounce
+            key={report.file}
+            tone={report.accepted > 0 ? 'success' : 'warning'}
+            heading={
+              <>
                 {report.cache_hit
                   ? t('settings.ime.importCached', { name: report.name })
                   : t('settings.ime.importDone', { name: report.name, count: report.accepted })}
-              </Alert.Title>
-              {report.notes.length > 0 && (
-                <Alert.Description className="whitespace-pre-line">{report.notes.join('\n')}</Alert.Description>
-              )}
-            </Alert.Content>
+              </>
+            }
+          >
+            {report.notes.map((note, index) => (
+              // One note per line. Notes may repeat and are never reordered, so the index is the key.
+              <p key={index}>{note}</p>
+            ))}
           </Alert>
         ))}
         {dictionaries.length === 0 ? (
@@ -775,21 +762,16 @@ export function ImeSettings() {
                     <DictionaryStateLine state={dict.state} />
                   </ItemCard.Content>
                   <ItemCard.Action className="flex items-center gap-2">
-                    <CellSwitch
+                    <Switch
                       aria-label={t('settings.ime.dictionaryEnabled', { name: dict.name })}
                       isSelected={dict.enabled}
                       onChange={(selected) => handleToggleDictionary(dict.file, selected)}
-                    >
-                      <CellSwitch.Trigger>
-                        <CellSwitch.Control />
-                      </CellSwitch.Trigger>
-                    </CellSwitch>
-                    <TooltipTrigger delay={0}>
+                    ></Switch>
+                    <TooltipTrigger>
                       <Button
-                        iconOnly
-                        leadingIcon={Bin}
-                        size="small"
-                        variant="neutral"
+                        icon={<Bin />}
+                        size="sm"
+                        variant="ghost"
                         aria-label={t('settings.ime.removeDictionary', { name: dict.name })}
                         onPress={() => handleRemoveDictionary(dict)}
                       />
@@ -827,14 +809,16 @@ function DictionaryStateLine({ state }: { state: ImeDictionaryState }) {
   if (state.kind === 'ready') return null
   if (state.kind === 'upgrading') {
     return (
-      <p
+      <div
         data-slot="ime-dictionary-state"
         role="status"
         className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
       >
-        <Spinner size="sm" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         {t('settings.ime.dictionaryUpgrading')}
-      </p>
+      </div>
     )
   }
   const message =

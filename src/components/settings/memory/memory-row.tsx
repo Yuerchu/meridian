@@ -1,19 +1,16 @@
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, ChevronRight, TriangleAlert } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Button, Checkbox, Disclosure, TextArea, Tooltip, TooltipTrigger } from '@/components/base'
+import { Disclosure } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import type { MemoryInfoResponse } from '@/types'
 import { SettingsTag } from '../primitives'
 import { memoryOriginLabel, memoryScopeLabel, memoryTypeLabel } from './labels'
 import { titleIfTruncated } from '@/lib/truncation'
-
-/**
- * `--info` is a project extension: Chip has no `info` colour, so the property
- * it reads is set directly. The same shape as the `--progress-circle-*`
- * override elsewhere, and for the same reason.
- */
-export const INFO_CHIP = '[--chip-fg:var(--color-status-info-soft-foreground)]'
 
 interface MemoryRowProps {
   memory: MemoryInfoResponse
@@ -60,15 +57,8 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
       className="flex w-full flex-col border-b border-separator-border last:border-b-0"
     >
       <div data-slot="memory-row-header" className="flex items-start gap-2.5 py-2.5 pr-2.5">
-        {/* No label of its own — the row's key names it. Nudged down to sit on
-            the summary's first line rather than between the two. */}
-        <Checkbox
-          data-slot="memory-row-check"
-          aria-label={memory.key}
-          isSelected={checked}
-          onChange={onToggleCheck}
-          className="mt-0.5"
-        />
+        {/* No visible label — the row's key names the checkbox. */}
+        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck} />
         {/* The whole summary opens the row. The checkbox is a sibling, since a
             button cannot hold another control. */}
         <Disclosure.Heading className="min-w-0 flex-1">
@@ -136,7 +126,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
             aria-label={t('settings.memory.content')}
             name={`memoryContent-${memory.id}`}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => setDraft(e)}
             onKeyDown={(event) => {
               if (event.nativeEvent.isComposing) return
               if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -163,12 +153,11 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               </span>
             )}
             <div data-slot="memory-row-actions-spacer" className="flex-1" />
-            <TooltipTrigger delay={0}>
+            <TooltipTrigger>
               <Button
-                variant="neutral"
-                iconOnly
-                leadingIcon={Bin}
-                size="small"
+                variant="ghost"
+                icon={<Bin />}
+                size="sm"
                 aria-label={t('settings.memory.delete')}
                 onPress={async () => {
                   await api.deleteMemories([memory.id])
@@ -179,7 +168,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
               <Tooltip>{t('settings.memory.delete')}</Tooltip>
             </TooltipTrigger>
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               isDisabled={saving || draft === memory.content}
               onPress={() => void saveDraft()}

@@ -1,19 +1,15 @@
+import './plan-review-page.css'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  Chip,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Skeleton,
-  TextArea,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
+import { Dropdown, DropdownItem, DropdownPopover } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { TextArea as AriaTextArea } from 'react-aria-components'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment } from '@/components/base'
 import { Sheet } from '@/components/base'
 
@@ -102,44 +98,34 @@ function PlanReviewSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="flex h-full min-h-0 flex-col bg-background-full"
+      className="m-plan-review-page__skeleton"
     >
-      <div
-        data-slot="plan-review-skeleton-header"
-        className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border-button-default px-3 @sm:px-5"
-      >
-        <div data-slot="plan-review-skeleton-heading" className="flex-1 space-y-1.5">
-          <Skeleton className="h-4 w-28 rounded-md" />
-          <Skeleton className="h-3 w-56 rounded-md" />
+      <div data-slot="plan-review-skeleton-header" className="m-plan-review-page__skeleton-header">
+        <div data-slot="plan-review-skeleton-heading" className="m-plan-review-page__skeleton-heading">
+          <Skeleton width="7rem" />
+          <Skeleton width="14rem" />
         </div>
-        <Skeleton className="h-8 w-24 rounded-lg" />
-        <Skeleton className="size-8 rounded-lg" />
+        <Skeleton shape="rect" width="6rem" height="2rem" />
+        <Skeleton shape="rect" width="2rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-views"
-        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2 @sm:px-5"
-      >
-        <Skeleton className="h-8 w-60 rounded-lg" />
+      <div data-slot="plan-review-skeleton-views" className="m-plan-review-page__skeleton-views">
+        <Skeleton shape="rect" width="15rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-document"
-        className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8"
-      >
-        <Skeleton className="h-6 w-2/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-11/12 rounded-md" />
-        <Skeleton className="h-3.5 w-4/5 rounded-md" />
-        <Skeleton className="mt-6 h-5 w-1/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-10/12 rounded-md" />
+      <div data-slot="plan-review-skeleton-document" className="m-plan-review-page__skeleton-document">
+        <Skeleton width="66.67%" />
+        <Skeleton width="100%" />
+        <Skeleton width="91.67%" />
+        <Skeleton width="80%" />
+        <div className="m-plan-review-page__section-placeholder">
+          <Skeleton width="33.33%" />
+        </div>
+        <Skeleton width="100%" />
+        <Skeleton width="83.33%" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-decision"
-        className="flex shrink-0 items-center justify-end gap-2 border-t border-border-button-default px-3 py-3 @sm:px-5"
-      >
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
+      <div data-slot="plan-review-skeleton-decision" className="m-plan-review-page__skeleton-decision">
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
       </div>
     </div>
   )
@@ -165,16 +151,14 @@ function SourceEditor({
   const { t } = useTranslation()
   return (
     <div data-slot="plan-source-editor" className="flex h-full min-h-0 flex-col">
-      <TextArea
+      {/* A source editor filling its pane, not a form field: React Aria's bare
+          textarea, without the library field's label and auto-height. */}
+      <AriaTextArea
         ref={textareaRef}
         aria-label={t('planReview.source.label')}
         value={value}
         readOnly={isReadOnly}
-        // The layout classes go on the field shell, which is the flex child
-        // of the column; `className` reaches only the `<textarea>` inside it,
-        // and a percentage height there cannot stretch a content-sized shell.
-        fieldClassName="plan-review-source min-h-0 flex-1 rounded-none p-0"
-        className="font-mono"
+        className="plan-review-source min-h-0 flex-1 font-mono"
         onChange={(event) => onChange(event.target.value)}
         onSelect={(event) => {
           const target = event.currentTarget
@@ -190,8 +174,8 @@ function SourceEditor({
             {t('planReview.source.hint')}
           </p>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
@@ -451,10 +435,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     }
     if (!hasLocalChanges()) return true
     return confirm({
-      title: t('planReview.leave.title'),
-      body: describeUnsaved(),
+      heading: t('planReview.leave.title'),
+      description: describeUnsaved(),
       confirmLabel: t('planReview.leave.confirm'),
-      status: 'danger',
+      tone: 'danger',
     })
   }
   const requestLeaveRef = useRef(requestLeave)
@@ -467,10 +451,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     if (
       hasLocalChanges() &&
       !(await confirm({
-        title: t('planReview.reloadConfirm.title'),
-        body: describeUnsaved(),
+        heading: t('planReview.reloadConfirm.title'),
+        description: describeUnsaved(),
         confirmLabel: t('planReview.reload'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return
@@ -634,10 +618,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const discard = async () => {
     if (
       !(await confirm({
-        title: t('planReview.discardConfirm.title'),
-        body: t('planReview.discardConfirm.body'),
+        heading: t('planReview.discardConfirm.title'),
+        description: t('planReview.discardConfirm.body'),
         confirmLabel: t('planReview.discard'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return
@@ -793,9 +777,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               >
                 {t('planReview.title')}
               </h2>
-              <Chip size="sm" variant="secondary">
-                {t(`planReview.status.${info.review.state}`)}
-              </Chip>
+              <Badge size="sm">{t(`planReview.status.${info.review.state}`)}</Badge>
             </div>
             <p
               data-slot="plan-review-subtitle"
@@ -811,7 +793,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </div>
 
           <Dropdown>
-            <Button trailingIcon={ChevronDown} leadingIcon={Clock} variant="secondary" size="small">
+            <Button iconRight={<ChevronDown />} icon={<Clock />} variant="secondary" size="sm">
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
@@ -846,14 +828,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           </Dropdown>
 
           <TooltipTrigger>
-            <Button
-              iconOnly
-              leadingIcon={X}
-              variant="neutral"
-              size="small"
-              aria-label={t('common.close')}
-              onPress={onClose}
-            />
+            <Button icon={<X />} variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose} />
             <Tooltip>{t('common.close')}</Tooltip>
           </TooltipTrigger>
         </div>
@@ -867,27 +842,27 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <div data-slot="plan-review-problem-list" className="mx-auto max-w-[96rem] space-y-2">
             {problems.map((problem) => (
               <Alert
+                shouldAnnounce
                 key={problem.key}
-                status={problem.status}
+                tone={problem.status}
                 data-problem={problem.key}
-                icon={<TriangleAlert className="size-4" />}
+                actions={
+                  problem.actions && problem.actions.length > 0
+                    ? problem.actions.map((action) => (
+                        <Button
+                          key={action.label}
+                          variant="secondary"
+                          size="sm"
+                          isDisabled={action.pending}
+                          onPress={action.run}
+                        >
+                          {action.label}
+                        </Button>
+                      ))
+                    : undefined
+                }
               >
-                <div data-slot="plan-review-problem-row" className="flex flex-wrap items-center gap-2">
-                  <p data-slot="plan-review-problem-message" className="min-w-0 flex-1 break-words text-body-regular">
-                    {problem.message}
-                  </p>
-                  {problem.actions?.map((action) => (
-                    <Button
-                      key={action.label}
-                      variant="secondary"
-                      size="small"
-                      isDisabled={action.pending}
-                      onPress={action.run}
-                    >
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
+                <p data-slot="plan-review-problem-message">{problem.message}</p>
               </Alert>
             ))}
           </div>
@@ -904,7 +879,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               {progress.message}
             </p>
             {progress.resumable && (
-              <Button size="small" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
+              <Button size="sm" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
                 {t('planReview.continueDelivery')}
               </Button>
             )}
@@ -944,8 +919,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t(`planReview.save.${saveState}`)}
           </span>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
             className="plan-review-comments-trigger"
             onPress={() => setCommentsOpen(true)}

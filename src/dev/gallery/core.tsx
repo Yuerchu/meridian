@@ -1,27 +1,20 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useState } from 'react'
 import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import {
-  Avatar,
-  Button,
-  Card,
-  Chip,
-  CloseButton,
-  Kbd,
-  LinkButton,
-  Separator,
-  Spinner,
-  ToggleButton,
-  type ButtonVariant,
-} from '@/components/base'
+import { Avatar, Card, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
+import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
+import { MeridianMark } from '@/components/ui/meridian-mark'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
 import { CoreParts } from './parts'
 
-const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger', 'neutral']
-const SIZES = ['medium', 'small', 'xs'] as const
-const CHIP_VARIANTS = ['primary', 'secondary', 'soft', 'tertiary'] as const
-const CHIP_COLORS = ['default', 'accent', 'success', 'warning', 'danger'] as const
+const VARIANTS = ['primary', 'secondary', 'ghost', 'destructive'] as const
+const SIZES = ['lg', 'md', 'sm'] as const
+const BADGE_TONES = ['neutral', 'accent', 'success', 'warning', 'danger'] as const
 
 function Buttons() {
   return (
@@ -29,11 +22,11 @@ function Buttons() {
       {SIZES.map((size) => (
         <Row key={size} label={size}>
           {VARIANTS.map((variant) => (
-            <Button key={variant} variant={variant} size={size} leadingIcon={variant === 'danger' ? Bin : Plus}>
+            <Button key={variant} variant={variant} size={size} icon={variant === 'destructive' ? <Bin /> : <Plus />}>
               {variant}
             </Button>
           ))}
-          <Button size={size} variant="neutral" iconOnly leadingIcon={Sparkles} aria-label="仅图标" />
+          <Button size={size} variant="ghost" icon={<Sparkles />} aria-label="仅图标" />
         </Row>
       ))}
       <Row label="状态">
@@ -42,7 +35,7 @@ function Buttons() {
         <Button variant="secondary" isDisabled>
           不可用
         </Button>
-        <Button variant="danger" isDisabled>
+        <Button variant="destructive" isDisabled>
           不可用
         </Button>
       </Row>
@@ -80,23 +73,38 @@ function Toggles() {
 }
 
 function Chips() {
+  const [tags, setTags] = useState(['项目讨论', '实现方案', '测试结果'])
   return (
     <Stage>
-      {CHIP_VARIANTS.map((variant) => (
-        <Row key={variant} label={variant}>
-          {CHIP_COLORS.map((color) => (
-            <Chip key={color} variant={variant} color={color}>
-              {color}
-            </Chip>
+      {(['sm', 'md'] as const).map((size) => (
+        <Row key={size} label={size}>
+          {BADGE_TONES.map((tone) => (
+            <Badge key={tone} size={size} tone={tone}>
+              {tone}
+            </Badge>
           ))}
         </Row>
       ))}
-      <Row label="尺寸">
-        {(['sm', 'md', 'lg'] as const).map((size) => (
-          <Chip key={size} size={size} variant="soft" color="accent">
-            {size}
-          </Chip>
-        ))}
+      <Row label="状态圆点">
+        <Badge tone="success" hasDot>
+          运行中
+        </Badge>
+      </Row>
+      <Row label="可移除标签">
+        <TagGroup
+          aria-label="引用的会话"
+          onRemove={(keys) => setTags((current) => current.filter((tag) => !keys.has(tag)))}
+          renderEmptyState={() => '没有引用的会话'}
+        >
+          {tags.map((tag) => (
+            <Tag key={tag} id={tag}>
+              {tag}
+            </Tag>
+          ))}
+        </TagGroup>
+        <Button variant="secondary" onPress={() => setTags(['项目讨论', '实现方案', '测试结果'])}>
+          重置
+        </Button>
       </Row>
       <Row label="Kbd">
         <Kbd>Ctrl K</Kbd>
@@ -134,7 +142,7 @@ function Cards() {
             <Separator />
           </Card.Content>
           <Card.Footer>
-            <Button size="small" variant="secondary">
+            <Button size="sm" variant="secondary">
               添加
             </Button>
           </Card.Footer>
@@ -147,6 +155,11 @@ function Cards() {
 function Spinners() {
   return (
     <Stage>
+      <Row label="Native Spinner">
+        {SIZES.map((size) => (
+          <NativeSpinner key={size} size={size} aria-label={`加载中 ${size}`} />
+        ))}
+      </Row>
       {(['current', 'accent', 'success', 'warning', 'danger'] as const).map((color) => (
         <Row key={color} label={color}>
           {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
@@ -154,6 +167,21 @@ function Spinners() {
           ))}
         </Row>
       ))}
+    </Stage>
+  )
+}
+
+/** The brand mark, with its opening drawn again on demand. */
+function Mark() {
+  const [take, setTake] = useState(0)
+  return (
+    <Stage>
+      <Row label="MeridianMark">
+        <MeridianMark key={take} intro={take > 0} className="size-16" />
+        <Button variant="secondary" size="sm" onPress={() => setTake((n) => n + 1)}>
+          重放开场
+        </Button>
+      </Row>
     </Stage>
   )
 }
@@ -167,7 +195,7 @@ export default function Core() {
       <Section title="ToggleButton / LinkButton / CloseButton">
         <Toggles />
       </Section>
-      <Section title="Chip / Kbd">
+      <Section title="Badge / Kbd">
         <Chips />
       </Section>
       <Section title="Avatar">
@@ -178,6 +206,9 @@ export default function Core() {
       </Section>
       <Section title="Spinner">
         <Spinners />
+      </Section>
+      <Section title="MeridianMark">
+        <Mark />
       </Section>
       <CoreParts />
     </>

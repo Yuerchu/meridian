@@ -5,8 +5,10 @@ import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/t
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { Button, InputGroup, Skeleton } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { InputGroup } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
@@ -55,7 +57,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   return (
     <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
       <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
-        <Button leadingIcon={ChevronLeft} variant="secondary" size="small" onPress={onBack}>
+        <Button icon={<ChevronLeft />} variant="secondary" size="sm" onPress={onBack}>
           {t('settings.about.logs.back')}
         </Button>
         <h2 data-slot="log-viewer-title" className="text-title-3-medium">
@@ -64,24 +66,18 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
           <Button
             variant="secondary"
-            size="small"
+            size="sm"
             onPress={logs.refresh}
             isDisabled={logs.loading}
             isPending={logs.refreshing}
-            leadingIcon={RefreshCw}
+            icon={<RefreshCw />}
           >
             {t('settings.about.logs.refresh')}
           </Button>
           {/* The picker names a path on this device and the file is written by
               whichever machine the logs belong to. Reading them here still
               works — that is what the rows below are. */}
-          <Button
-            leadingIcon={Download}
-            variant="secondary"
-            size="small"
-            onPress={onExport}
-            isDisabled={!can.exportToDisk}
-          >
+          <Button icon={<Download />} variant="secondary" size="sm" onPress={onExport} isDisabled={!can.exportToDisk}>
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
@@ -102,7 +98,6 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           value={logs.level}
           options={levelOptions}
           onChange={logs.setLevel}
-          triggerClassName="w-44"
         />
 
         <InputGroup className="max-w-xs flex-1">
@@ -123,7 +118,6 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           value={logs.range}
           options={rangeOptions}
           onChange={logs.setRange}
-          triggerClassName="w-40"
         />
 
         {logs.entries.length > 0 && (
@@ -143,11 +137,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
       >
         {unavailable ? (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.about.logs.unavailable')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState heading={t('settings.about.logs.unavailable')} headingLevel={3} size="sm" />
         ) : logs.error ? (
           <p data-slot="log-viewer-error" role="alert" className="p-6 text-body-regular text-status-danger">
             {t('settings.about.logs.loadError')}
@@ -161,19 +151,17 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             className="space-y-3 p-3"
           >
             {Array.from({ length: 5 }, (_, i) => (
-              <Skeleton key={i} className="h-12 w-full" />
+              <Skeleton key={i} shape="rect" width="100%" height="3rem" />
             ))}
           </div>
         ) : logs.entries.length === 0 ? (
           // Two different nothings: a filter that matched none, and a window
           // with nothing in it. Only the first has anything to undo.
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>
-                {logs.isFiltered ? t('settings.about.logs.empty') : t('settings.about.logs.emptyRange')}
-              </EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
+          <EmptyState
+            heading={logs.isFiltered ? t('settings.about.logs.empty') : t('settings.about.logs.emptyRange')}
+            headingLevel={3}
+            size="sm"
+          />
         ) : (
           <>
             {logs.entries.map((entry) => (
@@ -190,7 +178,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (
-                <Button variant="secondary" size="small" onPress={logs.loadOlder} isPending={logs.loadingMore}>
+                <Button variant="secondary" size="sm" onPress={logs.loadOlder} isPending={logs.loadingMore}>
                   {t('settings.about.logs.loadOlder')}
                 </Button>
               ) : null}

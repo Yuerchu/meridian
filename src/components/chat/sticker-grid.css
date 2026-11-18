@@ -1,0 +1,5 @@
+@layer components {
+  .m-sticker-grid__placeholder {
+    aspect-ratio: 1;
+  }
+}

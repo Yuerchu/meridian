@@ -162,7 +162,7 @@ describe('playground', () => {
  * component cannot reach the product without reaching it too — otherwise it
  * drifts the same way, one unshown component at a time.
  *
- * Scope is the reusable layers: `base/`, `ui/`, `application/` and `foundations/`. Feature
+ * Scope is the reusable layers: `base/`, `ui/`, `application/`, `foundations/` and `yuerchu-ui/`. Feature
  * screens (`chat/`, `settings/`, `layout/`, …) are composites with stores and a
  * backend behind them, and the visual suite photographs those in place.
  *
@@ -175,7 +175,7 @@ describe('playground', () => {
  * the same component and a same-named export elsewhere is not.
  */
 
-const DS_DIRS = ['base', 'ui', 'application', 'foundations'].map((d) => join(SRC, 'components', d))
+const DS_DIRS = ['base', 'ui', 'application', 'foundations', 'yuerchu-ui'].map((d) => join(SRC, 'components', d))
 const inDs = (file: string) => DS_DIRS.some((dir) => file.startsWith(dir + sep))
 
 /**
@@ -186,6 +186,11 @@ const inDs = (file: string) => DS_DIRS.some((dir) => file.startsWith(dir + sep))
 const ALLOWED_UNPREVIEWED = new Map<string, string>([
   ['CopyAnnouncement', 'an sr-only live region: there is nothing on screen to look at'],
   ['FileInput', 'a hidden <input type="file"> opened imperatively; it draws nothing'],
+  [
+    'Modal',
+    "boardui's, kept only by the settings drill-down until a page stack replaces it (Yuerchu/ui#559); " +
+      'the gallery shows the library Dialog that every other dialog has moved to',
+  ],
   [
     'MessageScroller',
     'on show at #playground/scroll inside ChatTranscript, the harness that drives it; a bare copy in the gallery ' +

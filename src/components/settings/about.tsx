@@ -1,7 +1,11 @@
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Separator, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { ItemCard } from '@/components/base'
@@ -63,6 +67,7 @@ const ROW_DESCRIPTION = 'w-full whitespace-normal'
  * whole string on `title` for anyone who needs to read it.
  */
 function InfoRow({ label, value, action }: { label: string; value?: string; action?: React.ReactNode }) {
+  const { t } = useTranslation()
   return (
     <ItemCard>
       <ItemCard.Content className="flex-none">
@@ -71,7 +76,9 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
       <ItemCard.Action className="min-w-0 shrink">
         <div data-slot="info-row-value" className="flex min-w-0 items-center gap-1">
           {value === undefined ? (
-            <Skeleton className="h-4 w-28 rounded-md" />
+            <span role="status" aria-busy="true" aria-label={`${label}: ${t('common.loadingLabel')}`}>
+              <Skeleton width="7rem" />
+            </span>
           ) : (
             <Hint className="text-text-secondary min-w-0 truncate text-caption-1-regular select-text" label={value}>
               {value}
@@ -144,11 +151,7 @@ export function About() {
             <span data-slot="about-name" className="text-text-primary text-title-2-semibold">
               {t('app.name')}
             </span>
-            {info && (
-              <Chip size="sm" variant="secondary">
-                v{info.version}
-              </Chip>
-            )}
+            {info && <Badge size="sm">v{info.version}</Badge>}
           </div>
           <p data-slot="about-description" className="text-text-secondary text-body-regular leading-relaxed">
             {t('settings.about.description')}
@@ -178,7 +181,7 @@ export function About() {
               </ItemCard.Description>
             </ItemCard.Content>
             <ItemCard.Action>
-              <Button trailingIcon={ChevronRight} size="small" variant="secondary" onPress={() => setShowLogs(true)}>
+              <Button iconRight={<ChevronRight />} size="sm" variant="secondary" onPress={() => setShowLogs(true)}>
                 {t('settings.about.logs.open')}
               </Button>
             </ItemCard.Action>
@@ -204,7 +207,7 @@ export function About() {
             </ItemCard.Content>
             <ItemCard.Action>
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 aria-label={t('settings.about.copyInfo.action')}
                 isDisabled={!info}
@@ -240,12 +243,11 @@ export function About() {
             action={
               info && (
                 <>
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     <Button
-                      iconOnly
-                      leadingIcon={pathCopy.failure !== null ? TriangleAlert : pathCopy.copied ? Check : Copy}
-                      size="small"
-                      variant="neutral"
+                      icon={pathCopy.failure !== null ? <TriangleAlert /> : pathCopy.copied ? <Check /> : <Copy />}
+                      size="sm"
+                      variant="ghost"
                       aria-label={t('settings.about.system.copyDataDir')}
                       onPress={() => void pathCopy.copy(info.dataDir)}
                     />

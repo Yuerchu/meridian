@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Moon, Sun } from '@keyline-icons/react/two-tone'
 
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useAppTheme } from '@/lib/theme'
 import { cx } from '@/utils/cx'
 import { GROUPS, LABS, type GroupId } from './groups'
@@ -45,11 +46,10 @@ function ThemeToggle() {
   // will not remove.
   const { resolvedTheme, setTheme } = useAppTheme()
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       <Button
-        iconOnly
-        leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
-        size="small"
+        icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+        size="sm"
         aria-label="切换主题"
         variant="secondary"
         onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
@@ -60,20 +60,11 @@ function ThemeToggle() {
 }
 
 /** The frame every gallery page shares: title, theme switch, the group strip. */
-export function GalleryFrame({
-  current,
-  wide = false,
-  children,
-}: {
-  current: GroupId | null
-  /** Foundations lays out two theme columns and needs the room. */
-  wide?: boolean
-  children: ReactNode
-}) {
+export function GalleryFrame({ current, children }: { current: GroupId | null; children: ReactNode }) {
   const group = GROUPS.find((g) => g.id === current)
   return (
     <div data-slot="gallery" className="h-full overflow-y-auto bg-background-full text-text-primary">
-      <div data-slot="gallery-body" className={cx('mx-auto space-y-10 px-6 py-10', wide ? 'max-w-6xl' : 'max-w-3xl')}>
+      <div data-slot="gallery-body" className="mx-auto max-w-3xl space-y-10 px-6 py-10">
         <header data-slot="gallery-header" className="space-y-4">
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">

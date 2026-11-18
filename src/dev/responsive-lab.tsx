@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button, ListBox, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from '@/components/base'
+import { ListBox, ToggleButton, ToggleButtonGroup } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { CASES } from './responsive-cases'
 import { runDetectors, type Finding, type Severity } from './responsive-detectors'
@@ -274,10 +276,10 @@ export default function ResponsiveLab() {
           </Field>
 
           <div data-slot="responsive-lab-actions" className="flex gap-2">
-            <Button size="small" onPress={measure}>
+            <Button size="sm" onPress={measure}>
               Measure
             </Button>
-            <Button size="small" variant="secondary" onPress={sweep}>
+            <Button size="sm" variant="secondary" onPress={sweep}>
               Sweep widths
             </Button>
           </div>
@@ -373,7 +375,7 @@ function Choices<T extends string | number>({
           )
         }
         return (
-          <TooltipTrigger key={key} delay={0}>
+          <TooltipTrigger key={key}>
             <ToggleButton id={key} className="text-caption-1-regular tabular-nums">
               {o.label ?? o.value}
             </ToggleButton>

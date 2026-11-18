@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, TextArea } from '@/components/base'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SettingsCard, SettingsRow } from '../primitives'
 import { SettingsPage } from '../settings-page'
 import { parseImportJson, type McpServersJson } from './import-json'
@@ -46,10 +47,10 @@ export function McpImportPage({
       subtitle={t('settings.mcp.importJsonHint')}
       footer={
         <>
-          <Button size="small" onPress={() => void handleSubmit()} isDisabled={!text.trim()} isPending={importing}>
+          <Button size="sm" onPress={() => void handleSubmit()} isDisabled={!text.trim()} isPending={importing}>
             {t('settings.mcp.importJsonSubmit')}
           </Button>
-          <Button size="small" variant="secondary" onPress={onCancel}>
+          <Button size="sm" variant="secondary" onPress={onCancel}>
             {t('settings.mcp.importJsonCancel')}
           </Button>
         </>
@@ -67,13 +68,12 @@ export function McpImportPage({
               aria-describedby={error ? errorId : undefined}
               aria-invalid={error ? true : undefined}
               name="mcpImportJson"
-              spellCheck={false}
-              fieldClassName="w-full"
-              className="h-48 font-mono"
+              spellCheck="false"
+              className="w-full"
               placeholder={t('settings.mcp.importJsonPlaceholder')}
               value={text}
               onChange={(event) => {
-                setText(event.target.value)
+                setText(event)
                 setError(null)
               }}
               onKeyDown={(event) => {

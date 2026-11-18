@@ -5,7 +5,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Kbd, Label, Tooltip, TooltipTrigger } from '@/components/base'
+import { Kbd, Label } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
 
 import { can } from '@/lib/capabilities'
@@ -903,12 +905,11 @@ export function InputBar({
                         // image, painted over it — and the button is the hitbox's
                         // containing block with nothing to contest it.
                         <span data-slot="pending-sticker-remove" className="absolute -right-2 -top-2 flex">
-                          <TooltipTrigger delay={0}>
+                          <TooltipTrigger>
                             <Button
-                              iconOnly
-                              leadingIcon={X}
-                              size="xs"
-                              variant="neutral"
+                              icon={<X />}
+                              size="sm"
+                              variant="ghost"
                               aria-label={t('chat.removeSticker')}
                               className="touch-hitbox min-w-0 size-6 rounded-full shadow-card"
                               onPress={onRemoveSticker}
@@ -1021,7 +1022,7 @@ export function InputBar({
                   />
                 )}
                 {!isAndroid && onVoiceSend && (
-                  <TooltipTrigger delay={0}>
+                  <TooltipTrigger>
                     {/* The button is the trigger — TooltipTrigger picks it up
                       from context, no wrapper needed. */}
                     <VoiceButton

@@ -2,9 +2,13 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Alert, Button, Card, Chip, Sheet, Spinner, Tooltip, TooltipTrigger } from '@/components/base'
-import { EmptyState } from '@/components/base'
-import { INFO_CHIP } from './memory-row'
+import { Card, Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import type { MemoryInfoResponse } from '@/types'
 import { useConfirm } from '@/hooks/use-confirm'
 
@@ -85,24 +89,24 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     aria-label={t('common.loading')}
                     className="flex justify-center p-6"
                   >
-                    <Spinner aria-hidden="true" />
+                    <span aria-hidden>
+                      <Spinner />
+                    </span>
                   </div>
                 ) : error ? (
-                  <Alert status="danger" role="alert">
-                    <Alert.Indicator />
-                    <Alert.Content>
-                      <Alert.Description>{t('settings.memory.trash.loadError')}</Alert.Description>
-                      <Button size="small" variant="secondary" className="mt-2" onPress={() => void load()}>
+                  <Alert
+                    tone="danger"
+                    shouldAnnounce
+                    actions={
+                      <Button size="sm" variant="secondary" onPress={() => void load()}>
                         {t('settings.memory.retry')}
                       </Button>
-                    </Alert.Content>
+                    }
+                  >
+                    {t('settings.memory.trash.loadError')}
                   </Alert>
                 ) : rows.length === 0 ? (
-                  <EmptyState size="sm">
-                    <EmptyState.Header>
-                      <EmptyState.Title>{t('settings.memory.trash.empty')}</EmptyState.Title>
-                    </EmptyState.Header>
-                  </EmptyState>
+                  <EmptyState heading={t('settings.memory.trash.empty')} headingLevel={3} size="sm" />
                 ) : null}
                 {/* Secondary, not the default surface: the drawer itself is
                 `--overlay`, which is the same colour as `--surface`, so only the
@@ -116,14 +120,13 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       >
                         {m.key}
                       </span>
-                      <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
+                      <Badge>{deletedByLabel(m.deleted_by)}</Badge>
                       <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
-                        <TooltipTrigger delay={0}>
+                        <TooltipTrigger>
                           <Button
-                            variant="neutral"
-                            iconOnly
-                            leadingIcon={ArrowUTurnLeft}
-                            size="small"
+                            variant="ghost"
+                            icon={<ArrowUTurnLeft />}
+                            size="sm"
                             aria-label={t('settings.memory.trash.restore')}
                             onPress={async () => {
                               await api.restoreMemories([m.id])
@@ -134,18 +137,18 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                           />
                           <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
                         </TooltipTrigger>
-                        <TooltipTrigger delay={0}>
+                        <TooltipTrigger>
                           <Button
-                            variant="neutral"
-                            iconOnly
-                            leadingIcon={Bin}
-                            size="small"
+                            variant="ghost"
+                            icon={<Bin />}
+                            size="sm"
                             className="hover:text-status-danger"
                             aria-label={t('settings.memory.trash.purge')}
                             onPress={async () => {
                               const accepted = await confirm({
-                                body: t('settings.memory.trash.purgeConfirm', { key: m.key }),
+                                description: t('settings.memory.trash.purgeConfirm', { key: m.key }),
                                 confirmLabel: t('settings.memory.trash.purge'),
+                                tone: 'danger',
                               })
                               if (!accepted) return
                               await api.purgeMemories([m.id])

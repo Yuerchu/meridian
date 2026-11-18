@@ -1,0 +1,6 @@
+@layer components {
+  .m-markdown-content__placeholder {
+    position: absolute;
+    inset: 0;
+  }
+}

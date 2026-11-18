@@ -3,18 +3,12 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import {
-  Button,
-  Card,
-  Description,
-  Input,
-  Label,
-  ProgressCircle,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Card } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
@@ -133,8 +127,7 @@ export function VoiceSettings() {
   const handleDelete = async () => {
     if (
       !(await confirm({
-        body: t('settings.voice.deleteModelConfirm'),
-        status: 'warning',
+        description: t('settings.voice.deleteModelConfirm'),
         confirmLabel: t('common.delete'),
       }))
     )
@@ -181,7 +174,9 @@ export function VoiceSettings() {
               aria-label={t('common.loading')}
               className="flex items-center gap-2 p-4 text-body-regular text-text-secondary"
             >
-              <Spinner aria-hidden="true" size="sm" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               {t('common.loading')}
             </div>
           ) : status?.installed ? (
@@ -192,12 +187,11 @@ export function VoiceSettings() {
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
                 </Card.Description>
               </Card.Header>
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <Button
-                  iconOnly
-                  leadingIcon={Bin}
-                  size="small"
-                  variant="neutral"
+                  icon={<Bin />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={t('settings.voice.deleteModel')}
                   onPress={handleDelete}
                   isDisabled={downloading}
@@ -209,16 +203,16 @@ export function VoiceSettings() {
             <div data-slot="voice-model-download" className="flex items-center gap-3">
               <ProgressCircle
                 aria-label={t('settings.voice.downloading')}
-                value={progress.total ? progress.downloaded : undefined}
-                maxValue={progress.total ?? undefined}
-                isIndeterminate={!progress.total}
+                {...(progress.total
+                  ? { value: progress.downloaded, maxValue: progress.total }
+                  : { isIndeterminate: true })}
                 size="sm"
               />
               <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="secondary" size="small" onPress={handleCancelDownload}>
+              <Button variant="secondary" size="sm" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
@@ -230,7 +224,7 @@ export function VoiceSettings() {
               </Card.Header>
               <Card.Footer className="flex-col items-start gap-2">
                 <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="small" onPress={handleDownload}>
+                  <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -238,7 +232,7 @@ export function VoiceSettings() {
                       not: the archive is on the device the picker runs on. */}
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="sm"
                     onPress={handleImport}
                     isDisabled={!can.importFromDisk}
                     isPending={importing}
@@ -263,21 +257,19 @@ export function VoiceSettings() {
         </Card>
       </div>
 
-      <TextField type="url">
-        <Label>{t('settings.voice.mirror')}</Label>
-        <Input
-          value={mirrorUrl}
-          name="voiceDownloadUrl"
-          inputMode="url"
-          spellCheck={false}
-          onChange={(e) => handleMirrorChange(e.target.value)}
-          onBlur={persistMirror}
-          placeholder={t('settings.voice.mirrorPlaceholder')}
-          className="w-full"
-          disabled={downloading}
-        />
-        <Description>{t('settings.voice.mirrorHint')}</Description>
-      </TextField>
+      <TextField
+        type="url"
+        label={t('settings.voice.mirror')}
+        value={mirrorUrl}
+        name="voiceDownloadUrl"
+        inputMode="url"
+        spellCheck="false"
+        onChange={handleMirrorChange}
+        onBlur={persistMirror}
+        placeholder={t('settings.voice.mirrorPlaceholder')}
+        isDisabled={downloading}
+        description={t('settings.voice.mirrorHint')}
+      />
 
       <SettingsSelect
         label={t('settings.voice.filterLevel')}
@@ -285,8 +277,6 @@ export function VoiceSettings() {
         options={filterOptions}
         onChange={handleFilterChange}
         description={t('settings.voice.filterHint')}
-
-        triggerClassName="max-w-xs"
       />
       {confirmDialog}
     </SettingsPane>

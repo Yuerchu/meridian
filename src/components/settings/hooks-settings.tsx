@@ -1,7 +1,15 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input, Label, Select, SelectItem, TextField } from '@/components/base'
-import { CellSwitch } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
+
 import { ItemCard } from '@/components/base'
 import { api } from '@/api'
 import { cx } from '@/utils/cx'
@@ -117,9 +125,9 @@ function ModelPicker({
         }}
       >
         {providerOptions.map((o) => (
-          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+          <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
             {o.label}
-          </SelectItem>
+          </ListBoxItem>
         ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
@@ -133,24 +141,22 @@ function ModelPicker({
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
       ) : (
-        <Input
+        <TextField
           aria-label={t('settings.assistant.model')}
           value={modelId}
-          // Typed straight into local state and only committed on blur, so a
-          // half-typed model id is not persisted a character at a time.
           onChange={(e) => {
-            setModelId(e.target.value)
+            setModelId(e)
             onDirtyChange?.(true)
           }}
           onBlur={() => emit(providerId, modelId)}
           placeholder={t('settings.assistant.modelPlaceholder')}
-          disabled={!providerId}
+          isDisabled={!providerId}
         />
       )}
     </div>
@@ -172,7 +178,6 @@ export function HooksSettings() {
   const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [revealToken, setRevealToken] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loaded, setLoaded] = useState(false)
@@ -329,8 +334,7 @@ export function HooksSettings() {
   const handleRegenerate = async () => {
     if (
       !(await confirm({
-        body: t('settings.hooks.regenerateConfirm'),
-        status: 'warning',
+        description: t('settings.hooks.regenerateConfirm'),
         confirmLabel: t('settings.hooks.regenerate'),
       }))
     )
@@ -354,13 +358,13 @@ export function HooksSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.hooks.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.hooks.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.hooks.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoading(true)
@@ -369,7 +373,9 @@ export function HooksSettings() {
             >
               {t('settings.hooks.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -380,17 +386,15 @@ export function HooksSettings() {
       <SettingsHeader title={t('settings.hooks.title')} />
 
       <div data-slot="hooks-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.hooks.enable')}
           aria-describedby={enableHintId}
           isSelected={config.enabled}
           onChange={(selected) => setConfig({ ...config, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.hooks.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.hooks.enable')}
+        </Switch>
         <p data-slot="hooks-enable-hint" id={enableHintId} className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.enableHint')}
         </p>
@@ -422,9 +426,9 @@ export function HooksSettings() {
           }}
         >
           {assistantOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
         <p data-slot="hooks-assistant-hint" className="text-caption-1-regular text-text-secondary">
@@ -433,89 +437,72 @@ export function HooksSettings() {
       </div>
 
       <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.hooks.host')}</Label>
-          <Input
-            name="hooksHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="127.0.0.1"
-          />
-        </TextField>
-        <TextField type="number">
-          <Label>{t('settings.hooks.port')}</Label>
-          <Input
-            name="hooksPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="8765"
-          />
-        </TextField>
+        <TextField
+          label={t('settings.hooks.host')}
+          name="hooksHost"
+          value={config.host}
+          onChange={(e) => setConfig({ ...config, host: e })}
+          placeholder="127.0.0.1"
+        />
+        <NumberField
+          label={t('settings.hooks.port')}
+          value={draftToNumber(portInput)}
+          onChange={(value) => setPortInput(numberToDraft(value))}
+          name="hooksPort"
+          minValue={1}
+          maxValue={65535}
+          placeholder="8765"
+          formatOptions={PLAIN_INTEGER}
+        />
       </div>
 
       <div data-slot="hooks-timeout" className="space-y-1.5">
-        <TextField type="number">
-          <Label>{t('settings.hooks.timeout')}</Label>
-          <Input
-            name="hooksTimeout"
-            inputMode="numeric"
-            min={10}
-            // Mirrors MAX_TIMEOUT_SECS in hooks/mod.rs. The backend clamps too —
-            // this is only so the field cannot offer a number that cannot happen.
-            max={1200}
-            value={timeoutInput}
-            onChange={(e) => setTimeoutInput(e.target.value)}
-          />
-        </TextField>
+        <NumberField
+          label={t('settings.hooks.timeout')}
+          value={draftToNumber(timeoutInput)}
+          onChange={(value) => setTimeoutInput(numberToDraft(value))}
+          name="hooksTimeout"
+          minValue={10}
+          maxValue={1200}
+          formatOptions={PLAIN_INTEGER}
+        />
         <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
 
       <div data-slot="hooks-max-rounds" className="space-y-1.5">
-        <TextField type="number">
-          <Label>{t('settings.hooks.maxRounds')}</Label>
-          <Input
-            name="hooksMaxRounds"
-            inputMode="numeric"
-            min={0}
-            max={20}
-            value={roundsInput}
-            onChange={(e) => setRoundsInput(e.target.value)}
-          />
-        </TextField>
+        <NumberField
+          label={t('settings.hooks.maxRounds')}
+          value={draftToNumber(roundsInput)}
+          onChange={(value) => setRoundsInput(numberToDraft(value))}
+          name="hooksMaxRounds"
+          minValue={0}
+          maxValue={20}
+          formatOptions={PLAIN_INTEGER}
+        />
         <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
-      <div data-slot="hooks-token" className="space-y-1.5">
-        <p data-slot="hooks-token-label" className="block text-caption-1-medium text-text-secondary">
-          {t('settings.hooks.token')}
-        </p>
-        <div data-slot="hooks-token-row" className="flex items-center gap-2">
-          <Input
-            aria-label={t('settings.hooks.token')}
-            name="hooksToken"
-            autoComplete="off"
-            readOnly
-            type={revealToken ? 'text' : 'password'}
-            value={config.token ?? ''}
-            placeholder={t('settings.hooks.tokenPending')}
-          />
-          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
-            {revealToken ? t('settings.hooks.hide') : t('settings.hooks.reveal')}
-          </Button>
-          <Button variant="secondary" onPress={handleRegenerate}>
-            {t('settings.hooks.regenerate')}
-          </Button>
-        </div>
-        <p data-slot="hooks-token-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.hooks.tokenHint')}
-        </p>
+      {/* A generated key shown read-only, with copy: the library's rule is not to
+          mask a key nobody types, so there is no reveal toggle. */}
+      <div data-slot="hooks-token" className="flex items-end gap-2">
+        <TextField
+          label={t('settings.hooks.token')}
+          description={t('settings.hooks.tokenHint')}
+          name="hooksToken"
+          isReadOnly
+          spellCheck="false"
+          value={config.token ?? ''}
+          placeholder={t('settings.hooks.tokenPending')}
+          className="min-w-0 flex-1"
+        />
+        <CopyButton value={config.token ?? ''} isDisabled={!config.token} />
+        <Button variant="secondary" onPress={handleRegenerate}>
+          {t('settings.hooks.regenerate')}
+        </Button>
       </div>
 
       {error && (
@@ -534,7 +521,7 @@ export function HooksSettings() {
           </span>
         )}
         {running ? (
-          <Button variant="danger" onPress={handleStop}>
+          <Button variant="destructive" onPress={handleStop}>
             {t('settings.hooks.stop')}
           </Button>
         ) : (

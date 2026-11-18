@@ -1,6 +1,6 @@
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { cx } from '@/utils/cx'
 import { AcpNoticeActionsContext } from './acp-notice-actions'
@@ -54,7 +54,7 @@ export function AcpNoticeBubble({
           <div data-slot="acp-notice-actions" className="flex flex-wrap items-center gap-2 pt-1">
             {canRetry && (
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
                 className="rounded-lg"
                 onPress={() => {
@@ -65,7 +65,7 @@ export function AcpNoticeBubble({
               </Button>
             )}
             {canRestart && (
-              <Button size="small" variant="secondary" className="rounded-lg" onPress={() => actions?.restartAgent()}>
+              <Button size="sm" variant="secondary" className="rounded-lg" onPress={() => actions?.restartAgent()}>
                 {t('chat.acpNotice.action.newSession')}
               </Button>
             )}

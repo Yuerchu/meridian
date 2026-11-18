@@ -1,52 +1,46 @@
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Alert, Button, EmptyState, Meter, ProgressCircle, Skeleton } from '@/components/base'
+import { Meter } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Row, Section, Stage } from './shell'
 
-const ALERT_STATUSES = ['default', 'info', 'success', 'warning', 'danger'] as const
+const ALERT_TONES = ['neutral', 'success', 'warning', 'danger'] as const
 
 function Alerts() {
   return (
     <Stage>
-      {ALERT_STATUSES.map((status) => (
-        <Alert key={status} status={status}>
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{status}</Alert.Title>
-            <Alert.Description>命令将以完整权限运行。</Alert.Description>
-          </Alert.Content>
+      {ALERT_TONES.map((tone) => (
+        <Alert key={tone} tone={tone} heading={tone}>
+          命令将以完整权限运行。
         </Alert>
       ))}
-      <Alert status="danger">
-        <Alert.Indicator />
-        <Alert.Content>
-          <Alert.Description>只有描述：无法加载终端、沙箱和网页搜索设置。</Alert.Description>
-        </Alert.Content>
-      </Alert>
+      <Alert tone="danger">只有描述：无法加载终端、沙箱和网页搜索设置。</Alert>
     </Stage>
   )
 }
 
 function Empty() {
   return (
-    <div className="grid gap-4 sm:grid-cols-3">
-      {(['sm', 'md', 'lg'] as const).map((size) => (
+    <div className="grid gap-4 sm:grid-cols-2">
+      {(['sm', 'md'] as const).map((size) => (
         <Stage key={size} className="items-center">
-          <EmptyState size={size}>
-            <EmptyState.Header>
-              <EmptyState.Media>
-                <Plug />
-              </EmptyState.Media>
-              <EmptyState.Title>还没有 MCP 服务器</EmptyState.Title>
-              <EmptyState.Description>添加一个，给智能体更多工具。（{size}）</EmptyState.Description>
-            </EmptyState.Header>
-            <EmptyState.Content>
-              <Button size="small" variant="secondary">
+          <EmptyState
+            heading="还没有 MCP 服务器"
+            headingLevel={3}
+            description={<>添加一个，给智能体更多工具。（{size}）</>}
+            icon={<Plug />}
+            actions={
+              <Button size="sm" variant="secondary">
                 添加
               </Button>
-            </EmptyState.Content>
-          </EmptyState>
+            }
+            size={size}
+          />
         </Stage>
       ))}
     </div>
@@ -57,21 +51,19 @@ function Progress() {
   const [level, setLevel] = useState(40)
   return (
     <Stage>
-      {(['accent', 'neutral', 'success', 'warning', 'danger'] as const).map((color) => (
-        <Row key={color} label={color}>
-          {(['sm', 'md', 'lg'] as const).map((size) => (
-            <ProgressCircle key={size} size={size} color={color} value={62} aria-label={`${color} ${size}`} />
-          ))}
-          <ProgressCircle color={color} isIndeterminate aria-label={`${color} 不确定`} />
-        </Row>
-      ))}
+      <Row label="ProgressCircle">
+        {(['sm', 'md', 'lg'] as const).map((size) => (
+          <ProgressCircle key={size} size={size} value={62} showValueLabel aria-label={`进度 ${size}`} />
+        ))}
+        <ProgressCircle isIndeterminate aria-label="正在处理" />
+      </Row>
       <Row label="Meter">
         <Meter aria-label="麦克风电平" value={level} className="w-64">
           <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
             <Meter.Fill className="bg-status-success transition-[width] duration-75" />
           </Meter.Track>
         </Meter>
-        <Button size="xs" variant="secondary" onPress={() => setLevel((v) => (v + 25) % 125)}>
+        <Button size="sm" variant="secondary" onPress={() => setLevel((v) => (v + 25) % 125)}>
           变化
         </Button>
       </Row>
@@ -83,12 +75,12 @@ function Skeletons() {
   return (
     <Stage>
       <div role="status" aria-busy aria-label="加载中" className="flex flex-col gap-3">
-        <Skeleton className="h-5 w-40 rounded-md" />
-        <Skeleton className="h-4 w-full rounded-md" />
-        <Skeleton className="h-4 w-3/4 rounded-md" />
+        <Skeleton width="10rem" />
+        <Skeleton />
+        <Skeleton width="75%" />
         <div className="flex gap-3">
-          <Skeleton className="size-9 rounded-full" />
-          <Skeleton className="h-9 flex-1 rounded-2lg" />
+          <Skeleton shape="circle" width="2.25rem" />
+          <Skeleton shape="rect" height="2.25rem" />
         </div>
       </div>
     </Stage>

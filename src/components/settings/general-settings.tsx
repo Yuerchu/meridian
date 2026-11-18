@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Input, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -147,8 +150,7 @@ export function GeneralSettings() {
     if (
       searchApiKey.trim() &&
       !(await confirm({
-        body: t('settings.unsavedChanges'),
-        status: 'warning',
+        description: t('settings.unsavedChanges'),
         confirmLabel: t('common.discardChanges'),
       }))
     ) {
@@ -190,18 +192,9 @@ export function GeneralSettings() {
         value={i18n.language}
         options={LANGUAGE_OPTIONS}
         onChange={setLocale}
-
-        triggerClassName="max-w-xs"
       />
 
-      <SettingsSelect
-        label={t('settings.general.theme')}
-        value={theme}
-        options={themeOptions}
-        onChange={setTheme}
-
-        triggerClassName="max-w-xs"
-      />
+      <SettingsSelect label={t('settings.general.theme')} value={theme} options={themeOptions} onChange={setTheme} />
 
       <div data-slot="general-fonts" className="space-y-3">
         <FontPicker label={t('settings.general.fontUi')} value={sans} onChange={setSans} families={fontFamilies} />
@@ -225,20 +218,23 @@ export function GeneralSettings() {
           className="space-y-3"
         >
           {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} className="h-9 w-full max-w-xs" />
+            <Skeleton key={i} shape="rect" width="min(100%, 20rem)" height="2.25rem" />
           ))}
         </div>
       )}
       {prefsState === 'error' && (
-        <Alert data-slot="general-prefs-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.general.loadError')}</Alert.Title>
-            {prefsLoadError && <Alert.Description className="break-all">{prefsLoadError}</Alert.Description>}
-            <Button size="small" variant="secondary" onPress={() => setPrefsAttempt((n) => n + 1)}>
+        <Alert
+          data-slot="general-prefs-error"
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.general.loadError')}
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => setPrefsAttempt((n) => n + 1)}>
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {prefsLoadError}
         </Alert>
       )}
 
@@ -249,8 +245,6 @@ export function GeneralSettings() {
           options={SHELLS}
           onChange={handleShellChange}
           description={t('settings.general.shellHint')}
-
-          triggerClassName="max-w-xs"
         />
       )}
 
@@ -264,8 +258,6 @@ export function GeneralSettings() {
           description={
             sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
           }
-
-          triggerClassName="max-w-xs"
         />
       )}
 
@@ -282,17 +274,15 @@ export function GeneralSettings() {
             value={searchProvider}
             options={SEARCH_PROVIDERS}
             onChange={(value) => void handleSearchProviderChange(value)}
-
-            triggerClassName="max-w-xs"
           />
           <div data-slot="general-search-key-row" className="flex items-center gap-2">
-            <Input
-              type="password"
+            <PasswordField
               aria-label={t('settings.provider.apiKey')}
               name="searchApiKey"
-              autoComplete="off"
+              // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+              autoComplete="current-password"
               value={searchApiKey}
-              onChange={(e) => setSearchApiKey(e.target.value)}
+              onChange={setSearchApiKey}
               onKeyDown={(e) => {
                 if (e.nativeEvent.isComposing) return
                 if (e.key === 'Enter') handleSaveSearchKey()

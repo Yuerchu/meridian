@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Check } from '@keyline-icons/react/two-tone'
-import { Button, Modal } from '@/components/base'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { useCopy } from '@/hooks/use-copy'
 
@@ -27,66 +28,60 @@ export function SelectTextModal({
   isOpen: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const { t } = useTranslation()
   return (
-    <Modal.Backdrop isOpen={isOpen} onOpenChange={onOpenChange}>
-      <Modal.Container size="cover" placement="center">
-        {/* Keyed by the text: one dialog serves every bubble of a group, and
-            without it a "Copied" — or a refusal — from the last bubble was
-            still showing for the next, whose text was not on the clipboard. */}
-        <SelectTextDialog key={text} text={text} />
-      </Modal.Container>
-    </Modal.Backdrop>
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      heading={t('contextMenu.selectText')}
+      description={t('contextMenu.selectTextHint')}
+      size="full"
+      // Portalled to the body, so no ancestor's inset reaches it: the dialog's
+      // own padding is all that stands between the footer buttons and the
+      // navigation bar, and under 3-button navigation that is not enough.
+      className="pb-[max(1.5rem,var(--safe-bottom))] pl-[max(1.5rem,var(--safe-left))] pr-[max(1.5rem,var(--safe-right))]"
+    >
+      {/* Keyed by the text: one dialog serves every bubble of a group, and
+          without it a "Copied" — or a refusal — from the last bubble was
+          still showing for the next, whose text was not on the clipboard. */}
+      <SelectTextBody key={text} text={text} />
+    </Dialog>
   )
 }
 
-function SelectTextDialog({ text }: { text: string }) {
+function SelectTextBody({ text }: { text: string }) {
   const { t } = useTranslation()
   const { copied, failure, copy } = useCopy()
 
   return (
-    // Portalled to the body, so no ancestor's inset reaches it: Modal's own
-    // padding is all that stands between the footer buttons and the
-    // navigation bar, and under 3-button navigation that is not enough.
-    <Modal.Dialog
-      data-slot="select-text-dialog"
-      className="pb-[max(1.5rem,var(--safe-bottom))] pl-[max(1.5rem,var(--safe-left))] pr-[max(1.5rem,var(--safe-right))]"
-    >
-      <Modal.CloseTrigger aria-label={t('common.close')} />
-      <Modal.Header>
-        <Modal.Heading>{t('contextMenu.selectText')}</Modal.Heading>
-        <p data-slot="select-text-hint" className="mt-1.5 text-body-regular text-text-secondary">
-          {t('contextMenu.selectTextHint')}
-        </p>
-      </Modal.Header>
-      <Modal.Body>
-        {/* `select-text` explicitly: the dialog is portalled out of the
-                message, but the transcript is not the only ancestor that turns
-                selection off, and this is the one place that must have it. */}
+    <>
+      {/* `select-text` explicitly: the dialog is portalled out of the
+          message, but the transcript is not the only ancestor that turns
+          selection off, and this is the one place that must have it. */}
+      <p
+        data-slot="select-text-body"
+        className="text-body-regular leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
+      >
+        {text}
+      </p>
+      {failure !== null && (
         <p
-          data-slot="select-text-body"
-          className="text-body-regular leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
+          data-slot="select-text-copy-error"
+          role="alert"
+          className="mt-3 text-body-regular text-status-danger wrap-break-word"
         >
-          {text}
+          {t('common.copyFailed', { error: failure })}
         </p>
-        {failure !== null && (
-          <p
-            data-slot="select-text-copy-error"
-            role="alert"
-            className="mt-3 text-body-regular text-status-danger wrap-break-word"
-          >
-            {t('common.copyFailed', { error: failure })}
-          </p>
-        )}
-      </Modal.Body>
-      <Modal.Footer>
+      )}
+      <DialogFooter>
         <Button slot="close" variant="secondary">
           {t('common.cancel')}
         </Button>
-        <Button leadingIcon={copied ? Check : undefined} onPress={() => void copy(text)}>
+        <Button icon={copied ? <Check /> : undefined} onPress={() => void copy(text)}>
           {t(copied ? 'common.copied' : 'contextMenu.copyAll')}
         </Button>
         <CopyAnnouncement copied={copied} failure={null} />
-      </Modal.Footer>
-    </Modal.Dialog>
+      </DialogFooter>
+    </>
   )
 }

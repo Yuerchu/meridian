@@ -1,25 +1,20 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useState } from 'react'
 import { Search } from '@keyline-icons/react/two-tone'
 
-import {
-  CellSwitch,
-  Checkbox,
-  CheckboxGroup,
-  Description,
-  Input,
-  InputGroup,
-  Label,
-  Radio,
-  RadioGroup,
-  SearchField,
-  Segment,
-  Select,
-  SelectItem,
-  Slider,
-  Switch,
-  TextArea,
-  TextField,
-} from '@/components/base'
+import { InputGroup } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
+import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
+import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
 import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { Row, Section, Stage } from './shell'
 
@@ -28,37 +23,23 @@ function TextFields() {
   return (
     <Stage>
       <div className="grid gap-4 sm:grid-cols-2">
-        <TextField>
-          <Label>名称</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" />
-          <Description>只能用小写字母、数字和下划线。</Description>
-        </TextField>
-        <TextField isInvalid defaultValue="-1">
-          <Label>超时（秒）</Label>
-          <Input />
-          <Description>必须是正整数。</Description>
-        </TextField>
-        <TextField isDisabled defaultValue="npx -y @modelcontextprotocol/server">
-          <Label>命令</Label>
-          <Input />
-        </TextField>
-        <TextField size="small">
-          <Label>small</Label>
-          <Input placeholder="较小的字段" />
-        </TextField>
+        <TextField
+          label="名称"
+          value={name}
+          onChange={setName}
+          placeholder="my_tool"
+          description="只能用小写字母、数字和下划线。"
+        />
+        <TextField isInvalid defaultValue="-1" label="超时（秒）" description="必须是正整数。" />
+        <TextField isDisabled defaultValue="npx -y @modelcontextprotocol/server" label="命令" />
+        <TextField size="sm" label="sm" placeholder="较小的字段" />
       </div>
-      <TextField>
-        <Label>参数</Label>
-        <TextArea rows={3} placeholder={'每行一个参数'} />
-      </TextField>
+      <NumberField label="超时（秒）" defaultValue={30} minValue={1} maxValue={600} />
+      <PasswordField label="密码（演示）" autoComplete="current-password" defaultValue="demo-only" />
+      <CopyButton value="demo-only" label="复制演示文本" />
+      <TextArea label="参数" rows={3} placeholder={'每行一个参数'} />
       <div className="grid gap-4 sm:grid-cols-2">
-        <SearchField aria-label="搜索表情">
-          <SearchField.Group>
-            <SearchField.SearchIcon />
-            <SearchField.Input placeholder="SearchField" />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
+        <SearchField aria-label="搜索表情" placeholder="SearchField" />
         <InputGroup>
           <InputGroup.Prefix>
             <Search className="size-4" />
@@ -76,34 +57,35 @@ function Choices() {
   return (
     <Stage>
       <div className="grid gap-6 sm:grid-cols-2">
-        <CheckboxGroup value={tools} onChange={setTools} aria-label="工具">
+        <CheckboxGroup value={tools} onChange={setTools} label="工具">
           <Checkbox value="read">读取文件</Checkbox>
           <Checkbox value="write">写入文件</Checkbox>
           <Checkbox value="run" isDisabled>
             运行命令（不可用）
           </Checkbox>
-          <Checkbox isIndeterminate>部分工具</Checkbox>
         </CheckboxGroup>
-        <RadioGroup value={mode} onChange={setMode} aria-label="审批">
-          <Radio value="ask" size="md">
+        <RadioGroup value={mode} onChange={setMode} label="审批">
+          <Radio value="ask" variant="card" description="每次执行工具前询问。">
             每次询问（推荐）
           </Radio>
-          <Radio value="accept" size="md">
+          <Radio value="accept" variant="card" description="允许在工作区内编辑文件。">
             接受编辑
           </Radio>
-          <Radio value="off" size="md">
+          <Radio value="off" variant="card" isDisabled>
             关闭
           </Radio>
         </RadioGroup>
       </div>
-      <Row label="Checkbox 尺寸">
-        <Checkbox size="sm" defaultSelected>
-          sm
-        </Checkbox>
-        <Checkbox size="md" defaultSelected>
-          md
+      <Row label="Checkbox 状态">
+        <Checkbox defaultSelected>已选中</Checkbox>
+        <Checkbox isIndeterminate>部分工具</Checkbox>
+        <Checkbox isReadOnly defaultSelected>
+          只读
         </Checkbox>
       </Row>
+      <Checkbox variant="card" description="允许在工作区内写入文件。" defaultSelected>
+        写入文件
+      </Checkbox>
     </Stage>
   )
 }
@@ -112,29 +94,17 @@ function Switches() {
   const [on, setOn] = useState(true)
   return (
     <Stage>
-      {(['pill', 'rectangle'] as const).map((shape) => (
-        <Row key={shape} label={shape}>
-          {(['sm', 'md', 'lg'] as const).map((size) => (
-            <Switch key={size} size={size} shape={shape} isSelected={on} onChange={setOn}>
-              <span className="text-body-2-medium text-text-secondary">{size}</span>
-            </Switch>
-          ))}
-          <Switch shape={shape} isDisabled>
-            <span className="text-body-2-medium text-text-secondary">禁用</span>
+      <Row label="Switch 尺寸">
+        {(['sm', 'md'] as const).map((size) => (
+          <Switch key={size} size={size} isSelected={on} onChange={setOn}>
+            {size}
           </Switch>
-        </Row>
-      ))}
-      <div className="flex flex-col gap-1">
-        <CellSwitch aria-label="远程访问" aria-describedby="pg-cell-hint" defaultSelected>
-          <CellSwitch.Trigger>
-            <CellSwitch.Label>远程访问</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p id="pg-cell-hint" className="text-caption-1-regular text-text-secondary">
-          CellSwitch：整行可点，说明写在行外。
-        </p>
-      </div>
+        ))}
+        <Switch isDisabled>禁用</Switch>
+      </Row>
+      <Switch variant="card" defaultSelected description="整行可点，说明与名称分别播报。">
+        远程访问
+      </Switch>
     </Stage>
   )
 }
@@ -147,14 +117,20 @@ function Pickers() {
     <Stage>
       <Row label="Segment">
         {(['sm', 'md'] as const).map((size) => (
-          <Segment key={size} aria-label="范围" size={size} selectedKey={range} onSelectionChange={setRange}>
-            <Segment.Item id="day">日</Segment.Item>
-            <Segment.Item id="week">周</Segment.Item>
-            <Segment.Item id="month">月</Segment.Item>
-          </Segment>
+          <SegmentedControl
+            key={size}
+            aria-label="范围"
+            size={size}
+            selectedKey={range}
+            onSelectionChange={(key) => setRange(String(key))}
+          >
+            <Segment id="day">日</Segment>
+            <Segment id="week">周</Segment>
+            <Segment id="month">月</Segment>
+          </SegmentedControl>
         ))}
       </Row>
-      <Slider label="温度" value={step} onChange={setStep} minValue={0} maxValue={100} thumbLabel="温度" />
+      <Slider label="温度" value={step} onChange={setStep} minValue={0} maxValue={100} showValue="thumb" />
       <div className="grid gap-4 sm:grid-cols-2">
         {(['md', 'sm'] as const).map((size) => (
           <Select
@@ -164,15 +140,15 @@ function Pickers() {
             selectedKey={model}
             onSelectionChange={(key) => setModel(String(key))}
           >
-            <SelectItem id="sonnet" textValue="claude-sonnet-5">
+            <ListBoxItem id="sonnet" textValue="claude-sonnet-5">
               claude-sonnet-5
-            </SelectItem>
-            <SelectItem id="opus" textValue="claude-opus-5">
+            </ListBoxItem>
+            <ListBoxItem id="opus" textValue="claude-opus-5">
               claude-opus-5
-            </SelectItem>
-            <SelectItem id="gpt" textValue="gpt-5.6-sol">
+            </ListBoxItem>
+            <ListBoxItem id="gpt" textValue="gpt-5.6-sol">
               gpt-5.6-sol
-            </SelectItem>
+            </ListBoxItem>
           </Select>
         ))}
       </div>

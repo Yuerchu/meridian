@@ -122,8 +122,7 @@ export function useSettingsStack<L>(): SettingsStack<L> {
       }
       if (!dirty) return true
       return confirm({
-        body: t('settings.unsavedChanges'),
-        status: 'warning',
+        description: t('settings.unsavedChanges'),
         confirmLabel: t('common.discardChanges'),
       })
     },

@@ -1,9 +1,11 @@
 import { useState } from 'react'
-import { ProgressCircle, Segment, Tooltip, TooltipTrigger } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { LayoutDashboard, List } from '@keyline-icons/react/two-tone'
 import { useTranslation } from 'react-i18next'
 
-import { cx } from '@/utils/cx'
+import './todo-bar.css'
 import TodoBoard from './todo-board'
 import { TodoItemList, todoProgress, type TodoArgs } from './todo-list'
 
@@ -15,21 +17,15 @@ type TodoView = 'list' | 'board'
  * Hidden from the accessibility tree: whatever holds it takes its name from its
  * text, which spells the count out, so an exposed ring has it announced twice.
  * The attribute sits on a wrapper because React Aria's ProgressBar filters
- * `aria-hidden` off its own element. `--info` has no `color` variant of its
- * own; the stroke reads a custom property, so pointing that at the token is
- * the supported way in rather than restyling the circle.
+ * `aria-hidden` off its own element. Both placements use the library's small
+ * inline ring, without overriding its size or stroke.
  */
-export function TodoRing({ todos, className }: { todos: TodoArgs; className?: string }) {
+export function TodoRing({ todos }: { todos: TodoArgs }) {
   const { t } = useTranslation()
   const { done, total } = todoProgress(todos.todos)
   return (
     <span data-slot="todo-ring" aria-hidden="true" className="shrink-0">
-      <ProgressCircle
-        aria-label={t('chat.todo.progress', { done, total })}
-        value={done}
-        maxValue={total}
-        className={cx('size-3.5 [--progress-circle-stroke:var(--color-status-info)]', className)}
-      />
+      <ProgressCircle aria-label={t('chat.todo.progress', { done, total })} value={done} maxValue={total} size="sm" />
     </span>
   )
 }
@@ -71,9 +67,9 @@ export function TodoPanelBody({ todos, className }: { todos: TodoArgs; className
   const { t } = useTranslation()
   const [view, setView] = useState<TodoView>('list')
   return (
-    <div data-slot="todo-panel" className={cx('flex flex-col gap-2', className)}>
-      <div data-slot="todo-panel-view-switch" className="flex justify-end">
-        <Segment
+    <div data-slot="todo-panel" className={['m-todo-bar__panel', className].filter(Boolean).join(' ')}>
+      <div data-slot="todo-panel-view-switch" className="m-todo-bar__view-switch">
+        <SegmentedControl
           aria-label={`${t('chat.todo.viewList')} / ${t('chat.todo.viewBoard')}`}
           size="sm"
           selectedKey={view}
@@ -81,19 +77,15 @@ export function TodoPanelBody({ todos, className }: { todos: TodoArgs; className
             if (next === 'list' || next === 'board') setView(next)
           }}
         >
-          <TooltipTrigger delay={0}>
-            <Segment.Item id="list" aria-label={t('chat.todo.viewList')} className="w-7 px-0">
-              <List className="size-4" />
-            </Segment.Item>
+          <TooltipTrigger>
+            <Segment id="list" aria-label={t('chat.todo.viewList')} icon={<List />} />
             <Tooltip>{t('chat.todo.viewList')}</Tooltip>
           </TooltipTrigger>
-          <TooltipTrigger delay={0}>
-            <Segment.Item id="board" aria-label={t('chat.todo.viewBoard')} className="w-7 px-0">
-              <LayoutDashboard className="size-4" />
-            </Segment.Item>
+          <TooltipTrigger>
+            <Segment id="board" aria-label={t('chat.todo.viewBoard')} icon={<LayoutDashboard />} />
             <Tooltip>{t('chat.todo.viewBoard')}</Tooltip>
           </TooltipTrigger>
-        </Segment>
+        </SegmentedControl>
       </div>
       {view === 'board' ? <TodoBoard todos={todos.todos} /> : <TodoItemList todos={todos.todos} />}
     </div>

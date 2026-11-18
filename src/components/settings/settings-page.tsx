@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowLeft } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
@@ -48,7 +48,7 @@ export function SettingsPage({
       {index > 0 && (
         <div data-slot="settings-page-bar" className="flex items-center gap-2">
           <Button
-            leadingIcon={ArrowLeft}
+            icon={<ArrowLeft />}
             data-slot="settings-page-back"
             variant="secondary"
             onPress={() => void pop()}

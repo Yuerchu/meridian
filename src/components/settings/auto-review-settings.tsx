@@ -1,7 +1,15 @@
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
-import { CellSwitch } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -150,9 +158,9 @@ function ModelPicker({
         onSelectionChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
       >
         {providerOptions.map((o) => (
-          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+          <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
             {o.label}
-          </SelectItem>
+          </ListBoxItem>
         ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
@@ -165,19 +173,19 @@ function ModelPicker({
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
       ) : (
-        <Input
+        <TextField
           aria-label={t('settings.assistant.model')}
           value={modelId}
-          onChange={(e) => setModelId(e.target.value)}
+          onChange={(e) => setModelId(e)}
           onBlur={() => emit(providerId, modelId)}
           placeholder={t('settings.assistant.modelPlaceholder')}
-          disabled={!providerId}
+          isDisabled={!providerId}
         />
       )}
     </div>
@@ -198,11 +206,7 @@ function RuleBox({
   onChange: (next: string) => void
 }) {
   return (
-    <TextField>
-      <Label>{label}</Label>
-      <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-      <Description>{hint}</Description>
-    </TextField>
+    <TextArea label={label} rows={3} value={value} placeholder={placeholder} onChange={onChange} description={hint} />
   )
 }
 
@@ -299,13 +303,13 @@ export function AutoReviewSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.autoReview.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.autoReview.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.autoReview.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoading(true)
@@ -314,7 +318,9 @@ export function AutoReviewSettings() {
             >
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -331,36 +337,32 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <TextField>
-        <Label>{t('settings.approvals.ttl')}</Label>
-        <Input
-          type="number"
-          min={0}
-          max={MAX_TTL_MINUTES}
-          className="max-w-32"
-          value={settings.ttl}
-          onChange={(e) => setSettings({ ...settings, ttl: e.target.value })}
-        />
-        <Description>{t('settings.approvals.ttlHint')}</Description>
-        {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
-            {t('settings.approvals.ttlNever')}
-          </p>
-        )}
-      </TextField>
+      <NumberField
+        label={t('settings.approvals.ttl')}
+        description={t('settings.approvals.ttlHint')}
+        value={draftToNumber(settings.ttl)}
+        onChange={(value) => setSettings({ ...settings, ttl: numberToDraft(value) })}
+        minValue={0}
+        maxValue={MAX_TTL_MINUTES}
+        formatOptions={PLAIN_INTEGER}
+        className="max-w-32"
+      />
+      {normaliseTtl(settings.ttl) === 0 && (
+        <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
+          {t('settings.approvals.ttlNever')}
+        </p>
+      )}
 
       <div data-slot="autoreview-enable" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.autoReview.enable')}
           aria-describedby="autoreview-enabled-hint"
           isSelected={settings.enabled}
           onChange={(selected) => setSettings({ ...settings, enabled: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.autoReview.enable')}
+        </Switch>
         <p
           id="autoreview-enabled-hint"
           data-slot="autoreview-enable-hint"
@@ -390,17 +392,15 @@ export function AutoReviewSettings() {
       </div>
 
       <div data-slot="autoreview-escalate" className="space-y-1.5">
-        <CellSwitch
+        <Switch
+          variant="card"
           aria-label={t('settings.autoReview.escalate')}
           aria-describedby="autoreview-escalate-hint"
           isSelected={settings.escalate}
           onChange={(selected) => setSettings({ ...settings, escalate: selected })}
         >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.escalate')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
+          {t('settings.autoReview.escalate')}
+        </Switch>
         <p
           id="autoreview-escalate-hint"
           data-slot="autoreview-escalate-hint"

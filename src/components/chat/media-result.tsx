@@ -1,9 +1,11 @@
+import './media-result.css'
 import * as React from 'react'
 import { Button as AriaButton } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 
-import { ChatAttachment, ChatAttachmentGroup, Skeleton } from '@/components/base'
+import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { assetSrc } from '@/lib/asset-src'
 import type { ToolMediaResponse } from '@/types'
@@ -47,11 +49,9 @@ function MediaImage({ src, alt }: { src: string | undefined; alt: string }) {
         onError={() => setLoaded(true)}
       />
       {!loaded && (
-        <Skeleton
-          aria-hidden="true"
-          className="absolute inset-0"
-          render={(props) => <span data-slot="media-image-placeholder" {...(props as React.ComponentProps<'span'>)} />}
-        />
+        <span data-slot="media-image-placeholder" className="m-media-result__placeholder" aria-hidden="true">
+          <Skeleton shape="rect" width="100%" height="100%" />
+        </span>
       )}
     </span>
   )

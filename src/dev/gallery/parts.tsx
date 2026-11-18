@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Bin, Bot, FaceSmile, Search } from '@keyline-icons/react/two-tone'
 import {
   ActionBar,
-  Button,
   Command,
   EmojiPicker,
   FloatingToc,
@@ -12,11 +11,17 @@ import {
   TreeView,
   TreeViewItem,
 } from '@/components/base'
-import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
+import { Segment as LegacySegment } from '@/components/base/segment'
+import {
+  SegmentedControl as LegacySegmentedControl,
+  SegmentedControlItem as LegacySegmentedControlItem,
+} from '@/components/base/segmented-control/segmented-control'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { NotificationBell } from '@/components/application/app-shell/notification-bell'
 import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useConfirm } from '@/hooks/use-confirm'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { Hint } from '@/components/ui/hint'
 import { ModelIcon } from '@/components/ui/model-icon'
@@ -143,10 +148,22 @@ export function NavigationParts() {
   return (
     <>
       <Section title="SegmentedControl">
-        <SegmentedControl aria-label="传输" defaultSelectedKeys={['stdio']}>
-          <SegmentedControlItem id="stdio">stdio</SegmentedControlItem>
-          <SegmentedControlItem id="streamablehttp">HTTP</SegmentedControlItem>
+        <SegmentedControl aria-label="传输" defaultSelectedKey="stdio">
+          <Segment id="stdio">stdio</Segment>
+          <Segment id="streamablehttp">HTTP</Segment>
         </SegmentedControl>
+      </Section>
+      <Section title="Legacy Segment / 尚未迁移的调用方">
+        <LegacySegment aria-label="旧版智能体类型" defaultSelectedKeys={['native']}>
+          <LegacySegment.Item id="native">原生</LegacySegment.Item>
+          <LegacySegment.Item id="claude_code">Claude Code</LegacySegment.Item>
+        </LegacySegment>
+      </Section>
+      <Section title="Legacy SegmentedControl / 尚未迁移的调用方">
+        <LegacySegmentedControl aria-label="旧版传输" defaultSelectedKeys={['stdio']}>
+          <LegacySegmentedControlItem id="stdio">stdio</LegacySegmentedControlItem>
+          <LegacySegmentedControlItem id="streamablehttp">HTTP</LegacySegmentedControlItem>
+        </LegacySegmentedControl>
       </Section>
       <Section title="FloatingToc / 对话小地图">
         <div className="relative flex h-40 max-w-md items-center justify-end rounded-2xl bg-background-secondary-default pe-2">
@@ -229,7 +246,7 @@ const INBOX: NotificationCenterItem[] = [
 /** The overlays the product opens on its own terms: bulk bar, inbox, confirm, emoji. */
 export function OverlayParts() {
   const [bar, setBar] = useState(false)
-  const [confirm, setConfirm] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   const [emoji, setEmoji] = useState(false)
   return (
     <>
@@ -242,7 +259,7 @@ export function OverlayParts() {
             <span className="text-body-regular text-text-secondary">已选 3 项</span>
           </ActionBar.Prefix>
           <ActionBar.Content>
-            <Button leadingIcon={Bin} variant="danger" onPress={() => setBar(false)}>
+            <Button icon={<Bin />} variant="destructive" onPress={() => setBar(false)}>
               删除所选
             </Button>
           </ActionBar.Content>
@@ -251,17 +268,16 @@ export function OverlayParts() {
       <Section title="NotificationBell / 待处理收件箱">
         <NotificationBell notifications={INBOX} triggerLabel="待处理 2 项" dialogLabel="待处理" />
       </Section>
-      <Section title="ConfirmDialog / 确认">
-        <Button variant="danger" onPress={() => setConfirm(true)}>
+      <Section title="useConfirm / 确认">
+        <Button
+          variant="destructive"
+          onPress={() =>
+            void confirm({ description: '从这条消息往后的整段都会删除。', confirmLabel: '删除', tone: 'danger' })
+          }
+        >
           删除这段对话
         </Button>
-        <ConfirmDialog
-          isOpen={confirm}
-          onOpenChange={setConfirm}
-          onConfirm={() => setConfirm(false)}
-          body="从这条消息往后的整段都会删除。"
-          confirmLabel="删除"
-        />
+        {confirmDialog}
       </Section>
       <Section title="EmojiPicker">
         <EmojiPicker isOpen={emoji} onOpenChange={setEmoji} aria-label="表情">

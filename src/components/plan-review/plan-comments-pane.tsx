@@ -1,8 +1,13 @@
+import './plan-comments-pane.css'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Button, Chip, Label, Link, TextArea, TextField, Tooltip, TooltipTrigger } from '@/components/base'
+import { Link } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import type { PlanCommentInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -58,9 +63,9 @@ export function PlanCommentsPane({
         <h2 data-slot="plan-comments-title" id={headingId} className="text-body-medium">
           {t('planReview.comments.title')}
         </h2>
-        <Chip size="sm" variant="secondary" className="ms-auto tabular-nums">
-          {visible.length}
-        </Chip>
+        <span className="m-plan-comments-pane__count">
+          <Badge size="sm">{visible.length}</Badge>
+        </span>
       </header>
 
       <div data-slot="plan-comments-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
@@ -103,10 +108,9 @@ export function PlanCommentsPane({
               {!isReadOnly && (
                 <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={Bin}
-                    size="small"
-                    variant="neutral"
+                    icon={<Bin />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('planReview.comments.delete')}
                     className="-me-1 -mt-1 shrink-0"
                     onPress={() => onDeleteComment(comment.id)}
@@ -129,8 +133,7 @@ export function PlanCommentsPane({
                 placeholder={t('planReview.comments.placeholder')}
                 value={comment.body}
                 rows={2}
-                className="resize-none"
-                onChange={(event) => onChangeComment(comment.id, event.target.value)}
+                onChange={(value) => onChangeComment(comment.id, value)}
               />
             )}
             {comment.state === 'orphaned' && (
@@ -155,16 +158,15 @@ export function PlanCommentsPane({
             </div>
           )
         ) : (
-          <TextField data-slot="plan-global-note-field" className="space-y-1.5">
-            <Label className="text-body-medium">{t('planReview.comments.globalNote')}</Label>
-            <TextArea
-              placeholder={t('planReview.comments.globalPlaceholder')}
-              value={globalNote}
-              rows={2}
-              className="resize-none"
-              onChange={(event) => onGlobalNoteChange(event.target.value)}
-            />
-          </TextField>
+          <TextArea
+            data-slot="plan-global-note-field"
+            className="space-y-1.5"
+            label={t('planReview.comments.globalNote')}
+            placeholder={t('planReview.comments.globalPlaceholder')}
+            value={globalNote}
+            rows={2}
+            onChange={onGlobalNoteChange}
+          />
         )}
       </div>
     </section>

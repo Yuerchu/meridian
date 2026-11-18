@@ -11,7 +11,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, Plus } from '@keyline-icons/react/two-tone'
 
-import { Button, Chip, Kanban } from '@/components/base'
+import { Kanban } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useBoardStore } from '@/stores/board-store'
@@ -111,7 +113,7 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
         </div>
         <Button
           className="ml-auto"
-          size="small"
+          size="sm"
           variant="secondary"
           onPress={() => setOpenColumns(allOpen ? ['running'] : STAGES)}
         >
@@ -139,7 +141,7 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
           <span className="text-caption-1-regular text-text-secondary">{t('board.strip.empty')}</span>
         )}
         {waiting.map((card) => (
-          <Button key={card.task.id} size="small" variant="secondary" className="shrink-0" onPress={() => reveal(card)}>
+          <Button key={card.task.id} size="sm" variant="secondary" className="shrink-0" onPress={() => reveal(card)}>
             <span className="flex items-center gap-1.5">
               <span className="max-w-48 truncate">{card.task.title}</span>
               <span className="text-text-secondary">{t(`board.state.${card.state.kind}`)}</span>
@@ -170,26 +172,24 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
               <Kanban.Column key={stage} className="min-w-72 flex-1">
                 <Kanban.ColumnHeader>
                   <Button
-                    size="xs"
-                    variant="neutral"
-                    iconOnly
-                    leadingIcon={ChevronLeft}
+                    size="sm"
+                    variant="ghost"
+                    icon={<ChevronLeft />}
                     aria-label={t('board.column.fold', { title })}
                     onPress={() => setColumnOpen(stage, false)}
                   />
                   <Kanban.ColumnTitle>{title}</Kanban.ColumnTitle>
                   {pending > 0 && (
-                    <Chip size="sm" variant="soft" color="warning">
+                    <Badge size="sm" tone="warning">
                       {t('board.column.waiting', { count: pending })}
-                    </Chip>
+                    </Badge>
                   )}
                   <Kanban.ColumnCount>{column.length}</Kanban.ColumnCount>
                   {stage === 'backlog' && (
                     <Button
-                      size="xs"
-                      variant="neutral"
-                      iconOnly
-                      leadingIcon={Plus}
+                      size="sm"
+                      variant="ghost"
+                      icon={<Plus />}
                       aria-label={t('board.column.add', { title })}
                       onPress={() => setDraft(stage)}
                     />

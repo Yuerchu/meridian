@@ -1,10 +1,13 @@
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Button, Kbd, Tooltip, TooltipTrigger } from '@/components/base'
+import { Kbd } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
-import { FolderTree, Search, X } from '@keyline-icons/react/two-tone'
+import { FolderTree, Search } from '@keyline-icons/react/two-tone'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
@@ -135,7 +138,7 @@ export function AppShell(props: ShellProps) {
 
   const requestLeaveSettings = useCallback(async () => {
     if (!settingsDirty) return true
-    return confirm({ body: t('settings.unsavedChanges'), status: 'warning', confirmLabel: t('common.discardChanges') })
+    return confirm({ description: t('settings.unsavedChanges'), confirmLabel: t('common.discardChanges') })
   }, [confirm, settingsDirty, t])
 
   const changeSettingsTab = useCallback(
@@ -328,25 +331,23 @@ export function AppShell(props: ShellProps) {
               {activeId && !isMobile && page === 'chat' && !activeReviewId && (
                 <TooltipTrigger>
                   <Button
-                    iconOnly
-                    leadingIcon={FolderTree}
-                    size="small"
-                    // eslint-disable-next-line meridian-ui/no-variant-as-state -- on-state of the changes-panel icon toggle: ghost marks it open, aria-pressed carries the state
-                    variant={changesOpen ? 'ghost' : 'neutral'}
+                    icon={<FolderTree />}
+                    size="sm"
+                    variant="ghost"
                     aria-label={t('chat.changes.toggle')}
+                    // The library has no icon-only toggle yet (Yuerchu/ui#565): the
+                    // state reaches assistive technology, not the screen.
                     aria-pressed={changesOpen}
                     onPress={() => setChangesOpen((open) => !open)}
-                    className="size-11 md:size-8"
                   />
                   <Tooltip placement="bottom">{t('chat.changes.toggle')}</Tooltip>
                 </TooltipTrigger>
               )}
               <TooltipTrigger>
                 <Button
-                  iconOnly
-                  leadingIcon={Search}
-                  size="small"
-                  variant="neutral"
+                  icon={<Search />}
+                  size="sm"
+                  variant="ghost"
                   aria-label={t('palette.title')}
                   aria-keyshortcuts="Meta+K Control+K"
                   onPress={() => setPaletteOpen(true)}
@@ -377,23 +378,8 @@ export function AppShell(props: ShellProps) {
 
           {actionError && (
             <div data-slot="app-action-error" className="shrink-0 border-b border-border-button-default px-4 py-2">
-              <Alert status="danger" role="alert">
-                <Alert.Indicator />
-                <Alert.Content className="min-w-0">
-                  <Alert.Description className="break-words">{actionError}</Alert.Description>
-                </Alert.Content>
-                <TooltipTrigger>
-                  <Button
-                    iconOnly
-                    leadingIcon={X}
-                    size="small"
-                    variant="neutral"
-                    aria-label={t('common.close')}
-                    onPress={() => setActionError(null)}
-                    className="touch-hitbox shrink-0"
-                  />
-                  <Tooltip placement="bottom">{t('common.close')}</Tooltip>
-                </TooltipTrigger>
+              <Alert tone="danger" shouldAnnounce onDismiss={() => setActionError(null)}>
+                {actionError}
               </Alert>
             </div>
           )}

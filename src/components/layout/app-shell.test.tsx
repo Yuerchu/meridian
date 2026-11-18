@@ -32,54 +32,11 @@ vi.mock('@keyline-icons/react/two-tone', () => ({
   X: () => null,
 }))
 vi.mock('@/components/base', () => {
-  const Tooltip = Object.assign(({ children }: { children: React.ReactNode }) => <>{children}</>, {
-    Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  })
   const Kbd = Object.assign(({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>, {
     Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   })
-  const Alert = Object.assign(
-    ({ children, status: _status, ...props }: React.HTMLAttributes<HTMLDivElement> & { status?: string }) => (
-      <div {...props}>{children}</div>
-    ),
-    {
-      Indicator: () => null,
-      Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-      Description: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
-    },
-  )
-  // One factory, not three. `vi.mock` keys on the module path, so a second
-  // call for `@/components/base` replaces the first outright — the shell then
-  // renders against whichever landed last and every other export is undefined.
-  const Button = ({
-    children,
-    onPress,
-    isDisabled,
-    isPending: _isPending,
-    iconOnly: _iconOnly,
-    leadingIcon: _leadingIcon,
-    variant: _variant,
-    size: _size,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onPress?: () => void
-    isDisabled?: boolean
-    isPending?: boolean
-    iconOnly?: boolean
-    leadingIcon?: React.ReactNode
-    variant?: string
-    size?: string
-  }) => (
-    <button {...props} disabled={isDisabled} onClick={onPress}>
-      {children}
-    </button>
-  )
   return {
-    Alert,
     Kbd,
-    Button,
-    Tooltip,
-    TooltipTrigger: ({ children }: { children: React.ReactNode }) => <>{children}</>,
     Sidebar: {
       Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
       Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,

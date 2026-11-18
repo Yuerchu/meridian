@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Card, Chip, Sheet, Spinner } from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { Card, Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -70,25 +74,25 @@ export function UsageGapsSheet({
 
             <Sheet.Body className="space-y-2">
               {error ? (
-                <Alert status="danger" role="alert">
-                  <Alert.Indicator />
-                  <Alert.Content>
-                    <Alert.Description>{t('settings.usage.gaps.loadError')}</Alert.Description>
-                    <Button size="small" variant="secondary" className="mt-2" onPress={load}>
+                <Alert
+                  tone="danger"
+                  shouldAnnounce
+                  actions={
+                    <Button size="sm" variant="secondary" onPress={load}>
                       {t('settings.usage.retry')}
                     </Button>
-                  </Alert.Content>
+                  }
+                >
+                  {t('settings.usage.gaps.loadError')}
                 </Alert>
               ) : !found ? (
                 <div role="status" aria-label={t('common.loading')} className="flex justify-center p-6">
-                  <Spinner aria-hidden="true" />
+                  <span aria-hidden>
+                    <Spinner />
+                  </span>
                 </div>
               ) : found.items.length === 0 ? (
-                <EmptyState size="sm">
-                  <EmptyState.Header>
-                    <EmptyState.Title>{t('settings.usage.gaps.empty')}</EmptyState.Title>
-                  </EmptyState.Header>
-                </EmptyState>
+                <EmptyState heading={t('settings.usage.gaps.empty')} headingLevel={3} size="sm" />
               ) : (
                 <>
                   {found.total > found.items.length && (
@@ -146,10 +150,9 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
         </div>
         {gap.conversation_title !== null && (
           <Button
-            variant="neutral"
-            iconOnly
-            leadingIcon={SquareArrowUpRight}
-            size="small"
+            variant="ghost"
+            icon={<SquareArrowUpRight />}
+            size="sm"
             aria-label={t('settings.usage.gaps.open')}
             onPress={onOpen}
           />
@@ -157,7 +160,7 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {reasons.map((reason) => (
-          <Chip key={reason}>{reason}</Chip>
+          <Badge key={reason}>{reason}</Badge>
         ))}
       </div>
     </Card>

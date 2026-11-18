@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, ListBox, Sheet } from '@/components/base'
+import { ListBox, Sheet } from '@/components/base'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProviderMark } from '@/components/ui/provider-icon'
 
 /** The one key that is not a key: putting the mark back to whatever the catalog says. */
@@ -108,12 +110,12 @@ export function ProviderIconPicker({
                 <Sheet.Heading>{t('settings.provider.iconChoose')}</Sheet.Heading>
               </Sheet.Header>
               <Sheet.Body className="space-y-3">
-                <Input
+                <SearchField
                   aria-label={t('settings.provider.iconFilter')}
                   name="providerIconFilter"
                   autoComplete="off"
                   value={filter}
-                  onChange={(event) => setFilter(event.target.value)}
+                  onChange={setFilter}
                   placeholder={t('settings.provider.iconFilter')}
                 />
                 {/* The grid scrolls rather than the sheet: the filter box has
