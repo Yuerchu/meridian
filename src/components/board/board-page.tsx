@@ -11,7 +11,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronLeft, Plus } from '@keyline-icons/react/two-tone'
 
-import { Chip, Kanban } from '@/components/base'
+import { Kanban } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useHotkey } from '@/hooks/use-hotkey'
@@ -179,9 +180,9 @@ export function BoardPage({ onOpenConversation }: { onOpenConversation: (convers
                   />
                   <Kanban.ColumnTitle>{title}</Kanban.ColumnTitle>
                   {pending > 0 && (
-                    <Chip size="sm" variant="soft" color="warning">
+                    <Badge size="sm" tone="warning">
                       {t('board.column.waiting', { count: pending })}
-                    </Chip>
+                    </Badge>
                   )}
                   <Kanban.ColumnCount>{column.length}</Kanban.ColumnCount>
                   {stage === 'backlog' && (

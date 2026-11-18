@@ -8,7 +8,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { Chip, Kanban, PromptInput } from '@/components/base'
+import { Kanban, PromptInput } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { useBoardStore } from '@/stores/board-store'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { BoardStage } from '@/types'
@@ -84,9 +85,9 @@ export function DraftCard({
     >
       <span className="flex items-center gap-1.5">
         <span className="text-body-2-medium text-text-primary">{t('board.draft.title')}</span>
-        <Chip size="sm" variant="soft" color="accent">
+        <Badge size="sm" tone="accent">
           {t(`board.columns.${stage}`)}
-        </Chip>
+        </Badge>
       </span>
       {projects.length === 0 ? (
         <span className="text-caption-1-regular text-text-secondary">{t('board.draft.noProject')}</span>

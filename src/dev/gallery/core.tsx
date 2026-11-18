@@ -4,6 +4,7 @@ import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/tw
 
 import { Avatar, Card, Chip, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { MeridianMark } from '@/components/ui/meridian-mark'
 import { noop } from './fixtures'
 import { Row, Section, Stage } from './shell'
@@ -11,8 +12,7 @@ import { CoreParts } from './parts'
 
 const VARIANTS = ['primary', 'secondary', 'ghost', 'destructive'] as const
 const SIZES = ['lg', 'md', 'sm'] as const
-const CHIP_VARIANTS = ['primary', 'secondary', 'soft', 'tertiary'] as const
-const CHIP_COLORS = ['default', 'accent', 'success', 'warning', 'danger'] as const
+const BADGE_TONES = ['neutral', 'accent', 'success', 'warning', 'danger'] as const
 
 function Buttons() {
   return (
@@ -73,21 +73,24 @@ function Toggles() {
 function Chips() {
   return (
     <Stage>
-      {CHIP_VARIANTS.map((variant) => (
-        <Row key={variant} label={variant}>
-          {CHIP_COLORS.map((color) => (
-            <Chip key={color} variant={variant} color={color}>
-              {color}
-            </Chip>
+      {(['sm', 'md'] as const).map((size) => (
+        <Row key={size} label={size}>
+          {BADGE_TONES.map((tone) => (
+            <Badge key={tone} size={size} tone={tone}>
+              {tone}
+            </Badge>
           ))}
         </Row>
       ))}
-      <Row label="尺寸">
-        {(['sm', 'md', 'lg'] as const).map((size) => (
-          <Chip key={size} size={size} variant="soft" color="accent">
-            {size}
-          </Chip>
-        ))}
+      <Row label="状态圆点">
+        <Badge tone="success" hasDot>
+          运行中
+        </Badge>
+      </Row>
+      <Row label="Legacy Chip / 尚未迁移的调用方">
+        <Chip size="sm" variant="soft">
+          旧版标签
+        </Chip>
       </Row>
       <Row label="Kbd">
         <Kbd>Ctrl K</Kbd>
@@ -173,7 +176,7 @@ export default function Core() {
       <Section title="ToggleButton / LinkButton / CloseButton">
         <Toggles />
       </Section>
-      <Section title="Chip / Kbd">
+      <Section title="Badge / Kbd">
         <Chips />
       </Section>
       <Section title="Avatar">

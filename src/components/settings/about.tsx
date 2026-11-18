@@ -2,7 +2,7 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, ChevronRight, Copy, FileText, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Chip } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -151,11 +151,7 @@ export function About() {
             <span data-slot="about-name" className="text-text-primary text-title-2-semibold">
               {t('app.name')}
             </span>
-            {info && (
-              <Chip size="sm" variant="secondary">
-                v{info.version}
-              </Chip>
-            )}
+            {info && <Badge size="sm">v{info.version}</Badge>}
           </div>
           <p data-slot="about-description" className="text-text-secondary text-body-regular leading-relaxed">
             {t('settings.about.description')}

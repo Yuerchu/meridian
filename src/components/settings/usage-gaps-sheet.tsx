@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Card, Sheet, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
@@ -156,7 +157,7 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
         {reasons.map((reason) => (
-          <Chip key={reason}>{reason}</Chip>
+          <Badge key={reason}>{reason}</Badge>
         ))}
       </div>
     </Card>

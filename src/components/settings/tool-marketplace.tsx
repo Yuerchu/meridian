@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import { Card, Chip, Disclosure, DisclosureGroup } from '@/components/base'
+import { Card, Disclosure, DisclosureGroup } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
@@ -317,18 +318,10 @@ export function ToolMarketplace() {
                   <span data-slot="onebot-tool-description" className="text-text-secondary truncate max-w-40">
                     {t(`settings.tools.qq.${tool.name}`)}
                   </span>
-                  {tool.scope === 'group' && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqGroupOnly')}</Chip>
-                  )}
-                  {tool.scope === 'private' && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqPrivateOnly')}</Chip>
-                  )}
-                  {tool.admin_only === true && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqAdminOnly')}</Chip>
-                  )}
-                  {tool.needs_approval === true && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqApproval')}</Chip>
-                  )}
+                  {tool.scope === 'group' && <Badge>{t('settings.tools.qqGroupOnly')}</Badge>}
+                  {tool.scope === 'private' && <Badge>{t('settings.tools.qqPrivateOnly')}</Badge>}
+                  {tool.admin_only === true && <Badge>{t('settings.tools.qqAdminOnly')}</Badge>}
+                  {tool.needs_approval === true && <Badge>{t('settings.tools.qqApproval')}</Badge>}
                 </div>
               ))}
           </div>
@@ -393,9 +386,7 @@ export function ToolMarketplace() {
                     >
                       {ct.command}
                     </span>
-                    {!ct.is_enabled && (
-                      <Chip className="shrink-0 text-text-secondary">{t('settings.tools.disabled')}</Chip>
-                    )}
+                    {!ct.is_enabled && <Badge>{t('settings.tools.disabled')}</Badge>}
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
@@ -459,7 +450,7 @@ export function ToolMarketplace() {
                 <span data-slot="tool-preset-count" className="text-text-secondary">
                   {t('settings.tools.presetCount', { count: toolNames.length })}
                 </span>
-                {preset.is_builtin && <Chip className="text-text-secondary">{t('settings.template.builtin')}</Chip>}
+                {preset.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
               </div>
             )
           })}

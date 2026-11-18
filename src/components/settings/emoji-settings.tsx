@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom'
 import type { SortDescriptor } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, Plus, Sparkles, StickyNote, Upload, X } from '@keyline-icons/react/two-tone'
-import { Chip, Disclosure } from '@/components/base'
+import { Disclosure } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -322,11 +323,7 @@ function StickerGrid({
                   ariaLabel={t('settings.emoji.editName')}
                   onSave={(name) => void save(emoji, { name })}
                 />
-                {emoji.semantic_status !== 'confirmed' && (
-                  <Chip color="warning" className="shrink-0">
-                    {t('settings.emoji.pending')}
-                  </Chip>
-                )}
+                {emoji.semantic_status !== 'confirmed' && <Badge tone="warning">{t('settings.emoji.pending')}</Badge>}
               </div>
               <EditableCell
                 key={shownTags(emoji)}
@@ -495,10 +492,8 @@ function PackCard({
               <span data-slot="pack-count" className="text-caption-1-regular text-text-secondary">
                 {detail.emojis.length}
               </span>
-              {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
-              {detail.pack.is_builtin && (
-                <Chip className="shrink-0 text-text-secondary">{t('settings.template.builtin')}</Chip>
-              )}
+              {pending > 0 && <Badge tone="warning">{t('settings.emoji.pendingCount', { count: pending })}</Badge>}
+              {detail.pack.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
               <Disclosure.Indicator className="size-4 shrink-0 text-text-secondary" />
             </Disclosure.Trigger>
           </Disclosure.Heading>

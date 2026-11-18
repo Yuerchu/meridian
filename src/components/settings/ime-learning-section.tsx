@@ -2,7 +2,8 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import { Chip, ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -230,11 +231,7 @@ export function ImeLearningSection() {
                         <span data-slot="ime-learned-word" onPointerEnter={titleIfTruncated} className="truncate">
                           {word.text}
                         </span>
-                        {word.user_word && (
-                          <Chip size="sm" variant="soft">
-                            {t('settings.ime.learned.userWord')}
-                          </Chip>
-                        )}
+                        {word.user_word && <Badge size="sm">{t('settings.ime.learned.userWord')}</Badge>}
                       </ItemCard.Title>
                       <ItemCard.Description>
                         {t('settings.ime.learned.count', { count: word.count })}

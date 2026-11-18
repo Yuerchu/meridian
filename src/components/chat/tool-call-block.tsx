@@ -50,7 +50,8 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Chip, Kbd, Spinner } from '@/components/base'
+import { Kbd, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -1218,23 +1219,23 @@ function commandChips(t: TFunction, output: CommandOutput): React.ReactNode[] {
   const chips: React.ReactNode[] = []
   if (output.exitCode !== null) {
     chips.push(
-      <Chip key="exit" size="sm" variant="soft" color={output.exitCode === 0 ? 'default' : 'danger'}>
+      <Badge key="exit" size="sm" tone={output.exitCode === 0 ? 'neutral' : 'danger'}>
         {t('chat.shell.exitCode', { code: output.exitCode })}
-      </Chip>,
+      </Badge>,
     )
   }
   if (output.timedOut) {
     chips.push(
-      <Chip key="timeout" size="sm" variant="soft" color="warning">
+      <Badge key="timeout" size="sm" tone="warning">
         {t('chat.tool.panel.timedOut')}
-      </Chip>,
+      </Badge>,
     )
   }
   if (output.truncated) {
     chips.push(
-      <Chip key="cap" size="sm" variant="soft">
+      <Badge key="cap" size="sm">
         {t('chat.shell.truncated')}
-      </Chip>,
+      </Badge>,
     )
   }
   return chips
@@ -2616,9 +2617,7 @@ export function ToolCallBlock({
   if (output?.truncation) {
     end.push(
       <Hint key="truncated" label={t('chat.tool.panel.truncatedTokens', { count: output.truncation.originalTokens })}>
-        <Chip size="sm" variant="soft">
-          {t('chat.tool.panel.truncated')}
-        </Chip>
+        <Badge size="sm">{t('chat.tool.panel.truncated')}</Badge>
       </Hint>,
     )
   }

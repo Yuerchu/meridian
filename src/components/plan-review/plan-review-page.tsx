@@ -3,7 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useTranslation } from 'react-i18next'
 
 import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
-import { Chip, Dropdown, DropdownItem, DropdownPopover } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { TextArea as AriaTextArea } from 'react-aria-components'
@@ -776,9 +777,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
               >
                 {t('planReview.title')}
               </h2>
-              <Chip size="sm" variant="secondary">
-                {t(`planReview.status.${info.review.state}`)}
-              </Chip>
+              <Badge size="sm">{t(`planReview.status.${info.review.state}`)}</Badge>
             </div>
             <p
               data-slot="plan-review-subtitle"

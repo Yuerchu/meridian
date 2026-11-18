@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Chip, ListBox, Spinner } from '@/components/base'
+import { ListBox, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
@@ -133,25 +134,22 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
       <Ban className="size-3" />
     )
   return (
-    // The attributes ride a span of our own: Chip keeps what it is handed to
-    // itself.
     <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
-      <Chip
+      <Badge
         size="sm"
-        variant="soft"
-        color={
+        tone={
           outcome === 'done'
             ? 'success'
             : outcome === 'failed'
               ? 'danger'
               : outcome === 'running'
-                ? 'default'
+                ? 'neutral'
                 : 'warning'
         }
       >
         {icon}
         {label}
-      </Chip>
+      </Badge>
     </span>
   )
 }
