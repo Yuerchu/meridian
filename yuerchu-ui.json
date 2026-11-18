@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "6aaa06a65ca3a609dd1fca15c19a68feabe1ef3c"
+    "commit": "ce0e3da3cb51be8c22f3b69d7dc312af09d1665d"
   },
   "entries": [
     "components/alert/alert.tsx",
