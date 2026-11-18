@@ -1,0 +1,72 @@
+@layer components {
+  .ui-link {
+    border-radius: calc(var(--radius-item) / 2);
+    cursor: pointer;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      text-decoration-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 正文里：accent 色 + 下划线 */
+  .ui-link[data-variant="inline"] {
+    color: var(--accent-strong);
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  }
+
+  .ui-link[data-variant="inline"][data-hovered]:not([data-disabled]) {
+    text-decoration-color: currentColor;
+  }
+
+  /* 一列链接：次要文字色，悬停变深并出下划线；当前页是正文色、没有下划线 */
+  .ui-link[data-variant="standalone"] {
+    color: var(--text-secondary);
+    text-decoration-line: none;
+  }
+
+  .ui-link[data-variant="standalone"][data-hovered]:not([data-disabled]) {
+    color: var(--text);
+    text-decoration-line: underline;
+  }
+
+  .ui-link[aria-current="page"],
+  .ui-link[aria-current="page"][data-hovered]:not([data-disabled]) {
+    color: var(--text);
+    text-decoration-line: none;
+    cursor: default;
+  }
+
+  .ui-link[data-disabled] {
+    color: var(--text-muted);
+    text-decoration-line: none;
+    cursor: not-allowed;
+  }
+
+  .ui-link__external {
+    display: inline-block;
+    width: 0.9em;
+    height: 0.9em;
+    vertical-align: -0.05em;
+  }
+
+  .ui-link__hint {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  @media (forced-colors: active) {
+    .ui-link {
+      color: LinkText;
+    }
+
+    .ui-link[data-disabled] {
+      color: GrayText;
+    }
+  }
+}

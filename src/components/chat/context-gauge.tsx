@@ -4,7 +4,7 @@ import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useTranslation } from 'react-i18next'
 import { TriangleAlert } from '@keyline-icons/react/two-tone'
 
-import { Link } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { ErrorAlert } from '@/components/ui/error-alert'
@@ -199,9 +199,11 @@ export function ContextGauge({
                       )
                     )}
                     {onCompact && !streaming && (
-                      <Link data-slot="context-gauge-compact" className="m-context-gauge__compact" onPress={onCompact}>
-                        {t('chat.compact.manual')}
-                      </Link>
+                      <span className="m-context-gauge__compact">
+                        <Button data-slot="context-gauge-compact" variant="ghost" size="sm" onPress={onCompact}>
+                          {t('chat.compact.manual')}
+                        </Button>
+                      </span>
                     )}
                   </>
                 )}

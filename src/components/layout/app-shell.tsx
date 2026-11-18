@@ -1,7 +1,8 @@
+import './app-shell.css'
 import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Kbd } from '@/components/base'
+import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -206,7 +207,8 @@ export function AppShell(props: ShellProps) {
     onOpenBoard()
   }
 
-  const commandShortcut = platform === null ? 'Ctrl/⌘ K' : platform === 'macos' || platform === 'ios' ? '⌘ K' : 'Ctrl K'
+  const commandShortcut =
+    platform === null ? ['Ctrl/⌘', 'K'] : platform === 'macos' || platform === 'ios' ? ['⌘', 'K'] : ['Ctrl', 'K']
   const createConversation = async (projectId?: string | null) => {
     if (!(await leavePlanReview())) return
     const leavesSettings = page === 'settings'
@@ -355,7 +357,9 @@ export function AppShell(props: ShellProps) {
                 />
                 <Tooltip placement="bottom">
                   {t('palette.title')}
-                  <Kbd className="ml-2">{commandShortcut}</Kbd>
+                  <span className="m-app-shell__shortcut">
+                    <Kbd keys={commandShortcut} />
+                  </span>
                 </Tooltip>
               </TooltipTrigger>
               {/* Rightmost, and in the header rather than the sidebar so it is

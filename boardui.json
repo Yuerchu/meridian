@@ -69,16 +69,6 @@
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): react-aria-components Button (Dialog slot=\"close\", TooltipTrigger child); hover:/focus-visible: → data-[hovered]/data-[focus-visible]; props are AriaButtonProps."
       ]
     },
-    "link-button": {
-      "files": ["src/components/base/buttons/link-button.tsx"],
-      "upstream": {
-        "src/components/base/buttons/link-button.tsx": "f56415d9b83cfb4af68d9f359ccb8925f885bce60e6d29d38d73b14966499aaf"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the href case renders react-aria-components Link and the handler case RAC Button instead of native <a>/<button>, so TooltipTrigger reaches it through context; props are AriaLinkProps/AriaButtonProps (onPress/isDisabled) plus className/style, and the registry's own disabled prop is dropped for isDisabled. hover:/active:/focus-visible: become data-[hovered]/data-[pressed]/data-[focus-visible].",
-        "Doc comment gains a Meridian paragraph explaining the RAC swap."
-      ]
-    },
     "input": {
       "files": [
         "src/components/base/input/hint-text.tsx",

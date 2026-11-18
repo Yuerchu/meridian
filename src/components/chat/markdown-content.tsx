@@ -1,4 +1,5 @@
 import './markdown-content.css'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import React, { useId, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { marked } from 'marked'
@@ -7,7 +8,6 @@ import remarkBreaks from 'remark-breaks'
 import remarkGfm from 'remark-gfm'
 import { Focusable } from 'react-aria-components'
 import { openExternalUrl } from '@/lib/external-link'
-import { LinkButton } from '@/components/base'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import type { Components } from 'react-markdown'
@@ -79,40 +79,14 @@ function referenceLabel(reference: MarkdownFileReference): string {
   return `${reference.path}${line}`
 }
 
-type FileGlyph = React.ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>
-
 /**
- * `LinkButton` takes an icon *component* and sizes it itself, while a file's
- * icon is a URL out of the Material Icon Theme pack. One component per URL,
- * cached, so the identity is stable across renders and React never remounts
- * the `<img>`.
- */
-const fileGlyphs = new Map<string, FileGlyph>()
-
-function fileGlyph(url: string): FileGlyph {
-  let glyph = fileGlyphs.get(url)
-  if (!glyph) {
-    glyph = ({ className }) => (
-      <img data-slot="markdown-file-reference-icon" src={url} alt="" aria-hidden className={className} />
-    )
-    fileGlyphs.set(url, glyph)
-  }
-  return glyph
-}
-
-/**
- * A file named in an answer, drawn as BoardUI's secondary `LinkButton` so it
+ * A file named in an answer: a quiet button with the file's own icon, so it
  * reads as part of the sentence rather than a blue web link.
  *
- * `not-prose` is load-bearing: Tailwind Typography gives every `img` under
- * `.prose` a block margin of ~1.7em, and the file glyph is an `img`. Inside an
- * inline-flex that margin became the box's height — 20px above and below a
- * 14px icon, a 59px line in a 22.75px paragraph. The alignment pair after it
- * puts the label on the sentence's baseline: an inline flex box takes its
- * baseline from the first item that *participates* in baseline alignment, and
- * with `items-center` that was the glyph, whose baseline is the image's bottom
- * edge — the label sat 1.4px low. Taking the glyph out (`self-center`) leaves
- * the label's text as the one the box aligns by.
+ * `not-prose` on the wrapper is load-bearing: Tailwind Typography gives every
+ * `img` under `.prose` a block margin of ~1.7em, and the file glyph is an
+ * `img`. Inside the button's inline flex box that margin became the box's
+ * height — a 59px line in a 22.75px paragraph.
  */
 function FileReferenceButton({ reference }: { reference: MarkdownFileReference }) {
   const preview = useFilePreview()
@@ -120,21 +94,32 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
   const label = referenceLabel(reference)
 
   return (
-    <TooltipTrigger>
-      <LinkButton
-        data-slot="markdown-file-reference"
-        variant="secondary"
-        size="small"
-        leadingIcon={icon ? fileGlyph(icon) : undefined}
-        aria-label={label}
-        isDisabled={!preview}
-        onPress={() => preview?.openPreview(reference)}
-        className="not-prose max-w-full min-w-0 items-baseline [&>img]:self-center [&>span]:truncate"
-      >
-        {markdownFileName(reference.path)}
-      </LinkButton>
-      <Tooltip>{label}</Tooltip>
-    </TooltipTrigger>
+    <span className="not-prose m-markdown-content__file-reference">
+      <TooltipTrigger>
+        <Button
+          data-slot="markdown-file-reference"
+          variant="ghost"
+          size="sm"
+          icon={
+            icon ? (
+              <img
+                data-slot="markdown-file-reference-icon"
+                className="m-markdown-content__file-icon"
+                src={icon}
+                alt=""
+                aria-hidden
+              />
+            ) : null
+          }
+          aria-label={label}
+          isDisabled={!preview}
+          onPress={() => preview?.openPreview(reference)}
+        >
+          {markdownFileName(reference.path)}
+        </Button>
+        <Tooltip>{label}</Tooltip>
+      </TooltipTrigger>
+    </span>
   )
 }
 

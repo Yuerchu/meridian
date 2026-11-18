@@ -6,7 +6,6 @@ import {
   EmojiPicker,
   FloatingToc,
   Kanban,
-  Link,
   Resizable,
   TreeView,
   TreeViewItem,
@@ -61,7 +60,9 @@ export function CoreParts() {
           <p className="text-body-2-regular text-text-secondary">
             悬停看说明：<Hint label="run_command 在受限令牌沙箱里运行">沙箱</Hint>
           </p>
-          <Link onPress={noop}>已压缩 12 条消息</Link>
+          <Button variant="ghost" size="sm" onPress={noop}>
+            已压缩 12 条消息
+          </Button>
         </div>
       </Section>
       <Section title="ErrorAlert / 带原因的错误">

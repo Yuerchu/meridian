@@ -1,0 +1,9 @@
+@layer components {
+  .m-compacted-region__fold {
+    display: grid;
+  }
+
+  .m-compacted-region__turn {
+    opacity: 0.4;
+  }
+}

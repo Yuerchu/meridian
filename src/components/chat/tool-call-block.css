@@ -1,0 +1,14 @@
+@layer components {
+  /* Only where there is a keyboard to press it on. */
+  .m-tool-call-block__hotkey {
+    display: none;
+    margin-inline-start: var(--space-1);
+    opacity: 0.6;
+  }
+
+  @media (pointer: fine) {
+    .m-tool-call-block__hotkey {
+      display: inline;
+    }
+  }
+}

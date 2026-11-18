@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleX, Play } from '@keyline-icons/react/two-tone'
-import { Card, Meter } from '@/components/base'
+import { Card } from '@/components/base'
+import { Meter } from '@/components/yuerchu-ui/components/meter/meter'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { api } from '@/api'
@@ -317,12 +318,8 @@ export function DeveloperSettings() {
               <Meter
                 aria-label={t('settings.developer.probe.level')}
                 value={Math.min(100, peak * 140)}
-                className="w-full"
-              >
-                <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
-                  <Meter.Fill className="bg-status-success transition-[width] duration-75" />
-                </Meter.Track>
-              </Meter>
+                showValueLabel={false}
+              />
             </div>
           )}
 

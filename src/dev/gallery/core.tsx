@@ -1,8 +1,10 @@
 import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useState } from 'react'
-import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
+import { Bin, Bookmark, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Card, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
+import { Avatar, Card, Kbd, Spinner, ToggleButton } from '@/components/base'
+import { Kbd as NativeKbd } from '@/components/yuerchu-ui/components/kbd/kbd'
+import { Link } from '@/components/yuerchu-ui/components/link/link'
 import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
@@ -54,20 +56,6 @@ function Toggles() {
         </ToggleButton>
         <ToggleButton size="small">small</ToggleButton>
       </Row>
-      <Row label="LinkButton">
-        <LinkButton onPress={noop}>primary</LinkButton>
-        <LinkButton variant="secondary" leadingIcon={Messages} onPress={noop}>
-          secondary
-        </LinkButton>
-        <LinkButton size="xs" onPress={noop}>
-          xs
-        </LinkButton>
-      </Row>
-      <Row label="CloseButton">
-        {(['2xs', 'xs', 'sm', 'md'] as const).map((size) => (
-          <CloseButton key={size} size={size} aria-label={`关闭 ${size}`} onPress={noop} />
-        ))}
-      </Row>
     </Stage>
   )
 }
@@ -107,9 +95,19 @@ function Chips() {
         </Button>
       </Row>
       <Row label="Kbd">
+        <NativeKbd keys={['Ctrl', 'K']} />
+        <NativeKbd keys={['⇧', '↵']} />
+        <NativeKbd>Esc</NativeKbd>
+      </Row>
+      <Row label="Kbd · 旧版（菜单迁移前）">
         <Kbd>Ctrl K</Kbd>
-        <Kbd>⇧ Enter</Kbd>
         <Kbd>Esc</Kbd>
+      </Row>
+      <Row label="Link">
+        <Link onPress={noop}>正文链接</Link>
+        <Link variant="standalone" onPress={noop}>
+          独立链接
+        </Link>
       </Row>
     </Stage>
   )
@@ -192,10 +190,10 @@ export default function Core() {
       <Section title="Button · 变体 × 尺寸">
         <Buttons />
       </Section>
-      <Section title="ToggleButton / LinkButton / CloseButton">
+      <Section title="ToggleButton">
         <Toggles />
       </Section>
-      <Section title="Badge / Kbd">
+      <Section title="Badge / Kbd / Link">
         <Chips />
       </Section>
       <Section title="Avatar">

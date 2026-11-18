@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Link } from '@/components/base'
+import { Link } from '@/components/yuerchu-ui/components/link/link'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -96,14 +96,13 @@ export function PlanCommentsPane({
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
                 </q>
               ) : (
-                <Link
-                  className="min-w-0 flex-1 text-start text-caption-1-regular text-text-secondary"
-                  onPress={() => onSelectComment(comment)}
-                >
-                  <q data-slot="plan-comment-quote" className="line-clamp-3 break-words">
-                    {comment.anchor.quote || t('planReview.comments.emptyQuote')}
-                  </q>
-                </Link>
+                <span className="m-plan-comments-pane__quote">
+                  <Link variant="standalone" onPress={() => onSelectComment(comment)}>
+                    <q data-slot="plan-comment-quote" className="m-plan-comments-pane__quote-text">
+                      {comment.anchor.quote || t('planReview.comments.emptyQuote')}
+                    </q>
+                  </Link>
+                </span>
               )}
               {!isReadOnly && (
                 <TooltipTrigger>

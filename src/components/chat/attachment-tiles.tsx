@@ -1,10 +1,11 @@
+import './attachment-tiles.css'
 import { useEffect, useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Button as AriaButton, GridList, GridListItem, useDragAndDrop, type Key } from 'react-aria-components'
-import { File as FileGlyph } from '@keyline-icons/react/two-tone'
+import { File as FileGlyph, X } from '@keyline-icons/react/two-tone'
 
-import { CloseButton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useAttachmentPreview } from '@/hooks/use-attachment-preview'
 import { fileIconUrl } from '@/lib/file-icon'
 import { objectKey } from '@/lib/object-key'
@@ -198,15 +199,13 @@ function AttachmentTile({
             </span>
           ))}
         {onRemove && (
-          <span data-slot="attachment-tile-remove" className="absolute right-[3px] top-[3px] flex">
-            <CloseButton
-              size="2xs"
+          <span data-slot="attachment-tile-remove" className="m-attachment-tiles__remove">
+            <Button
+              icon={<X />}
+              variant="secondary"
+              size="sm"
               aria-label={t('chat.removeAttachment', { name: file.name })}
               onPress={onRemove}
-              className={cx(
-                'touch-hitbox rounded-full',
-                src !== null && 'bg-background-primary-default/70 backdrop-blur-[2px]',
-              )}
             />
           </span>
         )}

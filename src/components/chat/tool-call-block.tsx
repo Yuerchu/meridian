@@ -1,3 +1,4 @@
+import './tool-call-block.css'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Fragment, useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -50,7 +51,6 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Kbd } from '@/components/base'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
@@ -2221,17 +2221,15 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
   }
 }
 
-/** A chord drawn beside a decision, the way a menu item shows its shortcut.
- *  Hidden from assistive technology: `aria-keyshortcuts` on the button says
- *  the same thing in a form a screen reader knows how to announce. */
+/** A chord drawn beside a decision, the way a menu item shows its shortcut:
+ *  quiet text in the button's own ink, not a `Kbd`, whose key caps are for
+ *  prose. Hidden from assistive technology: `aria-keyshortcuts` on the button
+ *  says the same thing in a form a screen reader knows how to announce. */
 function HotkeyHint({ combo }: { combo: string }) {
   return (
-    <Kbd
-      aria-hidden
-      className="ml-1 hidden h-auto bg-transparent px-0 text-caption-1-regular text-current opacity-60 pointer-fine:inline-flex"
-    >
+    <span aria-hidden className="m-tool-call-block__hotkey">
       {formatHotkey(combo)}
-    </Kbd>
+    </span>
   )
 }
 

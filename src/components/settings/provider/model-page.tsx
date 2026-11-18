@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Disclosure, ToggleButton } from '@/components/base'
+import { Disclosure } from '@/components/base'
+import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
@@ -760,29 +761,27 @@ function ModelConfigEditor({
           a feature that failed to load. */}
       {(caps?.server_tools?.length ?? 0) > 0 && (
         <div data-slot="server-tools" className="space-y-1.5 pt-1">
-          <p data-slot="server-tools-label" className="text-caption-1-regular text-text-secondary">
-            {t('settings.model.serverTools')}
-          </p>
-          <div data-slot="server-tool-chips" className="flex flex-wrap gap-1">
-            {caps?.server_tools?.map((name) => {
-              const on = serverTools.includes(name)
-              return (
-                <ToggleButton
-                  key={name}
-                  data-slot="server-tool-chip"
-                  size="small"
-                  isSelected={on}
-                  className="h-6 pointer-coarse:h-9 rounded-md px-2 text-caption-1-regular"
-                  onChange={() => {
-                    setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])
-                    setDirty(true)
-                  }}
-                >
-                  {t(`settings.model.serverTool.${name}`, name)}
-                </ToggleButton>
+          <CheckboxGroup
+            data-slot="server-tool-options"
+            label={t('settings.model.serverTools')}
+            orientation="horizontal"
+            value={serverTools}
+            onChange={(next) => {
+              // Typed names only: what was kept, then what was just ticked. A
+              // stored tool the provider no longer offers has no box and stays.
+              const added = (caps?.server_tools ?? []).filter(
+                (name) => next.includes(name) && !serverTools.includes(name),
               )
-            })}
-          </div>
+              setServerTools([...serverTools.filter((name) => next.includes(name)), ...added])
+              setDirty(true)
+            }}
+          >
+            {caps?.server_tools?.map((name) => (
+              <Checkbox key={name} value={name}>
+                {t(`settings.model.serverTool.${name}`, name)}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
           <TextField
             isInvalid={invalidPrices.has('serverTool')}
             label={t('settings.model.serverToolPrice')}
@@ -847,60 +846,42 @@ function ModelConfigEditor({
           {/* Body, not a plain wrapper: it is what keeps the panel measurable,
               so without it the overrides never collapse. */}
           <Disclosure.Body className="space-y-2">
-            <div data-slot="effort-whitelist" className="space-y-1.5">
-              <p data-slot="effort-whitelist-label" className="text-caption-1-regular text-text-secondary">
-                {t('settings.model.supportedEfforts')}
-              </p>
-              <div data-slot="effort-chips" className="flex flex-wrap gap-1">
-                {EFFORT_LADDER.map((tier) => {
-                  const on = efforts.includes(tier)
-                  return (
-                    <ToggleButton
-                      key={tier}
-                      data-slot="effort-chip"
-                      size="small"
-                      isSelected={on}
-                      className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
-                      onChange={() => {
-                        // Rebuild from the ladder so the stored array stays in
-                        // ascending order -- the median coercion ranks on position.
-                        setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
-                        effortsDirty.current = true
-                        setDirty(true)
-                      }}
-                    >
-                      {t(`toolbar.thinking.${tier}`)}
-                    </ToggleButton>
-                  )
-                })}
-              </div>
-            </div>
-            <div data-slot="readable-mimes" className="space-y-1.5">
-              <p data-slot="readable-mimes-label" className="text-caption-1-regular text-text-secondary">
-                {t('settings.model.readableMimes')}
-              </p>
-              <div data-slot="readable-mime-chips" className="flex flex-wrap gap-1">
-                {READABLE_MIMES.map((mime) => {
-                  const on = mimes.includes(mime)
-                  return (
-                    <ToggleButton
-                      key={mime}
-                      data-slot="readable-mime-chip"
-                      size="small"
-                      isSelected={on}
-                      className="h-6 pointer-coarse:h-9 px-2 text-caption-1-regular"
-                      onChange={() => {
-                        setMimes(READABLE_MIMES.filter((item) => (item === mime ? !on : mimes.includes(item))))
-                        mimesDirty.current = true
-                        setDirty(true)
-                      }}
-                    >
-                      {mime}
-                    </ToggleButton>
-                  )
-                })}
-              </div>
-            </div>
+            <CheckboxGroup
+              data-slot="effort-whitelist"
+              label={t('settings.model.supportedEfforts')}
+              orientation="horizontal"
+              value={efforts}
+              onChange={(next) => {
+                // Rebuild from the ladder so the stored array stays in
+                // ascending order -- the median coercion ranks on position.
+                setEfforts(EFFORT_LADDER.filter((tier) => next.includes(tier)))
+                effortsDirty.current = true
+                setDirty(true)
+              }}
+            >
+              {EFFORT_LADDER.map((tier) => (
+                <Checkbox key={tier} value={tier}>
+                  {t(`toolbar.thinking.${tier}`)}
+                </Checkbox>
+              ))}
+            </CheckboxGroup>
+            <CheckboxGroup
+              data-slot="readable-mimes"
+              label={t('settings.model.readableMimes')}
+              orientation="horizontal"
+              value={mimes}
+              onChange={(next) => {
+                setMimes(READABLE_MIMES.filter((mime) => next.includes(mime)))
+                mimesDirty.current = true
+                setDirty(true)
+              }}
+            >
+              {READABLE_MIMES.map((mime) => (
+                <Checkbox key={mime} value={mime}>
+                  {mime}
+                </Checkbox>
+              ))}
+            </CheckboxGroup>
             <CapabilityTriRow
               label={t('settings.model.capThinking')}
               value={capThinking}

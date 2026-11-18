@@ -21,8 +21,6 @@ import {
   Input,
   Kanban,
   Label,
-  LinkButton,
-  Meter,
   Notification,
   NotificationViewport,
   SearchField,
@@ -144,38 +142,6 @@ describe('Button is a React Aria pressable', () => {
     expect(button).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(button)
     expect(onPress).not.toHaveBeenCalled()
-  })
-})
-
-describe('LinkButton is a React Aria pressable', () => {
-  it('opens a tooltip on keyboard focus and fires onPress from the keyboard', async () => {
-    const onPress = vi.fn()
-    render(
-      <TooltipTrigger delay={0} closeDelay={0}>
-        <LinkButton variant="secondary" onPress={onPress}>
-          AGENTS.md
-        </LinkButton>
-        <Tooltip>docs/AGENTS.md</Tooltip>
-      </TooltipTrigger>,
-    )
-    await userEvent.tab()
-    const button = screen.getByRole('button', { name: 'AGENTS.md' })
-    expect(button).toHaveFocus()
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('docs/AGENTS.md')
-    await userEvent.keyboard('{Enter}')
-    expect(onPress).toHaveBeenCalledTimes(1)
-  })
-
-  it('is a React Aria link when given an href', async () => {
-    render(
-      <TooltipTrigger delay={0} closeDelay={0}>
-        <LinkButton href="#here">Here</LinkButton>
-        <Tooltip>tip</Tooltip>
-      </TooltipTrigger>,
-    )
-    await userEvent.tab()
-    expect(screen.getByRole('link', { name: 'Here' })).toHaveFocus()
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('tip')
   })
 })
 
@@ -487,18 +453,6 @@ describe('Presentation parts honour their props', () => {
       </EmojiPicker>,
     )
     expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeInTheDocument()
-  })
-
-  it('Meter.Fill is as wide as the value', () => {
-    const { container } = render(
-      <Meter value={40} aria-label="Level">
-        <Meter.Track>
-          <Meter.Fill />
-        </Meter.Track>
-      </Meter>,
-    )
-    expect(screen.getByRole('meter')).toHaveStyle({ '--meter-percentage': '40%' })
-    expect(container.querySelector('[data-slot="meter-fill"]')?.className).toMatch(/--meter-percentage/)
   })
 
   it('DataGrid with children is a treegrid with an expand button', async () => {

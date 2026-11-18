@@ -3,4 +3,17 @@
     position: absolute;
     inset: 0;
   }
+
+  .m-markdown-content__file-reference {
+    display: inline-flex;
+    max-width: 100%;
+    vertical-align: middle;
+  }
+
+  /* The library's Button sizes an svg icon only; a file's icon is an img
+     (Yuerchu/ui#576). */
+  .m-markdown-content__file-icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
 }

@@ -198,9 +198,9 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
 
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
-    await userEvent.click(screen.getByRole('link', { name: 'Show all lines' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
-    expect(screen.getByRole('link', { name: 'Show fewer lines' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {

@@ -3,4 +3,19 @@
     margin-inline-start: auto;
     font-variant-numeric: tabular-nums;
   }
+
+  .m-plan-comments-pane__quote {
+    flex: 1;
+    min-width: 0;
+    font: var(--text-caption);
+  }
+
+  .m-plan-comments-pane__quote-text {
+    display: -webkit-box;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
 }

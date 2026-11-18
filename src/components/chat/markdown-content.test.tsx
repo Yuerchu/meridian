@@ -178,10 +178,9 @@ describe('MarkdownContent file references', () => {
     expect(source).toHaveTextContent('chat.ts')
     expect(source.querySelector('img')).toBeInTheDocument()
     // Outside the prose recipe, or `.prose img`'s ~1.7em block margin turns the
-    // glyph into a 59px-tall line; and BoardUI's secondary LinkButton, not the
-    // accent web-link colour.
-    expect(source).toHaveClass('not-prose', 'text-text-secondary')
-    expect(source).not.toHaveClass('text-accent-600')
+    // glyph into a 59px-tall line; and a quiet button, not a web link.
+    expect(source.closest('.not-prose')).not.toBeNull()
+    expect(source).toHaveAttribute('data-variant', 'ghost')
     expect(screen.getByRole('button', { name: 'README.md' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: './config.json:1' })).toBeInTheDocument()
 

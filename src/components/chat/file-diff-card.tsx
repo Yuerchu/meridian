@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, FileText } from '@keyline-icons/react/two-tone'
-import { Link } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useState } from 'react'
 import type { DiffLineKind, FileDiff } from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -209,9 +209,9 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
               {!expanded && (
                 <span data-slot="file-diff-hidden-count">{t('chat.tool.diff.moreLines', { count: hidden })}</span>
               )}
-              <Link className="text-caption-1-regular" onPress={() => setExpanded((current) => !current)}>
+              <Button variant="ghost" size="sm" onPress={() => setExpanded((current) => !current)}>
                 {t(expanded ? 'chat.tool.diff.showLess' : 'chat.tool.diff.showAll')}
-              </Link>
+              </Button>
             </div>
           )}
         </div>

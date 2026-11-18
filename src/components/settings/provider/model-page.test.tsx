@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
@@ -202,6 +202,25 @@ describe('ModelPage', () => {
     await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
     expect(mockApi.saveModelConfig.mock.calls[0][0].profile.context_window).toBe(200000)
     expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('common.saved'))
+  })
+
+  it('keeps a stored provider tool the provider no longer offers when another is ticked', async () => {
+    const user = userEvent.setup()
+    mockApi.getModelConfig.mockResolvedValue({ ...(EXISTING as object), server_tools: ['code_execution'] } as never)
+    mockApi.getProviderCapabilities.mockResolvedValue({
+      max_context_tokens: null,
+      max_output_tokens: null,
+      supported_efforts: [],
+      server_tools: ['web_search', 'x_search'],
+    } as never)
+    renderPage()
+
+    const group = await screen.findByRole('group', { name: i18n.t('settings.model.serverTools') })
+    await user.click(within(group).getByRole('checkbox', { name: i18n.t('settings.model.serverTool.x_search') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+
+    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
+    expect(mockApi.saveModelConfig.mock.calls[0][0].server_tools).toEqual(['code_execution', 'x_search'])
   })
 
   it('blocks a local save until both capability reads succeed, then permits it', async () => {

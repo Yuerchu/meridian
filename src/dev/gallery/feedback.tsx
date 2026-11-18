@@ -1,7 +1,8 @@
+import './feedback.css'
 import { useState } from 'react'
 import { Plug } from '@keyline-icons/react/two-tone'
 
-import { Meter } from '@/components/base'
+import { Meter } from '@/components/yuerchu-ui/components/meter/meter'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
@@ -58,11 +59,9 @@ function Progress() {
         <ProgressCircle isIndeterminate aria-label="正在处理" />
       </Row>
       <Row label="Meter">
-        <Meter aria-label="麦克风电平" value={level} className="w-64">
-          <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
-            <Meter.Fill className="bg-status-success transition-[width] duration-75" />
-          </Meter.Track>
-        </Meter>
+        <div className="m-feedback__meter">
+          <Meter label="麦克风电平" value={level} warningAt={0.8} dangerAt={0.95} />
+        </div>
         <Button size="sm" variant="secondary" onPress={() => setLevel((v) => (v + 25) % 125)}>
           变化
         </Button>

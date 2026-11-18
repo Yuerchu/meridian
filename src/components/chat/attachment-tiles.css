@@ -1,0 +1,10 @@
+@layer components {
+  /* A secondary button carries its own fill, so it stays legible over a
+     photo as well as over a file glyph. */
+  .m-attachment-tiles__remove {
+    position: absolute;
+    inset-block-start: var(--space-1);
+    inset-inline-end: var(--space-1);
+    display: flex;
+  }
+}

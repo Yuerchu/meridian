@@ -1,0 +1,5 @@
+@layer components {
+  .m-app-shell__shortcut {
+    margin-inline-start: var(--space-2);
+  }
+}
