@@ -5,7 +5,7 @@ import { Button as AriaButton } from 'react-aria-components'
 import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -267,7 +267,9 @@ export function PlanReviewEntryView({
         </div>
       ) : ui.step === 'deciding' ? (
         <div data-slot="plan-review-entry-deciding" className="flex items-center gap-2 text-text-secondary">
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span className="text-body-2-regular">{t('chat.tool.running')}</span>
         </div>
       ) : (

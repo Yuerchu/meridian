@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import { DataGrid, Sheet, Spinner, type DataGridColumn } from '@/components/base'
+import { DataGrid, Sheet, type DataGridColumn } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
@@ -1040,13 +1041,15 @@ function ProviderEditor({
             </SettingsRow>
           </SettingsCard>
           {keyStatus === 'loading' && (
-            <p
+            <div
               data-slot="provider-key-checking"
               className="flex items-center gap-1.5 px-3 text-caption-1-regular text-text-secondary"
             >
-              <Spinner size="sm" color="current" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               {t('settings.provider.apiKeyChecking')}
-            </p>
+            </div>
           )}
           {keyStatus === 'set' && (
             <p

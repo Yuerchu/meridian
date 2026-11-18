@@ -4,7 +4,8 @@ import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -654,14 +655,16 @@ export function ImeSettings() {
           )}
         </div>
         {downloading && (
-          <p
+          <div
             data-slot="ime-downloading"
             role="status"
             className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
           >
-            <Spinner size="sm" />
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
             {t('settings.ime.downloading')}
-          </p>
+          </div>
         )}
         {staged && (
           <ItemCard variant="outline">
@@ -702,14 +705,16 @@ export function ImeSettings() {
           </ItemCard>
         )}
         {importing && (
-          <p
+          <div
             data-slot="ime-importing"
             role="status"
             className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
           >
-            <Spinner size="sm" />
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
             {t('settings.ime.importing')}
-          </p>
+          </div>
         )}
         {reports.map((report) => (
           <Alert
@@ -804,14 +809,16 @@ function DictionaryStateLine({ state }: { state: ImeDictionaryState }) {
   if (state.kind === 'ready') return null
   if (state.kind === 'upgrading') {
     return (
-      <p
+      <div
         data-slot="ime-dictionary-state"
         role="status"
         className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
       >
-        <Spinner size="sm" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         {t('settings.ime.dictionaryUpgrading')}
-      </p>
+      </div>
     )
   }
   const message =

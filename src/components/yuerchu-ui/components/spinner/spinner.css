@@ -1,0 +1,34 @@
+@layer components {
+  .ui-spinner {
+    --ui-spinner-size: var(--icon-md);
+
+    display: inline-flex;
+    color: var(--text-secondary);
+  }
+
+  .ui-spinner[data-size="sm"] {
+    --ui-spinner-size: var(--icon-sm);
+  }
+
+  .ui-spinner[data-size="lg"] {
+    --ui-spinner-size: calc(var(--icon-lg) * 2);
+  }
+
+  .ui-spinner__icon {
+    width: var(--ui-spinner-size);
+    height: var(--ui-spinner-size);
+    animation: ui-spinner-spin var(--dur-spin) var(--ease-linear) infinite;
+  }
+
+  @keyframes ui-spinner-spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-spinner {
+      color: CanvasText;
+    }
+  }
+}

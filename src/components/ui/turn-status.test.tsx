@@ -48,6 +48,14 @@ describe('TurnBranchPager', () => {
 })
 
 describe('TurnStatusIcon', () => {
+  it('keeps the native streaming indicator decorative and removes it when done', () => {
+    const { rerender } = render(<TurnStatusIcon status="streaming" />)
+    expect(screen.getByRole('progressbar', { hidden: true })).toBeInTheDocument()
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    rerender(<TurnStatusIcon status="interrupted" />)
+    expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull()
+  })
+
   /// A turn the user stopped needs no attention; one that stopped unexpectedly
   /// may have left something half-done, and is coloured to say so.
   it('colours a crash as a warning and a stop as nothing', () => {

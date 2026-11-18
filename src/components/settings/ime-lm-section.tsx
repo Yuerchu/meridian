@@ -2,7 +2,8 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -97,9 +98,9 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
       </div>
 
       {status === null && !error && (
-        <p data-slot="ime-lm-loading" role="status" className="flex items-center gap-2">
-          <Spinner size="sm" />
-        </p>
+        <div data-slot="ime-lm-loading">
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        </div>
       )}
 
       {status && !status.runtime_found && status.bundles.length > 0 && (

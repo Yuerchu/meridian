@@ -1,7 +1,7 @@
 import { CircleAlert, CircleCheck, CircleQuestion, CircleX } from '@keyline-icons/react/two-tone'
 import { Stop } from '@keyline-icons/react/fill'
 
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import type { AgentState } from './agent-state'
 
 /** A card's state as one icon, where there is no room for the line — the
@@ -11,7 +11,11 @@ export function StateIcon({ state }: { state: AgentState }) {
     case 'idle':
       return <span aria-hidden className="size-3.5 shrink-0 rounded-full border border-separator-border" />
     case 'working':
-      return <Spinner size="sm" color="current" aria-hidden className="text-status-info-soft-foreground" />
+      return (
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
+      )
     case 'approval':
       return <CircleAlert aria-hidden className="size-4 shrink-0 text-status-warning-soft-foreground" />
     case 'question':

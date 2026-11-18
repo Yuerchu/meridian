@@ -50,7 +50,8 @@ import {
   TriangleAlert,
   X,
 } from '@keyline-icons/react/two-tone'
-import { Kbd, Spinner } from '@/components/base'
+import { Kbd } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -1310,7 +1311,9 @@ export function PendingApproval({
   if (ui === 'sent') {
     return (
       <div data-slot="approval-sent" className="flex items-center gap-2 px-0.5 text-text-secondary">
-        <Spinner size="sm" color="current" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         <span data-slot="approval-sent-text" className="text-caption-1-regular">
           {t('chat.tool.running')}
         </span>
@@ -1484,7 +1487,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           {data.status === 'orphaned' && <OrphanedNotice reason={data.answer_error} />}
           {!settled && data.status !== 'pending' && (
             <div data-slot="web-search-searching" className="flex items-center gap-2 text-text-secondary">
-              <Spinner size="sm" color="current" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
             </div>
           )}
@@ -1607,7 +1612,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         data-slot="web-search-searching"
         className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
       >
-        <Spinner size="sm" color="current" />
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>
         <span data-slot="web-search-searching-text">{t('chat.tool.webSearch.searching')}</span>
         {query && (
           <span
@@ -1768,7 +1775,9 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
           data-slot="enter-plan-waiting"
           className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
         >
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span data-slot="enter-plan-waiting-text">{t('chat.tool.running')}</span>
         </div>
       )}
@@ -1917,7 +1926,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
           data-slot="exit-plan-waiting"
           className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
         >
-          <Spinner size="sm" color="current" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           <span data-slot="exit-plan-waiting-text">{t('chat.tool.running')}</span>
         </div>
       )}
@@ -2400,7 +2411,12 @@ function CardOutcome({
     // decided, not yet finished. Neither has a result to show yet.
     case 'approved':
     case 'running':
-      return notice(<Spinner size="sm" color="current" className="shrink-0" />, t('chat.tool.running'))
+      return notice(
+        <span aria-hidden>
+          <Spinner size="sm" />
+        </span>,
+        t('chat.tool.running'),
+      )
     // Still, because it is still. The spinner above is what claims work is
     // happening, and for this one nothing is.
     case 'queued':

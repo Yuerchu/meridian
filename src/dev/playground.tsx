@@ -8,7 +8,7 @@
 // groups live in `./gallery/`, one page each at `#playground/<group>`.
 import { lazy, Suspense, useSyncExternalStore, type ComponentType, type LazyExoticComponent } from 'react'
 
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'

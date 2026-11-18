@@ -1,6 +1,6 @@
 import * as React from 'react'
 import { Check, Copy, FileText, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Hint } from '@/components/ui/hint'
 import { Segment } from '@/components/base'
@@ -240,7 +240,9 @@ function PreviewSheet({
                   role="status"
                   className="flex h-full items-center justify-center gap-2 text-body-regular text-text-secondary"
                 >
-                  <Spinner size="sm" />
+                  <span aria-hidden>
+                    <Spinner size="sm" />
+                  </span>
                   {t('chat.filePreview.loading')}
                 </div>
               )}

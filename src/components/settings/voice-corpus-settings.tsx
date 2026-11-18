@@ -4,7 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -155,7 +155,9 @@ export function VoiceCorpusSettings() {
           aria-label={t('common.loading')}
           className="flex items-center gap-2 text-body-regular text-text-secondary"
         >
-          <Spinner aria-hidden="true" size="sm" />
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (

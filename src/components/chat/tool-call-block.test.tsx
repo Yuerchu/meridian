@@ -397,7 +397,7 @@ describe('the interactive cards say what became of them', () => {
       }[name]!
       const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
       expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
-      expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(0)
+      expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(0)
     },
   )
 
@@ -486,12 +486,21 @@ describe('the interactive cards say what became of them', () => {
     expect(alert).toHaveTextContent('the turn has already ended')
   })
 
+  it('removes the native running indicator when a tool completes', () => {
+    const call = toolCall('run_command', { command: 'ls' }, 'running')
+    const { container, rerender } = render(<ToolCallBlock data={call} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(1)
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    rerender(<ToolCallBlock data={{ ...call, status: 'completed', result: 'ok' }} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(0)
+  })
+
   /// Two spinners side by side read as two things happening at once.
   it('does not spin twice over one running question', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
-    expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(1)
+    expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(1)
   })
 
   it('does not deny a tool while Enter is confirming IME composition', async () => {
