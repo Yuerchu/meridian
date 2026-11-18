@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Bin, Bookmark, Messages, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
 import { Avatar, Card, CloseButton, Kbd, LinkButton, Spinner, ToggleButton } from '@/components/base'
+import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
@@ -154,6 +155,11 @@ function Cards() {
 function Spinners() {
   return (
     <Stage>
+      <Row label="Native Spinner">
+        {SIZES.map((size) => (
+          <NativeSpinner key={size} size={size} aria-label={`加载中 ${size}`} />
+        ))}
+      </Row>
       {(['current', 'accent', 'success', 'warning', 'danger'] as const).map((color) => (
         <Row key={color} label={color}>
           {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (

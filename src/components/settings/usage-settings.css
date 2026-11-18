@@ -1,4 +1,8 @@
 @layer components {
+  .m-usage-settings__refreshing {
+    align-self: flex-end;
+  }
+
   .m-usage-settings__filter {
     display: flex;
     flex-direction: column;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import './usage-settings.css'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
@@ -527,7 +527,11 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         {/* Only once there is something to refresh. The first load draws the
             skeleton below instead, and two loading indicators for one wait is
             one too many. */}
-        {loading && report && <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />}
+        {loading && report && (
+          <span className="m-usage-settings__refreshing">
+            <Spinner size="sm" aria-label={t('common.loading')} />
+          </span>
+        )}
       </div>
 
       {error && (

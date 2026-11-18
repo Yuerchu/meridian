@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
-import { Sheet, Spinner } from '@/components/base'
+import { Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
@@ -215,7 +216,9 @@ function BackgroundTaskOutputSheet({
                 <ErrorAlert title={t('chat.background.readFailed')} message={error} />
               ) : content === null ? (
                 <div role="status" className="flex items-center gap-2 text-body-regular text-text-secondary">
-                  <Spinner size="sm" />
+                  <span aria-hidden>
+                    <Spinner size="sm" />
+                  </span>
                   {t('chat.background.loading')}
                 </div>
               ) : (

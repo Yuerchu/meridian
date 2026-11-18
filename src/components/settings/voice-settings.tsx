@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Card, Spinner } from '@/components/base'
+import { Card } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -173,7 +174,9 @@ export function VoiceSettings() {
               aria-label={t('common.loading')}
               className="flex items-center gap-2 p-4 text-body-regular text-text-secondary"
             >
-              <Spinner aria-hidden="true" size="sm" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               {t('common.loading')}
             </div>
           ) : status?.installed ? (

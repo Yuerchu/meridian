@@ -2,7 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Card, Sheet, Spinner } from '@/components/base'
+import { Card, Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -88,7 +89,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     aria-label={t('common.loading')}
                     className="flex justify-center p-6"
                   >
-                    <Spinner aria-hidden="true" />
+                    <span aria-hidden>
+                      <Spinner />
+                    </span>
                   </div>
                 ) : error ? (
                   <Alert

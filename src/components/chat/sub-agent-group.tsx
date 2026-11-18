@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ListBox, Spinner } from '@/components/base'
+import { ListBox } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { ShimmerText } from '@/components/application/agent-log/agent-log'
@@ -125,7 +126,9 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
   const label = t(`chat.tool.panel.status.${outcome}`)
   const icon =
     outcome === 'running' ? (
-      <Spinner size="sm" color="current" />
+      <span aria-hidden>
+        <Spinner size="sm" />
+      </span>
     ) : outcome === 'done' ? (
       <CircleCheck className="size-3" />
     ) : outcome === 'failed' ? (

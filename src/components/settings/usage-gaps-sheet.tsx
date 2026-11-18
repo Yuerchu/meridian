@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, Sheet, Spinner } from '@/components/base'
+import { Card, Sheet } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -86,7 +87,9 @@ export function UsageGapsSheet({
                 </Alert>
               ) : !found ? (
                 <div role="status" aria-label={t('common.loading')} className="flex justify-center p-6">
-                  <Spinner aria-hidden="true" />
+                  <span aria-hidden>
+                    <Spinner />
+                  </span>
                 </div>
               ) : found.items.length === 0 ? (
                 <EmptyState heading={t('settings.usage.gaps.empty')} headingLevel={3} size="sm" />

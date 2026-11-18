@@ -13,7 +13,8 @@ import {
 } from 'react-aria-components'
 import { Bot, Check, ChevronDown } from '@keyline-icons/react/two-tone'
 
-import { Dropdown, DropdownItem, DropdownPopover, DropdownTrigger, Spinner } from '@/components/base'
+import { Dropdown, DropdownItem, DropdownPopover, DropdownTrigger } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { ModelIcon } from '@/components/ui/model-icon'

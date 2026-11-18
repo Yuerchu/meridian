@@ -2,7 +2,8 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -184,9 +185,9 @@ export function ImeLearningSection() {
       </div>
 
       {learning === null && !error && (
-        <p data-slot="ime-learned-loading" role="status" className="flex items-center gap-2">
-          <Spinner size="sm" />
-        </p>
+        <div data-slot="ime-learned-loading">
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        </div>
       )}
 
       {error && (
