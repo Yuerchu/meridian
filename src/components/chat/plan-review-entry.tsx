@@ -1,10 +1,12 @@
+import './plan-review-entry.css'
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton } from 'react-aria-components'
 import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Chip, Spinner } from '@/components/base'
+import { Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { BUBBLE_BLOCK } from '@/components/ui/bubble'
@@ -202,9 +204,9 @@ export function PlanReviewEntryView({
   ) : null
 
   const statusChip = (
-    <Chip size="sm" variant="secondary" className="ml-auto shrink-0">
-      {t(`planReview.status.${status}`)}
-    </Chip>
+    <span className="m-plan-review-entry__status">
+      <Badge size="sm">{t(`planReview.status.${status}`)}</Badge>
+    </span>
   )
 
   const excerpt =

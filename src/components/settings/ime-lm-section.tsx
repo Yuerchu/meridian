@@ -2,7 +2,8 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Chip, ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { ItemCard, ItemCardGroup, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -124,15 +125,11 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                           {name}
                         </span>
                         {status.active === bundle.dir_name && (
-                          <Chip size="sm" color="success" variant="soft">
+                          <Badge size="sm" tone="success">
                             {t('settings.ime.lm.active')}
-                          </Chip>
+                          </Badge>
                         )}
-                        {bundle.personal && (
-                          <Chip size="sm" variant="soft">
-                            {t('settings.ime.lm.personal')}
-                          </Chip>
-                        )}
+                        {bundle.personal && <Badge size="sm">{t('settings.ime.lm.personal')}</Badge>}
                       </ItemCard.Title>
                       <ItemCard.Description className="w-full whitespace-normal break-all">
                         {bundle.error

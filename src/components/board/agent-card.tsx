@@ -7,7 +7,8 @@ import { Button as RacButton } from 'react-aria-components'
 import { ArrowRight, ChevronDown, GitBranch, Message } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Chip, Kanban } from '@/components/base'
+import { Kanban } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import type { ConfirmOptions } from '@/hooks/use-confirm'
@@ -240,9 +241,9 @@ export function AgentCard({
         {(task.agent_kind !== null || branch.kind === 'read') && (
           <span className="flex min-w-0 items-center gap-1.5 text-caption-1-regular text-text-secondary">
             {task.agent_kind !== null && (
-              <Chip size="sm" variant="soft">
+              <Badge size="sm">
                 {task.agent_kind === 'claude_code' ? t('board.agent.claudeCode') : t('board.agent.native')}
-              </Chip>
+              </Badge>
             )}
             {branch.kind === 'read' && (
               <span className="flex min-w-0 items-center gap-1">

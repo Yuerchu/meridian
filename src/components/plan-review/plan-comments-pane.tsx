@@ -1,8 +1,10 @@
+import './plan-comments-pane.css'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Bin, Message } from '@keyline-icons/react/two-tone'
-import { Chip, Link } from '@/components/base'
+import { Link } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -61,9 +63,9 @@ export function PlanCommentsPane({
         <h2 data-slot="plan-comments-title" id={headingId} className="text-body-medium">
           {t('planReview.comments.title')}
         </h2>
-        <Chip size="sm" variant="secondary" className="ms-auto tabular-nums">
-          {visible.length}
-        </Chip>
+        <span className="m-plan-comments-pane__count">
+          <Badge size="sm">{visible.length}</Badge>
+        </span>
       </header>
 
       <div data-slot="plan-comments-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">

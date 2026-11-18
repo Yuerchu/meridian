@@ -2,12 +2,12 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Card, Chip, Sheet, Spinner } from '@/components/base'
+import { Card, Sheet, Spinner } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
-import { INFO_CHIP } from './memory-row'
 import type { MemoryInfoResponse } from '@/types'
 import { useConfirm } from '@/hooks/use-confirm'
 
@@ -117,7 +117,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       >
                         {m.key}
                       </span>
-                      <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
+                      <Badge>{deletedByLabel(m.deleted_by)}</Badge>
                       <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
                         <TooltipTrigger>
                           <Button

@@ -1,0 +1,6 @@
+@layer components {
+  .m-plan-comments-pane__count {
+    margin-inline-start: auto;
+    font-variant-numeric: tabular-nums;
+  }
+}

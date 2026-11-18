@@ -7,6 +7,7 @@
   },
   "entries": [
     "components/alert/alert.tsx",
+    "components/badge/badge.tsx",
     "components/button/button.tsx",
     "components/checkbox/checkbox.tsx",
     "components/copy-button/copy-button.tsx",
@@ -43,6 +44,8 @@
     "components/alert/alert.tsx": "c8d9d644250cedac0b1724eb0e8e1a0533caf5057e9981b47cb07a9deb7db995",
     "components/animated-number/animated-number.css": "ae5a3a5cb1b681120f970d131b4362e1e5addb185dce22619e562785644eeb5f",
     "components/animated-number/animated-number.tsx": "85cbfad44c3e340adff5d22ee63e00237706f5209aedc76937677c868a043446",
+    "components/badge/badge.css": "d9eeafbfd7815d9a91550a7626fb9fd9656925e5a2626ccc34ed4e5568d1d954",
+    "components/badge/badge.tsx": "322efa2aa354e8e5ad8c795a3f5c06c88b73891164fbe98f68e984512bbc196c",
     "components/button/button.css": "c20edbd776267fd6380c645c1c10acc2eefc6c1a517ab43b8b42451bc6b046df",
     "components/button/button.tsx": "4cf5c1fd61861c50e97fa36f7c8dbcd0c48a83494e9579ef040b3ab7ca526d21",
     "components/checkbox/checkbox.css": "e0d376e374dd90b2619980ed7bb3689094ed498c6806a7a4efdce1e49973f8d5",

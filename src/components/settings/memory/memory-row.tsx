@@ -12,13 +12,6 @@ import { SettingsTag } from '../primitives'
 import { memoryOriginLabel, memoryScopeLabel, memoryTypeLabel } from './labels'
 import { titleIfTruncated } from '@/lib/truncation'
 
-/**
- * `--info` is a project extension: Chip has no `info` colour, so the property
- * it reads is set directly. The same shape as the `--progress-circle-*`
- * override elsewhere, and for the same reason.
- */
-export const INFO_CHIP = '[--chip-fg:var(--color-status-info-soft-foreground)]'
-
 interface MemoryRowProps {
   memory: MemoryInfoResponse
   checked: boolean

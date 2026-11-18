@@ -25,7 +25,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { Chip, ListBox, ToggleButton } from '@/components/base'
+import { ListBox, ToggleButton } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -347,11 +348,11 @@ function Canvas({
 // ── 详情面板 ──────────────────────────────────────────────────────────────
 
 function FlagChip({ flag }: { flag: string }) {
-  const color = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'default'
+  const tone = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'neutral'
   return (
-    <Chip size="sm" variant="soft" color={color} className={cx('font-mono', flag === 'UQ' && 'text-status-info')}>
+    <Badge size="sm" tone={tone}>
       {flag}
-    </Chip>
+    </Badge>
   )
 }
 
@@ -481,9 +482,9 @@ function DetailPanel({
         {table.tags && table.tags.length > 0 && (
           <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
             {table.tags.map((tag) => (
-              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-text-secondary">
+              <Badge key={tag} size="sm">
                 {tag}
-              </Chip>
+              </Badge>
             ))}
           </div>
         )}

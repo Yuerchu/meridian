@@ -2,7 +2,8 @@ import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Card, Chip, Disclosure, DisclosureGroup } from '@/components/base'
+import { Card, Disclosure, DisclosureGroup } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -370,9 +371,7 @@ export function SkillSettings() {
                         {skill.llm_name}
                       </span>
                     </div>
-                    <Chip data-slot="skill-item-source" className="shrink-0 text-text-secondary">
-                      {t(`settings.skills.source.${skill.source}`)}
-                    </Chip>
+                    <Badge data-slot="skill-item-source">{t(`settings.skills.source.${skill.source}`)}</Badge>
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
