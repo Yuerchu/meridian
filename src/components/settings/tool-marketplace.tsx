@@ -12,6 +12,7 @@ import {
   Input,
   Label,
   TextField,
+  TextArea,
   Tooltip,
   TooltipTrigger,
 } from '@/components/base'
@@ -19,13 +20,20 @@ import { EmptyState } from '@/components/base'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolPresetInfoResponse } from '@/types'
+import type {
+  CustomToolExecution,
+  CustomToolInfoResponse,
+  McpToolInfoResponse,
+  ToolPermission,
+  ToolPresetInfoResponse,
+} from '@/types'
+import { parseCustomToolExecution } from '@/lib/custom-tool-execution'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { titleIfTruncated } from '@/lib/truncation'
 
-function CustomToolEditor({
+export function CustomToolEditor({
   tool,
   onSave,
   onDelete,
@@ -39,8 +47,13 @@ function CustomToolEditor({
   const [description, setDescription] = useState(tool?.description ?? '')
   const [command, setCommand] = useState(tool?.command ?? '')
   const [argsTemplate, setArgsTemplate] = useState(tool?.args_template ?? '')
+  const [executionText, setExecutionText] = useState(tool?.execution ? JSON.stringify(tool.execution, null, 2) : '')
+  const [schemaText, setSchemaText] = useState(
+    JSON.stringify(tool?.parameters_schema ?? { type: 'object', properties: {} }, null, 2),
+  )
+  const [workingDirectory, setWorkingDirectory] = useState(tool?.working_directory ?? '')
   const [permission, setPermission] = useState<ToolPermission>(tool?.permission ?? 'ask')
-  const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
+  const [timeoutMs, setTimeoutMs] = useState(tool ? (tool.timeout_ms?.toString() ?? '') : '30000')
   const [saved, markSaved] = useTemporaryFlag()
   const [savedDraft, setSavedDraft] = useState(() =>
     JSON.stringify({
@@ -48,24 +61,36 @@ function CustomToolEditor({
       description: tool?.description ?? '',
       command: tool?.command ?? '',
       argsTemplate: tool?.args_template ?? '',
+      executionText: tool?.execution ? JSON.stringify(tool.execution, null, 2) : '',
+      schemaText: JSON.stringify(tool?.parameters_schema ?? { type: 'object', properties: {} }, null, 2),
+      workingDirectory: tool?.working_directory ?? '',
       permission: tool?.permission ?? 'ask',
-      timeoutMs: tool?.timeout_ms?.toString() ?? '30000',
+      timeoutMs: tool ? (tool.timeout_ms?.toString() ?? '') : '30000',
     }),
   )
   const [invalid, setInvalid] = useState<Set<'name' | 'description' | 'command' | 'timeout'>>(new Set())
   const [saveError, setSaveError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLInputElement>(null)
-  const commandRef = useRef<HTMLInputElement>(null)
+  const commandRef = useRef<HTMLTextAreaElement>(null)
   const timeoutRef = useRef<HTMLInputElement>(null)
-  const draft = JSON.stringify({ name, description, command, argsTemplate, permission, timeoutMs })
+  const draft = JSON.stringify({
+    name,
+    description,
+    command,
+    argsTemplate,
+    executionText,
+    schemaText,
+    workingDirectory,
+    permission,
+    timeoutMs,
+  })
   useSettingsDirtyRegistration('tools', tool ? `custom-tool-${tool.id}` : 'custom-tool-new', draft !== savedDraft)
 
   async function handleSave() {
     const nextInvalid = new Set<'name' | 'description' | 'command' | 'timeout'>()
     if (!name.trim()) nextInvalid.add('name')
     if (!description.trim()) nextInvalid.add('description')
-    if (!command.trim()) nextInvalid.add('command')
     if (timeoutMs.trim() && (!Number.isInteger(Number(timeoutMs)) || Number(timeoutMs) <= 0)) {
       nextInvalid.add('timeout')
     }
@@ -80,27 +105,45 @@ function CustomToolEditor({
 
     setSaveError(null)
     try {
+      const execution: CustomToolExecution | null = executionText.trim()
+        ? parseCustomToolExecution(JSON.parse(executionText))
+        : null
+      if (!tool && !execution) throw new Error(t('settings.tools.executionRequired'))
+      const rawSchema: unknown = JSON.parse(schemaText)
+      if (typeof rawSchema !== 'object' || rawSchema === null || Array.isArray(rawSchema)) {
+        throw new Error(t('settings.tools.invalidSchema'))
+      }
+      const parametersSchema = Object.fromEntries(Object.entries(rawSchema))
+      const timeout = timeoutMs.trim() ? Number(timeoutMs) : null
+      if (timeout !== null && (!Number.isInteger(timeout) || timeout <= 0 || timeout > 2147483647)) {
+        throw new Error(t('settings.tools.invalidTimeout'))
+      }
       if (tool) {
         await api.updateCustomTool({
           id: tool.id,
           name: name.trim(),
           description: description.trim(),
-          command: command.trim(),
-          argsTemplate: argsTemplate.trim() || null,
+          command,
+          argsTemplate: argsTemplate === '' && tool.args_template === null ? null : argsTemplate,
+          execution,
+          isEnabled: execution === null ? false : tool.execution === null ? true : tool.is_enabled,
+          parametersSchema,
+          workingDirectory: workingDirectory || null,
           permission,
-          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
+          timeoutMs: timeout,
         })
       } else {
         await api.createCustomTool({
           name: name.trim(),
           description: description.trim(),
-          command: command.trim(),
+          command,
           categoryId: null,
-          parametersSchema: null,
-          argsTemplate: argsTemplate.trim() || null,
-          workingDirectory: null,
+          parametersSchema,
+          argsTemplate: null,
+          execution,
+          workingDirectory: workingDirectory || null,
           permission,
-          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
+          timeoutMs: timeout,
         })
       }
       setSavedDraft(draft)
@@ -156,28 +199,71 @@ function CustomToolEditor({
           onChange={(e) => setDescription(e.target.value)}
         />
       </TextField>
-      <TextField isInvalid={invalid.has('command')}>
-        <Label>{t('settings.tools.command')}</Label>
-        <Input
-          ref={commandRef}
-          name="customToolCommand"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="python script.py"
+      {tool?.execution === null && (
+        <Alert>
+          <Alert.Content>
+            <Alert.Description>{t('settings.tools.legacyWarning')}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
+      <TextField>
+        <Label>{t('settings.tools.execution')}</Label>
+        <TextArea
+          name="customToolExecution"
+          value={executionText}
+          onChange={(e) => setExecutionText(e.target.value)}
+          rows={8}
+          placeholder={
+            '{"kind":"executable","program":"python","args":[{"kind":"literal","value":"script.py"},{"kind":"parameter","name":"input"}]}'
+          }
+          className="font-mono text-caption-1-regular"
+        />
+        <Description>{t('settings.tools.executionHint')}</Description>
+      </TextField>
+      <TextField>
+        <Label>{t('settings.tools.parametersSchema')}</Label>
+        <TextArea
+          name="customToolSchema"
+          rows={4}
+          value={schemaText}
+          onChange={(e) => setSchemaText(e.target.value)}
           className="font-mono text-caption-1-regular"
         />
       </TextField>
       <TextField>
-        <Label>{t('settings.tools.argsTemplate')}</Label>
+        <Label>{t('settings.tools.workingDirectory')}</Label>
         <Input
-          name="customToolArgs"
-          value={argsTemplate}
-          onChange={(e) => setArgsTemplate(e.target.value)}
-          placeholder="--input {{input}} --output {{output}}"
-          className="font-mono text-caption-1-regular"
+          name="customToolWorkingDirectory"
+          value={workingDirectory}
+          onChange={(e) => setWorkingDirectory(e.target.value)}
         />
-        <Description>{t('settings.tools.argsTemplateHint')}</Description>
       </TextField>
+      {tool && (
+        <TextField isInvalid={invalid.has('command')}>
+          <Label>{t('settings.tools.command')}</Label>
+          <TextArea
+            ref={commandRef}
+            name="customToolCommand"
+            rows={3}
+            value={command}
+            onChange={(e) => setCommand(e.target.value)}
+            className="font-mono text-caption-1-regular"
+          />
+        </TextField>
+      )}
+      {tool && (
+        <TextField>
+          <Label>{t('settings.tools.argsTemplate')}</Label>
+          <TextArea
+            name="customToolArgs"
+            rows={3}
+            value={argsTemplate}
+            onChange={(e) => setArgsTemplate(e.target.value)}
+            className="font-mono text-caption-1-regular"
+          />
+          <Description>{t('settings.tools.argsTemplateHint')}</Description>
+        </TextField>
+      )}
       <TextField type="number" isInvalid={invalid.has('timeout')}>
         <Label>{t('settings.tools.timeout')}</Label>
         <Input
@@ -407,7 +493,11 @@ export function ToolMarketplace() {
                       onPointerEnter={titleIfTruncated}
                       className="text-text-secondary truncate"
                     >
-                      {ct.command}
+                      {ct.execution?.kind === 'executable'
+                        ? ct.execution.program
+                        : ct.execution?.kind === 'script'
+                          ? t('settings.tools.fixedScript')
+                          : ct.command}
                     </span>
                     {!ct.is_enabled && (
                       <Chip className="shrink-0 text-text-secondary">{t('settings.tools.disabled')}</Chip>

@@ -306,6 +306,13 @@ export interface SkillBindingUpdateRequest {
   bound: boolean
 }
 
+export type CustomToolArgument =
+  { kind: 'literal'; value: string } | { kind: 'parameter'; name: string } | { kind: 'json' }
+
+export type CustomToolExecution =
+  | { kind: 'executable'; program: string; args: CustomToolArgument[] }
+  | { kind: 'script'; script: string; args: CustomToolArgument[] }
+
 export interface CustomToolCreateRequest {
   name: string
   description: string
@@ -313,6 +320,7 @@ export interface CustomToolCreateRequest {
   categoryId: string | null
   parametersSchema: Record<string, unknown> | null
   argsTemplate: string | null
+  execution: CustomToolExecution | null
   workingDirectory: string | null
   timeoutMs: number | null
   permission: ToolPermission | null
@@ -326,6 +334,7 @@ export interface CustomToolUpdateRequest {
   categoryId?: string | null
   parametersSchema?: Record<string, unknown>
   argsTemplate?: string | null
+  execution?: CustomToolExecution | null
   workingDirectory?: string | null
   timeoutMs?: number | null
   permission?: ToolPermission
@@ -2494,6 +2503,12 @@ export interface ReplySeeds {
   ack_denied: string
 }
 
+/** Exact origin and fixed destination, configured only on the host. */
+export interface PrivateMediaOrigin {
+  origin: string
+  ip: string
+}
+
 /** OneBot configuration returned by the host. */
 export interface OneBotConfigInfoResponse {
   enabled: boolean
@@ -2503,6 +2518,7 @@ export interface OneBotConfigInfoResponse {
   assistant_id: string | null
   admin_users: number[]
   ack_emoji_id: string
+  private_media_origins: PrivateMediaOrigin[]
   voice_capture_sessions: string[]
   voice_send_enabled: boolean
   voice_send_groups: string[]
@@ -2521,6 +2537,7 @@ export interface OneBotConfigUpdateRequest {
   assistant_id: string | null
   admin_users: number[]
   ack_emoji_id: string
+  private_media_origins: PrivateMediaOrigin[]
   voice_capture_sessions: string[]
   voice_send_enabled: boolean
   voice_send_groups: string[]
@@ -2588,6 +2605,7 @@ export interface CustomToolInfoResponse {
   parameters_schema: Record<string, unknown>
   command: string
   args_template: string | null
+  execution: CustomToolExecution | null
   working_directory: string | null
   timeout_ms: number | null
   permission: ToolPermission

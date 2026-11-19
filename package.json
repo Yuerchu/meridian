@@ -6,6 +6,7 @@
   "scripts": {
     "litert:fetch": "node scripts/fetch-litert-runtime.mjs",
     "litert:check": "node scripts/fetch-litert-runtime.mjs --check",
+    "test:rust:shell": "pnpm litert:fetch && cargo test --locked --manifest-path src-tauri/Cargo.toml",
     "dev": "vite",
     "build": "tsc -b && vite build --configLoader native && node scripts/check-dist-no-demo.mjs",
     "preview": "vite preview",
