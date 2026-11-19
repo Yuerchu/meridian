@@ -13,6 +13,7 @@ use meridian_core::db::sea::ops::{
 use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::secrets::{SecretName, SecretScope};
 use meridian_core::tools::Permission;
+use meridian_core::tools::custom::CustomToolExecution;
 use meridian_core::util::{double_option, now_ms};
 
 /// Rebuild the runtime registry's custom tool set from the DB so permission
@@ -51,6 +52,7 @@ pub struct CustomToolCreateRequest {
     name: String,
     description: String,
     command: String,
+    execution: RequiredNullable<CustomToolExecution>,
     category_id: RequiredNullable<String>,
     parameters_schema: RequiredNullable<serde_json::Map<String, serde_json::Value>>,
     args_template: RequiredNullable<String>,
@@ -66,6 +68,8 @@ pub struct CustomToolUpdateRequest {
     name: Option<String>,
     description: Option<String>,
     command: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    execution: Option<Option<CustomToolExecution>>,
     #[serde(default, deserialize_with = "double_option")]
     category_id: Option<Option<String>>,
     parameters_schema: Option<serde_json::Map<String, serde_json::Value>>,
@@ -122,6 +126,7 @@ pub async fn create_custom_tool(
 ) -> Result<CustomToolInfoResponse, String> {
     let services = app.services();
     let now = now_ms();
+    let is_enabled = SqlBool::from(request.execution.0.is_some());
     let row = custom_tool::Model {
         id: uuid::Uuid::new_v4().to_string(),
         name: request.name,
@@ -129,11 +134,12 @@ pub async fn create_custom_tool(
         category_id: request.category_id.0,
         parameters_schema: Json(request.parameters_schema.0.unwrap_or_else(default_parameters_schema)),
         command: request.command,
+        execution: request.execution.0.map(Json),
         args_template: request.args_template.0,
         working_directory: request.working_directory.0,
         timeout_ms: request.timeout_ms.0,
         permission: request.permission.0.unwrap_or(Permission::Ask),
-        is_enabled: SqlBool::TRUE,
+        is_enabled,
         sort_order: 0,
         created_at: now,
         updated_at: now,
@@ -157,6 +163,7 @@ pub async fn update_custom_tool(
         name: request.name,
         description: request.description,
         command: request.command,
+        execution: request.execution.map(|value| value.map(Json)),
         category_id: request.category_id,
         parameters_schema: request.parameters_schema.map(Json),
         args_template: request.args_template,
@@ -303,6 +310,57 @@ pub fn get_service_key_exists(app: tauri::AppHandle, service: ServiceKey) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn custom_tool_execution_update_distinguishes_omission_and_null() {
+        let omitted: CustomToolUpdateRequest = serde_json::from_value(serde_json::json!({"id": "t"})).unwrap();
+        assert!(omitted.execution.is_none());
+        let cleared: CustomToolUpdateRequest =
+            serde_json::from_value(serde_json::json!({"id": "t", "execution": null})).unwrap();
+        assert!(matches!(cleared.execution, Some(None)));
+        for execution in [
+            serde_json::json!({"kind":"executable", "program":"echo", "args":[
+                {"kind":"literal", "value":"--"}, {"kind":"parameter", "name":"text"}, {"kind":"json"}
+            ]}),
+            serde_json::json!({"kind":"script", "script":"printf '%s' \"$1\"", "args":[
+                {"kind":"parameter", "name":"text"}
+            ]}),
+        ] {
+            let request: CustomToolUpdateRequest =
+                serde_json::from_value(serde_json::json!({"id":"t", "execution":execution})).unwrap();
+            assert!(matches!(request.execution, Some(Some(_))));
+        }
+    }
+
+    #[test]
+    fn custom_tool_execution_request_is_closed_and_typed() {
+        for execution in [
+            serde_json::json!("echo {{text}}"),
+            serde_json::json!({"kind":"template", "command":"echo {{text}}"}),
+            serde_json::json!({"kind":"executable", "program":"echo", "args":[], "extra":true}),
+            serde_json::json!({"kind":"executable", "program":"echo", "args":["text"]}),
+            serde_json::json!({"kind":"executable", "program":"echo", "args":[{"kind":"parameter", "name":"text", "extra":true}]}),
+            serde_json::json!({"kind":"executable", "program":"echo", "args":[{"kind":"json", "extra":true}]}),
+        ] {
+            assert!(serde_json::from_value::<CustomToolUpdateRequest>(
+                serde_json::json!({"id":"t", "execution":execution}),
+            ).is_err());
+        }
+    }
+
+    #[test]
+    fn custom_tool_create_requires_explicit_execution_or_legacy_null() {
+        let mut value = serde_json::json!({
+            "name":"t", "description":"d", "command":"echo {{text}}",
+            "categoryId":null, "parametersSchema":null, "argsTemplate":null,
+            "workingDirectory":null, "timeoutMs":null, "permission":null,
+            "execution":null
+        });
+        let draft: CustomToolCreateRequest = serde_json::from_value(value.clone()).unwrap();
+        assert!(draft.execution.0.is_none());
+        value.as_object_mut().unwrap().remove("execution");
+        assert!(serde_json::from_value::<CustomToolCreateRequest>(value).is_err());
+    }
 
     #[test]
     fn custom_tool_update_rejects_unknown_permissions_and_fields() {

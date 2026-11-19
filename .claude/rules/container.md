@@ -1,6 +1,7 @@
 ---
 paths:
   - "src-tauri/crates/core/src/container.rs"
+  - "src-tauri/crates/core/src/container/**"
   - "src-tauri/crates/core/src/sandbox.rs"
   - "src-tauri/crates/core/src/acp/mounts.rs"
   - "src-tauri/crates/core/src/acp/process.rs"
@@ -20,10 +21,10 @@ another file here — the index in `CLAUDE.md` says which.
 `crate::container` places a conversation's commands in a Docker container instead of
 on this machine. Turned on per install with `sandbox.enabled = container`; `auto` is
 the old behaviour (a Windows restricted token, nothing elsewhere) and remains the
-default. Every claim below was measured —
-`src-tauri/crates/core/tests/docker_probe.rs` is the measurement, it is `#[ignore]`d,
-and it should be re-run before any of it is relied on, against Docker Desktop 28.4.0
-with linux containers on Windows.
+default. Windows restricted-token execution with no writable roots fails before
+sandbox setup or process creation; it never falls back to host execution.
+The ignored Docker probes record historical measurements, not verification against
+the current installation. Lifecycle regression tests use a fake driver, not a live daemon.
 
 - **One container per *conversation*, entered per command.** That is what makes the
   filesystem continuous — something `pip install`ed is still there next command,
@@ -35,12 +36,17 @@ with linux containers on Windows.
   cannot reuse `execute_unsandboxed`'s process-tree kill — otherwise "cancelled"
   means "we stopped watching", with the command still writing to the workspace and
   the next command entering a container with a predecessor loose in it.
-- **And the obvious way to reach it is wrong.** `pkill -f <pattern>` from a second
-  exec exits 143: its own argv contains the pattern, so it kills its own shell, and
-  whether the target died first is a race. What works is a marker the target
-  *carries* and the killer only *names* — `docker exec -e MERIDIAN_EXEC_ID=…`, found
-  through `/proc/*/environ`. A pid is not available; the client is never told one.
-  So every command needs an id, and cancelling is a second exec.
+- **Stop the whole session, then confirm.** Process markers and `pkill` are not
+  containment: descendants can erase their environment. Cancellation and timeout
+  stop the verified immutable container ID, then inspect that same ID and require
+  a stable stopped state. Preserve the writable layer. An uncertain stop, control
+  failure, or dropped execution future leaves the session quarantined; never delete
+  it as a cancellation fallback or report cancellation as confirmed while it runs.
+- **Lifecycle operations serialize.** Shared per-session locks cover verification,
+  exec, stop and close across connector instances. Reconcile and shutdown take an
+  exclusive lifecycle gate; unrelated sessions otherwise run concurrently. Close
+  is terminal in this process, shutdown rejects new calls, and cancellation while
+  queued never starts a later command. Verified maintenance can recover quarantine.
 - **The writable layer carries between execs; the working directory does not.**
   `cd /tmp` in one exec leaves the next at `/`. So each exec starts at the
   conversation's project root, exactly as `working_dir_or_current()` already resolves
@@ -88,15 +94,15 @@ with linux containers on Windows.
 - **Secrets do not travel in `-e`.** Measured: an environment variable is in
   `docker inspect` for the life of the container, readable by anything that can reach
   the daemon. Nothing is passed yet, which is correct and incomplete.
-- **A label is enough to find every container this app owns**, which is what reclaim
-  after a crash needs, and `docker stop` returns with `.State.Running` already false —
-  the same invariant `acp::peer` holds for the adapter. Reclaim is `reconcile`, judged
-  against `conversation::all_ids` — the *unfiltered* list, since an orphan judged
-  against the sidebar's filtered one is an archived conversation's container. A live
-  conversation's container is stopped, never removed: its writable layer is the
-  continuity `ensure`'s restart branch resumes, and the old remove-everything reclaim
-  contradicted that branch. Wired at startup (which is what covers a crash), at exit
-  (`stop_owned`, bounded), and into `delete_conversation` beside the ACP close.
+- **Discovery is not authorization.** Names and labels only select candidates.
+  Structured inspect must verify owner/version, exact session and name, configured
+  image tag and digest, and exactly one writable workspace bind with the recorded
+  source. All start/exec/stop/remove operations then use the immutable ID. Refuse
+  mismatches and legacy containers missing the workspace label without deleting
+  them. The configured image must already be available locally; changed image
+  tags are not silently adopted. `reconcile` uses the unfiltered conversation IDs:
+  verified live sessions are stopped and retained, verified orphans removed.
+  Shutdown stops without removing; deletion closes the matching verified session.
 - **`custom.rs` goes in too.** It used to pass `None` and always run on the host,
   which was defensible while the only sandbox narrowed a command on this machine
   anyway. `run_command` inside a container and a user's own command tool outside it,

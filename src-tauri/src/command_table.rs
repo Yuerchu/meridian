@@ -865,10 +865,8 @@ mod tests {
     }
 
     fn requires_nullable_keys<T: DeserializeOwned>(value: serde_json::Value, keys: &[&str]) {
-        assert!(
-            serde_json::from_value::<T>(value.clone()).is_ok(),
-            "complete request must deserialize"
-        );
+        serde_json::from_value::<T>(value.clone())
+            .unwrap_or_else(|error| panic!("complete {} must deserialize: {error}", std::any::type_name::<T>()));
         for key in keys {
             let mut missing = value.clone();
             missing.as_object_mut().unwrap().remove(*key);
@@ -943,7 +941,7 @@ mod tests {
         }));
         rejects_unknown::<crate::commands::tool_system::CustomToolCreateRequest>(serde_json::json!({
             "name": "Echo", "description": "Echo", "command": "echo", "categoryId": null,
-            "parametersSchema": null, "argsTemplate": null, "workingDirectory": null,
+            "parametersSchema": null, "argsTemplate": null, "execution": null, "workingDirectory": null,
             "timeoutMs": null, "permission": null, "futureField": true
         }));
         rejects_unknown::<crate::commands::tool_system::CustomToolUpdateRequest>(serde_json::json!({
@@ -1009,13 +1007,14 @@ mod tests {
         requires_nullable_keys::<crate::commands::tool_system::CustomToolCreateRequest>(
             serde_json::json!({
                 "name": "Echo", "description": "Echo", "command": "echo", "categoryId": null,
-                "parametersSchema": null, "argsTemplate": null, "workingDirectory": null,
+                "parametersSchema": null, "argsTemplate": null, "execution": null, "workingDirectory": null,
                 "timeoutMs": null, "permission": null
             }),
             &[
                 "categoryId",
                 "parametersSchema",
                 "argsTemplate",
+                "execution",
                 "workingDirectory",
                 "timeoutMs",
                 "permission",

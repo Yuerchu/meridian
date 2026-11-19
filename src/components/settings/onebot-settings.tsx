@@ -77,6 +77,7 @@ export function OneBotSettings() {
     assistant_id: null,
     admin_users: [],
     ack_emoji_id: '76',
+    private_media_origins: [],
     voice_capture_sessions: [],
     voice_send_enabled: false,
     voice_send_groups: [],
@@ -88,6 +89,7 @@ export function OneBotSettings() {
   const [status, setStatus] = useState<OneBotStatusInfoResponse | null>(null)
   const [assistants, setAssistants] = useState<AssistantInfoResponse[]>([])
   const [adminInput, setAdminInput] = useState('')
+  const [privateMediaInput, setPrivateMediaInput] = useState('')
   // The low-balance threshold used to sit here. It is `notify.balance.threshold`
   // now — one watcher feeding every outlet, rather than one living inside the
   // chat server — and it belongs on the notification settings page.
@@ -113,6 +115,7 @@ export function OneBotSettings() {
     ...config,
     port: portInput,
     adminInput,
+    privateMediaInput,
     voiceCaptureInput,
     voiceSendInput,
     fishKey,
@@ -133,6 +136,7 @@ export function OneBotSettings() {
       ])
       const nextPort = cfg.port.toString()
       const nextAdmin = cfg.admin_users.join(', ')
+      const nextPrivateMedia = cfg.private_media_origins.map((entry) => `${entry.origin} ${entry.ip}`).join('\n')
       const nextCapture = cfg.voice_capture_sessions.join(', ')
       const nextSend = cfg.voice_send_groups.join(', ')
       setConfig(cfg)
@@ -140,6 +144,7 @@ export function OneBotSettings() {
       setAssistants(assts)
       setPortInput(nextPort)
       setAdminInput(nextAdmin)
+      setPrivateMediaInput(nextPrivateMedia)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
       const nextDrafts = draftsFrom(cfg.replies)
@@ -151,6 +156,7 @@ export function OneBotSettings() {
           ...cfg,
           port: nextPort,
           adminInput: nextAdmin,
+          privateMediaInput: nextPrivateMedia,
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
@@ -193,6 +199,12 @@ export function OneBotSettings() {
     const port = Number(portInput)
     const adminEntries = splitEntries(adminInput)
     const adminUsers = adminEntries.map(Number)
+    const privateMediaRows = linesOf(privateMediaInput).map((line) => line.split(/\s+/))
+    if (privateMediaRows.some((row) => row.length !== 2)) {
+      setError(t('settings.onebot.invalidPrivateMedia'))
+      return false
+    }
+    const privateMediaOrigins = privateMediaRows.map(([origin, ip]) => ({ origin, ip }))
     const voiceCaptureSessions = splitEntries(voiceCaptureInput)
     const voiceSendGroups = splitEntries(voiceSendInput)
 
@@ -233,6 +245,7 @@ export function OneBotSettings() {
         assistant_id: config.assistant_id,
         admin_users: adminUsers,
         ack_emoji_id: config.ack_emoji_id,
+        private_media_origins: privateMediaOrigins,
         voice_capture_sessions: voiceCaptureSessions,
         voice_send_enabled: config.voice_send_enabled,
         voice_send_groups: voiceSendGroups,
@@ -248,11 +261,13 @@ export function OneBotSettings() {
       setConfig(nextConfig)
       const nextPort = port.toString()
       const nextAdmin = adminUsers.join(', ')
+      const nextPrivateMedia = privateMediaOrigins.map((entry) => `${entry.origin} ${entry.ip}`).join('\n')
       const nextCapture = voiceCaptureSessions.join(', ')
       const nextSend = voiceSendGroups.join(', ')
       const nextDrafts = draftsFrom(replies)
       setPortInput(nextPort)
       setAdminInput(nextAdmin)
+      setPrivateMediaInput(nextPrivateMedia)
       setVoiceCaptureInput(nextCapture)
       setVoiceSendInput(nextSend)
       setReplyDrafts(nextDrafts)
@@ -261,6 +276,7 @@ export function OneBotSettings() {
           ...nextConfig,
           port: nextPort,
           adminInput: nextAdmin,
+          privateMediaInput: nextPrivateMedia,
           voiceCaptureInput: nextCapture,
           voiceSendInput: nextSend,
           fishKey: '',
@@ -394,6 +410,19 @@ export function OneBotSettings() {
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
           placeholder={t('settings.onebot.accessTokenPlaceholder')}
         />
+        <Description>{t('settings.onebot.accessTokenHint')}</Description>
+      </TextField>
+
+      <TextField>
+        <Label>{t('settings.onebot.privateMedia')}</Label>
+        <TextArea
+          name="onebotPrivateMediaOrigins"
+          value={privateMediaInput}
+          onChange={(e) => setPrivateMediaInput(e.target.value)}
+          placeholder="https://adapter.example:8443 192.168.1.2"
+          rows={3}
+        />
+        <Description>{t('settings.onebot.privateMediaHint')}</Description>
       </TextField>
 
       <SettingsSelect

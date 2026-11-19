@@ -194,6 +194,7 @@ describe('invoke response schema', () => {
       parameters_schema: { type: 'object', required: ['query'] },
       command: 'lookup',
       args_template: null,
+      execution: { kind: 'executable', program: 'lookup', args: [{ kind: 'parameter', name: 'query' }] },
       working_directory: null,
       timeout_ms: null,
       permission: 'ask',
@@ -203,6 +204,31 @@ describe('invoke response schema', () => {
       updated_at: 1,
     }
     expect(() => validate('list_custom_tools', [customTool])).not.toThrow()
+    expect(() => validate('list_custom_tools', [{ ...customTool, execution: null, is_enabled: false }])).not.toThrow()
+    expect(() =>
+      validate('list_custom_tools', [
+        {
+          ...customTool,
+          execution: {
+            kind: 'script',
+            script: 'echo',
+            args: [{ kind: 'json', extra: true }],
+          },
+        },
+      ]),
+    ).toThrow()
+    expect(() =>
+      validate('list_custom_tools', [
+        {
+          ...customTool,
+          execution: {
+            kind: 'executable',
+            program: 'lookup',
+            args: ['untyped'],
+          },
+        },
+      ]),
+    ).toThrow()
     expect(() => validate('list_custom_tools', [{ ...customTool, parameters_schema: { invalid: 1n } }])).toThrow(
       'must be a JSON value',
     )
