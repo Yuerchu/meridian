@@ -37,14 +37,6 @@ export { ListBox } from './list-box'
 export { ListView } from './list-view'
 export { Markdown, markdownVariants } from './markdown-variants'
 export { Pagination, type PaginationProps } from './pagination/pagination'
-export {
-  Notification,
-  NotificationViewport,
-  type NotificationAction,
-  type NotificationPosition,
-  type NotificationProps,
-  type NotificationStatus,
-} from './notification/notification'
 export { PromptInput } from './prompt-input'
 export { PromptSuggestion } from './prompt-suggestion'
 export { Resizable } from './resizable'

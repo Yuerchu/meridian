@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bin, Bot, FaceSmile, Search } from '@keyline-icons/react/two-tone'
+import { Bin, FaceSmile, Search } from '@keyline-icons/react/two-tone'
 import {
   ActionBar,
   Command,
@@ -17,8 +17,6 @@ import {
 } from '@/components/base/segmented-control/segmented-control'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
-import { NotificationBell } from '@/components/application/app-shell/notification-bell'
-import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ErrorAlert } from '@/components/ui/error-alert'
@@ -222,29 +220,7 @@ export function NavigationParts() {
   )
 }
 
-const INBOX: NotificationCenterItem[] = [
-  {
-    id: 'n1',
-    category: 'system',
-    group: '鉴权改走 middleware',
-    title: 'run_command 等待批准',
-    description: 'cargo test --workspace',
-    timestamp: '刚刚',
-    unread: true,
-    status: 'information',
-  },
-  {
-    id: 'n2',
-    category: 'system',
-    group: '导出功能计划',
-    title: '计划等待审阅',
-    description: '第 3 版',
-    timestamp: '5 分钟前',
-    icon: Bot,
-  },
-]
-
-/** The overlays the product opens on its own terms: bulk bar, inbox, confirm, emoji. */
+/** The overlays the product opens on its own terms: bulk bar, confirm, emoji. */
 export function OverlayParts() {
   const [bar, setBar] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
@@ -265,9 +241,6 @@ export function OverlayParts() {
             </Button>
           </ActionBar.Content>
         </ActionBar>
-      </Section>
-      <Section title="NotificationBell / 待处理收件箱">
-        <NotificationBell notifications={INBOX} triggerLabel="待处理 2 项" dialogLabel="待处理" />
       </Section>
       <Section title="useConfirm / 确认">
         <Button

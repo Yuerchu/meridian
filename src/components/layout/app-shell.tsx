@@ -6,6 +6,7 @@ import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { ToastRegion } from '@/components/yuerchu-ui/components/toast/toast'
 import { Sidebar } from '@/components/base'
 import { Resizable } from '@/components/base'
 import { FolderTree, Search } from '@keyline-icons/react/two-tone'
@@ -521,6 +522,8 @@ export function AppShell(props: ShellProps) {
           boardOpen={page === 'board'}
           inboxOpen={inboxOpen}
         />
+        {/* The library's Toast region: the undo offer is the first thing to use it. */}
+        <ToastRegion />
 
         <CommandPalette
           isOpen={paletteOpen}

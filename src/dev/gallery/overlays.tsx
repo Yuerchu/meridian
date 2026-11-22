@@ -12,8 +12,6 @@ import {
   DropdownPopover,
   DropdownTrigger,
   Kbd,
-  Notification,
-  NotificationViewport,
   Sheet,
 } from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -23,7 +21,7 @@ import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/component
 import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { useHotkey } from '@/hooks/use-hotkey'
-import { noop, PALETTE_PROJECTS, PALETTE_ROWS } from './fixtures'
+import { PALETTE_PROJECTS, PALETTE_ROWS } from './fixtures'
 import { Row, Section, Stage } from './shell'
 import { OverlayParts } from './parts'
 
@@ -199,60 +197,6 @@ function Dialogs() {
   )
 }
 
-function Notifications() {
-  // The viewport is the fixed, portalled stack the approval toasts live in;
-  // shown on demand, since a resident one would sit over the whole gallery.
-  const [stacked, setStacked] = useState(false)
-  return (
-    <div className="flex flex-col items-center gap-3">
-      <Button variant="secondary" onPress={() => setStacked((v) => !v)}>
-        {stacked ? '收起通知栈' : '弹出通知栈（NotificationViewport）'}
-      </Button>
-      {stacked && (
-        <NotificationViewport position="top-center" aria-label="通知栈演示">
-          <Notification
-            status="neutral"
-            title="需要审批"
-            description="会话「重构鉴权模块」想运行 cargo test --all"
-            timestamp="刚刚"
-            actions={[
-              { label: '查看', onPress: noop, variant: 'secondary' },
-              { label: '允许', onPress: noop },
-            ]}
-          />
-          <Notification
-            status="success"
-            title="已删除对话"
-            timestamp="刚刚"
-            dismissible
-            closeLabel="收起"
-            onDismiss={() => setStacked(false)}
-          />
-        </NotificationViewport>
-      )}
-      {(['neutral', 'information', 'success', 'error'] as const).map((status) => (
-        <Notification
-          key={status}
-          status={status}
-          title={status}
-          description="会话「重构鉴权模块」想运行 cargo test --all"
-          timestamp="刚刚"
-          dismissible={status !== 'neutral'}
-          closeLabel="忽略"
-          actions={
-            status === 'neutral'
-              ? [
-                  { label: '查看', onPress: noop, variant: 'secondary' },
-                  { label: '允许', onPress: noop },
-                ]
-              : undefined
-          }
-        />
-      ))}
-    </div>
-  )
-}
-
 function HotkeyProbe() {
   const [log, setLog] = useState<string[]>([])
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -323,9 +267,6 @@ export default function Overlays() {
       </Section>
       <Section title="Dialog / AlertDialog / Sheet">
         <Dialogs />
-      </Section>
-      <Section title="Notification">
-        <Notifications />
       </Section>
       <Section title="快捷键 / 命令面板">
         {/* Two things this is here to answer, neither of which a unit test

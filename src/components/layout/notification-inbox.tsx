@@ -1,44 +1,50 @@
-import { useMemo, useState } from 'react'
+import './notification-inbox.css'
+import { useRef, useState, type ReactNode } from 'react'
+import { Dialog } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
+import { Bell } from '@keyline-icons/react/two-tone'
 
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-
-import { NotificationBell } from '@/components/application/app-shell/notification-bell'
-import {
-  type NotificationCenterItem,
-  type NotificationCenterTabDefinition,
-} from '@/components/application/notification-center/notification-center'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
+import { NotificationCard } from '@/components/yuerchu-ui/components/notification-stack/notification-stack'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import type { SettingsTab } from '@/components/settings/tabs'
 import { useRelativeTime } from '@/hooks/use-relative-time'
 import { requestPendingReveal } from '@/lib/pending-reveal'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import type { SystemNoticeInfoResponse } from '@/types'
+import { useDismissOnOutsidePress } from '@/utils/use-dismiss-on-outside-press'
 import { AttentionSummary } from './approval-notifications'
 import {
-  BOARDUI_ACTION_VARIANT,
+  ACTION_VARIANT,
   attentionActionIds,
   attentionActionLabel,
   attentionCategory,
   attentionShape,
-  isAttentionActionId,
   useAttentionActions,
   usePendingAttention,
 } from './approval-queue'
 
 /**
- * The whole waiting-on-you queue, behind a bell in the header — the registry's
- * own `NotificationBell` (from its app-shell starter), fed from the queue.
+ * The whole waiting-on-you queue, behind a bell in the header.
  *
  * The floating stack (`approval-notifications.tsx`) shows only the front three
  * of it; this is the complete list, read off the same `pending()` and offering
  * the same buttons — including withholding Allow/Deny from any call that is not
- * a read, or whose row cannot show everything it will do. Rows are grouped under
- * their conversation (`showGroups`), in queue order. There is no read state: a question is not
- * "seen", it is answered, and an answered one leaves the list, so the
- * registry's `NotificationCenter` is used with `readable={false}` and every row
- * carries the pending dot.
+ * a read, or whose row cannot show everything it will do. **A row is the
+ * stack's own `NotificationCard`**, with the same `AttentionSummary`, so a
+ * question reads the same from either door. Rows are gathered by conversation,
+ * each group where its first question stands in the queue. There is no read
+ * state: a question is not "seen", it is answered, and an answered one leaves
+ * the list.
+ *
+ * It is built from the library's primitives rather than its `NotificationCenter`,
+ * which has a read state, no per-row actions, no custom categories and cannot
+ * be opened from outside (Yuerchu/ui#548).
  *
  * **The conversation being read is not listed**, exactly as in the stack: its
  * cards are in the transcript. But a reader who has scrolled up into history
@@ -71,7 +77,10 @@ export function NotificationInbox({
   onOpenChange?: (open: boolean) => void
 }) {
   const { t } = useTranslation()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const popoverRef = useRef<HTMLElement>(null)
   const [ownOpen, setOwnOpen] = useState(false)
+  const [tab, setTab] = useState<string>('all')
   const isOpen = openProp ?? ownOpen
   const setIsOpen = (open: boolean) => {
     setOwnOpen(open)
@@ -85,183 +94,258 @@ export function NotificationInbox({
   const notices = useSystemNoticeStore((s) => s.notices)
   const dismissNotice = useSystemNoticeStore((s) => s.dismiss)
 
-  const byId = useMemo(() => new Map(listed.map((item) => [item.approvalId, item])), [listed])
+  // A non-modal popover is not dismissed by a press outside it on its own.
+  useDismissOnOutsidePress(isOpen, () => setIsOpen(false), [triggerRef, popoverRef])
 
-  const notifications = useMemo<NotificationCenterItem[]>(
-    () =>
-      listed.map((item) => {
-        const shape = attentionShape(item)
-        const title = conversations.find((c) => c.id === item.conversationId)?.title ?? t('chat.newChat')
-        return {
-          id: item.approvalId,
-          category: attentionCategory(item),
-          group: title,
-          title,
-          description: <AttentionSummary item={item} shape={shape} />,
-          // Unknown for a question rebuilt after a reload: the register does
-          // not say when it was asked, and "just now" would be a lie.
-          timestamp: item.askedAt === null ? '' : relativeTime(item.askedAt),
-          unread: true,
-          actions: attentionActionIds(shape).map((id) => ({
-            id,
-            label: attentionActionLabel(t, item, id),
-            variant: BOARDUI_ACTION_VARIANT[id],
-          })),
-        }
+  const entries = ((): InboxEntry[] => {
+    const questions = listed.map<InboxEntry>((item) => {
+      const shape = attentionShape(item)
+      const title = conversations.find((c) => c.id === item.conversationId)?.title ?? t('chat.newChat')
+      return {
+        id: item.approvalId,
+        category: attentionCategory(item),
+        group: title,
+        pending: true,
+        card: (
+          <NotificationCard
+            key={item.approvalId}
+            heading={title}
+            description={
+              <>
+                <AttentionSummary item={item} shape={shape} />
+                {/* Unknown for a question rebuilt after a reload: the register
+                    does not say when it was asked, and "just now" would be a lie. */}
+                {item.askedAt !== null && <span className="m-inbox__time">{relativeTime(item.askedAt)}</span>}
+              </>
+            }
+            actions={attentionActionIds(shape).map((id) => (
+              <Button
+                key={id}
+                size="sm"
+                variant={ACTION_VARIANT[id]}
+                onPress={() => {
+                  // Leaving for the card closes the inbox; everything else is
+                  // answered in place and the list moves on under the reader.
+                  if (id === 'view') setIsOpen(false)
+                  act(item, id)
+                }}
+              >
+                {attentionActionLabel(t, item, id)}
+              </Button>
+            ))}
+          />
+        ),
+      }
+    })
+    const system = notices.map((notice) =>
+      systemEntry(notice, t, relativeTime, {
+        settings: () => {
+          setIsOpen(false)
+          onOpenSettingsTab('ime')
+          void dismissNotice(notice.id).catch((err) => console.error('notice not dismissed', err))
+        },
+        dismiss: () => void dismissNotice(notice.id).catch((err) => console.error('notice not dismissed', err)),
       }),
-    [listed, conversations, relativeTime, t],
-  )
+    )
+    return [...questions, ...system]
+  })()
 
-  const systemItems = useMemo<NotificationCenterItem[]>(
-    () => notices.map((notice) => systemItem(notice, t, relativeTime)),
-    [notices, relativeTime, t],
-  )
+  const tabs = [
+    { id: 'all', label: t('notifications.inbox.tabAll') },
+    { id: 'approvals', label: t('notifications.inbox.tabApprovals') },
+    { id: 'questions', label: t('notifications.inbox.tabQuestions') },
+    ...(notices.length > 0 ? [{ id: SYSTEM_CATEGORY, label: t('notifications.inbox.tabSystem') }] : []),
+  ]
+  const countOf = (id: string) => (id === 'all' ? entries.length : entries.filter((e) => e.category === id).length)
+  // A tab that disappeared (the last notice was dismissed) must not leave the
+  // list filtered by it.
+  const activeTab = tabs.some((candidate) => candidate.id === tab) ? tab : 'all'
 
-  const tabs = useMemo<NotificationCenterTabDefinition[]>(
-    () => [
-      { id: 'all', label: t('notifications.inbox.tabAll') },
-      { id: 'approvals', label: t('notifications.inbox.tabApprovals') },
-      { id: 'questions', label: t('notifications.inbox.tabQuestions') },
-      ...(systemItems.length > 0 ? [{ id: SYSTEM_CATEGORY, label: t('notifications.inbox.tabSystem') }] : []),
-    ],
-    [systemItems.length, t],
-  )
+  const visible = (() => {
+    const filtered = activeTab === 'all' ? entries : entries.filter((e) => e.category === activeTab)
+    // Several questions from one conversation read as one block; the groups
+    // follow the queue's order, and so do their rows.
+    const rank = new Map<string, number>()
+    for (const entry of filtered) if (!rank.has(entry.group)) rank.set(entry.group, rank.size)
+    return [...filtered].sort((a, b) => (rank.get(a.group) ?? 0) - (rank.get(b.group) ?? 0))
+  })()
+  const groups = (() => {
+    const out: { name: string; entries: InboxEntry[] }[] = []
+    for (const entry of visible) {
+      const last = out[out.length - 1]
+      if (last && last.name === entry.group) last.entries.push(entry)
+      else out.push({ name: entry.group, entries: [entry] })
+    }
+    return out
+  })()
+
+  const pending = entries.filter((e) => e.pending).length
 
   return (
-    <NotificationBell
-      isOpen={isOpen}
-      onOpenChange={setIsOpen}
-      notifications={[...notifications, ...systemItems]}
-      triggerLabel={t('notifications.inbox.bell', { count: listed.length })}
-      dialogLabel={t('notifications.inbox.title')}
-      // The popover does not follow the viewport by itself: React Aria writes
-      // the height left below the bell as an inline max-height on it, and
-      // nothing inside read it. So the dialog takes that bound (`inherit`) and
-      // the center is the one scroller inside it — with the registry's 516px
-      // list cap lifted, since a second, nested scroller is what left the last
-      // rows below the fold of a short window. The soft keyboard does not
-      // shrink the visual viewport here (`adjustNothing`), so its height is
-      // added as bottom padding for the last row to scroll clear of it.
-      dialogClassName="flex max-h-[inherit] flex-col"
-      before={
-        here.length > 0 && boardOpen ? (
-          <div
-            data-slot="notification-inbox-on-board"
-            className="mb-2 rounded-2xl border border-border-button-default bg-background-primary-default px-4 py-2 shadow-dropdown"
-          >
-            <p className="text-body-regular text-text-secondary">
+    <>
+      <span className="m-inbox__bell">
+        <Button
+          ref={triggerRef}
+          icon={<Bell />}
+          variant="ghost"
+          size="sm"
+          className="touch-hitbox"
+          aria-label={t('notifications.inbox.bell', { count: listed.length })}
+          aria-expanded={isOpen}
+          aria-haspopup="dialog"
+          onPress={() => setIsOpen(!isOpen)}
+        />
+        {listed.length > 0 && (
+          <Badge data-slot="notification-inbox-badge" tone="danger" size="sm" className="m-inbox__count" aria-hidden>
+            {listed.length > 99 ? '99+' : listed.length}
+          </Badge>
+        )}
+      </span>
+      <Popover
+        ref={popoverRef}
+        triggerRef={triggerRef}
+        isOpen={isOpen}
+        onOpenChange={setIsOpen}
+        placement="bottom end"
+        offset={8}
+        isNonModal
+        className="m-inbox__popover"
+      >
+        <Dialog aria-label={t('notifications.inbox.title')} className="m-inbox__dialog">
+          {here.length > 0 && boardOpen ? (
+            <p data-slot="notification-inbox-on-board" className="m-inbox__note">
               {t('notifications.inbox.onBoard', { count: here.length })}
             </p>
-          </div>
-        ) : here.length > 0 && activeId !== null ? (
-          <div
-            data-slot="notification-inbox-here"
-            className="mb-2 flex items-center gap-3 rounded-2xl border border-border-button-default bg-background-primary-default py-2 pr-2 pl-4 shadow-dropdown"
-          >
-            <p className="min-w-0 flex-1 text-body-regular text-text-secondary">
-              {t('notifications.inbox.here', { count: here.length })}
-            </p>
-            <Button
-              size="sm"
-              variant="secondary"
-              onPress={() => {
-                setIsOpen(false)
-                requestPendingReveal(activeId)
-              }}
-            >
-              {t('notifications.inbox.jumpToCard')}
-            </Button>
-          </div>
-        ) : null
-      }
-      centerProps={{
-        // Fill the 440px popover instead of the registry's 430px card.
-        className:
-          'max-w-none min-h-0 max-h-[41rem] overflow-x-hidden overflow-y-auto overscroll-contain pb-[var(--ime-bottom,0px)]',
-        // `max-h-[none]`, not `max-h-none`: tailwind-merge does not put the
-        // keyword in the max-height group, so `max-h-none` would sit beside the
-        // registry's `max-h-[516px]` and lose or win on stylesheet order.
-        listClassName: 'max-h-[none] overflow-visible',
-        tabs,
-        readable: false,
-        // Several questions from one conversation read as one block under its
-        // name; the groups follow the queue's order, and so do their rows.
-        showGroups: true,
-        title: t('notifications.inbox.title'),
-        emptyMessage: t('notifications.inbox.empty'),
-        labels: {
-          unreadCount: (n) => t('notifications.inbox.pendingCount', { count: n }),
-          noUnread: t('notifications.inbox.nonePending'),
-          emptyDescription: t('notifications.inbox.emptyDescription'),
-          unread: t('notifications.inbox.pending'),
-          category: t('notifications.inbox.category'),
-        },
-        onAction: (id, actionId) => {
-          if (id.startsWith(SYSTEM_ID_PREFIX)) {
-            const noticeId = id.slice(SYSTEM_ID_PREFIX.length)
-            if (actionId === 'settings') {
-              setIsOpen(false)
-              onOpenSettingsTab('ime')
-            }
-            if (actionId === 'dismiss' || actionId === 'settings') {
-              void dismissNotice(noticeId).catch((err) => console.error('notice not dismissed', err))
-            }
-            return
-          }
-          const item = byId.get(id)
-          if (!item || !isAttentionActionId(actionId)) return
-          // Leaving for the card closes the inbox; everything else is
-          // answered in place and the list moves on under the reader.
-          if (actionId === 'view') setIsOpen(false)
-          act(item, actionId)
-        },
-      }}
-    />
+          ) : here.length > 0 && activeId !== null ? (
+            <div data-slot="notification-inbox-here" data-action className="m-inbox__note">
+              <p className="m-inbox__note-text">{t('notifications.inbox.here', { count: here.length })}</p>
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => {
+                  setIsOpen(false)
+                  requestPendingReveal(activeId)
+                }}
+              >
+                {t('notifications.inbox.jumpToCard')}
+              </Button>
+            </div>
+          ) : null}
+
+          <section aria-label={t('notifications.inbox.title')} className="m-inbox">
+            <header className="m-inbox__header">
+              <h2 className="m-inbox__title">{t('notifications.inbox.title')}</h2>
+              <p className="m-inbox__status">
+                {pending === 0
+                  ? t('notifications.inbox.nonePending')
+                  : t('notifications.inbox.pendingCount', { count: pending })}
+              </p>
+              <SegmentedControl
+                aria-label={t('notifications.inbox.category')}
+                size="sm"
+                selectedKey={activeTab}
+                onSelectionChange={(key) => setTab(String(key))}
+                className="m-inbox__tabs"
+              >
+                {tabs.map(({ id, label }) => (
+                  <Segment key={id} id={id}>
+                    {label}
+                    <span className="m-inbox__tab-count">{countOf(id)}</span>
+                  </Segment>
+                ))}
+              </SegmentedControl>
+            </header>
+
+            <div className="m-inbox__list">
+              {groups.length === 0 ? (
+                <EmptyState
+                  heading={t('notifications.inbox.empty')}
+                  headingLevel={3}
+                  size="sm"
+                  description={t('notifications.inbox.emptyDescription')}
+                />
+              ) : (
+                groups.map((group) => (
+                  <div key={group.name} role="group" aria-label={group.name} className="m-inbox__group">
+                    {group.entries.map((entry) => entry.card)}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+        </Dialog>
+      </Popover>
+    </>
   )
 }
 
 const SYSTEM_CATEGORY = 'system'
-/** Keeps a notice's row id apart from an approval id in the one list. */
-const SYSTEM_ID_PREFIX = 'system:'
+
+interface InboxEntry {
+  id: string
+  category: string
+  /** Rows with the same group sit together, under that name for a reader. */
+  group: string
+  /** Counts toward the header's "N waiting". */
+  pending: boolean
+  card: ReactNode
+}
 
 /**
- * One notice as a row. Unread while it is running or failed — those are the
- * two worth the badge — and read once it succeeded, when it only reports.
+ * One notice as a card. Pending while it is running or failed — those are the
+ * two worth counting — and not once it succeeded, when it only reports.
  */
-function systemItem(
+function systemEntry(
   notice: SystemNoticeInfoResponse,
   t: TFunction,
   relativeTime: (ms: number) => string,
-): NotificationCenterItem {
+  on: { settings: () => void; dismiss: () => void },
+): InboxEntry {
   const { detail } = notice
   const names = detail.dictionaries.join('、')
   const running = detail.state === 'running'
   const failed = detail.state === 'failed'
   return {
-    id: SYSTEM_ID_PREFIX + notice.id,
+    id: `system:${notice.id}`,
     category: SYSTEM_CATEGORY,
     group: t('notifications.system.group'),
-    title: t(`notifications.system.imeUpgrade.${detail.state}.title`),
-    description: failed ? (
-      <span className="whitespace-pre-line">
-        {[
-          t('notifications.system.imeUpgrade.failed.description', { count: detail.upgraded }),
-          ...detail.failures.map((f) => t('notifications.system.imeUpgrade.failure', { name: f.name, error: f.error })),
-        ].join('\n')}
-      </span>
-    ) : (
-      t(`notifications.system.imeUpgrade.${detail.state}.description`, { names })
+    pending: running || failed,
+    card: (
+      <NotificationCard
+        key={`system:${notice.id}`}
+        heading={t(`notifications.system.imeUpgrade.${detail.state}.title`)}
+        description={
+          <>
+            {failed ? (
+              <span className="m-inbox__lines">
+                {[
+                  t('notifications.system.imeUpgrade.failed.description', { count: detail.upgraded }),
+                  ...detail.failures.map((f) =>
+                    t('notifications.system.imeUpgrade.failure', { name: f.name, error: f.error }),
+                  ),
+                ].join('\n')}
+              </span>
+            ) : (
+              t(`notifications.system.imeUpgrade.${detail.state}.description`, { names })
+            )}
+            <span className="m-inbox__time">{relativeTime(notice.finished_at ?? notice.started_at)}</span>
+          </>
+        }
+        actions={
+          running ? null : (
+            <>
+              {failed && (
+                <Button size="sm" variant="secondary" onPress={on.settings}>
+                  {t('notifications.system.openSettings')}
+                </Button>
+              )}
+              <Button size="sm" variant="ghost" onPress={on.dismiss}>
+                {t('notifications.system.dismiss')}
+              </Button>
+            </>
+          )
+        }
+      />
     ),
-    timestamp: relativeTime(notice.finished_at ?? notice.started_at),
-    status: running ? 'information' : failed ? 'error' : 'success',
-    unread: running || failed,
-    actions: running
-      ? []
-      : [
-          ...(failed
-            ? [{ id: 'settings', label: t('notifications.system.openSettings'), variant: 'secondary' as const }]
-            : []),
-          { id: 'dismiss', label: t('notifications.system.dismiss'), variant: 'neutral' as const },
-        ],
   }
 }

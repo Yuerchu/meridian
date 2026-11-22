@@ -21,8 +21,6 @@ import {
   Input,
   Kanban,
   Label,
-  Notification,
-  NotificationViewport,
   SearchField,
   Sheet,
   Sidebar,
@@ -378,29 +376,6 @@ describe('Kanban cards are a React Aria grid list', () => {
     await userEvent.keyboard('ab{ArrowLeft}{ArrowDown}{Home}{End}x')
     expect(field).toHaveFocus()
     expect(field).toHaveValue('abx')
-  })
-})
-
-describe('Notification wires React Aria presses', () => {
-  it('fires an action and the close button on press, keyboard included', async () => {
-    const onAction = vi.fn()
-    render(
-      <NotificationViewport aria-label="Notices" role="region">
-        <Notification key="n" title="Approve?" closeLabel="Dismiss" actions={[{ label: 'Go', onPress: onAction }]} />
-      </NotificationViewport>,
-    )
-    const region = screen.getByRole('region', { name: 'Notices' })
-    expect(region.className).toMatch(/\bfixed\b/)
-    expect(within(region).getByRole('status')).toHaveTextContent('Approve?')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Go' }))
-    expect(onAction).toHaveBeenCalledTimes(1)
-    screen.getByRole('button', { name: 'Go' }).focus()
-    await userEvent.keyboard('{Enter}')
-    expect(onAction).toHaveBeenCalledTimes(2)
-
-    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
-    await waitFor(() => expect(screen.queryByText('Approve?')).toBeNull())
   })
 })
 

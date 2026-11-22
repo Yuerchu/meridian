@@ -325,14 +325,6 @@ export function attentionActionLabel(t: TFunction, item: AttentionItem, action: 
 export const ACTION_VARIANT = { defer: 'secondary', view: 'secondary', deny: 'destructive', allow: 'primary' } as const
 
 /**
- * The same, in boardui's vocabulary, for the two boardui notification surfaces
- * still drawing these actions (the floating stack and the inbox). Deleted with
- * them, when Yuerchu UI's NotificationStack (Yuerchu/ui#560) and
- * NotificationCenter (Yuerchu/ui#548) replace them.
- */
-export const BOARDUI_ACTION_VARIANT = { ...ACTION_VARIANT, deny: 'danger' } as const
-
-/**
  * What each action does, shared by both surfaces. `onSelect` is the shell's
  * navigation: it opens the conversation (and closes settings), and resolves
  * `false` when leaving wherever the reader was got refused.
