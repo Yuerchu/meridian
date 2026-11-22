@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -59,80 +61,6 @@ vi.mock('@keyline-icons/react/two-tone', () => ({
   TriangleAlert: () => null,
   X: () => null,
 }))
-
-vi.mock('@/components/base', async () => {
-  const { createContext, useContext, useId } = await import('react')
-  const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
-  // The real TextField wires its Label to its TextArea through context; the
-  // mock does the same so `getByLabelText` reaches the control.
-  const FieldId = createContext<string | undefined>(undefined)
-  const TextField = ({ children }: { children?: React.ReactNode }) => (
-    <FieldId.Provider value={useId()}>
-      <div>{children}</div>
-    </FieldId.Provider>
-  )
-  const Label = ({ children }: { children?: React.ReactNode }) => (
-    <label htmlFor={useContext(FieldId)}>{children}</label>
-  )
-  const TextArea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-    <textarea id={useContext(FieldId)} {...props} />
-  )
-  // One factory, not three: `vi.mock` keys on the module path, so a later call
-  // for the same path replaces the earlier one entirely rather than merging.
-  const Dropdown = Object.assign(pass, {
-    Popover: pass,
-    Menu: pass,
-    Item: ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
-      <button onClick={onAction}>{children}</button>
-    ),
-  })
-  const DropdownPopover = pass
-  const DropdownItem = ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
-    <button onClick={onAction}>{children}</button>
-  )
-  const Link = ({
-    children,
-    onPress,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { onPress?: () => void }) => (
-    <a {...props} onClick={onPress}>
-      {children}
-    </a>
-  )
-  const Segment = Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, {
-    Item: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
-  })
-  const Sheet = Object.assign(
-    ({ children, isOpen }: { children?: React.ReactNode; isOpen?: boolean }) => (isOpen ? <>{children}</> : null),
-    {
-      Backdrop: pass,
-      Content: pass,
-      Dialog: pass,
-      Header: pass,
-      Heading: pass,
-      CloseTrigger: () => null,
-      Body: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-        <div data-testid="sheet-body" className={className}>
-          {children}
-        </div>
-      ),
-    },
-  )
-  return {
-    Chip: pass,
-    Description: pass,
-    Dropdown,
-    DropdownItem,
-    DropdownPopover,
-    Label,
-    Link,
-    Segment,
-    Sheet,
-    Skeleton: () => <div />,
-    TextArea,
-    TextField,
-  }
-})
 
 function saveState() {
   return document.querySelector('[data-slot="plan-review-save-state"]')
@@ -272,8 +200,8 @@ describe('PlanReviewPage history feedback', () => {
     })
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.revision:1')
-    await userEvent.click(screen.getByRole('button', { name: 'planReview.revision:1' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'planReview.history.current' }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'planReview.revision:1' }))
 
     await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledWith({ reviewId: 'review-1' }))
     expect(await screen.findByText('Keep the original scope')).toBeInTheDocument()
@@ -524,8 +452,9 @@ describe('PlanReviewPage save lifecycle', () => {
     mocks.listPlanRevisions.mockResolvedValue([older, currentRevision])
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.revision:1')
-    expect(screen.queryByRole('button', { name: 'planReview.revision:2' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'planReview.history.current' }))
+    expect(await screen.findByRole('menuitemradio', { name: 'planReview.revision:1' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitemradio', { name: 'planReview.revision:2' })).not.toBeInTheDocument()
   })
 
   it('says which decision is still in doubt, in its own words, and offers a reload', async () => {
@@ -675,15 +604,24 @@ describe('PlanReviewPage focus and announcements', () => {
     expect(screen.queryAllByRole('status')).toHaveLength(0)
   })
 
-  it('pads the comment sheet by the keyboard and safe-area insets', async () => {
+  it('opens the comments as a drawer named by its title, with the pane inside', async () => {
     const currentRevision = revision('revision-1', 1, '# Plan\n')
     mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
     mocks.listPlanRevisions.mockResolvedValue([currentRevision])
     render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
     await userEvent.click(await screen.findByRole('button', { name: 'planReview.comments.title' }))
 
-    expect(screen.getByTestId('sheet-body').className).toContain(
-      'pb-[calc(0px+var(--ime-bottom,0px)+var(--safe-bottom,0px))]',
-    )
+    const drawer = await screen.findByRole('dialog', { name: 'planReview.comments.title' })
+    expect(within(drawer).getByLabelText('planReview.comments.globalNote')).toBeInTheDocument()
+  })
+
+  /** jsdom computes no styles, so the one place the insets can be pinned is the
+   *  rule itself: the keyboard and safe-area insets are added to the drawer's
+   *  bottom padding, where the overall note sits. */
+  it('pads the comment drawer by the keyboard and safe-area insets', () => {
+    const css = readFileSync(join(process.cwd(), 'src/components/plan-review/plan-review-page.css'), 'utf8')
+    const rule = css.match(/\.ui-drawer\.m-plan-review__drawer\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toContain('var(--ime-bottom, 0px)')
+    expect(rule).toContain('var(--safe-bottom, 0px)')
   })
 })

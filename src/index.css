@@ -14,32 +14,6 @@
    width, the arrival mark, the code block, the app frame. */
 @import './styles/meridian.css';
 
-/* Plan review is a document surface with a sibling comment rail. The rail is
-   selected by the page container, not by the window: a narrow split panel gets
-   the same sheet affordance as a phone, while a wide tablet can use both panes. */
-.plan-review-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.plan-review-comments-aside {
-  display: none;
-}
-
-@container (min-width: 60rem) {
-  .plan-review-workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
-  }
-
-  .plan-review-comments-aside {
-    display: block;
-  }
-
-  .plan-review-comments-trigger {
-    display: none;
-  }
-}
-
 /* The standalone editor is a rounded field. Here the page already owns the
    surface and scroll boundary, so the document uses the same tokens without
    stacking another card inside it. */
@@ -78,17 +52,6 @@
 
 [data-slot='plan-review-page'] article[data-state='orphaned'] {
   border-inline-start: 3px dashed var(--warning-fg);
-}
-
-/* The source textarea fills its pane rather than growing like a form field. */
-textarea.plan-review-source {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  resize: none;
-  border-radius: 0;
-  padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;
-  line-height: 1.6;
 }
 
 /* A group header's own buttons — new-conversation and the "…" menu — appear on
