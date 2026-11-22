@@ -1,9 +1,10 @@
+import './view-switch.css'
 import * as React from 'react'
 import { Check, Copy, FileText, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Hint } from '@/components/ui/hint'
-import { Segment } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Sheet } from '@/components/base'
 import { useTranslation } from 'react-i18next'
 
@@ -217,18 +218,19 @@ function PreviewSheet({
                   : ''}
               </Hint>
               {richPreview && (
-                <Segment
-                  aria-label={t('chat.filePreview.mode')}
-                  size="sm"
-                  selectedKey={mode}
-                  onSelectionChange={(next) => {
-                    if (next === 'code' || next === 'preview') setMode(next)
-                  }}
-                  className="mt-3 w-fit"
-                >
-                  <Segment.Item id="code">{t('chat.filePreview.code')}</Segment.Item>
-                  <Segment.Item id="preview">{t('chat.filePreview.preview')}</Segment.Item>
-                </Segment>
+                <div className="m-file-preview__mode">
+                  <SegmentedControl
+                    aria-label={t('chat.filePreview.mode')}
+                    size="sm"
+                    selectedKey={mode}
+                    onSelectionChange={(next) => {
+                      if (next === 'code' || next === 'preview') setMode(next)
+                    }}
+                  >
+                    <Segment id="code">{t('chat.filePreview.code')}</Segment>
+                    <Segment id="preview">{t('chat.filePreview.preview')}</Segment>
+                  </SegmentedControl>
+                </div>
               )}
               <Sheet.CloseTrigger aria-label={t('common.close')} />
             </Sheet.Header>

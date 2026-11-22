@@ -5,6 +5,7 @@ import type { DropItem } from 'react-aria-components'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
 import './chat-view.css'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Messages } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
@@ -584,34 +585,31 @@ function ChatViewInner({
           const approved = await confirm({
             heading: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
             description: (
-              <div data-slot="shell-retry-body" className="space-y-3">
+              <div data-slot="shell-retry-body" className="m-chat-view__retry">
                 <p data-slot="shell-retry-text">{t(unread ? 'chat.shell.unreadableBody' : 'chat.shell.retryBody')}</p>
-                <dl
-                  data-slot="shell-retry-details"
-                  className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-caption-1-regular"
-                >
+                <dl data-slot="shell-retry-details" className="m-chat-view__retry-list">
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                       {t('chat.shell.commandLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                    <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                       {command}
                     </dd>
                   </div>
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                       {t('chat.shell.cwdLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                    <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                       {result.cwd}
                     </dd>
                   </div>
                   {unread && result.error && (
                     <div data-slot="shell-retry-detail">
-                      <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                      <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                         {t('chat.shell.errorLabel')}
                       </dt>
-                      <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                      <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                         {result.error}
                       </dd>
                     </div>
@@ -952,7 +950,7 @@ function ChatViewInner({
         aria-label={t('chat.convRef.dropLabel')}
         getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
         onDrop={(e) => void handleConversationDrop(e.items)}
-        className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent-500 data-[drop-target]:ring-inset"
+        className="m-chat-view"
       >
         <AcpNoticeActionsContext.Provider value={acpNoticeActions}>
           <ChatTranscript
@@ -1011,18 +1009,19 @@ function ChatViewInner({
               // conversation that could not be loaded tells the reader it is
               // empty, which is the one thing nobody knows.
               messages.length === 0 && !error && !loadError ? (
-                <EmptyState
-                  heading={t('chat.empty.subtitle')}
-                  headingLevel={3}
-                  description={t('chat.startHint')}
-                  actions={
-                    <StarterPrompts
-                      disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-                      onSelect={setInput}
-                    />
-                  }
-                  className="flex-1 justify-center px-4 py-10"
-                />
+                <div className="m-chat-view__empty">
+                  <EmptyState
+                    heading={t('chat.empty.subtitle')}
+                    headingLevel={3}
+                    description={t('chat.startHint')}
+                    actions={
+                      <StarterPrompts
+                        disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+                        onSelect={setInput}
+                      />
+                    }
+                  />
+                </div>
               ) : null
             }
             scrollToBottomLabel={t('chat.scrollToBottom')}
@@ -1062,18 +1061,20 @@ function ChatViewInner({
         )}
 
         {reviewBlocked && (
-          <div
-            data-slot="review-blocked-notice"
-            className="flex shrink-0 items-center gap-3 border-t border-border-button-default bg-button-ghost-background px-4 py-2 text-caption-1-regular text-button-ghost-foreground"
-          >
-            <p data-slot="review-blocked-message" className="min-w-0 flex-1">
-              {reviewBlockedMessage}
-            </p>
-            {pendingPlanReview && (
-              <Button size="sm" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
-                {reviewBlockedAction}
-              </Button>
-            )}
+          <div className="m-chat-view__alert">
+            <Alert
+              data-slot="review-blocked-notice"
+              tone="neutral"
+              actions={
+                pendingPlanReview ? (
+                  <Button size="sm" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
+                    {reviewBlockedAction}
+                  </Button>
+                ) : undefined
+              }
+            >
+              <span data-slot="review-blocked-message">{reviewBlockedMessage}</span>
+            </Alert>
           </div>
         )}
 
@@ -1081,7 +1082,7 @@ function ChatViewInner({
             inside `PromptQueue`, which draws nothing when the list is empty —
             and an empty list is exactly what a failed first read looks like. */}
         {background.error && (
-          <div data-slot="background-tasks-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="background-tasks-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(background.error.kind === 'load' ? 'chat.background.loadFailed' : 'chat.background.stopFailed')}
               message={background.error.message}
@@ -1091,7 +1092,7 @@ function ChatViewInner({
         )}
 
         {queue.error && (
-          <div data-slot="prompt-queue-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="prompt-queue-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(queue.error.kind === 'load' ? 'chat.queue.loadFailed' : 'chat.queue.actionFailed')}
               message={queue.error.message}
@@ -1102,7 +1103,7 @@ function ChatViewInner({
         )}
 
         {composerDraft.error && (
-          <div data-slot="composer-draft-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="composer-draft-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(composerDraft.error.kind === 'load' ? 'chat.draft.loadFailed' : 'chat.draft.saveFailedTitle')}
               message={composerDraft.error.message}

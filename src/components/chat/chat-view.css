@@ -27,4 +27,59 @@
   .m-chat-view__reference-title[data-missing='true'] {
     color: var(--danger-fg);
   }
+
+  .m-chat-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .m-chat-view[data-drop-target] {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+
+  .m-chat-view__empty {
+    display: flex;
+    flex: 1;
+    justify-content: center;
+    padding: var(--space-10) var(--space-4);
+  }
+
+  .m-chat-view__alert {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-4) 0;
+  }
+
+  .m-chat-view__retry,
+  .m-chat-view__retry-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-chat-view__retry {
+    gap: var(--space-3);
+  }
+
+  .m-chat-view__retry-list {
+    margin: 0;
+    padding: var(--space-3);
+    border-radius: var(--radius-item);
+    background: var(--surface-muted);
+    color: var(--text);
+    font: var(--text-caption);
+  }
+
+  .m-chat-view__retry-label {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .m-chat-view__retry-value {
+    margin: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
 }

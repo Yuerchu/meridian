@@ -1,0 +1,10 @@
+@layer components {
+  .m-file-preview__mode {
+    width: fit-content;
+    margin-block-start: var(--space-3);
+  }
+
+  .m-mermaid__view {
+    margin-inline-start: auto;
+  }
+}

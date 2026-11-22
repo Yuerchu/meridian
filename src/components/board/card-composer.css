@@ -1,0 +1,5 @@
+@layer components {
+  .m-board-start__agent {
+    width: fit-content;
+  }
+}

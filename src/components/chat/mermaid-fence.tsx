@@ -1,7 +1,8 @@
+import './view-switch.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Segment } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { CopyButton } from '@/components/ui/copy-button'
 import { errorMessage } from '@/lib/error-message'
@@ -49,18 +50,19 @@ export function MermaidFence({ code, icon }: { code: string; icon: string | unde
           mermaid
         </span>
         {drawing.status !== 'failed' && (
-          <Segment
-            aria-label={t('chat.mermaid.view')}
-            size="sm"
-            selectedKey={view}
-            onSelectionChange={(next) => {
-              if (next === 'diagram' || next === 'source') setView(next)
-            }}
-            className="ms-auto"
-          >
-            <Segment.Item id="diagram">{t('chat.mermaid.diagram')}</Segment.Item>
-            <Segment.Item id="source">{t('chat.mermaid.source')}</Segment.Item>
-          </Segment>
+          <div className="m-mermaid__view">
+            <SegmentedControl
+              aria-label={t('chat.mermaid.view')}
+              size="sm"
+              selectedKey={view}
+              onSelectionChange={(next) => {
+                if (next === 'diagram' || next === 'source') setView(next)
+              }}
+            >
+              <Segment id="diagram">{t('chat.mermaid.diagram')}</Segment>
+              <Segment id="source">{t('chat.mermaid.source')}</Segment>
+            </SegmentedControl>
+          </div>
         )}
         <CopyButton text={code} className={drawing.status === 'failed' ? 'touch-hitbox ms-auto' : 'touch-hitbox'} />
       </div>

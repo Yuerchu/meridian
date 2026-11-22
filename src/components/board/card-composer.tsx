@@ -11,15 +11,17 @@
 //                            running, which is the person moving it
 // A failed or stopped turn holds its queue; sending a new turn does not
 // release it — what was queued behind a failure is the transcript's to decide.
+import './card-composer.css'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { PromptInput, Segment } from '@/components/base'
+import { PromptInput } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useBoardStore } from '@/stores/board-store'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { BoardAgentKind, BoardTaskInfoResponse } from '@/types'
+import type { BoardTaskInfoResponse } from '@/types'
 import type { AgentState } from './agent-state'
 
 function ComposerField({
@@ -93,18 +95,19 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
 
   return (
     <div data-slot="board-start" className="flex flex-col gap-2">
-      <Segment
-        aria-label={t('board.agent.label')}
-        size="sm"
-        selectedKey={agentKind}
-        onSelectionChange={(next) => {
-          if (next === 'native' || next === 'claude_code') setAgentKind(next as BoardAgentKind)
-        }}
-        className="w-fit"
-      >
-        <Segment.Item id="native">{t('board.agent.native')}</Segment.Item>
-        <Segment.Item id="claude_code">{t('board.agent.claudeCode')}</Segment.Item>
-      </Segment>
+      <div className="m-board-start__agent">
+        <SegmentedControl
+          aria-label={t('board.agent.label')}
+          size="sm"
+          selectedKey={agentKind}
+          onSelectionChange={(next) => {
+            if (next === 'native' || next === 'claude_code') setAgentKind(next)
+          }}
+        >
+          <Segment id="native">{t('board.agent.native')}</Segment>
+          <Segment id="claude_code">{t('board.agent.claudeCode')}</Segment>
+        </SegmentedControl>
+      </div>
       <ComposerField
         value={value}
         setValue={(next) => setComposerText(task.id, next)}

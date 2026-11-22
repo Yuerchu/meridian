@@ -1,6 +1,6 @@
 import { useCallback, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { PromptSuggestion } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import './empty-state.css'
 
@@ -28,15 +28,13 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
   const { t } = useTranslation()
 
   return (
-    <PromptSuggestion>
-      <PromptSuggestion.Items>
-        {STARTER_PROMPT_KEYS.map((key) => (
-          <PromptSuggestion.Item key={key} isDisabled={disabled} onPress={() => onSelect(t(key))}>
-            {t(key)}
-          </PromptSuggestion.Item>
-        ))}
-      </PromptSuggestion.Items>
-    </PromptSuggestion>
+    <div data-slot="prompt-suggestion" className="m-welcome__suggestions">
+      {STARTER_PROMPT_KEYS.map((key) => (
+        <Button key={key} size="sm" variant="ghost" isDisabled={disabled} onPress={() => onSelect(t(key))}>
+          {t(key)}
+        </Button>
+      ))}
+    </div>
   )
 }
 
