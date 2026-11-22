@@ -2,4 +2,18 @@
   .m-app-shell__shortcut {
     margin-inline-start: var(--space-2);
   }
+
+  /* Covers the chat, which stays mounted underneath. `bg-background-full` is a
+     boardui utility and paints nothing now, so the transcript showed through
+     the settings page and the board. */
+  .m-app-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: var(--background);
+  }
+
+  .m-app-layer[data-front] {
+    z-index: 30;
+  }
 }

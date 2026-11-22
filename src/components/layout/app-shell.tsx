@@ -479,7 +479,7 @@ export function AppShell(props: ShellProps) {
               surfaces meet, the way the registry modal's rail meets its page at
               a `border-r`. */}
             {page === 'settings' && (
-              <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background-full">
+              <div data-slot="settings-layer" className="m-app-layer">
                 {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
                 <Suspense fallback={null}>
@@ -490,7 +490,7 @@ export function AppShell(props: ShellProps) {
               </div>
             )}
             {page === 'board' && (
-              <div data-slot="board-layer" className="absolute inset-0 z-20 bg-background-full">
+              <div data-slot="board-layer" className="m-app-layer">
                 <Suspense fallback={null}>
                   {/* Opening a card's conversation is the ordinary navigation:
                     it selects the conversation and leaves the board. */}
@@ -499,7 +499,7 @@ export function AppShell(props: ShellProps) {
               </div>
             )}
             {activeReviewId && (
-              <div data-slot="plan-review-layer" className="absolute inset-0 z-30 bg-background-full">
+              <div data-slot="plan-review-layer" className="m-app-layer" data-front>
                 <Suspense fallback={null}>
                   <PlanReviewPage
                     key={activeReviewId}
