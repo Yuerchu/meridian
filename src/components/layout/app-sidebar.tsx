@@ -28,7 +28,8 @@ import { useTranslation } from 'react-i18next'
 import { DropZone, useDragAndDrop } from 'react-aria-components'
 import type { DropItem, Key } from 'react-aria-components'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Dropdown, DropdownItem, DropdownPopover, Kbd, Label, ToggleButton } from '@/components/base'
+import { Kbd, Label, ToggleButton } from '@/components/base'
+import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -704,7 +705,7 @@ function ConversationGroup({
                 <Tooltip>{projectId ? t('sidebar.newConversationIn', { name: title }) : t('sidebar.newChat')}</Tooltip>
               </TooltipTrigger>
               {actions && actions.length > 0 && (
-                <Dropdown>
+                <MenuTrigger>
                   {/* Styled as a menu action — the docs' own pattern for a
                       dropdown trigger in a sidebar — so the two buttons match. */}
                   <TooltipTrigger>
@@ -713,10 +714,10 @@ function ConversationGroup({
                     </Sidebar.MenuAction>
                     <Tooltip>{moreLabel}</Tooltip>
                   </TooltipTrigger>
-                  <DropdownPopover placement="bottom end" aria-label={moreLabel}>
+                  <Menu placement="bottom end" aria-label={moreLabel}>
                     <RowActionDropdownItems actions={actions} />
-                  </DropdownPopover>
-                </Dropdown>
+                  </Menu>
+                </MenuTrigger>
               )}
             </span>
           </div>
@@ -1320,38 +1321,32 @@ export function AppSidebar({
                 the adapter can do, which in remote mode is not this one. */}
             {canHostSessions && (
               <Sidebar.MenuActions>
-                <Dropdown>
+                <MenuTrigger>
                   <TooltipTrigger>
                     <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.newChatMore')}>
                       <MoreVertical className="size-4" />
                     </Sidebar.MenuAction>
                     <Tooltip>{t('sidebar.newChatMore')}</Tooltip>
                   </TooltipTrigger>
-                  <DropdownPopover placement="bottom end" aria-label={t('sidebar.newChatMore')}>
-                    <DropdownItem
-                      id="new-hosted"
-                      textValue={t('sidebar.newHostedSession')}
-                      onAction={() => setShowNewHosted((open) => !open)}
-                    >
-                      <Terminal className="size-4" />
-                      <Label>{t('sidebar.newHostedSession')}</Label>
-                    </DropdownItem>
+                  <Menu placement="bottom end" aria-label={t('sidebar.newChatMore')}>
+                    <MenuItem id="new-hosted" icon={<Terminal />} onAction={() => setShowNewHosted((open) => !open)}>
+                      {t('sidebar.newHostedSession')}
+                    </MenuItem>
                     {/* Beside starting one, because it is the other way a
                         hosted conversation comes into being — and the more
                         common one for anybody who already has terminals
                         open. Also the one that works best from a phone: the
                         list and the directories in it are the host's, so
                         nothing here needs a local file picker. */}
-                    <DropdownItem
+                    <MenuItem
                       id="import-hosted"
-                      textValue={t('sidebar.importHostedSession')}
+                      icon={<ArrowInDownDashedPanel />}
                       onAction={dismissing(() => setPicker({ mode: 'import' }))}
                     >
-                      <ArrowInDownDashedPanel className="size-4" />
-                      <Label>{t('sidebar.importHostedSession')}</Label>
-                    </DropdownItem>
-                  </DropdownPopover>
-                </Dropdown>
+                      {t('sidebar.importHostedSession')}
+                    </MenuItem>
+                  </Menu>
+                </MenuTrigger>
               </Sidebar.MenuActions>
             )}
           </Sidebar.MenuItem>

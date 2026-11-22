@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { FileText, SquareTerminal, Stop } from '@keyline-icons/react/two-tone'
-import { Sheet } from '@/components/base'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -192,47 +193,39 @@ function BackgroundTaskOutputSheet({
     }
   }, [conversationId, task.id])
 
+  // The library's Drawer does not know about the back gesture.
+  useHistoryLevel(true, onClose)
+
   return (
-    <Sheet isOpen placement="right" onOpenChange={(open) => !open && onClose()} isDismissable>
-      <Sheet.Backdrop>
-        <Sheet.Content className="w-full sm:max-w-2xl">
-          <Sheet.Dialog className="flex h-full min-h-0 flex-col">
-            <Sheet.Header className="pe-14">
-              <Sheet.Heading className="truncate">{task.description || t('chat.background.outputTitle')}</Sheet.Heading>
-              <p
-                className="mt-1 truncate font-mono text-caption-1-regular text-text-secondary"
-                title={task.command ?? ''}
-              >
-                {task.command}
-              </p>
-              <p data-slot="background-output-state" className="mt-1 text-caption-1-regular text-text-secondary">
-                {t(`chat.background.state.${current.state}`)}
-                {current.exit_code != null && ` · ${t('chat.background.exitCode', { code: current.exit_code })}`}
-              </p>
-              <Sheet.CloseTrigger aria-label={t('common.close')} />
-            </Sheet.Header>
-            <Sheet.Body data-sheet-no-drag className="min-h-0 flex-1 overflow-auto">
-              {error ? (
-                <ErrorAlert title={t('chat.background.readFailed')} message={error} />
-              ) : content === null ? (
-                <div role="status" className="flex items-center gap-2 text-body-regular text-text-secondary">
-                  <span aria-hidden>
-                    <Spinner size="sm" />
-                  </span>
-                  {t('chat.background.loading')}
-                </div>
-              ) : (
-                <pre
-                  data-slot="background-output"
-                  className="font-mono text-caption-1-regular whitespace-pre-wrap break-all text-text-primary"
-                >
-                  {content || t('chat.background.empty')}
-                </pre>
-              )}
-            </Sheet.Body>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+    <Drawer
+      isOpen
+      onOpenChange={(open) => !open && onClose()}
+      heading={task.description || t('chat.background.outputTitle')}
+      size="lg"
+      description={
+        <>
+          <span className="m-background-tasks-chip__out-command">{task.command}</span>
+          <span data-slot="background-output-state" className="m-background-tasks-chip__out-state">
+            {t(`chat.background.state.${current.state}`)}
+            {current.exit_code != null && ` · ${t('chat.background.exitCode', { code: current.exit_code })}`}
+          </span>
+        </>
+      }
+    >
+      {error ? (
+        <ErrorAlert title={t('chat.background.readFailed')} message={error} />
+      ) : content === null ? (
+        <div role="status" className="m-background-tasks-chip__loading">
+          <span aria-hidden>
+            <Spinner size="sm" />
+          </span>
+          {t('chat.background.loading')}
+        </div>
+      ) : (
+        <pre data-slot="background-output" className="m-background-tasks-chip__out-pre">
+          {content || t('chat.background.empty')}
+        </pre>
+      )}
+    </Drawer>
   )
 }

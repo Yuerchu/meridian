@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Dropdown, DropdownItem, DropdownPopover, Label } from '@/components/base'
+import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { MoreVertical } from '@keyline-icons/react/two-tone'
 import { Sidebar } from '@/components/base'
@@ -15,28 +15,20 @@ export function RowActionDropdownItems({ actions }: { actions: RowAction[] }) {
   return (
     <>
       {actions.map((action) => (
-        <DropdownItem
+        <MenuItem
           key={action.key}
           id={action.key}
-          textValue={action.label}
-          variant={action.variant === 'destructive' ? 'danger' : undefined}
+          icon={<action.icon />}
+          tone={action.variant === 'destructive' ? 'danger' : 'default'}
           isDisabled={Boolean(action.disabledReason)}
+          // Part of the item's own text, not a tooltip: a disabled item takes
+          // no pointer events, so a tooltip on one is unreachable by mouse and
+          // by screen reader alike. The library reads it as the description.
+          description={action.disabledReason}
           onAction={() => void action.run()}
         >
-          <action.icon className="size-4" />
-          <Label>{action.label}</Label>
-          {/* Part of the item's own text, not a tooltip: a disabled item takes
-              no pointer events, so a tooltip on one is unreachable by mouse and
-              by screen reader alike. */}
-          {action.disabledReason && (
-            <span
-              data-slot="row-action-disabled-reason"
-              className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
-            >
-              {action.disabledReason}
-            </span>
-          )}
-        </DropdownItem>
+          {action.label}
+        </MenuItem>
       ))}
     </>
   )
@@ -69,7 +61,7 @@ export function RowActionsMenu({
   const { t } = useTranslation()
   return (
     <Sidebar.MenuActions>
-      <Dropdown>
+      <MenuTrigger>
         {/* `.sidebar__menu-action` is 24px square. In the mobile sheet it is always visible and is
             the only way to a row's actions — right-click cannot be reached by
             touch — and a miss lands on the row itself, which switches
@@ -80,10 +72,10 @@ export function RowActionsMenu({
           </Sidebar.MenuAction>
           <Tooltip>{t('sidebar.moreActions', { name: label })}</Tooltip>
         </TooltipTrigger>
-        <DropdownPopover placement="bottom end" aria-label={t('sidebar.moreActions', { name: label })}>
+        <Menu placement="bottom end" aria-label={t('sidebar.moreActions', { name: label })}>
           <RowActionDropdownItems actions={actions} />
-        </DropdownPopover>
-      </Dropdown>
+        </Menu>
+      </MenuTrigger>
     </Sidebar.MenuActions>
   )
 }

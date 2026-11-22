@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next'
-import { ListBox } from '@/components/base'
+import './move-dialog.css'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Message } from '@keyline-icons/react/two-tone'
@@ -7,7 +9,6 @@ import { Message } from '@keyline-icons/react/two-tone'
 import type { ProjectInfoResponse } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { ProjectIcon } from './project-icon'
-import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Where a conversation should live: a project, or none.
@@ -47,25 +48,19 @@ export function MoveDialog({
     if (await onMove(projectId)) onOpenChange(false)
   }
 
-  // A list of places, so a list: the registry's menu row (`ListBox.Item`)
-  // rather than a column of `w-full justify-start` Buttons, which on BoardUI's
-  // accent-soft `ghost` drew every destination as a selected blue pill.
+  // A list of places, so a list: the library's `ListBox`, not a column of
+  // buttons. The current location is the disabled row's description rather than
+  // a trailing label, so a screen reader hears where the conversation is filed.
   const NONE = '__none__'
   const destination = (id: string | null, icon: React.ReactNode, label: string) => (
-    <ListBox.Item key={id ?? NONE} id={id ?? NONE} textValue={label} className="gap-2 rounded-2lg p-2">
-      {icon}
-      <span data-slot="move-dialog-destination-label" onPointerEnter={titleIfTruncated} className="truncate">
-        {label}
-      </span>
-      {id === currentProjectId && (
-        <span
-          data-slot="move-dialog-current-location"
-          className="ml-auto shrink-0 text-caption-1-regular text-text-secondary"
-        >
-          {t('moveDialog.currentLocation')}
-        </span>
-      )}
-    </ListBox.Item>
+    <ListBoxItem
+      key={id ?? NONE}
+      id={id ?? NONE}
+      icon={icon}
+      description={id === currentProjectId ? t('moveDialog.currentLocation') : null}
+    >
+      {label}
+    </ListBoxItem>
   )
   const allKeys = [NONE, ...projects.map((project) => project.id)]
 
@@ -75,23 +70,21 @@ export function MoveDialog({
       onOpenChange={onOpenChange}
       heading={t('moveDialog.title')}
       size="sm"
-      // The phone keyboard is not in the dialog's own sizing: pad for it by hand.
-      className="pb-[var(--ime-bottom,0px)]"
+      className="m-move-dialog"
     >
-      <div className="flex flex-col gap-1">
+      <div className="m-move-dialog__body">
         {error && (
-          <p data-slot="move-dialog-error" role="alert" className="mb-1 text-caption-1-regular text-status-danger">
+          <Alert data-slot="move-dialog-error" tone="danger" shouldAnnounce>
             {error}
-          </p>
+          </Alert>
         )}
         <ListBox
           data-slot="move-dialog-destinations"
           aria-label={t('moveDialog.title')}
-          className="gap-1"
           disabledKeys={isPending ? allKeys : [currentProjectId ?? NONE]}
           onAction={(key) => void choose(key === NONE ? null : String(key))}
         >
-          {destination(null, <Message className="size-4 text-text-secondary" />, t('moveDialog.noProject'))}
+          {destination(null, <Message />, t('moveDialog.noProject'))}
           {projects.map((project) =>
             destination(project.id, <ProjectIcon sourceType={project.source_type} />, project.name),
           )}
