@@ -9,8 +9,8 @@ import { copyButtonStrings } from "./copy-button.strings";
 import "./copy-button.css";
 
 /**
- * 复制按钮：复制 API Key、ID、命令这类一段文字。点了以后图标和文字变成"已复制"（失败时"复制失败"）1.6 秒，按钮宽度不变。
- * 代码块自带复制按钮（CodeBlock），不用再放。
+ * 用于一键复制密钥、链接或命令等文本，点击后短暂反馈复制结果并保持按钮宽度稳定。
+ * 代码块内请直接使用 `CodeBlock` 自带的复制功能。
  *
  * @packageDocumentation
  * @category 操作
@@ -18,44 +18,43 @@ import "./copy-button.css";
  */
 
 export interface CopyButtonProps {
-  /** 要复制的文字。也可以是函数（点的时候才取，可以返回 Promise，例如先向服务端要一个临时链接）。 */
+  /** 待复制的文本内容，也可传入同步或异步函数在点击时动态获取。 */
   value: string | (() => string | Promise<string>);
   /**
-   * 按钮文字，同时是读屏名称。写清复制的是什么，例如"复制 API Key"。
+   * 按钮展示文案与读屏名称，建议写明复制对象（如“复制 API Key”）。
    * @default "复制"（英文界面 "Copy"）
    */
   label?: string;
   /**
-   * 只显示图标（label 只用作读屏名称）。放在输入框、代码旁边这类空间小的地方。
+   * 仅显示图标并将 `label` 作为读屏名称，适合输入框旁等紧凑位置。
    * @default false
    */
   iconOnly?: boolean;
   /**
-   * 外观，同 Button。
+   * 按钮外观变体。
    * @default "secondary"
    */
   variant?: "secondary" | "ghost";
   /**
-   * 尺寸，同 Button。
+   * 按钮尺寸。
    * @default "sm"
    */
   size?: "sm" | "md";
-  /** 复制成功后读屏读出的话。 @default "已复制"（英文界面 "Copied"） */
+  /** 复制成功后向读屏器播报的提示语。 @default "已复制"（英文界面 "Copied"） */
   copiedMessage?: string;
-  /** 是否禁用。 */
+  /** 是否禁用按钮。 */
   isDisabled?: boolean;
-  /** 复制完成后调用，参数是是否成功。 */
+  /** 复制结束后的回调，参数表示是否成功。 */
   onCopy?: (ok: boolean) => void;
-  /** 根元素上的类名。 */
+  /** 自定义根元素类名。 */
   className?: string;
-  /** 指向底层的 button 元素。 */
+  /** 指向底层 `button` 元素的引用。 */
   ref?: Ref<HTMLButtonElement>;
 }
 
 /**
- * 复制按钮。基于 Button 和 lib/copy：不是 HTTPS 的页面也能复制；成功、失败都会播报（失败用 assertive）。
- * 三种状态的图标和文字叠放在同一个格子里，只切换显示哪一个：按钮宽度按最宽的那个算，状态变化时不跳动。
- * 读屏名称一直是 label，结果通过播报读出。
+ * 基于 `Button` 实现的一键复制按钮，在非 HTTPS 环境下会自动降级为传统选区复制方案。
+ * 按钮的无障碍名称始终保持为 `label`，复制成功或失败的结果通过实时区域播报，状态切换期间按钮宽度保持不变。
  */
 export function CopyButton({
   value,

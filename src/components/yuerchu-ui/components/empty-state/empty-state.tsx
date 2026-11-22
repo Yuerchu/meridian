@@ -4,8 +4,7 @@ import type { ReactNode, Ref } from "react";
 import "./empty-state.css";
 
 /**
- * 空状态：列表、表格、页面没有内容时，说明为什么是空的、接下来可以做什么。
- * 加载中用 Skeleton；出错用 Alert；搜索没有结果也用这个（说明换个关键词）。
+ * 用于在列表、表格或页面暂无内容时，清晰说明当前原因并引导用户进行下一步操作。
  *
  * @packageDocumentation
  * @category 反馈
@@ -13,32 +12,32 @@ import "./empty-state.css";
  */
 
 export interface EmptyStateProps {
-  /** 一句话说清是什么情况，例如"还没有项目"。（不叫 title：避免和会弹出浏览器原生提示的 title 属性混淆） */
+  /** 简短说明当前状况的标题，例如“还没有接入站点”。 */
   heading: ReactNode;
   /**
-   * 标题级别，按页面结构选。
+   * 标题语义层级，按所在页面或容器大纲结构选择。
    * @default 2
    */
   headingLevel?: 2 | 3 | 4;
-  /** 补充说明：为什么是空的、怎么让它不空。 */
+  /** 补充说明为空的原因及接下来的建议操作。 */
   description?: ReactNode;
-  /** 图标，只做装饰（对读屏隐藏）。 */
+  /** 装饰性图标，渲染时自动对读屏隐藏。 */
   icon?: ReactNode;
-  /** 下一步操作，例如"新建项目"按钮。主操作放最前面。 */
+  /** 引导按钮区，例如“新建项目”，主操作按钮建议放在最前面。 */
   actions?: ReactNode;
   /**
-   * 尺寸。md 用在页面主体；sm 用在表格、列表、弹层里（例如 Table 的 renderEmptyState）。
+   * 组件尺寸：`md` 用于页面主体，`sm` 适合嵌在表格、列表或弹层内（如 `Table` 的 `renderEmptyState`）。
    * @default "md"
    */
   size?: "sm" | "md";
-  /** 根元素上的类名。 */
+  /** 自定义根元素类名。 */
   className?: string;
-  /** 指向根元素。 */
+  /** 根元素引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 空状态。居中排列图标、标题、说明和操作；图标放在一个浅色圆底里。
+ * 空状态占位组件，居中展示图标、标题、补充说明及操作按钮。
  */
 export function EmptyState({ heading, headingLevel = 2, description, icon, actions, size = "md", className, ref }: EmptyStateProps) {
   const Heading = `h${headingLevel}` as const;

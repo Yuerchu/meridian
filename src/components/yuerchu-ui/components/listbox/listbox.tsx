@@ -21,8 +21,7 @@ import { listboxStrings } from "./listbox.strings";
 import "./listbox.css";
 
 /**
- * 选项列表：Select、ComboBox 的下拉部分，也可以单独用作一列可选择的选项。
- * 一组操作用 Menu；导航用 Link。
+ * 展示一列可供单选或多选的选项，既可单独放置在面板中，也用作 Select 和 ComboBox 的下拉列表。
  *
  * @packageDocumentation
  * @category 集合
@@ -30,15 +29,15 @@ import "./listbox.css";
  */
 
 export interface ListBoxProps<T extends object> extends Omit<AriaListBoxProps<T>, "children"> {
-  /** 选项：静态写 ListBoxItem / ListBoxSection；或者配合 items 写成函数，按每一项渲染。 */
+  /** 列表项，可静态传入 ListBoxItem / ListBoxSection，或配合 `items` 传入渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
-  /** 指向底层的 div 元素。 */
+  /** 指向底层 div 元素。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 选项列表。基于 React Aria ListBox：方向键移动、输入首字母跳转、Home / End、多选时 Shift 连选。
- * 没有选项时显示"没有选项"，可以用 renderEmptyState 替换。
+ * 支持键盘方向键移动、首字母跳转、Home / End 及多选 Shift 连选的选项列表。
+ * 列表为空时默认显示“暂无选项”，可通过 `renderEmptyState` 自定义。
  *
  * @promote items, selectionMode, selectedKeys, defaultSelectedKeys, onSelectionChange, disabledKeys, renderEmptyState
  */
@@ -54,16 +53,16 @@ export function ListBox<T extends object>({ className, renderEmptyState, ...prop
 }
 
 export interface ListBoxItemProps<T extends object = object> extends Omit<AriaListBoxItemProps<T>, "children"> {
-  /** 选项文字。 */
+  /** 选项显示内容。 */
   children?: ReactNode;
   /** 选项下方的补充说明。 */
   description?: ReactNode;
-  /** 文字前的图标，只做装饰。 */
+  /** 选项文字前的装饰性图标。 */
   icon?: ReactNode;
 }
 
 /**
- * 一个选项。文字不是纯字符串时要写 textValue，用于输入首字母跳转和读屏。
+ * 单个选项；内容不是纯字符串时请传入 `textValue` 供首字母跳转和读屏朗读。
  */
 export function ListBoxItem<T extends object = object>({ children, description, icon, textValue, className, ...props }: ListBoxItemProps<T>) {
   return (
@@ -101,14 +100,14 @@ export function ListBoxItem<T extends object = object>({ children, description, 
 }
 
 export interface ListBoxSectionProps<T extends object> extends Omit<AriaListBoxSectionProps<T>, "children"> {
-  /** 分组标题。（不叫 title：避免和会弹出浏览器原生提示的 title 属性混淆） */
+  /** 分组标题，避免使用会触发浏览器原生悬浮提示的 title 属性。 */
   header?: ReactNode;
-  /** 组里的选项：静态写 ListBoxItem；或者配合 items 写成函数。 */
+  /** 组内选项，可静态传入 ListBoxItem 或配合 `items` 传入渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
 }
 
 /**
- * 一组选项，带分组标题。读屏会读出分组名。
+ * 带分组标题的一组选项，读屏器会关联朗读分组名称。
  */
 export function ListBoxSection<T extends object>({ header, children, items, className, ...props }: ListBoxSectionProps<T>) {
   return (

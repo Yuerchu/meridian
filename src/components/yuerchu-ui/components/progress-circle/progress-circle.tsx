@@ -5,8 +5,8 @@ import { ProgressBar as AriaProgressBar } from "react-aria-components";
 import "./progress-circle.css";
 
 /**
- * 进度环：地方小、放不下进度条时显示进度，例如文件列表里每个文件的上传进度、按钮里、上下文用量。
- * 有地方写标签时用 ProgressBar；不知道进度用 Spinner（或 isIndeterminate）。
+ * 在空间紧凑的位置展示环形进度，适合文件列表行内上传状态、按钮旁或侧边栏用量提示。
+ * 若空间足够放置文字标签，优先使用 ProgressBar；耗时未知时可改用 Spinner 或开启 `isIndeterminate`。
  *
  * @packageDocumentation
  * @category 反馈
@@ -14,15 +14,15 @@ import "./progress-circle.css";
  */
 
 export interface ProgressCircleProps extends Omit<AriaProgressBarProps, "children" | "className" | "style" | "aria-label"> {
-  /** 读屏名称，例如"正在上传 report.pdf"。进度环旁边没有可见的标签，所以必须写。 */
+  /** 读屏名称，例如“正在上传 2026年度运营周报.pdf”。进度环旁没有可见标签，因此为必填项。 */
   "aria-label": string;
   /**
-   * 尺寸。sm 16px：放在一行文字里；md 24px：列表项、按钮旁；lg 48px：可以在中间显示数值。
+   * 圆环尺寸：`sm`（16px）适合行内文字旁，`md`（24px）适合列表项与按钮旁，`lg`（48px）支持在圆环中心显示数值。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
   /**
-   * 在环中间显示数值（默认是百分比）。只有 lg 放得下，其他尺寸忽略。
+   * 是否在圆环中心显示进度数值（默认百分比），仅在 `lg` 尺寸下生效。
    * @default false
    */
   showValueLabel?: boolean;
@@ -31,8 +31,8 @@ export interface ProgressCircleProps extends Omit<AriaProgressBarProps, "childre
 }
 
 /**
- * 进度环。基于 React Aria ProgressBar：role="progressbar"，读屏读出名称和数值。
- * 颜色和 ProgressBar 一样用 accent；isIndeterminate 时是一段转圈的弧。
+ * 基于 React Aria `ProgressBar` 的环形进度指示器，向辅助技术暴露 `role="progressbar"` 与当前数值。
+ * 填充弧采用强调色；开启 `isIndeterminate` 时渲染为持续旋转的圆弧。
  *
  * @promote value, minValue, maxValue, isIndeterminate, valueLabel, formatOptions, size, showValueLabel
  */

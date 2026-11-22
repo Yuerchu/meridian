@@ -10,8 +10,7 @@ import { Description, FieldError, Label } from "../field/field";
 import "./radio-group.css";
 
 /**
- * 单选组：从两到五个互斥选项里选一个，选项需要一眼看全，例如"计费周期""通知频率"。
- * 选项多时用 Select；立即生效的视图切换用 SegmentedControl。
+ * 在两到五个互斥选项中进行单选的表单控件，支持默认单选、卡片对比与图片缩略图三种形态。
  *
  * @packageDocumentation
  * @category 表单
@@ -19,21 +18,20 @@ import "./radio-group.css";
  */
 
 export interface RadioGroupProps extends Omit<AriaRadioGroupProps, "children"> {
-  /** 整组的标签，例如"计费周期"。 */
+  /** 整组的可见标签，例如“发票类型”。 */
   label?: ReactNode;
-  /** 整组的说明文字。 */
+  /** 整组的补充说明。 */
   description?: ReactNode;
-  /** 校验失败时显示的错误信息，例如"请选择计费周期"。 */
+  /** 校验失败时显示的错误提示，例如“请选择发票类型”。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
-  /** 若干 Radio。 */
+  /** 组内包含的 Radio 选项。 */
   children?: ReactNode;
-  /** 指向根元素。 */
+  /** 指向根元素的引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 单选组。基于 React Aria RadioGroup：整组只占一个 Tab 位置，方向键在选项之间移动并选中；底层是原生 radio。
- * orientation 决定排列方向（默认纵向）。
+ * 基于 React Aria RadioGroup 封装，底层使用原生 radio，整组仅占用一个 Tab 焦点位并以方向键切换选项。
  *
  * @promote value, defaultValue, onChange, orientation, isRequired, isInvalid, isDisabled, isReadOnly, validate, name
  */
@@ -49,22 +47,21 @@ export function RadioGroup({ label, description, errorMessage, children, classNa
 }
 
 export interface RadioProps extends Omit<AriaRadioProps, "children"> {
-  /** 选项文字。整行都可以点击。 */
+  /** 选项显示文字，整行区域均可点击。 */
   children?: ReactNode;
-  /** 选项下方的补充说明，读屏会在聚焦时一并读出。 */
+  /** 选项下方的补充说明，聚焦时随选项一并由读屏软件读出。 */
   description?: ReactNode;
   /**
-   * 外观。card：整张卡片（带边框，可以点）、控件在右边，用于套餐、方案、设置这类每项都有说明的选择；选中时边框加深。
-   * image：图在上、名字在下（主题、布局、模板），选中时描边加角上一个勾；一组都写 image 时排成网格。
+   * 选项展示形态。card 将整行渲染为可点击卡片并把单选圆圈置于右侧；image 在上方展示缩略图并在选中时显示描边与角标。
    * @default "default"
    */
   variant?: "default" | "card" | "image";
-  /** variant="image" 时选项上方的图（主题预览、布局缩略图、模板封面）。图只做装饰，选项的名称写在 children。 */
+  /** 在 variant="image" 时展示的缩略图；图片仅作视觉装饰，选项名称仍需写在 children 中。 */
   image?: ReactNode;
 }
 
 /**
- * 一个选项。value 是这个选项的值。
+ * 单选组内的单个选项，通过 value 指定提交值。
  */
 export function Radio({ children, description, variant = "default", image, className, ...props }: RadioProps) {
   const descriptionId = useId();

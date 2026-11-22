@@ -4,8 +4,7 @@ import type { HTMLAttributes, ReactNode, Ref } from "react";
 import "./badge.css";
 
 /**
- * 徽章：短小的状态或分类标签，例如"实验中""必填""3 个未读"。不能点击。
- * 能点击、能删除的标签用 TagGroup；页面级的提示用 Alert。
+ * 用于在标题、表格或列表项旁展示简短的状态、分类或数量标签。
  *
  * @packageDocumentation
  * @category 展示
@@ -13,26 +12,26 @@ import "./badge.css";
  */
 
 export interface BadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
-  /** 徽章文字，一两个词。状态要写在文字里，不能只靠颜色。 */
+  /** 徽章文案，通常为一两个词。状态含义需体现在文字中，避免只靠颜色区分。 */
   children?: ReactNode;
   /**
-   * 语气。neutral 用于一般分类；accent 用于"新""推荐"这类要引起注意的；success / warning / danger 表示状态。
+   * 徽章语气。`neutral` 用于常规分类，`accent` 用于“上新”“推荐”等需要突出的标签，`success` / `warning` / `danger` 用于表达状态。
    * @default "neutral"
    */
   tone?: "neutral" | "accent" | "success" | "warning" | "danger";
   /**
-   * 尺寸。sm 用于表格、列表行里；md 用于标题旁边。
+   * 徽章尺寸。`sm` 适合表格行与列表项，`md` 适合标题旁。
    * @default "md"
    */
   size?: "sm" | "md";
-  /** 文字前加一个同色圆点，常用于表示在线、运行中这类状态。 */
+  /** 是否在文字前显示同色圆点，常用于在线或运行中等持续状态。 */
   hasDot?: boolean;
-  /** 指向底层的 span 元素。 */
+  /** 根元素引用。 */
   ref?: Ref<HTMLSpanElement>;
 }
 
 /**
- * 徽章。浅底深字，所有语气的对比度都在 4.5 以上。
+ * 静态状态与分类徽章组件。
  */
 export function Badge({ tone = "neutral", size = "md", hasDot, children, className, ...props }: BadgeProps) {
   return (

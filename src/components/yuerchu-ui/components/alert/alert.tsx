@@ -8,8 +8,7 @@ import { alertStrings } from "./alert.strings";
 import "./alert.css";
 
 /**
- * 提示框：页面里一段需要注意的说明，例如"试用还剩 3 天""这个 API 将在下个版本移除"。一直显示，直到条件变化或用户关闭。
- * 操作结果的短暂反馈用 Toast；需要用户处理才能继续的用 Dialog。
+ * 用于在页面或区域内展示需要注意的持久性说明、状态提示或整体错误。
  *
  * @packageDocumentation
  * @category 反馈
@@ -24,30 +23,30 @@ const ICONS = {
 };
 
 export interface AlertProps extends Omit<HTMLAttributes<HTMLDivElement>, "children" | "title" | "role"> {
-  /** 标题：一句话说清是什么情况。（不叫 title：避免和会弹出浏览器原生提示的 title 属性混淆） */
+  /** 提示标题，用简短的一句话概括当前情况。 */
   heading?: ReactNode;
-  /** 正文：补充说明和建议怎么做。 */
+  /** 提示正文，用于补充说明原因或建议操作。 */
   children?: ReactNode;
   /**
-   * 语气，决定底色和图标。neutral 是中性灰（info 不用蓝色）。
+   * 提示语气，决定底色与图标；`neutral` 为中性灰。
    * @default "neutral"
    */
   tone?: "neutral" | "success" | "warning" | "danger";
-  /** 操作按钮，放在正文下方，例如"升级套餐"。 */
+  /** 放置在正文下方的操作按钮，例如“立即续签”。 */
   actions?: ReactNode;
-  /** 传了就显示右上角的关闭按钮，点击时调用。组件不自己隐藏，由使用方决定。 */
+  /** 关闭回调。传入后会在右上角渲染关闭按钮，点击时触发，由外部控制提示框的显示状态。 */
   onDismiss?: () => void;
   /**
-   * 出现时让读屏立即读出。只用于页面加载之后才出现的提示（例如提交后出现的错误）；
-   * 页面一打开就在的提示不要开，读屏用户按顺序读到即可。danger / warning 用 role="alert"，其他用 role="status"。
+   * 出现时是否由读屏立即播报。仅用于页面加载后动态出现的提示；页面初始渲染时已存在的提示请保持关闭。
+   * `danger` 和 `warning` 对应 `role="alert"`，其余语气对应 `role="status"`。
    */
   shouldAnnounce?: boolean;
-  /** 指向根元素。 */
+  /** 根元素引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 提示框。浅底，图标带语气色，文字用正文色。
+ * 区域级提示框组件，按语气渲染对应图标与语义属性。
  */
 export function Alert({
   heading,

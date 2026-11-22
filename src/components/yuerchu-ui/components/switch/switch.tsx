@@ -8,8 +8,7 @@ import { withUiClass } from "../../lib/class-name";
 import "./switch.css";
 
 /**
- * 开关：切换后立即生效的设置，例如"开启通知""深色模式"。
- * 需要点"保存"才生效的选项用 Checkbox。
+ * 用于切换后立即生效设置的开关控件，例如桌面通知或自动更新。
  *
  * @packageDocumentation
  * @category 表单
@@ -17,27 +16,26 @@ import "./switch.css";
  */
 
 export interface SwitchProps extends Omit<AriaSwitchProps, "children"> {
-  /** 设置项的名称。整行（开关 + 文字）都可以点击。写名词短语（"邮件通知"），不要写成"开启邮件通知"这种带动作的句子。 */
+  /** 设置项名称，整行均可点击；建议使用“邮件通知”等名词短语，避免使用带动词的句子。 */
   children?: ReactNode;
-  /** 名称下方的补充说明，读屏会在聚焦时一并读出。 */
+  /** 名称下方的补充说明，聚焦时随名称一并由读屏软件读出。 */
   description?: ReactNode;
   /**
-   * 外观。card：整张卡片（带边框，可以点）、控件在右边，用于套餐、方案、设置这类每项都有说明的选择；选中时边框加深。
+   * 展示形态。card 将整行渲染为带边框的可点击卡片并将开关置于右侧，开启时卡片边框保持不变。
    * @default "default"
    */
   variant?: "default" | "card";
   /**
-   * 尺寸。md 用于表单和设置页；sm 用于表格行、工具栏这类紧凑位置。触屏设备上会自动加大。
+   * 控件尺寸。md 适用于常规表单与设置页，sm 适用于表格行或工具栏等紧凑场景，触屏设备上会自动放大。
    * @default "md"
    */
   size?: "sm" | "md";
-  /** 指向底层的 label 元素。 */
+  /** 指向底层 label 元素的引用。 */
   ref?: Ref<HTMLLabelElement>;
 }
 
 /**
- * 开关。基于 React Aria Switch：底层是带 role="switch" 的原生 checkbox，空格键切换，读屏读出"开 / 关"。
- * 开启态默认用 Ink；在开关或外层区域写 data-control="accent" 换成蓝色。
+ * 基于 React Aria Switch 封装，底层渲染带 role="switch" 的原生 checkbox；可通过设置 data-control="accent" 启用蓝色开启态。
  *
  * @promote isSelected, defaultSelected, onChange, isDisabled, isReadOnly, value, name
  */

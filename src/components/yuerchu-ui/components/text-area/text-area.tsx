@@ -15,8 +15,7 @@ import { textAreaStrings } from "./text-area.strings";
 import "./text-area.css";
 
 /**
- * 多行文本输入框：备注、描述、反馈这类可能写好几行的内容。高度随内容增长。
- * 单行内容用 TextField；富文本用编辑器。
+ * 支持自动增高、字数统计与行内续写建议的多行文本输入框，适用于备注、反馈与长文本录入。
  *
  * @packageDocumentation
  * @category 表单
@@ -24,38 +23,38 @@ import "./text-area.css";
  */
 
 export interface TextAreaProps extends Omit<AriaTextFieldProps, "children" | "type" | "inputMode" | "pattern"> {
-  /** 可见标签。每个输入框都必须有标签；确实不显示标签时，改写 aria-label。 */
+  /** 可见标签。若不显示可见标签，需传入 `aria-label`。 */
   label?: ReactNode;
-  /** 输入框下方的说明文字。 */
+  /** 输入框下方的补充说明文字。 */
   description?: ReactNode;
   /** 校验失败时显示的错误信息。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
-  /** 占位文字，只用来举例，不能代替标签或说明。 */
+  /** 占位文字，仅用于输入示例，不可替代标签或说明文字。 */
   placeholder?: string;
   /**
-   * 最少显示几行。
+   * 最小显示行数。
    * @default 3
    */
   rows?: number;
-  /** 最多长到几行，超出后在框里滚动。不写时一直增长。 */
+  /** 最大显示行数，超出后在框内滚动；未设置时随内容持续增高。 */
   maxRows?: number;
-  /** 指向底层的 textarea 元素。 */
+  /** 指向底层 `textarea` 元素的引用。 */
   ref?: Ref<HTMLTextAreaElement>;
   /**
-   * 行内补全：停顿一会儿、光标在末尾时调用，返回接在后面的续写（灰色显示），没有建议时返回 null 或空字符串。
-   * 用户继续输入、离开输入框时 signal 会中止。Tab 接受全部，Ctrl + → 接受一个词，Esc 取消。
+   * 行内补全回调。当用户停止输入并保持光标位于文本末尾时触发，返回接在光标后的续写建议，无建议时返回 `null` 或空字符串；
+   * 继续输入或失焦时 `signal` 会中止。用户按 `Tab` 接受全部、`Ctrl + →` 接受一个词、按 `Esc` 取消。
    */
   getCompletion?: (text: string, signal: AbortSignal) => Promise<string | null | undefined>;
   /**
-   * 停顿多久（毫秒）后取补全。
+   * 停止输入后等待触发补全请求的延迟（毫秒）。
    * @default 500
    */
   completionDelay?: number;
 }
 
 /**
- * 多行输入框。基于 React Aria TextField + TextArea：标签、说明、错误信息自动关联。
- * 写了 maxLength 时右下角显示"已输入 / 上限"，并通过 aria-describedby 读出。
+ * 多行文本输入框，基于 React Aria TextField 与 TextArea，自动完成标签、说明和错误提示的无障碍关联。
+ * 传入 `maxLength` 时会在右下角展示“已输入 / 上限”计数并通过 `aria-describedby` 关联给读屏。
  *
  * @promote value, defaultValue, onChange, maxLength, isRequired, isInvalid, isDisabled, isReadOnly, validate, name, autoComplete
  */

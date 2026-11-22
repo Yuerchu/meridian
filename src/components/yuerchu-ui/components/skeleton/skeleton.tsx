@@ -9,8 +9,8 @@ import "./skeleton.css";
 const SHIMMER_MS = duration.shimmer;
 
 /**
- * 骨架屏：内容加载出来之前，按内容的大致形状显示的灰色占位块。让页面布局不跳动，也让用户知道这里马上会有内容。
- * 一个按钮、一小块区域在加载：用 Spinner；知道进度：用 ProgressBar。
+ * 在内容尚未就绪时按照大致结构渲染灰色占位块，用于稳定页面排版并传达加载预期。
+ * 局部图标加载或明确进度的任务可分别改用 Spinner 与 ProgressBar。
  *
  * @packageDocumentation
  * @category 反馈
@@ -19,20 +19,20 @@ const SHIMMER_MS = duration.shimmer;
 
 export interface SkeletonProps {
   /**
-   * 形状。text 是一行或几行文字（高度跟着字号），rect 是图片、图表这类块，circle 是头像。
+   * 占位形状：`text` 表示单行或多行文字（高度对齐文字行高），`rect` 用于图片与图表区块，`circle` 用于圆形头像。
    * @default "text"
    */
   shape?: "text" | "rect" | "circle";
   /**
-   * 文字的行数（shape="text" 时）。多行时最后一行短一些，看起来像一段话。
+   * 当 `shape="text"` 时渲染的文本行数；多行模式下最后一行会自动缩短以贴近真实段落。
    * @default 1
    */
   lines?: number;
-  /** 宽度，例如 120、"60%"。text 默认占满，circle 默认 40px。 */
+  /** 占位宽度，支持像素数值或 CSS 长度字符串（如 `120`、`"60%"`）；`text` 默认撑满父容器，`circle` 默认 `40px`。 */
   width?: number | string;
-  /** 高度（rect、circle）。circle 不写时等于宽度。 */
+  /** 占位高度（适用于 `rect` 和 `circle`）；圆形未传入时默认与宽度相等。 */
   height?: number | string;
-  /** 圆角（rect），例如 Reveal 量出来的按钮圆角。不写用 --radius-item。 */
+  /** 矩形占位的圆角大小（如使用测量布局提取的按钮圆角）；未传入时默认采用 `--radius-item`。 */
   radius?: string;
   /** 根元素上的类名。 */
   className?: string;
@@ -41,8 +41,8 @@ export interface SkeletonProps {
 }
 
 /**
- * 骨架屏占位块。对读屏隐藏（aria-hidden）：加载状态由外层容器的 aria-busy 和一段读屏文字说明，见文档。
- * 闪光动画在减弱动效模式下停止。页面上所有骨架的闪光对齐到同一个时间起点：不管什么时候出现，扫过的位置都一致。
+ * 渲染对屏幕阅读器隐藏（`aria-hidden`）的占位骨架块，外层容器应配合 `aria-busy` 与隐藏提示文本播报加载状态。
+ * 同一页面内所有骨架的扫光动画均对齐到统一时间起点，在减弱动效模式下自动停止。
  */
 export function Skeleton({ shape = "text", lines = 1, width, height, radius, className, ref }: SkeletonProps) {
   const own = useRef<HTMLSpanElement>(null);
@@ -64,8 +64,8 @@ export function Skeleton({ shape = "text", lines = 1, width, height, radius, cla
 }
 
 /**
- * 闪光按页面时间对齐：每个骨架出现时，把动画往前拨到"页面时间 mod 周期"的位置（--ui-skeleton-phase）。
- * 在挂载后写，不写进服务端渲染的 style，水合时不会不一致。
+ * 闪光按页面时间对齐：每个骨架出现时，把动画拨到“页面时间 mod 周期”的位置（`--ui-skeleton-phase`）。
+ * 仅在客户端挂载后设置，避免服务端渲染 `style` 与水合结果不一致。
  */
 function useSharedShimmer(ref: { current: HTMLElement | null }) {
   useLayoutEffect(() => {

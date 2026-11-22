@@ -7,8 +7,8 @@ import { spinnerStrings } from "./spinner.strings";
 import "./spinner.css";
 
 /**
- * 加载图标：不知道要等多久的加载，例如加载列表、提交表单。
- * 知道进度时用 ProgressBar；按钮里的等待状态用 Button 的 isPending。
+ * 用于表示耗时未知的加载过程，例如拉取列表数据或等待异步操作响应。
+ * 已知进度时请改用 ProgressBar，按钮内的提交等待请使用 Button 的 `isPending`。
  *
  * @packageDocumentation
  * @category 反馈
@@ -17,12 +17,12 @@ import "./spinner.css";
 
 export interface SpinnerProps {
   /**
-   * 尺寸，对应图标尺寸 --icon-sm / --icon-md / --icon-lg 的 1～2 倍。
+   * 加载图标尺寸，提供小、中、大三种规格。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
   /**
-   * 读屏读出的说明，写清在加载什么，例如"正在加载项目"。
+   * 屏幕阅读器播报的说明文本，建议写明正在加载的具体内容（例如“正在加载干线运单”）。
    * @default "加载中"（英文界面 "Loading"）
    */
   "aria-label"?: string;
@@ -31,8 +31,8 @@ export interface SpinnerProps {
 }
 
 /**
- * 加载图标。是一个不确定进度的 progressbar，读屏读出 aria-label；
- * 转动在减弱动效模式下放慢但不停（它表示"还在进行"，属于必要的动效）。
+ * 渲染不确定进度的 `progressbar` 加载指示器，并向读屏播报 `aria-label`。
+ * 在减弱动效模式下会放慢旋转速度而不停止，以持续标示任务正在进行。
  */
 export function Spinner({ size = "md", "aria-label": ariaLabel, className }: SpinnerProps) {
   const t = useStrings(spinnerStrings);

@@ -12,8 +12,7 @@ import { Input, useAffixes } from "../text-field/text-field";
 import "./number-field.css";
 
 /**
- * 数字输入框：数量、金额、百分比这类数字，按本地格式显示（千分位、货币符号），可以用方向键和按钮加减。
- * 在一个范围里粗略地选值用 Slider；电话、验证码、卡号不是"数字"，用 TextField 或 OTPField。
+ * 用于输入数量、金额、百分比等需要精确控制与步进微调的数值，支持本地化格式显示和方向键、按钮增减。
  *
  * @packageDocumentation
  * @category 表单
@@ -21,29 +20,28 @@ import "./number-field.css";
  */
 
 export interface NumberFieldProps extends Omit<AriaNumberFieldProps, "children"> {
-  /** 可见标签。每个输入框都必须有标签；确实不显示标签时，改写 aria-label。 */
+  /** 可见标签。若不显示可见标签，需传入 `aria-label`。 */
   label?: ReactNode;
-  /** 输入框下方的说明文字，例如范围和单位。 */
+  /** 输入框下方的说明文字，如取值范围和单位说明。 */
   description?: ReactNode;
   /** 校验失败时显示的错误信息。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
   /** 占位文字。 */
   placeholder?: string;
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md / --control-lg。
+   * 控件尺寸。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
-  /** 输入框里左侧的固定文字，例如 "¥"。货币、百分比优先用 formatOptions（跟随语言）；这里放单位这类格式化做不到的文字。读屏作为说明读出。 */
+  /** 输入框左侧的固定前缀文字（如“¥”），读屏会作为补充说明读出。货币和百分比优先使用 `formatOptions`。 */
   prefix?: ReactNode;
-  /** 输入框里右侧的固定文字，例如 "元/月"、"台"、"天"。读屏作为说明读出。 */
+  /** 输入框右侧的固定后缀文字（如“元/月”“台”“天”），读屏会作为补充说明读出。 */
   suffix?: ReactNode;
   /**
-   * 拖动标签调值：按住标签左右拖，每 4px 一个 step；按住 Shift 快十倍，按住 Alt 慢十倍。用在检查器、属性面板这类
-   * 要反复微调数字的地方。只是给鼠标和触屏多一种方式：键盘仍然用方向键，读屏不受影响。需要有可见的 label。
+   * 是否开启按住标签左右拖动调值（每 4px 调整一个 `step`，按住 `Shift` 快十倍，按住 `Alt` 慢十倍），适用于属性面板等需要高频微调的场景，需配合可见 `label` 使用。
    */
   isScrubbable?: boolean;
-  /** 指向底层的 input 元素。 */
+  /** 指向底层 `input` 元素的引用。 */
   ref?: Ref<HTMLInputElement>;
 }
 
@@ -51,9 +49,8 @@ export interface NumberFieldProps extends Omit<AriaNumberFieldProps, "children">
 const PX_PER_STEP = 4;
 
 /**
- * 数字输入框。基于 React Aria NumberField：↑↓ 按 step 增减，PageUp / PageDown 大步增减，Home / End 到最小 / 最大值；
- * 按 formatOptions 和当前语言格式化（UIProvider 固定为中文）；手机上弹出数字键盘。
- * 右侧的 −、+ 按钮不在 Tab 顺序里（键盘用方向键），到达最小 / 最大值时禁用。
+ * 数字输入框，基于 React Aria NumberField。支持方向键按 `step` 增减、`PageUp` / `PageDown` 大步调整与 `Home` / `End` 跳转边界，并按 `formatOptions` 与当前页面语言自动格式化。
+ * 右侧的 `−`、`+` 按钮不参与 `Tab` 顺序，到达边界时自动禁用。
  *
  * @promote value, defaultValue, onChange, minValue, maxValue, step, formatOptions, isRequired, isInvalid, isDisabled, isReadOnly, validate, name
  */

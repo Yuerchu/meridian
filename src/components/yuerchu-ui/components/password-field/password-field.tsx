@@ -14,8 +14,7 @@ import { passwordFieldStrings } from "./password-field.strings";
 import "./password-field.css";
 
 /**
- * 密码输入框：原生 type="password"，带显示 / 隐藏切换和大写锁定提示。
- * 验证码用 OTPField；普通文字用 TextField。
+ * 用于密码和敏感口令输入，基于原生密码输入框提供显隐切换、大写锁定提醒以及“已保存密码”占位状态。
  *
  * @packageDocumentation
  * @category 表单
@@ -24,44 +23,41 @@ import "./password-field.css";
 
 export interface PasswordFieldProps
   extends Omit<AriaTextFieldProps, "children" | "type" | "autoComplete" | "inputMode" | "pattern"> {
-  /** 可见标签。每个输入框都必须有标签；确实不显示标签时，改写 aria-label。 */
+  /** 可见标签。若不显示可见标签，需传入 `aria-label`。 */
   label?: ReactNode;
-  /** 输入框下方的说明文字，例如密码规则。读屏会在聚焦时一并读出。 */
+  /** 输入框下方的说明文字（如密码复杂度要求），读屏会在聚焦时一并读出。 */
   description?: ReactNode;
-  /** 校验失败时显示的错误信息。可以是固定文字，也可以根据校验结果返回文字。 */
+  /** 校验失败时显示的错误信息，可传入固定文案或根据校验结果动态返回。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
-  /** 占位文字。密码框一般不需要。 */
+  /** 占位文字，密码输入框一般无需设置。 */
   placeholder?: string;
   /**
-   * 用途，必填。登录写 current-password，注册和修改密码写 new-password。
-   * 写错的话，密码管理器不会自动填充，也不会提示保存或生成密码。
+   * 密码用途（必填）。登录场景传入 `current-password`，注册或修改密码传入 `new-password`，以便密码管理器正确填充或提示保存。
    */
   autoComplete: "current-password" | "new-password";
   /**
-   * 密码规则，写给 Safari 生成强密码用，例如 "minlength: 12; required: lower; required: upper; required: digit;"。
-   * 只在 autoComplete="new-password" 时有意义。格式见 Apple 的 Password Rules Validation Tool。
+   * 密码生成规则，供 Safari 在 `autoComplete="new-password"` 时自动生成强密码，如 `minlength: 12; required: lower; required: upper; required: digit;`。
    */
   passwordRules?: string;
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md / --control-lg。触屏设备上会自动加高，字号也会变成 16px。
+   * 控件尺寸。触屏设备上会自动适配最小触控高度与 16px 字号。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
   /**
-   * 已保存密码（"记住密码但不自动登录"）。输入框的值保持为空，只画出圆点让它看起来已填写，并隐藏显示密码按钮；
-   * 必填和自定义校验暂停。用户开始输入、按退格或被自动填充时，保存的密码作废并调用 onSavedPasswordDiscard。
-   * 提交时值为空，由业务代码改用自己持有的凭证（例如长期 token）。不要在网页里保存真密码。
+   * 是否展示“已保存密码”占位状态（用于记住密码但不自动登录）。开启后输入框值为空、仅渲染占位圆点并隐藏显隐切换按钮，同时暂停必填与自定义校验；
+   * 用户开始输入、按退格或触发自动填充时，会丢弃该状态并调用 `onSavedPasswordDiscard`。
    */
   hasSavedPassword?: boolean;
-  /** 保存的密码被用户替换或清除时调用。业务代码在这里丢弃保存的凭证。 */
+  /** 已保存密码状态被用户输入或退格清除时触发，可用于同步丢弃业务侧持有的凭证。 */
   onSavedPasswordDiscard?: () => void;
-  /** 指向底层的 input 元素。 */
+  /** 指向底层 `input` 元素的引用。 */
   ref?: Ref<HTMLInputElement>;
 }
 
 /**
- * 密码框。始终是原生 type="password"：输入法关闭、读屏不念字符、密码管理器能识别。
- * "显示密码"只切换 type，并固定关闭拼写检查（否则明文会被发到云端拼写检查）；表单提交前自动切回隐藏。
+ * 密码输入框，基于原生 `type="password"` 实现输入法屏蔽、读屏掩码与密码管理器兼容；
+ * 切换明文时保持关闭拼写检查与自动更正，并在表单提交前自动切回密文。
  *
  * @promote value, defaultValue, onChange, isRequired, isInvalid, isDisabled, isReadOnly, validate, minLength, name
  */

@@ -1,0 +1,195 @@
+@layer components {
+  /* ---------- 区域：默认顶部居中；也可以放右下角。最新的一条总是离屏幕边缘最近（React Aria 把最新的排在最前） ---------- */
+  .ui-toast-region {
+    position: fixed;
+    z-index: var(--z-toast);
+    display: flex;
+    gap: var(--space-2);
+    width: min(360px, calc(100vw - 2 * var(--space-4)));
+    margin: 0;
+    padding: 0;
+    outline: 1px solid transparent;
+  }
+
+  .ui-toast-region[data-placement="top"] {
+    /* 刘海屏：避开状态栏 */
+    inset-block-start: max(var(--space-4), env(safe-area-inset-top));
+    inset-inline: 0;
+    flex-direction: column; /* 新的在最上面 */
+    margin-inline: auto;
+  }
+
+  .ui-toast-region[data-placement="bottom-end"] {
+    inset-block-end: max(var(--space-4), env(safe-area-inset-bottom));
+    inset-inline-end: var(--space-4);
+    flex-direction: column-reverse; /* 新的在最下面 */
+  }
+
+  .ui-toast-region[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+    border-radius: var(--radius-panel);
+  }
+
+  /* ---------- 一条提示 ---------- */
+  .ui-toast {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    padding: var(--space-3);
+    padding-inline-start: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-floating);
+    outline: 1px solid transparent; /* 高对比度模式下显示边界 */
+    position: relative;
+    overflow: clip; /* 倒计时细条跟着圆角 */
+  }
+
+  /* 倒计时：底边一条细线，从满缩到空（时长就是这条提示的显示时间），从文字开始的一侧缩回去。
+     悬停、聚焦、窗口失去焦点（data-paused）或正在拖走（data-swiping）时和计时一起暂停 */
+  .ui-toast__countdown {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-end: 0;
+    height: 2px;
+    background: var(--border-strong);
+    transform-origin: left center;
+    animation: ui-toast-countdown var(--ui-toast-timeout) var(--ease-linear) forwards;
+    pointer-events: none;
+  }
+
+  .ui-toast__countdown:dir(rtl) {
+    transform-origin: right center;
+  }
+
+  .ui-toast:is([data-paused], [data-swiping]) .ui-toast__countdown {
+    animation-play-state: paused;
+  }
+
+  @keyframes ui-toast-countdown {
+    to {
+      scale: 0 1;
+    }
+  }
+
+  /* 图标和文字：从这里开始横着拖走（见 SwipeCard）；位置和透明度由 Motion 驱动 */
+  .ui-toast__main {
+    display: flex;
+    flex: 1;
+    align-items: flex-start;
+    gap: var(--space-2);
+    min-width: 0;
+    cursor: grab;
+    touch-action: pan-y;
+    user-select: none;
+  }
+
+  .ui-toast[data-swiping],
+  .ui-toast[data-swiping] .ui-toast__main {
+    cursor: grabbing;
+  }
+
+  .ui-toast__icon {
+    flex: none;
+    display: inline-flex;
+    /* 和标题第一行垂直居中 */
+    margin-block: calc((1lh - var(--icon-lg)) / 2);
+    color: var(--text-secondary);
+  }
+
+  .ui-toast__icon svg {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+  }
+
+  .ui-toast[data-tone="success"] .ui-toast__icon {
+    color: var(--success-fg);
+  }
+
+  .ui-toast[data-tone="warning"] .ui-toast__icon {
+    color: var(--warning-fg);
+  }
+
+  .ui-toast[data-tone="danger"] .ui-toast__icon {
+    color: var(--danger-fg);
+  }
+
+  .ui-toast__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-toast .ui-toast__progress {
+    width: 100%;
+  }
+
+  .ui-toast__content {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+    font: var(--text-body);
+  }
+
+  .ui-toast__title {
+    font: var(--text-body-medium);
+  }
+
+  .ui-toast__description {
+    font: var(--text-small);
+    color: var(--text-secondary);
+  }
+
+  .ui-toast .ui-toast__close {
+    margin-block: calc((1lh - var(--control-sm)) / 2);
+  }
+
+  /* ---------- 进出场（View Transitions，只作用于提示，不影响页面自己的视图过渡） ---------- */
+  ::view-transition-group(*.ui-toast) {
+    animation-duration: var(--dur-standard);
+    animation-timing-function: var(--ease-spring);
+  }
+
+  /* 进场从屏幕边缘那一侧来：顶部的往下落，底部的往上升 */
+  ::view-transition-new(*.ui-toast-from-top):only-child {
+    animation: ui-toast-in-top var(--dur-standard) var(--ease-enter);
+  }
+
+  ::view-transition-new(*.ui-toast-from-bottom):only-child {
+    animation: ui-toast-in var(--dur-standard) var(--ease-enter);
+  }
+
+  ::view-transition-old(*.ui-toast):only-child {
+    animation: ui-toast-out var(--dur-fast) var(--ease-exit) forwards;
+  }
+
+  @keyframes ui-toast-in {
+    from {
+      opacity: 0;
+      translate: 0 calc(3 * var(--enter-distance));
+      scale: var(--enter-scale);
+    }
+  }
+
+  @keyframes ui-toast-in-top {
+    from {
+      opacity: 0;
+      translate: 0 calc(-3 * var(--enter-distance));
+      scale: var(--enter-scale);
+    }
+  }
+
+  @keyframes ui-toast-out {
+    to {
+      opacity: 0;
+      scale: var(--enter-scale);
+    }
+  }
+}

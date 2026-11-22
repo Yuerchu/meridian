@@ -166,6 +166,8 @@
     --text-caption: 400 12px/18px var(--font-sans); /* 说明文字、徽章、时间 */
     --text-label: 500 11px/16px var(--font-sans); /* 全大写分组标签 */
     --text-code: 400 13px/20px var(--font-mono); /* 代码块 */
+    /* 系统表情字形，不下载字体 */
+    --text-emoji: 400 22px/30px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", emoji, sans-serif;
     --tracking-tight: -0.012em; /* 只用于 22px 以上的标题 */
     --tracking-label: 0.06em; /* 全大写标签 */
     --text-code-scale: 0.92em; /* 行内代码相对周围文字 */

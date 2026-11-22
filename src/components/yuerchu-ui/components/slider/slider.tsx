@@ -8,53 +8,49 @@ import { withUiClass } from "../../lib/class-name";
 import "./slider.css";
 
 /**
- * 滑块：在一个范围里拖动选值，例如音量、透明度、价格区间。传数组时是区间（两个滑块）。
- * 需要精确数值时用 NumberField（或者两者一起用）。也可以是几个带名字的档位（stops），例如思考强度"关闭 / 低 / 中 / 高 / 最高"。
+ * 在连续范围或有序档位中拖动选值的滑块控件，支持单值、区间以及跟随滑块的数值气泡。
  *
  * @packageDocumentation
  * @category 表单
  * @status 实验中
  */
 
-/** 一个档位：名字，以及停在这一档时显示在滑块下面的说明。 */
+/** 单个档位的配置项，包含名称以及停在该档位时显示的说明。 */
 export interface SliderStop {
-  /** 档位的名字，例如"高"。显示在标签右边，读屏读的也是它。 */
+  /** 档位名称（例如“高”），显示在标签右侧并供读屏播报。 */
   label: string;
-  /** 停在这一档时滑块下面的一行说明，例如"最慢，用量最多"。读屏作为滑块的描述。 */
+  /** 停在该档位时显示在滑块下方的说明（例如“最慢，用量最多”），同时作为读屏描述。 */
   description?: string;
 }
 
 export interface SliderProps<T extends number | number[]> extends Omit<AriaSliderProps<T>, "children"> {
-  /** 可见标签。不显示时写 aria-label。 */
+  /** 可见标签；未显示可见标签时需传入 aria-label。 */
   label?: ReactNode;
   /**
-   * 显示当前值（按 formatOptions 格式化）。true：标签右边；"thumb"：每个滑块上方一个小气泡（区间滑块、轨道很长时更好对照）；false：不显示。
+   * 当前数值的显示位置：true 显示在标签右侧，“thumb”在每个滑块上方显示跟随气泡，false 则不显示。
    * @default true
    */
   showValue?: boolean | "thumb";
-  /** 区间滑块两个滑块各自的读屏名称，例如 ["最低价", "最高价"]。 */
+  /** 区间滑块中两个滑块各自的读屏名称，例如 `["最低价", "最高价"]`。 */
   thumbLabels?: string[];
   /**
-   * 带名字的档位，从小到大。写了以后滑块只能停在这些档位上（值是档位的序号，从 0 开始；minValue / maxValue / step 不再起作用），
-   * 每一档一个刻度，标签右边和读屏都是档位的名字；轨道变粗，滑块在轨道里面。只用于横向的单个值。
+   * 按从低到高排列的命名档位。传入 stops 后滑块只能停留在对应档位，值为从 0 开始的索引，且仅支持横向单值模式。
    */
   stops?: (string | SliderStop)[];
-  /** 轨道两端下面的说明，例如 ["更快", "更深入"]，说明往哪边拖意味着什么。 */
+  /** 轨道两端下方展示的方向提示文案，例如 `["更快", "更深入"]`。 */
   endLabels?: [ReactNode, ReactNode];
   /**
-   * 停在最后一档时强调：accent 色从滑块漫过整条轨道（越来越慢），之后不时有一道浪花扫过。用在"最高档有额外代价"的场合，
-   * 例如最高的思考强度。需要 stops。减弱动效时直接变色，不动。
+   * 是否在停留在最后一档时启用强调提示与波纹效果（需配合 stops 使用），适用于“最高档有额外代价”的场景；减弱动效模式下直接切换颜色。
    */
   emphasizeLast?: boolean;
-  /** 表单字段名：提交表单时带上当前值（区间时同名提交两个值）。 */
+  /** 表单提交字段名，区间滑块会以同名提交两个数值。 */
   name?: string;
-  /** 指向根元素。 */
+  /** 指向根元素的引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 滑块。基于 React Aria Slider：方向键按 step 移动，PageUp / PageDown 大步移动，Home / End 到两端；
- * 底层是原生 range input，读屏读出数值（按 formatOptions 格式化）；有档位时读档位的名字。
+ * 基于 React Aria Slider 封装，底层使用原生 range input，支持方向键步进、区间双滑块以及档位读屏名称映射。
  *
  * @promote value, defaultValue, onChange, name, onChangeEnd, minValue, maxValue, step, formatOptions, isDisabled, orientation, stops, endLabels, emphasizeLast
  */
@@ -108,8 +104,7 @@ export function Slider<T extends number | number[]>({
                   describedBy={hasDescriptions ? descriptionId : undefined}
                 />
               ))}
-              {/* 数值气泡：和滑块分开放（滑块拖动缩小时气泡不跟着缩），按位置对齐滑块。
-                  读屏从滑块本身读数值，气泡只给眼睛看 */}
+              {/* 数值气泡：与滑块分开放置以避免拖动缩小时跟随缩放，读屏直接读取滑块数值，气泡仅作视觉展示 */}
               {showValue === "thumb"
                 ? state.values.map((v, i) => (
                     <span

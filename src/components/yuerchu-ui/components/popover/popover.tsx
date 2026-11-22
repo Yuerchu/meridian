@@ -7,8 +7,7 @@ import { withUiClass } from "../../lib/class-name";
 import "./popover.css";
 
 /**
- * 弹层外壳：定位、进退场动画、圆角和阴影。Select、Menu、ComboBox 的下拉部分都用它。
- * 一般不直接使用；需要点击后弹出一块自定义内容时，配合 DialogTrigger 使用。
+ * 为触发元素提供自动定位、边界翻转与进退场过渡的弹出层容器，用于承载快捷面板或作为下拉组件外壳。
  *
  * @packageDocumentation
  * @category 弹层
@@ -16,15 +15,14 @@ import "./popover.css";
  */
 
 export interface PopoverProps extends Omit<AriaPopoverProps, "children"> {
-  /** 弹层内容。 */
+  /** 弹层内部展示的内容。 */
   children?: ReactNode;
-  /** 指向弹层的 div 元素。 */
+  /** 指向弹层根元素的引用。 */
   ref?: Ref<HTMLElement>;
 }
 
 /**
- * 弹层。基于 React Aria Popover：自动定位和翻转、点外面或按 Esc 关闭、关闭后焦点回到触发器。
- * 进场从触发器方向淡入并移动 --enter-distance，退场更快（--dur-fast）。
+ * 基于 React Aria Popover 封装，支持自动定位翻转、点击外部或按 Esc 关闭并将焦点归还触发器。
  *
  * @promote placement, offset, isOpen, onOpenChange, triggerRef
  */

@@ -16,8 +16,7 @@ import { selectStrings } from "./select.strings";
 import "./select.css";
 
 /**
- * 下拉选择：从一组固定选项里选一个（或几个）。选项用 ListBoxItem / ListBoxSection。
- * 选项少于 5 个且需要一眼看全时用 RadioGroup；需要输入搜索时用 ComboBox。
+ * 下拉选择器，用于从一组固定选项中进行单选或多选，配合 `ListBoxItem` 和 `ListBoxSection` 组织列表项。
  *
  * @packageDocumentation
  * @category 表单
@@ -29,23 +28,23 @@ type SelectMode = "single" | "multiple";
 
 export interface SelectProps<T extends object, M extends SelectMode = "single">
   extends Omit<AriaSelectProps<T, M>, "children" | "items"> {
-  /** 可见标签。每个下拉框都必须有标签；确实不显示标签时，改写 aria-label。 */
+  /** 可见标签；需要隐藏可见标签时请传入 `aria-label`。 */
   label?: ReactNode;
-  /** 下拉框下方的说明文字。 */
+  /** 下拉框下方的辅助说明文字。 */
   description?: ReactNode;
   /** 校验失败时显示的错误信息。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md / --control-lg。触屏设备上会自动加高。
+   * 控件尺寸，对应高度 `--control-sm`、`--control-md`、`--control-lg`，触屏设备会自动增加点击高度。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
-  /** 选项数据。配合函数形式的 children 使用；静态选项直接写 ListBoxItem，不需要 items。 */
+  /** 选项数据源，仅在配合渲染函数形式的 `children` 时需要传入。 */
   items?: Iterable<T>;
-  /** 选项：静态写 ListBoxItem / ListBoxSection；或者配合 items 写成函数。 */
+  /** 选项内容，可直接传入静态 `ListBoxItem` / `ListBoxSection`，或配合 `items` 传入渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
   /**
-   * 有值时在右侧显示清除按钮。清除按钮不在 Tab 顺序里：键盘在触发器上按 Delete / Backspace 清除。
+   * 有选中值时是否在右侧显示清除按钮（不进入 `Tab` 键序，键盘用户在触发器上按 `Delete` 或 `Backspace` 即可清除）。
    * @default false
    */
   isClearable?: boolean;
@@ -54,8 +53,7 @@ export interface SelectProps<T extends object, M extends SelectMode = "single">
 }
 
 /**
- * 下拉选择。基于 React Aria Select：底层带一个隐藏的原生 select，表单提交、自动填充都能用；
- * 触发器聚焦时可以直接输入首字母选择，不用先打开。selectionMode="multiple" 时可以多选。
+ * 下拉选择器，基于 React Aria `Select` 封装。内置隐藏原生 `select` 以支持表单提交与自动填充，设置 `selectionMode="multiple"` 可开启多选。
  *
  * @promote selectedKey, defaultSelectedKey, onSelectionChange, selectionMode, placeholder, isRequired, isInvalid, isDisabled, disabledKeys, name, autoComplete
  */

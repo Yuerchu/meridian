@@ -1,0 +1,225 @@
+@layer components {
+  /* ---------- 遮罩 ---------- */
+  .ui-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    height: var(--visual-viewport-height, 100dvh);
+    background: var(--overlay);
+  }
+
+  /* 往下拖底部抽屉时遮罩跟着变淡（--ui-drawer-drag-progress 由 JS 写，0~1）。
+     只淡化背景色：抽屉在遮罩里面，改 opacity 会把抽屉也变透明 */
+  .ui-drawer-overlay[data-side="bottom"] {
+    background: color-mix(in srgb, var(--overlay) calc((1 - var(--ui-drawer-drag-progress, 0)) * 100%), transparent);
+    transition: background-color var(--dur-spring) var(--ease-standard);
+  }
+
+  .ui-drawer-overlay[data-dragging] {
+    transition-duration: var(--dur-instant);
+  }
+
+  .ui-drawer-overlay[data-entering] {
+    animation: ui-drawer-fade var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-drawer-overlay[data-exiting] {
+    animation: ui-drawer-fade calc(var(--dur-standard) * 0.7) var(--ease-exit) reverse forwards;
+  }
+
+  @keyframes ui-drawer-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* ---------- 抽屉 ---------- */
+  .ui-drawer {
+    --ui-drawer-size: 480px;
+    --ui-drawer-padding: var(--space-6);
+
+    position: absolute;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-floating);
+    outline: 1px solid transparent; /* 高对比度模式下显示边界 */
+  }
+
+  .ui-drawer[data-size="sm"] {
+    --ui-drawer-size: 360px;
+  }
+
+  .ui-drawer[data-size="lg"] {
+    --ui-drawer-size: 640px;
+  }
+
+  /* 左右：贴着边，占满高度；只有朝里的一边是圆角 */
+  .ui-drawer:is([data-side="right"], [data-side="left"]) {
+    inset-block: 0;
+    width: min(var(--ui-drawer-size), 100%);
+  }
+
+  .ui-drawer[data-side="right"] {
+    inset-inline-end: 0;
+    border-start-start-radius: var(--radius-surface);
+    border-end-start-radius: var(--radius-surface);
+    --ui-drawer-from: 100% 0;
+  }
+
+  .ui-drawer[data-side="left"] {
+    inset-inline-start: 0;
+    border-start-end-radius: var(--radius-surface);
+    border-end-end-radius: var(--radius-surface);
+    --ui-drawer-from: -100% 0;
+  }
+
+  .ui-drawer[data-side="right"]:dir(rtl) {
+    --ui-drawer-from: -100% 0;
+  }
+
+  .ui-drawer[data-side="left"]:dir(rtl) {
+    --ui-drawer-from: 100% 0;
+  }
+
+  /* 底部：占满宽度，高度跟内容，最多 size 对应的比例 */
+  .ui-drawer[data-side="bottom"] {
+    inset-inline: 0;
+    inset-block-end: 0;
+    max-height: 60%;
+    border-start-start-radius: var(--radius-surface);
+    border-start-end-radius: var(--radius-surface);
+    --ui-drawer-from: 0 100%;
+  }
+
+  /* 底部抽屉可以往下拖关闭：拖动和弹回由 Motion 写 transform（见 drawer.tsx），这里不用过渡 */
+
+  /* 顶部的小横条：提示可以往下拖 */
+  .ui-drawer__grip {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    left: 50%;
+    z-index: 1;
+    width: 36px;
+    height: 4px;
+    border-radius: var(--radius-pill);
+    background: var(--border-strong);
+    translate: -50% 0;
+    pointer-events: none;
+  }
+
+  .ui-drawer__header[data-swipe] {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .ui-drawer[data-dragging] .ui-drawer__header[data-swipe] {
+    cursor: grabbing;
+  }
+
+  .ui-drawer[data-side="bottom"][data-size="sm"] {
+    max-height: 40%;
+  }
+
+  .ui-drawer[data-side="bottom"][data-size="lg"] {
+    max-height: 85%;
+  }
+
+  /* 滑进来：从自己那一边整个移进来。退场用 --dur-standard 的倍数，减弱模式下才会归零 */
+  .ui-drawer[data-entering] {
+    animation: ui-drawer-slide var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-drawer[data-exiting] {
+    animation: ui-drawer-slide calc(var(--dur-standard) * 0.7) var(--ease-exit) reverse forwards;
+  }
+
+  @keyframes ui-drawer-slide {
+    from {
+      translate: var(--ui-drawer-from);
+    }
+  }
+
+  /* ---------- 内部：标题、底部固定，中间滚动 ---------- */
+  .ui-drawer__dialog {
+    position: relative;
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    outline: 1px solid transparent;
+  }
+
+  .ui-drawer__header {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--ui-drawer-padding) var(--ui-drawer-padding) var(--space-3);
+    /* 给右上角的关闭按钮留位置 */
+    padding-inline-end: calc(var(--ui-drawer-padding) + var(--space-8));
+  }
+
+  .ui-drawer__title {
+    margin: 0;
+    font: var(--text-title-3);
+  }
+
+  .ui-drawer__description {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  /* description 是元素（一段说明加一个列表、<dl>）时外层是 div：块之间留一点距离，去掉浏览器默认的上下外边距 */
+  .ui-drawer__description > :is(p, ul, ol, dl) {
+    margin-block: 0;
+  }
+
+  .ui-drawer__description > * + :is(p, ul, ol, dl, div) {
+    margin-block-start: var(--space-2);
+  }
+
+  .ui-drawer__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 0;
+    padding: var(--space-3) var(--ui-drawer-padding) var(--ui-drawer-padding);
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-drawer__footer {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--ui-drawer-padding) var(--ui-drawer-padding);
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* 带上外层类名：比 .ui-button 的优先级高，不依赖 CSS 加载顺序 */
+  .ui-drawer .ui-drawer__close {
+    position: absolute;
+    inset-block-start: var(--space-4);
+    inset-inline-end: var(--space-4);
+  }
+
+  /* 窄屏：按钮纵向铺满，主要操作（最后一个）在最上面 */
+  @media (width < 480px) {
+    .ui-drawer {
+      --ui-drawer-padding: var(--space-4);
+    }
+
+    .ui-drawer__footer {
+      flex-direction: column-reverse;
+    }
+  }
+}

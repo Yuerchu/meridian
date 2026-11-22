@@ -9,8 +9,7 @@ import { Label } from "../field/field";
 import "./tag-group.css";
 
 /**
- * 标签组：一组可以删除或选择的标签，例如已选的筛选条件、邮件的收件人、文章的标签。
- * 只展示状态、不能操作的用 Badge；从一组选项里选值用 Select / CheckboxGroup。
+ * 展示一组可删除或可多选的标签，常用于已选筛选条件、接收人列表或内容分类。
  *
  * @packageDocumentation
  * @category 集合
@@ -18,28 +17,27 @@ import "./tag-group.css";
  */
 
 export interface TagGroupProps<T extends object> extends Omit<AriaTagGroupProps, "children"> {
-  /** 整组的标签，例如"已选条件"。不显示时写 aria-label。 */
+  /** 标签组的可见标题，例如“已选条件”；不显示标题时需传入 `aria-label`。 */
   label?: ReactNode;
-  /** 整组的说明文字。 */
+  /** 标签组下方的补充说明文字。 */
   description?: ReactNode;
-  /** 标签数据，配合函数形式的 children。 */
+  /** 标签数据源，配合函数形式的 `children` 使用。 */
   items?: Iterable<T>;
-  /** 若干 Tag；或者配合 items 写成函数。 */
+  /** 若干 `Tag` 子元素，或配合 `items` 使用的渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
-  /** 没有标签时显示的内容。 */
+  /** 没有标签时展示的空状态内容。 */
   renderEmptyState?: TagListProps<T>["renderEmptyState"];
   /**
-   * 尺寸。sm 用于表格、列表里；md 是默认。
+   * 标签尺寸规格；`sm` 适用于表格或紧凑列表，`md` 为默认尺寸。
    * @default "md"
    */
   size?: "sm" | "md";
-  /** 指向根元素。 */
+  /** 指向根元素的引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 标签组。基于 React Aria TagGroup：整组一个 Tab 位置，方向键在标签间移动；
- * 写了 onRemove 时每个标签有删除按钮，聚焦标签按 Backspace / Delete 也能删；selectionMode 时可以选择（筛选标签）。
+ * 标签集合容器。基于 React Aria TagGroup 实现，整组在页面中仅占用一个 `Tab` 焦点位，内部通过方向键移动；传入 `onRemove` 时支持点击删除按钮或按 `Backspace` / `Delete` 移除标签，传入 `selectionMode` 时支持作为筛选标签选择。
  *
  * @promote onRemove, selectionMode, selectedKeys, defaultSelectedKeys, onSelectionChange, disabledKeys
  */
@@ -69,12 +67,12 @@ export function TagGroup<T extends object>({
 }
 
 export interface TagProps extends Omit<AriaTagProps, "children"> {
-  /** 标签文字。不是纯字符串时写 textValue。 */
+  /** 标签文字内容；非纯字符串内容时请同步传入 `textValue`。 */
   children?: ReactNode;
 }
 
 /**
- * 一个标签。TagGroup 写了 onRemove 时自动带删除按钮（读屏名称"移除"，跟随语言）。
+ * 单个标签项；当所属 `TagGroup` 传入 `onRemove` 时自动附带可点击的删除按钮（读屏名称默认为“移除”）。
  */
 export function Tag({ children, textValue, className, ...props }: TagProps) {
   return (

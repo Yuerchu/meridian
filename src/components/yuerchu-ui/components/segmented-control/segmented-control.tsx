@@ -10,8 +10,7 @@ import { useSlidingIndicator } from "../../lib/sliding-indicator";
 import "./segmented-control.css";
 
 /**
- * 分段控件：在两到五个互斥的选项里选一个，立即生效，例如"列表 / 看板""亮色 / 暗色 / 跟随系统"。
- * 切换的是带独立面板的内容时用 Tabs；选项多或者需要放进表单时用 RadioGroup 或 Select。
+ * 用于在两到五个互斥选项之间切换并立即生效的分段选择控件，例如视图切换或界面主题选择。
  *
  * @packageDocumentation
  * @category 表单
@@ -23,26 +22,25 @@ export interface SegmentedControlProps
     ToggleButtonGroupProps,
     "children" | "selectionMode" | "selectedKeys" | "defaultSelectedKeys" | "onSelectionChange" | "disallowEmptySelection"
   > {
-  /** 若干 Segment。 */
+  /** 包含若干 Segment 选项。 */
   children?: ReactNode;
   /** 当前选中项的 id（受控）。 */
   selectedKey?: Key;
   /** 默认选中项的 id（非受控）。 */
   defaultSelectedKey?: Key;
-  /** 选中项变化时调用。 */
+  /** 选中项变化时触发的回调。 */
   onSelectionChange?: (key: Key) => void;
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md。
+   * 控件尺寸，对应标准小号与中号控件高度。
    * @default "md"
    */
   size?: "sm" | "md";
-  /** 指向根元素。 */
+  /** 指向根元素的引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 分段控件。基于 React Aria ToggleButtonGroup（单选、不能取消）：读屏读成一组单选按钮，
- * 方向键在选项之间移动。选中项是灰色底槽上浮起的白块（同 Tabs pill）。必须写 aria-label。
+ * 基于单选且不可取消的 ToggleButtonGroup 封装，提供滑动指示器与溢出横向滚动支持，使用时需传入 aria-label。
  *
  * @promote aria-label, isDisabled, orientation
  */
@@ -91,16 +89,16 @@ export function SegmentedControl({
 const FADE = 24;
 
 export interface SegmentProps extends Omit<ToggleButtonProps, "children" | "isSelected" | "defaultSelected" | "onChange"> {
-  /** 选项的 id，和 SegmentedControl 的 selectedKey 对应。 */
+  /** 选项唯一标识，与 SegmentedControl 的 selectedKey 对应。 */
   id: Key;
-  /** 选项文字。只有图标时写 aria-label。 */
+  /** 选项显示文字；若仅展示图标，则必须传入 aria-label。 */
   children?: ReactNode;
-  /** 文字前的图标，只做装饰。 */
+  /** 文字前置的装饰图标。 */
   icon?: ReactNode;
 }
 
 /**
- * 一个选项。
+ * 分段控件内的单个选项。
  */
 export function Segment({ children, icon, className, ...props }: SegmentProps) {
   return (

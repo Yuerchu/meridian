@@ -29,8 +29,7 @@ import { tabsStrings } from "./tabs.strings";
 import "./tabs.css";
 
 /**
- * 标签页：在同一位置切换几块平级的内容，一次只看一块。
- * 切换的是数据的不同视图（列表 / 看板）、且不需要面板时用 SegmentedControl；切换页面用导航链接。
+ * 在同一区域内切换多块平级内容，每次仅展示其中一块。
  *
  * @packageDocumentation
  * @category 导航
@@ -38,20 +37,19 @@ import "./tabs.css";
  */
 
 export interface TabsProps extends Omit<AriaTabsProps, "children"> {
-  /** TabList 和若干 TabPanel。 */
+  /** 包含 `TabList` 与若干 `TabPanel` 子元素。 */
   children?: ReactNode;
   /**
-   * 外观。underline 是带下划线的标签，用于页面里的主要分区；pill 是灰底上的白色块，用于卡片、面板里的次级切换。
+   * 视觉样式；`underline` 为带下划线的标签栏，适合页面级主要分区，`pill` 为置于底槽上的浮起滑块，适合卡片或面板内的次级切换。
    * @default "underline"
    */
   variant?: "underline" | "pill";
-  /** 指向根元素。 */
+  /** 指向根元素的引用。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 标签页容器。基于 React Aria Tabs：方向键在标签之间移动并立即切换（keyboardActivation="manual" 时按 Enter 才切换）。
- * 选中指示条从旧标签滑到新标签；颜色走 --control-on，区域上写 data-control="accent" 变蓝。
+ * 标签页容器。基于 React Aria Tabs 实现，支持方向键在标签间移动并即时切换面板（设 `keyboardActivation="manual"` 时需按 `Enter` 确认切换），选中指示条从旧标签平滑滑向新标签。
  *
  * @promote selectedKey, defaultSelectedKey, onSelectionChange, orientation, keyboardActivation, disabledKeys
  */
@@ -60,18 +58,16 @@ export function Tabs({ variant = "underline", className, ...props }: TabsProps) 
 }
 
 export interface TabListProps<T extends object> extends Omit<AriaTabListProps<T>, "children"> {
-  /** 若干 Tab；或者配合 items 写成函数。 */
+  /** 若干 `Tab` 子元素，或配合 `items` 使用的渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
   /**
-   * 窄的时候收成下拉，不再横向滚动。不写时一直是标签栏。
-   * true：标签放不下就收起。数字：容器比这个像素窄时收起（按标签栏自己的宽度，不是视口）。
-   * 收起后是一个下拉选择，选中仍切换同一个面板。纵向标签栏不收起。
+   * 窄容器下自动收起为下拉选择器，不再横向滚动；设为 `true` 时在标签溢出时收起，设为数字时在容器宽度小于该像素值时收起。纵向标签栏不收起。
    */
   collapse?: boolean | number;
 }
 
 /**
- * 标签列表。必须有可读的名称：写 aria-label，例如"项目设置"。
+ * 标签页列表容器，必须通过 `aria-label`（例如“项目设置”）或 `aria-labelledby` 提供可读的无障碍名称。
  */
 export function TabList<T extends object>({ className, collapse, ...props }: TabListProps<T>) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -117,16 +113,16 @@ export function TabList<T extends object>({ className, collapse, ...props }: Tab
 const FADE = 32;
 
 export interface TabProps extends Omit<AriaTabProps, "children"> {
-  /** 标签文字，两到四个字为宜。 */
+  /** 标签文字，通常保持二至四个字。 */
   children?: ReactNode;
-  /** 文字前的图标，只做装饰。 */
+  /** 置于标签文字前的装饰性图标。 */
   icon?: ReactNode;
-  /** 文字后面的数量角标，例如未读数、待处理数。超过 99 显示"99+"；0 也会显示，不想显示时不传。读屏会和标签文字一起读出。 */
+  /** 标签末尾的数量角标（如未读数或待审核数）；超过 99 时显示为“99+”，传入 0 也会展示，读屏会随标签文字一并读取。 */
   count?: number;
 }
 
 /**
- * 一个标签。id 和对应 TabPanel 的 id 相同。写了 href 时是链接（配合 Next.js 路由做 URL 同步的标签页）。
+ * 单个标签项，其 `id` 需与对应 `TabPanel` 一致；传入 `href` 时渲染为链接，用于同步页面路由。
  */
 export function Tab({ children, icon, count, className, ...props }: TabProps) {
   return (

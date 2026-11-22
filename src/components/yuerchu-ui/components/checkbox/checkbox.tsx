@@ -13,8 +13,8 @@ import { Description, FieldError, Label } from "../field/field";
 import "./checkbox.css";
 
 /**
- * 勾选框：独立的是 / 否选项（"记住我""同意条款"），或者一组可以多选的选项（CheckboxGroup）。
- * 立即生效的开关用 Switch；只能选一个用 RadioGroup。
+ * 提供独立的是/否勾选项（例如同意服务条款或启用配置），也可配合 CheckboxGroup 组成多选分组。
+ * 切换后立即生效的设置请使用 Switch，单选场景请使用 RadioGroup。
  *
  * @packageDocumentation
  * @category 表单
@@ -22,12 +22,12 @@ import "./checkbox.css";
  */
 
 export interface CheckboxProps extends Omit<AriaCheckboxProps, "children"> {
-  /** 选项文字。整行（方框 + 文字）都可以点击。 */
+  /** 选项标题，点击整行区域（包含方框与文字）均可切换选中状态。 */
   children?: ReactNode;
-  /** 选项下方的补充说明，读屏会在聚焦时一并读出。 */
+  /** 选项下方的补充说明，读屏器会在聚焦时一并播报。 */
   description?: ReactNode;
   /**
-   * 外观。card：整张卡片（带边框，可以点）、控件在右边，用于套餐、方案、设置这类每项都有说明的选择；选中时边框加深。
+   * 外观样式。设为 card 时渲染为可点击卡片，勾选框位于右侧并在选中时加深边框，适合每项都有说明的配置选择。
    * @default "default"
    */
   variant?: "default" | "card";
@@ -36,8 +36,8 @@ export interface CheckboxProps extends Omit<AriaCheckboxProps, "children"> {
 }
 
 /**
- * 勾选框。基于 React Aria Checkbox：底层是原生 checkbox，空格键切换，表单提交和重置都按原生行为工作。
- * 半选（isIndeterminate）用于"全选"这类代表一组选项的勾选框。
+ * 基于 React Aria Checkbox 实现，底层为原生 checkbox，支持空格键切换以及表单原生提交与重置。
+ * 半选态（isIndeterminate）适用于代表一组子选项的“全选”控制框。
  *
  * @promote isSelected, defaultSelected, onChange, isIndeterminate, isDisabled, isInvalid, isRequired, value, name
  */
@@ -81,25 +81,25 @@ export function Checkbox({ children, description, variant = "default", className
 }
 
 export interface CheckboxGroupProps extends Omit<AriaCheckboxGroupProps, "children"> {
-  /** 整组的标签，例如"通知方式"。 */
+  /** 整组的标题，例如“通知方式”。 */
   label?: ReactNode;
-  /** 整组的说明文字。 */
+  /** 整组的补充说明文字。 */
   description?: ReactNode;
-  /** 校验失败时显示的错误信息，例如"至少选择一项"。 */
+  /** 校验失败时显示的错误提示，例如“至少选择一项”。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
   /**
-   * 排列方向。选项文字较长或超过 3 个时用纵向。
+   * 选项排列方向。选项文字较长或数量超过 3 个时建议使用纵向排列。
    * @default "vertical"
    */
   orientation?: "vertical" | "horizontal";
-  /** 组里的 Checkbox。 */
+  /** 组内的 Checkbox 选项。 */
   children?: ReactNode;
   /** 指向底层的 div 元素。 */
   ref?: Ref<HTMLDivElement>;
 }
 
 /**
- * 一组可以多选的勾选框，整组共用一个标签和错误信息。value 是选中项的 value 数组。
+ * 组织多个可多选的勾选框并共用标签与错误提示，value 为所有已选项的 value 数组。
  *
  * @promote value, defaultValue, onChange, isRequired, isInvalid, isDisabled, isReadOnly, validate, name
  */

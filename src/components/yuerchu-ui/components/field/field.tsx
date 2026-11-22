@@ -8,8 +8,7 @@ import { fieldStrings } from "./field.strings";
 import "./field.css";
 
 /**
- * 表单字段的公共部件：标签、说明文字、错误信息。
- * 放在 TextField、Select 等字段组件内部使用，React Aria 会自动把它们和输入框关联起来。
+ * 提供表单字段共用的标签、说明文字与错误信息部件，在 TextField、Select 等字段组件内部组合使用，React Aria 会自动完成与输入框的无障碍关联。
  *
  * @packageDocumentation
  * @category 表单
@@ -19,7 +18,7 @@ import "./field.css";
 export interface LabelProps extends AriaLabelProps {}
 
 /**
- * 字段标签。每个输入框都必须有可见标签；不要用 placeholder 代替。
+ * 字段标签。每个输入框都必须提供可见标签，不要用 placeholder 代替。
  */
 export function Label({ className, ...props }: LabelProps) {
   return <AriaLabel {...props} className={className ? `ui-label ${className}` : "ui-label"} />;
@@ -37,14 +36,14 @@ export function Description({ className, ...props }: DescriptionProps) {
 export interface FieldErrorProps extends AriaFieldErrorProps {}
 
 /**
- * 浏览器自带的校验文案跟随浏览器界面语言，不是页面语言（英文浏览器打开中文页面会显示"Please fill out this field."）。
- * 按校验结果换成页面语言（UIProvider）的文案；自定义 validate 和服务端错误（customError）原样显示。
+ * 浏览器原生的校验文案跟随浏览器界面语言，而非页面语言（如英文浏览器打开中文页面会显示“Please fill out this field.”）。
+ * 按校验结果替换为当前页面语言（UIProvider）的文案；自定义 validate 和服务端错误（customError）原样显示。
  */
 const BUILTIN_CHECKS = ["valueMissing", "typeMismatch", "patternMismatch", "tooShort", "tooLong", "rangeUnderflow", "rangeOverflow", "stepMismatch", "badInput"] as const;
 
 /**
- * 字段错误信息。只在字段校验失败时渲染；浏览器自带的校验气泡已由 React Aria 屏蔽。
- * 不传内容时显示校验结果：浏览器自带的文案换成页面语言（UIProvider）的。
+ * 字段错误信息，仅在字段校验失败时渲染（浏览器原生校验气泡已由 React Aria 屏蔽）。
+ * 未传入自定义内容时，会自动将浏览器内置校验文案转换为当前页面语言（由 UIProvider 指定）的提示文案。
  */
 export function FieldError({ className, children, ...props }: FieldErrorProps) {
   const t = useStrings(fieldStrings);

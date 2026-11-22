@@ -10,8 +10,7 @@ import { Input } from "../text-field/text-field";
 import "./search-field.css";
 
 /**
- * 搜索框：在当前页面或列表里搜索、筛选。左边是搜索图标，有内容时右边出现清除按钮。
- * 全站搜索用 CommandPalette；从选项里边输入边选用 ComboBox。
+ * 用于在当前页面、列表或表格中进行关键字搜索与筛选，左侧带搜索图标，输入内容后自动显示清除按钮。
  *
  * @packageDocumentation
  * @category 表单
@@ -19,26 +18,26 @@ import "./search-field.css";
  */
 
 export interface SearchFieldProps extends Omit<AriaSearchFieldProps, "children"> {
-  /** 可见标签。搜索框常常不显示标签，这时必须写 aria-label（例如"搜索项目"）。 */
+  /** 可见标签。搜索框常省略可见标签，此时必须传入 `aria-label`（如“搜索就诊科室”）。 */
   label?: ReactNode;
-  /** 输入框下方的说明文字。 */
+  /** 输入框下方的补充说明文字。 */
   description?: ReactNode;
   /** 校验失败时显示的错误信息。 */
   errorMessage?: string | ((validation: ValidationResult) => string);
-  /** 占位文字，例如"搜索项目名称或负责人"。 */
+  /** 占位文字，如“输入科室名称”。 */
   placeholder?: string;
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md / --control-lg。
+   * 控件尺寸。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
-  /** 指向底层的 input 元素。 */
+  /** 指向底层 `input` 元素的引用。 */
   ref?: Ref<HTMLInputElement>;
 }
 
 /**
- * 搜索框。基于 React Aria SearchField：type="search"，Esc 清空，Enter 触发 onSubmit；
- * 清除按钮不在 Tab 顺序里（键盘用 Esc），点了以后焦点回到输入框。
+ * 搜索输入框，基于 React Aria SearchField。采用 `type="search"`，支持按 `Esc` 清空与 `Enter` 触发 `onSubmit`；
+ * 清除按钮不参与 `Tab` 顺序，点击后焦点回到输入框。
  *
  * @promote value, defaultValue, onChange, onSubmit, onClear, isDisabled, isReadOnly, name, autoComplete
  */

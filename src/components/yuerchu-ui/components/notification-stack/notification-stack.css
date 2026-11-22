@@ -1,0 +1,104 @@
+@layer components {
+  .ui-notification-dock {
+    --ui-notification-top: max(var(--space-4), env(safe-area-inset-top));
+    --ui-notification-bottom: max(var(--space-4), env(safe-area-inset-bottom));
+    --ui-notification-offset: 0px;
+
+    position: fixed;
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    /* 用两侧边界约束滚动高度；局部 CSS zoom 会再放大 100dvh，最后几项落到真实视口之外。 */
+    inset-block: var(--ui-notification-top) var(--ui-notification-bottom);
+    inset-inline: var(--space-4);
+    max-width: 360px;
+    pointer-events: none;
+  }
+
+  .ui-notification-dock[data-with-toast] {
+    --ui-notification-offset: calc(var(--ui-notification-toast-height) + var(--space-2));
+  }
+
+  .ui-notification-dock[data-placement="top"] {
+    inset-block-start: calc(var(--ui-notification-top) + var(--ui-notification-offset));
+    margin-inline: auto;
+  }
+
+  .ui-notification-dock[data-placement="bottom-end"] {
+    inset-block-end: calc(var(--ui-notification-bottom) + var(--ui-notification-offset));
+    margin-inline-start: auto;
+    flex-direction: column-reverse;
+  }
+
+  /* 待处理操作不是 Toast 的模态豁免层：弹窗屏蔽背景时不要遮住它。 */
+  .ui-notification-dock:is([inert], [aria-hidden="true"]),
+  :is([inert], [aria-hidden="true"]) .ui-notification-dock {
+    display: none;
+  }
+
+  /* 仅同角两区共存时，过长的 Toast 留出一半可用高度；它的 portal、焦点和计时仍完全独立。 */
+  :where(:has(> .ui-notification-dock[data-placement="top"]:not(:empty, [inert], [aria-hidden="true"])))
+    > .ui-toast-region[data-placement="top"],
+  :where(:has(> .ui-notification-dock[data-placement="bottom-end"]:not(:empty, [inert], [aria-hidden="true"])))
+    > .ui-toast-region[data-placement="bottom-end"] {
+    --ui-toast-shared-space: calc(max(var(--space-4), env(safe-area-inset-top))
+      + max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-2));
+    max-height: calc((100% - var(--ui-toast-shared-space)) / 2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-notification-stack {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: 0;
+    overflow-y: auto;
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-floating);
+    overscroll-behavior: contain;
+    pointer-events: auto;
+    view-transition-class: ui-notification-stack;
+  }
+
+  /* Toast 用原生视图过渡时，栈只画避让后的新位置，不在页面的旧快照中再叠一份。 */
+  ::view-transition-group(*.ui-notification-stack),
+  ::view-transition-new(*.ui-notification-stack) {
+    animation: none;
+  }
+
+  ::view-transition-old(*.ui-notification-stack) {
+    animation: none;
+    opacity: 0;
+  }
+
+  .ui-notification-stack[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-notification-stack__item {
+    flex: none;
+    min-width: 0;
+  }
+
+  .ui-notification-stack__item[data-exiting] {
+    pointer-events: none;
+  }
+
+  /* 相邻项消失时整张卡会接收焦点，环要画在滚动区域的裁切边界以内。 */
+  .ui-notification-stack .ui-notification-card {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-notification-card .ui-notification-card__description {
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    overflow-wrap: anywhere;
+  }
+}

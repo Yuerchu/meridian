@@ -6,8 +6,7 @@ import { Label, Meter as AriaMeter } from "react-aria-components";
 import "./meter.css";
 
 /**
- * 计量条：一个量在已知范围里占了多少，例如存储用量、API 配额、座位数。
- * 任务的进度（上传、导入）用 ProgressBar：它表示"在变化、会完成"，这个表示"现在是多少"。
+ * 用于展示当前数值在已知上限中所占比例的计量条，适合存储空间或资源配额等场景。
  *
  * @packageDocumentation
  * @category 展示
@@ -15,24 +14,23 @@ import "./meter.css";
  */
 
 export interface MeterProps extends Omit<AriaMeterProps, "children" | "className" | "style"> {
-  /** 可见标签，例如"存储空间"。不显示标签时写 aria-label。 */
+  /** 可见标签，例如“存储空间”；未传可见标签时需通过 `aria-label` 指定无障碍名称。 */
   label?: ReactNode;
   /**
-   * 是否在标签右边显示数值（默认是百分比，可以用 formatOptions / valueLabel 改，例如"18.4 GB / 20 GB"）。
+   * 是否在标签右侧展示格式化后的数值；默认展示百分比，也可通过 `formatOptions` 或 `valueLabel` 自定义为“18.4 GB / 20 GB”。
    * @default true
    */
   showValueLabel?: boolean;
-  /** 占比达到这个值（0–1）时变成警告色，例如 0.8。 */
+  /** 占比达到该阈值（0–1）时切换为警告态，例如 `0.8`。 */
   warningAt?: number;
-  /** 占比达到这个值（0–1）时变成危险色，例如 0.95。 */
+  /** 占比达到该阈值（0–1）时切换为危险态，例如 `0.95`。 */
   dangerAt?: number;
-  /** 根元素上的类名。 */
+  /** 自定义根元素类名。 */
   className?: string;
 }
 
 /**
- * 计量条。基于 React Aria Meter：role="meter"，读屏读出标签和数值。
- * 默认用 Ink 填充；写了 warningAt / dangerAt 时，超过阈值换成警告 / 危险色，数值文字也跟着变色（数值一直显示，不只靠颜色）。
+ * 计量条组件，基于 React Aria Meter 实现 `role="meter"` 语义，并支持通过 `warningAt` 与 `dangerAt` 在阈值处同步切换填充条与数值的语义状态。
  *
  * @promote value, minValue, maxValue, valueLabel, formatOptions
  */

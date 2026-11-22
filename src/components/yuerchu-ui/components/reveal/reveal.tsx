@@ -13,9 +13,8 @@ import { traceShape } from "./reveal-trace";
 import "./reveal.css";
 
 /**
- * 加载切换：数据区域在"占位"和"内容"之间切换。负责时机和过渡；占位可以由 sample（示例数据渲染的同一个组件）自动量出来，也可以自己给（fallback）。
- * 数据很快就到时不显示占位；占位出现后至少停留一小段时间；占位换成内容时交叉淡化，容器高度从旧高度过渡到新高度。
- * 页面上已知的部分（标题、按钮）放在外面照常渲染，只把缺数据的那块包进来，见 DESIGN.md §7.4。
+ * 管理数据区域在占位骨架与真实内容之间的加载切换，自动处理延迟显示、交叉淡化与高度过渡。
+ * 占位骨架可以通过 `sample` 从真实组件排版自动测量，也可以由 `fallback` 手动指定；标题与操作栏建议留在外层照常渲染。
  *
  * @packageDocumentation
  * @category 反馈
@@ -23,26 +22,24 @@ import "./reveal.css";
  */
 
 export interface RevealProps {
-  /** 是否还在加载。从 true 变成 false 时换成内容；再变回 true 时重新走一遍。 */
+  /** 是否处于加载中。从 `true` 变为 `false` 时切换到真实内容，再次设为 `true` 时重新进入加载流程。 */
   isLoading: boolean;
   /**
-   * 示例：用示例数据渲染的同一个内容，例如 `<MemberCard member={SAMPLE_MEMBER} />`。加载中把它隐藏着渲染一遍（inert、对读屏隐藏），
-   * 按它的 DOM 画骨架：文字一行一条，图片、按钮、输入框、徽标一个块，和真实内容一样大。示例里不要发请求、订阅数据。
-   * 量不准的元素加 data-skeleton="block"（画成一块）或 data-skeleton="ignore"（不画）；图表、canvas 这类用 fallback。
+   * 用于自动测量骨架的示例节点（如 `<MemberRows members={SAMPLE} />`）。会在隐藏的 `inert` 容器中排版并按文字与控件尺寸生成骨架，示例内部请勿发起请求或订阅。
+   * 对难以自动拆解的元素可加 `data-skeleton="block"` 或 `data-skeleton="ignore"`；图表和画布类元素建议使用 `fallback`。
    */
   sample?: ReactNode;
-  /** 自己画的占位（通常是几个 Skeleton），对读屏隐藏。写了 sample 时不用。都没写时是三行文字。 */
+  /** 手动指定的占位内容（通常为若干 Skeleton 组合），对读屏隐藏。传入 `sample` 时可省略；两者都未传入时默认显示三行文本骨架。 */
   fallback?: ReactNode;
   /**
-   * 记住形状用的键，例如 "project-members"。内容显示过以后记下它的布局（只记位置和尺寸，不记内容），
-   * 下次加载（刷新、翻页回来）时按上次的样子画骨架，优先于 sample 和 fallback。只在这次页面会话里有效。
+   * 用于记住布局形状的唯一标识（如 `"project-members"`）。内容渲染完成后会记住各元素位置与尺寸，在当前会话内再次加载时优先按上次布局绘制骨架。
    */
   id?: string;
-  /** 加载好的内容。加载中不渲染。 */
+  /** 加载完成后展示的真实内容，加载中不会挂载渲染。 */
   children?: ReactNode;
-  /** 加载中给读屏的说明，例如"正在加载成员列表"。 */
+  /** 加载过程中提供给屏幕阅读器的状态提示，例如“正在加载成员列表”。 */
   loadingLabel: string;
-  /** 加载完成后读屏播报的一句话，例如"成员列表已加载"。不写不播报（内容出现在原处，读屏用户往下读就能读到）。 */
+  /** 加载完成切换到真实内容时通过读屏播报的提示语，例如“成员列表已加载”；未传入时不额外播报。 */
   loadedLabel?: string;
   /** 根元素上的类名。 */
   className?: string;
@@ -50,15 +47,14 @@ export interface RevealProps {
   ref?: Ref<HTMLDivElement>;
 }
 
-/** waiting：在加载，但还没到显示占位的时候（占位已经占住位置，只是看不见）；placeholder：占位可见；content：内容 */
+/** `waiting` 表示正在加载但尚未达到骨架显示延迟（已占位但透明）；`placeholder` 表示骨架可见；`content` 表示展示真实内容。 */
 export type LoadingPhase = "waiting" | "placeholder" | "content";
-/** fromPlaceholder：这次是从可见的占位换成内容（只有这时做交叉淡化和高度过渡） */
+/** `fromPlaceholder` 标记本次是否从可见的骨架切换为真实内容，仅在此情况下播放交叉淡化与高度过渡。 */
 export type LoadingState = { phase: LoadingPhase; fromPlaceholder: boolean };
 
 /**
- * 加载的时机（DESIGN.md §7.4）：isLoading 变 true 后先 waiting（占位占住位置但看不见），
- * 过了 showDelay 才 placeholder（占位可见）；占位一旦可见，至少停留 minVisible 才换成 content。
- * 自己画占位的组件（Table 的骨架行、Markdown 的正文占位）用它，和 Reveal 的时机一致。
+ * 统一计算加载阶段状态机：进入加载后先经历静默等待期，超过显示阈值再露出占位，且占位露出后至少停留最小时长再切换内容。
+ * 需要自行绘制骨架的复合组件（如表格骨架行或长文档占位）可复用此 Hook 保持一致的等待节奏。
  */
 export function useLoadingPhase(isLoading: boolean): LoadingState {
   const [state, setState] = useState<LoadingState>({ phase: isLoading ? "waiting" : "content", fromPlaceholder: false });
@@ -86,8 +82,8 @@ export function useLoadingPhase(isLoading: boolean): LoadingState {
 }
 
 /**
- * 加载切换。很快就到的数据不显示占位；慢的数据先显示占位，到了以后交叉淡化成内容，容器高度跟着过渡。
- * 加载中容器 aria-busy，并给读屏一段说明；占位对读屏隐藏。
+ * 在占位骨架与真实内容之间平滑切换；短时间加载不闪出骨架，慢加载在占位后交叉淡化并过渡容器高度。
+ * 加载期间标记 `aria-busy` 并提供读屏说明，占位元素本身对辅助技术隐藏。
  */
 export function Reveal({ isLoading, sample, fallback, id, children, loadingLabel, loadedLabel, className, ref }: RevealProps) {
   const m = useMotionTokens();
@@ -197,7 +193,7 @@ const TEXT_RADIUS = "calc(var(--radius-item) / 2)";
 /** 一次最多画这么多块：再多也看不出区别，只是更慢 */
 const MAX_BONES = 400;
 
-/** 骨架从哪来：上次显示过的形状（写了 id）→ 示例量出来的 → 自己画的 → 三行文字 */
+/** 骨架来源优先级：已记忆的形状（传入 `id`）→ 示例测量结果 → 自定义 `fallback` → 默认三行文本 */
 function Placeholder({ sample, fallback, remembered }: { sample: ReactNode; fallback: ReactNode; remembered: Shape | undefined }) {
   if (remembered) return <Bones shape={remembered} standalone />;
   if (sample !== undefined) return <SampleBones sample={sample} />;
@@ -250,7 +246,7 @@ function Bones({ shape, standalone = false }: { shape: Shape; standalone?: boole
   );
 }
 
-/** 内容显示着的时候记下它的形状，尺寸变了更新；下次加载按它画（只在写了 id 时） */
+/** 在真实内容显示期间记录布局形状并在尺寸变化时更新，仅在传入 `id` 时启用 */
 function useRememberShape(id: string | undefined, content: { current: HTMLElement | null }, isShown: boolean) {
   useLayoutEffect(() => {
     const node = content.current;

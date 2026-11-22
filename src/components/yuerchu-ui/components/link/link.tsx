@@ -10,7 +10,7 @@ import { linkStrings } from "./link.strings";
 import "./link.css";
 
 /**
- * 链接：跳转到别的页面或位置。触发操作（保存、删除、打开对话框）用 Button。
+ * 用于跳转到站内其他页面、页内锚点或外部地址的导航链接。
  *
  * @packageDocumentation
  * @category 导航
@@ -18,23 +18,22 @@ import "./link.css";
  */
 
 export interface LinkProps extends Omit<AriaLinkProps, "children" | "target" | "rel"> {
-  /** 链接文字。写清楚去哪里（"查看账单"），不要写"点这里"。 */
+  /** 链接显示文本，建议使用能独立表达去向的文案（如“查看账单明细”）。 */
   children?: ReactNode;
   /**
-   * 外观。inline 用在正文里：accent 色 + 下划线（不能只靠颜色和周围文字区分，WCAG 1.4.1）；
-   * standalone 用在导航、列表这类本身就是一列链接的地方：次要文字色，悬停变深并出下划线；当前页（aria-current="page"）是正文色。
+   * 视觉变体。`inline` 用于正文段落（带下划线）；`standalone` 用于导航或独立链接列表。
    * @default "inline"
    */
   variant?: "inline" | "standalone";
-  /** 外部链接：在新窗口打开，加 rel="noopener noreferrer"，末尾显示箭头，读屏会读出"（在新窗口打开）"。 */
+  /** 是否为外部链接；开启后在新窗口打开、附加 `rel="noopener noreferrer"` 与外链箭头，并向读屏提供“（在新窗口打开）”提示。 */
   isExternal?: boolean;
   /** 指向底层的 a 元素。 */
   ref?: Ref<HTMLAnchorElement>;
 }
 
 /**
- * 链接。基于 React Aria Link：站内链接经 UIProvider 走 Next.js 客户端路由；
- * 当前页的链接写 aria-current="page"，样式随之改变。
+ * 渲染站内路由或外部链接，支持正文内联与独立列表两种外观，并自动处理 `aria-current="page"` 与外链安全属性。
+ * 站内链接通过 UIProvider 配置的路由能力进行跳转。
  *
  * @promote href, routerOptions, download, isDisabled
  */

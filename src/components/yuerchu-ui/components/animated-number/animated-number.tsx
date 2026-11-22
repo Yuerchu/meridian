@@ -10,9 +10,7 @@ import { useMotionTokens } from "../../lib/motion";
 import "./animated-number.css";
 
 /**
- * 会变化的数字：变化时只有变了的那几位滚动，变大往上滚、变小往下滚，看一眼就知道涨了还是跌了。
- * 可以在旁边短暂浮出差值（+18、−3），适合实时刷新的数字，例如在线人数、队列长度。
- * 不会变化的数字直接写文字；带标签、变化率和趋势图的指标卡片用 Stat。
+ * 用于展示实时或周期性变化的数值，通过逐位滚动和可选差值提示直观呈现增减方向与幅度。
  *
  * @packageDocumentation
  * @category 数据
@@ -20,36 +18,35 @@ import "./animated-number.css";
  */
 
 export interface AnimatedNumberProps {
-  /** 当前值。 */
+  /** 当前数值。 */
   value: number;
-  /** 数值格式（Intl.NumberFormat 选项），例如 `{ style: "currency", currency: "CNY" }`、`{ notation: "compact" }`。不支持科学计数法。 */
+  /** 数值格式（`Intl.NumberFormat` 选项），例如 `{ style: "currency", currency: "CNY" }` 或 `{ notation: "compact" }`；不支持科学计数法。 */
   format?: Format;
-  /** 数字前面的文字，例如"约"。 */
+  /** 数值前缀文本，例如“约”。 */
   prefix?: string;
-  /** 数字后面的文字，例如"/月"。 */
+  /** 数值后缀文本，例如“/月”。 */
   suffix?: string;
   /**
-   * 变化时在数字旁边短暂浮出差值（+18、−3），停留 --dur-linger 后淡出。
-   * 短时间内连续变化会合并成一个累计值，不会叠出一串。差值只是视觉提示，读屏读的是数字本身。
+   * 数值变化时是否在右侧短暂浮出累计差值（例如 `+18`、`−3`）；差值不占文档流宽度，注意在右侧留出间距。
+   * 短时间内的连续变化会合并为同一轮累计值，仅作视觉提示，不影响读屏读取完整数值。
    * @default false
    */
   showChange?: boolean;
-  /** 差值的格式。默认沿用 format，并总是带正负号。 */
+  /** 差值的格式化选项；默认沿用 `format`，并始终显示正负号。 */
   changeFormat?: Intl.NumberFormatOptions;
   /**
-   * 哪个方向是好的，决定差值的颜色：up（收入、在线人数）是涨绿跌红，down（成本、错误数、排队）反过来，neutral 不分好坏，灰色。
+   * 正负趋势的语义倾向：`up` 表示增长为正向（如营收、在线人数），`down` 表示增长为负向（如成本、排队数），`neutral` 为中性灰色。
    * @default "neutral"
    */
   positiveIs?: "up" | "down" | "neutral";
-  /** 根元素上的类名。 */
+  /** 自定义根元素类名。 */
   className?: string;
-  /** 指向根元素。 */
+  /** 根元素引用。 */
   ref?: Ref<HTMLSpanElement>;
 }
 
 /**
- * 会变化的数字，基于 NumberFlow（MIT）。时长和缓动来自动效 token，减弱动效时直接跳到新值；
- * 读屏读的是格式化后的完整数字（和页面上看到的一致）。
+ * 动态数值组件，基于 NumberFlow（MIT），根据系统与站点动效偏好自动切换滚动或即时更新，并向读屏暴露格式化后的完整文本。
  *
  * @promote value, format, showChange, positiveIs
  */

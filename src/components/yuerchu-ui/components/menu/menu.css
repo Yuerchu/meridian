@@ -1,0 +1,154 @@
+@layer components {
+  .ui-menu__popover {
+    --ui-popover-padding: var(--space-1);
+
+    --ui-popover-min-width: max(var(--trigger-width, 0px), calc(var(--space-8) * 6));
+  }
+
+  .ui-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    outline: 1px solid transparent;
+  }
+
+  /* ---------- 菜单项 ---------- */
+  .ui-menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-md);
+    padding: var(--space-1) var(--space-3);
+    box-sizing: border-box;
+    /* 同心圆角：弹层圆角 − 弹层内边距 */
+    border-radius: max(var(--radius-item), calc(var(--radius-panel) - var(--ui-popover-padding, var(--space-1))));
+    color: var(--text);
+    font: var(--text-body);
+    text-decoration: none; /* 写了 href 的菜单项渲染成 <a> */
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* 菜单里悬停就是聚焦（React Aria 会把焦点移到悬停项） */
+  .ui-menu-item[data-focused]:not([data-disabled]),
+  .ui-menu-item[data-open] {
+    background: var(--surface-muted);
+  }
+
+  .ui-menu-item[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-menu-item[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-menu-item[data-tone="danger"] {
+    color: var(--danger-fg);
+  }
+
+  .ui-menu-item[data-tone="danger"][data-focused]:not([data-disabled]) {
+    background: var(--danger-bg);
+  }
+
+  .ui-menu-item[data-tone="danger"][data-disabled] {
+    color: var(--text-muted);
+  }
+
+  .ui-menu-item__icon,
+  .ui-menu-item__check,
+  .ui-menu-item__submenu {
+    flex: none;
+    display: inline-flex;
+    color: var(--text-secondary);
+  }
+
+  .ui-menu-item__icon svg,
+  .ui-menu-item__check svg,
+  .ui-menu-item__submenu svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-menu-item__check {
+    width: var(--icon-md);
+    color: var(--text);
+  }
+
+  .ui-menu-item[data-tone="danger"] .ui-menu-item__icon {
+    color: currentColor;
+  }
+
+  .ui-menu-item[data-disabled] .ui-menu-item__icon,
+  .ui-menu-item[data-disabled] .ui-menu-item__submenu {
+    color: var(--text-muted);
+  }
+
+  .ui-menu-item__text {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ui-menu-item__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-menu-item__description {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-menu-item[data-disabled] .ui-menu-item__description {
+    color: var(--text-muted);
+  }
+
+  .ui-menu-item__shortcut {
+    flex: none;
+    margin-inline-start: var(--space-4);
+    font: var(--text-small);
+    color: var(--text-secondary);
+  }
+
+  /* ---------- 分组、分隔线 ---------- */
+  .ui-menu-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .ui-menu-section__header {
+    padding: var(--space-1) var(--space-3);
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  /* 用上边框画线：高对比度模式下边框会换成系统颜色，线不会消失 */
+  .ui-menu-separator {
+    height: 0;
+    margin: var(--space-1) calc(-1 * var(--ui-popover-padding, var(--space-1)));
+    border-width: 1px 0 0;
+    border-style: solid;
+    border-color: var(--border);
+  }
+
+  @media (forced-colors: active) {
+    .ui-menu-item[data-focused]:not([data-disabled]),
+    .ui-menu-item[data-open] {
+      background: Highlight;
+      color: HighlightText;
+    }
+
+    .ui-menu-item[data-focused]:not([data-disabled]) :is(.ui-menu-item__icon, .ui-menu-item__check, .ui-menu-item__submenu, .ui-menu-item__description, .ui-menu-item__shortcut) {
+      color: HighlightText;
+    }
+
+    .ui-menu-item[data-disabled] {
+      color: GrayText;
+    }
+  }
+}

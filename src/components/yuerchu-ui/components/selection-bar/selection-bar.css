@@ -1,0 +1,98 @@
+@layer components {
+  .ui-selection-bar {
+    container-type: inline-size;
+    display: grid;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 放在集合之后、独立滚动区域之外；实际高度留在文档流里，不覆盖最后一项 */
+  .ui-selection-bar[data-placement="bottom"] {
+    position: sticky;
+    z-index: var(--z-sticky);
+    inset-block-end: max(var(--space-3), env(safe-area-inset-bottom));
+    pointer-events: none;
+  }
+
+  .ui-selection-bar[data-placement="inline"] {
+    min-height: var(--control-lg);
+  }
+
+  .ui-selection-bar__surface {
+    inline-size: 100%;
+    min-width: 0;
+    margin-block-start: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    outline: 1px solid transparent;
+    pointer-events: auto;
+  }
+
+  .ui-selection-bar[data-placement="bottom"] .ui-selection-bar__surface {
+    justify-self: center;
+    inline-size: fit-content;
+    max-inline-size: 100%;
+    border-color: var(--border-strong);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .ui-selection-bar[data-placement="inline"] .ui-selection-bar__surface {
+    margin-block-start: 0;
+    border-width: 0;
+    background: var(--surface-muted);
+    box-shadow: none;
+  }
+
+  .ui-selection-bar__surface[data-exiting] {
+    pointer-events: none;
+  }
+
+  .ui-selection-bar__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    box-sizing: border-box;
+    min-height: var(--control-lg);
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  }
+
+  .ui-selection-bar__count {
+    flex: none;
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .ui-selection-bar__actions {
+    display: flex;
+    flex: 1;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  /* 很窄时不要让数量和清除按钮垂直居中到一列操作的中段：数量在上，操作整行排在下面 */
+  @container (width < 250px) {
+    .ui-selection-bar__toolbar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+
+    .ui-selection-bar__count {
+      grid-area: 1 / 1;
+    }
+
+    .ui-selection-bar__actions {
+      grid-area: 2 / 1 / 3 / -1;
+    }
+
+    .ui-selection-bar__toolbar > .ui-button {
+      grid-area: 1 / 2;
+      justify-self: end;
+    }
+  }
+}

@@ -14,8 +14,8 @@ import { useLoadingPhase } from "../reveal/reveal";
 import "./button.css";
 
 /**
- * 按钮：触发一个操作，例如提交表单、打开对话框、发送消息。
- * 跳转到别的页面用 Link；在几个视图之间切换用 Tabs 或 SegmentedControl。
+ * 触发页面内的交互操作，例如提交表单、打开对话框或发送消息。
+ * 跳转到其他页面时请使用 Link；在多个视图间切换时请使用 Tabs 或 SegmentedControl。
  *
  * @packageDocumentation
  * @category 操作
@@ -24,28 +24,28 @@ import "./button.css";
 
 export interface ButtonProps extends Omit<AriaButtonProps, "children"> {
   /**
-   * 外观。primary 用 Ink，表示区域里最主要的操作，一个区域最多一个；
-   * secondary 带边框；ghost 只有文字，用于次要或成组的操作；destructive 用于删除等不可撤销的操作。
+   * 按钮外观。primary 使用 Ink 强调当前区域最主要的操作（同一区域最多一个）；
+   * secondary 带边框，用于常规操作；ghost 无边框，用于次要或成组操作；destructive 用于删除等不可撤销操作。
    * @default "primary"
    */
   variant?: "primary" | "secondary" | "ghost" | "destructive";
   /**
-   * 尺寸，对应控件高度 --control-sm / --control-md / --control-lg。触屏设备上会自动加高。
+   * 按钮尺寸，对应 --control-sm、--control-md 和 --control-lg 控件高度；在触屏设备上会自动加高。
    * @default "md"
    */
   size?: "sm" | "md" | "lg";
-  /** 文字前的图标。没有文字时按钮变成正方形，这时必须提供 aria-label。等待中（isPending）时这里显示加载图标。 */
+  /** 显示在文字前的图标。若未提供文字仅展示图标，按钮会呈正方形，此时必须传入 aria-label；处于等待状态（isPending）时此处会显示加载图标。 */
   icon?: ReactNode;
-  /** 文字后的图标，例如表示"展开"的箭头。 */
+  /** 显示在文字后的图标，例如表示“展开”的箭头。 */
   iconRight?: ReactNode;
-  /** 按钮文字。用动词说清会发生什么，例如"保存修改"，而不是"确定"。 */
+  /** 按钮文字，建议用动词明确表达操作结果，例如“保存修改”。 */
   children?: ReactNode;
   /**
-   * 写了 href 就渲染成链接（a 元素），外观和按钮一样：用在"开始使用""查看文档"这类去另一个页面的操作上。
-   * 走 UIProvider 的客户端路由。链接没有等待状态（isPending 不起作用），也不做文字替换动画。
+   * 传入链接地址后，组件会渲染为外观与按钮一致的 <a> 元素，并通过 UIProvider 走客户端路由，适用于“开始使用”“查看文档”等主推跳转操作。
+   * 链接形态不支持等待状态（isPending）与文字替换动画。
    */
   href?: string;
-  /** 指向底层的 button 元素（写了 href 时不用）。 */
+  /** 指向底层的 button 元素（未传入 href 时生效）。 */
   ref?: Ref<HTMLButtonElement>;
 }
 
@@ -53,8 +53,8 @@ export interface ButtonProps extends Omit<AriaButtonProps, "children"> {
 export const ButtonGroupContext = createContext<Pick<ButtonProps, "variant" | "size" | "isDisabled"> | null>(null);
 
 /**
- * 按钮。基于 React Aria Button：键盘、触屏、按下状态和读屏都已处理。
- * 等待状态用 isPending：按钮保持可聚焦，点击被拦截，读屏会播报状态变化。加载图标 200ms 后才出现，出现后至少停留 400ms（DESIGN.md §7.4）。
+ * 基于 React Aria Button 实现，内置键盘、触屏、按压状态及无障碍播报支持。
+ * 传入 isPending 进入等待状态时，按钮保持可聚焦并拦截点击；加载图标在 200ms 后出现，出现后至少停留 400ms。
  *
  * @promote onPress, isPending, isDisabled, type
  */

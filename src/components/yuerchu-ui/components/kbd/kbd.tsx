@@ -6,15 +6,14 @@ import { kbdStrings } from "./kbd.strings";
 import "./kbd.css";
 
 /**
- * 按键：在说明文字里展示键盘按键或组合键，例如"按 ⌘ K 打开搜索"。
- * 菜单项里的快捷键提示用 MenuItem 的 shortcut，不用自己放 Kbd。
+ * 用于在行内说明或文档中展示键盘按键与组合快捷键。
  *
  * @packageDocumentation
  * @category 展示
  * @status 实验中
  */
 
-/** 读屏会把这些符号读成"位置标志"之类，换成按键名称 */
+/** 读屏会将此类符号读成“位置标志”等无意义字符，渲染时替换为标准按键名称 */
 const KEY_NAMES: Record<string, string> = {
   "⌘": "Command",
   "⌥": "Option",
@@ -28,15 +27,15 @@ const KEY_NAMES: Record<string, string> = {
   "⇥": "Tab",
 };
 
-/** 方向键的名称跟着语言 */
+/** 方向键的名称跟随当前语言环境 */
 const ARROWS: Record<string, "up" | "down" | "left" | "right"> = { "↑": "up", "↓": "down", "←": "left", "→": "right" };
 
 export interface KbdProps extends Omit<HTMLAttributes<HTMLElement>, "children"> {
-  /** 单个按键，例如 "Esc"。写了 keys 时忽略。 */
+  /** 单个按键文本（如 `Esc`）；传入 `keys` 时会忽略此属性。 */
   children?: ReactNode;
-  /** 组合键，按顺序列出，例如 ["⌘", "K"]。每个键单独一格。 */
+  /** 组合键数组，按按下顺序排列（如 `["⌘", "K"]`），每个键独立渲染为一格。 */
   keys?: string[];
-  /** 指向外层的 kbd 元素。 */
+  /** 根元素引用。 */
   ref?: Ref<HTMLElement>;
 }
 
@@ -59,7 +58,7 @@ function Key({ value }: { value: string }) {
 }
 
 /**
- * 按键。组合键按 HTML 规范写成嵌套的 kbd；⌘ ⇧ ⌥ 这类符号对读屏换成按键名称。
+ * 按键展示组件，遵循 HTML 嵌套 `<kbd>` 规范，并将修饰键与方向键符号映射为可读屏识别的按键名称。
  */
 export function Kbd({ keys, children, className, ...props }: KbdProps) {
   const cls = className ? `ui-kbd ${className}` : "ui-kbd";

@@ -37,7 +37,7 @@ export function useStrings<T extends Messages>(table: StringTable<T>): T {
 
 const listStrings = defineStrings({ separator: "、" }, { separator: ", " });
 
-/** 把几项并列写出、不加"和"："a.txt、b.txt" / "a.txt, b.txt"。要"何雨、周可和林夏""…和另外 3 人"用 lib/format 的 useListFormat 或 NameList */
+/** 把几项并列写出、不加“和”，如“a.txt、b.txt”/“a.txt, b.txt”。需要“沈佳、徐磊和唐宁”或“……和另外 3 人”这类带连词的格式时，改用 lib/format 的 useListFormat 或 NameList。 */
 export function useJoinList() {
   const { separator } = useStrings(listStrings);
   return (items: readonly string[]) => items.join(separator);

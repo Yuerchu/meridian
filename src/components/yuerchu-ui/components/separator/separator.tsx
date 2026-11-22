@@ -6,8 +6,8 @@ import { Separator as AriaSeparator } from "react-aria-components";
 import "./separator.css";
 
 /**
- * 分隔线：把一组内容和另一组隔开，例如设置页的不同区块、工具栏里的按钮组。
- * 菜单里用 MenuSeparator；只是想留白时用间距，不要用分隔线。
+ * 用于在页面区块或工具栏中分隔不同内容组，支持横向带文字标签与竖向行内分隔模式。
+ * 菜单内部请使用 MenuSeparator；仅作留白时优先采用间距而非画线。
  *
  * @packageDocumentation
  * @category 展示
@@ -16,14 +16,14 @@ import "./separator.css";
 
 export interface SeparatorProps extends Omit<AriaSeparatorProps, "className"> {
   /**
-   * 方向。horizontal 是横线（渲染成 hr）；vertical 是竖线，用在一行里（例如工具栏）。
+   * 分隔方向：`horizontal` 渲染为横向分隔线（`<hr>`），`vertical` 用于工具栏等横向排列的容器内。
    * @default "horizontal"
    */
   orientation?: "horizontal" | "vertical";
-  /** 线中间的文字，例如登录页里的"或"。只用于横线；有文字时两边的线是装饰，读屏只读文字。 */
+  /** 显示在横向分隔线中间的文字（如登录方式之间的“或”）；存在文字时两侧线条仅作装饰，读屏只读出文字。 */
   label?: ReactNode;
   /**
-   * 文字的位置。start 靠左（用作区块的小标题），center 居中，end 靠右。
+   * 文字标签的水平对齐位置：`start` 靠左（可作为区块小标题），`center` 居中，`end` 靠右。
    * @default "center"
    */
   labelAlign?: "start" | "center" | "end";
@@ -32,7 +32,7 @@ export interface SeparatorProps extends Omit<AriaSeparatorProps, "className"> {
 }
 
 /**
- * 分隔线。读屏读成"分隔符"；纯装饰、不代表内容分组时，在外面直接用边框，不要用这个组件。
+ * 语义化分隔线，屏幕阅读器会将其播报为“分隔符”；若仅作纯视觉修饰而无内容分组含义，建议直接使用容器边框。
  */
 export function Separator({ orientation = "horizontal", label, labelAlign = "center", className, ...props }: SeparatorProps) {
   if (label != null && orientation === "horizontal") {

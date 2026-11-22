@@ -1,0 +1,156 @@
+@layer components {
+  .ui-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-settings-group__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .ui-settings-group__heading {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-headline);
+  }
+
+  .ui-settings-group__description {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* 一张卡片，行之间一条分隔线 */
+  .ui-settings-group__rows {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* 名称和说明在左，控件在右；按行自己的宽度，窄的时候控件换到下面 */
+  .ui-settings-row {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2) var(--space-6);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .ui-settings-row__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-settings-row__label {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .ui-settings-row__description {
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .ui-settings-row__control {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .ui-settings-nav-row {
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .ui-settings-nav-row:first-child {
+    border-start-start-radius: calc(var(--radius-panel) - 1px);
+    border-start-end-radius: calc(var(--radius-panel) - 1px);
+  }
+
+  .ui-settings-nav-row:last-child {
+    border-end-start-radius: calc(var(--radius-panel) - 1px);
+    border-end-end-radius: calc(var(--radius-panel) - 1px);
+  }
+
+  .ui-settings-nav-row__chevron {
+    flex: none;
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-settings-nav-row[data-hovered]:not([data-disabled]),
+  .ui-settings-nav-row[aria-current="page"] {
+    background: var(--surface-muted);
+  }
+
+  .ui-settings-nav-row[aria-current="page"] .ui-settings-row__label {
+    font: var(--text-body-medium);
+  }
+
+  .ui-settings-nav-row[data-pressed]:not([data-disabled]) {
+    background: var(--surface-inset);
+  }
+
+  .ui-settings-nav-row[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-settings-nav-row[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-settings-nav-row[data-disabled] :is(.ui-settings-row__label, .ui-settings-row__description) {
+    color: inherit;
+  }
+
+  @media (forced-colors: active) {
+    .ui-settings-nav-row[aria-current="page"] {
+      border-color: Highlight;
+    }
+  }
+
+  /* 窄的时候控件换到名称下面、靠左；开关不换（手机设置页的开关都在名称右边） */
+  @container (width < 440px) {
+    .ui-settings-row__text,
+    .ui-settings-row__control {
+      grid-column: 1 / -1;
+    }
+
+    .ui-settings-row__control {
+      justify-content: flex-start;
+    }
+
+    .ui-settings-row__text:has(+ .ui-settings-row__control > .ui-switch:only-child) {
+      grid-column: auto;
+    }
+
+    .ui-settings-row__control:has(> .ui-switch:only-child) {
+      grid-column: auto;
+      justify-content: flex-end;
+    }
+  }
+}
