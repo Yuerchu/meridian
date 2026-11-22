@@ -77,6 +77,9 @@ importers:
       embla-carousel-react:
         specifier: ^8.6.0
         version: 8.6.0(react@19.3.1)
+      frimousse:
+        specifier: 0.4.0
+        version: 0.4.0(@typescript/typescript6@6.0.2)(react@19.3.1)
       i18next:
         specifier: ^26.5.11
         version: 26.5.11(@typescript/typescript6@6.0.2)
@@ -3719,6 +3722,15 @@ packages:
       react-dom:
         optional: true
       remix:
+        optional: true
+
+  frimousse@0.4.0:
+    resolution: {integrity: sha512-wA/1Xt9UTk51wYNpy+EvHKPUA4jdm4NuEFzSNNZxqT0Nxrj4RFwYByjRMuaq4qSLOco/ikDCpLKesB8W1w2q+Q==}
+    peerDependencies:
+      react: ^18 || ^19
+      typescript: '>=5.1.0'
+    peerDependenciesMeta:
+      typescript:
         optional: true
 
   fsevents@2.3.3:
@@ -9521,6 +9533,12 @@ snapshots:
     optionalDependencies:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
+
+  frimousse@0.4.0(@typescript/typescript6@6.0.2)(react@19.3.1):
+    dependencies:
+      react: 19.3.1
+    optionalDependencies:
+      typescript: '@typescript/typescript6@6.0.2'
 
   fsevents@2.3.3:
     optional: true

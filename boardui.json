@@ -108,13 +108,12 @@
       ]
     },
     "tabs": {
-      "files": ["src/components/base/tabs/pill-tab.tsx", "src/components/base/tabs/tabs.tsx"],
+      "files": ["src/components/base/tabs/tabs.tsx"],
       "upstream": {
-        "src/components/base/tabs/pill-tab.tsx": "0b35654d05f8daa7ea899c9e7a098f694a630842ec0e9b1a40b41dcc7a1e5f70",
         "src/components/base/tabs/tabs.tsx": "b456f9fafa5434b379b97958fc61e27d342ff475421d6bc0a52bb5236659245d"
       },
       "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Tab/TabPanel focus-visible: → data-[focus-visible]; PillTab is a react-aria-components Button (onPress, group-data-[hovered]) instead of a native <button onClick>."
+        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Tab/TabPanel focus-visible: → data-[focus-visible]."
       ]
     },
     "tooltip": {

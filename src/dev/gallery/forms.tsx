@@ -14,6 +14,7 @@ import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
+import { EmojiPicker, type EmojiPack } from '@/components/yuerchu-ui/components/emoji-picker/emoji-picker'
 import { Row, Section, Stage } from './shell'
 
 function TextFields() {
@@ -149,6 +150,33 @@ function Pickers() {
   )
 }
 
+const GALLERY_STICKER = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12"/></svg>')}`
+
+const GALLERY_PACK: EmojiPack = {
+  id: 'gallery',
+  label: '演示',
+  kind: 'sticker',
+  items: [{ id: 'dot', label: '圆点', keywords: ['dot'], src: GALLERY_STICKER }],
+}
+
+/** The panel the composer opens. Unicode is the first tab; a pack is a tab beside it. */
+function EmojiPanel() {
+  const [picked, setPicked] = useState('未选择')
+  return (
+    <Stage>
+      <EmojiPicker
+        aria-label="选择表情"
+        packs={[GALLERY_PACK]}
+        onSelect={setPicked}
+        onSelectItem={(selection) => {
+          setPicked(selection.kind === 'unicode' ? selection.emoji : selection.item.label)
+        }}
+      />
+      <output aria-label="已选内容">{picked}</output>
+    </Stage>
+  )
+}
+
 export default function Forms() {
   return (
     <>
@@ -175,6 +203,9 @@ export default function Forms() {
             </ListBoxItem>
           </ListBox>
         </Stage>
+      </Section>
+      <Section title="EmojiPicker（库）">
+        <EmojiPanel />
       </Section>
     </>
   )

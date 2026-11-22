@@ -308,6 +308,7 @@ export function InputBar({
       onToggleAcceptEdits={onToggleAcceptEdits}
     />
   )
+  const insertEmojiRef = useRef<(emoji: string) => void>(() => {})
   const stickerPicker = offersStickers ? (
     <EmojiPicker
       assistantId={currentAssistantId}
@@ -315,6 +316,7 @@ export function InputBar({
       isOpen={stickersOpen}
       onOpenChange={setStickersOpen}
       onSelect={(sticker) => onSelectSticker?.(sticker)}
+      onSelectEmoji={(emoji) => insertEmojiRef.current(emoji)}
     />
   ) : null
   /**
@@ -441,6 +443,15 @@ export function InputBar({
       el.focus()
     })
   }, [])
+
+  // The Unicode tab inserts at the caret the field had when the panel opened.
+  // Reading the textarea here is wrong: the panel has already taken focus, so
+  // the tracked caret is the last position the field reported.
+  insertEmojiRef.current = (emoji) => {
+    const next = value.slice(0, caret) + emoji + value.slice(caret)
+    onChange(next)
+    moveCaret(caret + emoji.length, next)
+  }
 
   // Pressing Enter on a command without an argument changes `/model` to
   // `/model ` from above the field. React can keep the DOM selection at the old

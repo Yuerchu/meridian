@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { Bin, FaceSmile } from '@keyline-icons/react/two-tone'
-import { EmojiPicker, FloatingToc, Kanban, Resizable } from '@/components/base'
+import { Bin } from '@keyline-icons/react/two-tone'
+import { FloatingToc, Kanban, Resizable } from '@/components/base'
 import { CommandPalette } from '@/components/yuerchu-ui/components/command-palette/command-palette'
 import { MenuItem, MenuSection } from '@/components/yuerchu-ui/components/menu/menu'
 import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
@@ -179,11 +179,10 @@ export function NavigationParts() {
   )
 }
 
-/** The overlays the product opens on its own terms: bulk bar, confirm, emoji. */
+/** The overlays the product opens on its own terms: bulk bar, confirm. */
 export function OverlayParts() {
   const [bar, setBar] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
-  const [emoji, setEmoji] = useState(false)
   return (
     <>
       <Section title="SelectionBar / 批量选择（库）">
@@ -208,22 +207,6 @@ export function OverlayParts() {
           删除这段对话
         </Button>
         {confirmDialog}
-      </Section>
-      <Section title="EmojiPicker">
-        <EmojiPicker isOpen={emoji} onOpenChange={setEmoji} aria-label="表情">
-          <EmojiPicker.Trigger aria-label="表情" leadingIcon={FaceSmile} />
-          <EmojiPicker.Popover>
-            <EmojiPicker.Content>
-              <EmojiPicker.Grid items={['😀', '🎉', '👍', '🤔', '🔥', '✅', '🚀', '👀']}>
-                {(item: string) => (
-                  <EmojiPicker.Item id={item} textValue={item}>
-                    {item}
-                  </EmojiPicker.Item>
-                )}
-              </EmojiPicker.Grid>
-            </EmojiPicker.Content>
-          </EmojiPicker.Popover>
-        </EmojiPicker>
       </Section>
     </>
   )

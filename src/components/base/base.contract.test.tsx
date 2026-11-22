@@ -15,7 +15,6 @@ import {
   Description,
   Disclosure,
   Dropdown,
-  EmojiPicker,
   DropdownItem,
   DropdownPopover,
   Input,
@@ -416,18 +415,6 @@ describe('Presentation parts honour their props', () => {
       />,
     )
     expect(screen.getByRole('gridcell', { name: '42' })).toBeInTheDocument()
-  })
-
-  it('EmojiPicker names its dialog from the root label', async () => {
-    render(
-      <EmojiPicker aria-label="Stickers" isOpen>
-        <EmojiPicker.Trigger aria-label="Open" leadingIcon={Plus} />
-        <EmojiPicker.Popover>
-          <EmojiPicker.Content>body</EmojiPicker.Content>
-        </EmojiPicker.Popover>
-      </EmojiPicker>,
-    )
-    expect(await screen.findByRole('dialog', { name: 'Stickers' })).toBeInTheDocument()
   })
 
   it('DataGrid with children is a treegrid with an expand button', async () => {

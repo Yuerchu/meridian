@@ -20,7 +20,6 @@ export {
   DropdownItem,
   DropdownDivider,
 } from './dropdown/dropdown'
-export { EmojiPicker } from './emoji-picker'
 export { FloatingToc } from './floating-toc'
 export { HoverCard } from './hover-card'
 export { Input, SearchField, TextArea, TextField } from './input'
@@ -33,7 +32,6 @@ export { Markdown, markdownVariants } from './markdown-variants'
 export { PromptInput } from './prompt-input'
 export { Resizable } from './resizable'
 export { RichTextEditor, useRichTextEditor, type RichTextEditorFormatCommand } from './rich-text-editor'
-export { ScrollShadow } from './scroll-shadow'
 export { Sheet } from './sheet'
 export { Sidebar, useSidebar } from './sidebar'
 export { Spinner } from './spinner'

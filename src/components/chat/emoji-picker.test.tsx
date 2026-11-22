@@ -1,11 +1,11 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, type RenderResult } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { I18nProvider } from 'react-aria-components'
+import type { ReactElement } from 'react'
 
 import i18n from '@/i18n'
 import { resetStickerUrls } from '@/lib/sticker-urls'
-import { installIntersectionObserver, type IntersectionControl } from '@/test/intersection'
 import { EmojiPicker } from './emoji-picker'
-import { STICKER_PAGE } from './sticker-grid'
 
 const mocks = vi.hoisted(() => ({
   listPacks: vi.fn((_assistantId?: string) => Promise.resolve([{ id: 'pack-1', name: 'Pack One' }])),
@@ -31,6 +31,15 @@ vi.mock('@/api', () => ({
   },
 }))
 
+/** The library's strings follow React Aria's locale, not i18next's. */
+function renderPicker(ui: ReactElement): RenderResult {
+  const view = render(<I18nProvider locale="en-US">{ui}</I18nProvider>)
+  return {
+    ...view,
+    rerender: (next) => view.rerender(<I18nProvider locale="en-US">{next}</I18nProvider>),
+  }
+}
+
 describe('EmojiPicker', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -38,34 +47,49 @@ describe('EmojiPicker', () => {
     return i18n.changeLanguage('en')
   })
 
-  it('uses the EmojiPicker surface while preserving assigned sticker packs', async () => {
+  it('opens the library panel and sends a sticker only after that pack is opened', async () => {
     const user = userEvent.setup()
     const onSelect = vi.fn()
-    render(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
+    renderPicker(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
 
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalledWith('pack-1'))
-    // Only what the stickers are is fetched with the picker; no file yet.
-    expect(mocks.fileUrl).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
-    expect(await screen.findByRole('searchbox', { name: 'Search emoji...' })).toBeInTheDocument()
-    expect(await screen.findByRole('button', { name: 'Pack One' })).toBeInTheDocument()
-    expect(mocks.listPacks).toHaveBeenCalledWith('assistant-1')
+    // The panel opens on the Unicode tab. No sticker file is asked for until
+    // its pack is the one on screen.
+    expect(await screen.findByRole('searchbox', { name: 'Search emojis' })).toBeInTheDocument()
+    expect(mocks.fileUrl).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: 'Wave' })).toBeNull()
 
-    // The picker is a grid listbox of stickers, each option named by its
-    // `textValue` (emoji name, tags, pack), so the sticker is chosen by pressing it.
-    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
-    // The cell was never near a viewport here (jsdom's observer never fires),
-    // so choosing it asks for the file then.
+    await user.click(screen.getByRole('button', { name: 'Pack One' }))
+    await user.click(await screen.findByRole('button', { name: 'Wave' }))
+
     await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({ emoji: expect.objectContaining({ id: 'emoji-1' }), url: 'asset://wave.png' }),
       ),
     )
+    expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1')
+    expect(mocks.listPacks).toHaveBeenCalledWith('assistant-1')
+  })
+
+  it('inserts a Unicode emoji without sending a sticker', async () => {
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    const onSelectEmoji = vi.fn()
+    renderPicker(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} onSelectEmoji={onSelectEmoji} />)
+
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+    const grin = await screen.findByRole('gridcell', { name: 'Grinning face' })
+    await user.click(grin)
+
+    expect(onSelectEmoji).toHaveBeenCalledWith(expect.any(String))
+    expect(onSelect).not.toHaveBeenCalled()
   })
 
   it('does not offer a picker without an assistant', () => {
-    const { container } = render(<EmojiPicker assistantId={null} onSelect={vi.fn()} />)
+    const { container } = renderPicker(<EmojiPicker assistantId={null} onSelect={vi.fn()} />)
     expect(container).toBeEmptyDOMElement()
   })
 
@@ -74,7 +98,7 @@ describe('EmojiPicker', () => {
   it('says the packs could not be loaded, and why, rather than that there are none', async () => {
     mocks.listPacks.mockRejectedValueOnce('database is locked')
     const user = userEvent.setup()
-    render(<EmojiPicker assistantId="assistant-broken" onSelect={vi.fn()} />)
+    renderPicker(<EmojiPicker assistantId="assistant-broken" onSelect={vi.fn()} />)
 
     await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-broken'))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
@@ -90,19 +114,21 @@ describe('EmojiPicker', () => {
   it('can explain an assistant with no assigned packs', async () => {
     mocks.listPacks.mockResolvedValueOnce([])
     const user = userEvent.setup()
-    render(<EmojiPicker assistantId="assistant-empty" onSelect={vi.fn()} />)
+    renderPicker(<EmojiPicker assistantId="assistant-empty" onSelect={vi.fn()} />)
 
     await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-empty'))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
     expect(await screen.findByText('No emoji packs assigned to this assistant')).toBeInTheDocument()
+    // The Unicode tab is still a picker, not a dead panel.
+    expect(screen.getByRole('searchbox', { name: 'Search emojis' })).toBeInTheDocument()
   })
 
   it('removes the previous assistant packs while the next assignment is loading', async () => {
     let resolveNext!: (packs: { id: string; name: string }[]) => void
     const onSelect = vi.fn()
     const user = userEvent.setup()
-    const { rerender } = render(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
+    const { rerender } = renderPicker(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
 
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
@@ -118,17 +144,14 @@ describe('EmojiPicker', () => {
 
     await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-2'))
     expect(screen.queryByRole('button', { name: 'Pack One' })).not.toBeInTheDocument()
-    // Nothing is selectable while the next assignment loads: the previous
-    // assistant's stickers are gone from the grid, so there is no button to
-    // press rather than a press that has to be ignored.
-    expect(screen.queryByRole('option', { name: /^Wave\b/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Wave' })).toBeNull()
     expect(onSelect).not.toHaveBeenCalled()
 
     resolveNext([])
     await waitFor(() => expect(screen.getByText('No emoji packs assigned to this assistant')).toBeInTheDocument())
   })
 
-  it('opens on the first pack that actually has a sticker', async () => {
+  it('opens on the Unicode tab, and a sticker pack is a tab beside it', async () => {
     mocks.listPacks.mockResolvedValueOnce([
       { id: 'pack-empty', name: 'Empty Pack' },
       { id: 'pack-usable', name: 'Usable Pack' },
@@ -143,189 +166,65 @@ describe('EmojiPicker', () => {
       },
     ])
     const user = userEvent.setup()
-    render(<EmojiPicker assistantId="assistant-with-empty-first-pack" onSelect={vi.fn()} />)
+    renderPicker(<EmojiPicker assistantId="assistant-with-empty-first-pack" onSelect={vi.fn()} />)
 
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalledTimes(2))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
-    expect(await screen.findByRole('button', { name: 'Usable Pack' })).toHaveAttribute('aria-pressed', 'true')
-    expect(await screen.findByRole('option', { name: /^Wave\b/ })).toBeInTheDocument()
+    // The library's first tab is Unicode. An empty assigned pack stays listed,
+    // and it is not described as the assistant having no packs at all.
+    const unicode = screen
+      .getAllByRole('button', { name: 'Emoji' })
+      .find((button) => button.hasAttribute('aria-pressed'))
+    expect(unicode).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'Empty Pack' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getByRole('button', { name: 'Usable Pack' })).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByRole('button', { name: 'Wave' })).toBeNull()
     expect(screen.queryByText('No emoji packs assigned to this assistant')).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Usable Pack' }))
+    expect(await screen.findByRole('button', { name: 'Wave' })).toBeInTheDocument()
   })
 
-  describe('sticker grid', () => {
-    const TWO = [
+  it('shows why a sticker file could not be loaded, instead of sending nothing', async () => {
+    mocks.fileUrl.mockRejectedValueOnce('file is missing')
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    renderPicker(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
+
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
+
+    expect(await screen.findByText('file is missing')).toBeInTheDocument()
+    expect(onSelect).not.toHaveBeenCalled()
+  })
+
+  it('moves between stickers with the arrow keys and chooses with Enter', async () => {
+    mocks.listEmojis.mockResolvedValueOnce([
       { id: 'emoji-1', name: 'Wave', tags: 'hello', semantic_status: 'confirmed', file_format: 'gif' },
       { id: 'emoji-2', name: 'Nod', tags: 'yes', semantic_status: 'confirmed', file_format: 'webp' },
-    ]
-    let io: IntersectionControl
-    let drawImage: ReturnType<typeof vi.fn>
-    let getContext: { mockRestore: () => void }
+    ])
+    const user = userEvent.setup()
+    const onSelect = vi.fn()
+    renderPicker(<EmojiPicker assistantId="assistant-grid" onSelect={onSelect} />)
 
-    beforeEach(() => {
-      // Every cell the grid watches is reported on screen at once, which is
-      // what a popover this size looks like with its first rows showing.
-      io = installIntersectionObserver(() => true)
-      drawImage = vi.fn()
-      getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
-        drawImage,
-      } as unknown as CanvasRenderingContext2D)
-      Object.defineProperty(HTMLImageElement.prototype, 'decode', {
-        configurable: true,
-        value: () => Promise.resolve(),
-      })
-      mocks.listEmojis.mockResolvedValueOnce(TWO)
-      mocks.fileUrl.mockImplementation((id?: string) => Promise.resolve(`data:image/gif;base64,${id}`))
-    })
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
+    await user.click(screen.getByRole('button', { name: 'Emoji' }))
+    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
+    // ArrowDown from the pack's search moves into the grid; the grid then moves
+    // a cell at a time. Focusing the cell by hand skips that and warns about act.
+    await user.click(await screen.findByRole('textbox', { name: 'Search emojis' }))
+    await user.keyboard('{ArrowDown}')
+    expect(screen.getByRole('button', { name: 'Wave' })).toHaveFocus()
+    await user.keyboard('{ArrowRight}')
+    expect(screen.getByRole('button', { name: 'Nod' })).toHaveFocus()
+    await user.keyboard('{Enter}')
 
-    afterEach(() => {
-      io.restore()
-      getContext.mockRestore()
-      mocks.fileUrl.mockImplementation(() => Promise.resolve('asset://wave.png'))
-    })
-
-    async function openPicker(onSelect = vi.fn()) {
-      const user = userEvent.setup()
-      render(<EmojiPicker assistantId="assistant-grid" onSelect={onSelect} />)
-      await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
-      await user.click(screen.getByRole('button', { name: 'Emoji' }))
-      const grid = await screen.findByRole('listbox', { name: 'Emoji' })
-      return { user, grid, onSelect }
-    }
-
-    it('lays stickers out three to a row, four once the popover is wide enough', async () => {
-      const { grid } = await openPicker()
-      // jsdom does no layout, so what is asserted is the rule rather than a
-      // measurement: the columns follow the popover's own width (a container
-      // query on it), never the window's. The two widths are checked in the
-      // browser on #playground.
-      expect(grid).toHaveClass('grid-cols-3', '@min-[21rem]/stickers:grid-cols-4')
-      expect(grid).not.toHaveClass('grid-cols-8')
-      expect(grid.closest('[data-slot="emoji-picker-content"]')).toHaveClass('@container/stickers')
-    })
-
-    it('draws a still first frame and plays the sticker only while hovered', async () => {
-      const { user } = await openPicker()
-      const wave = await screen.findByRole('option', { name: 'Wave' })
-      await waitFor(() =>
-        expect(wave.querySelector('[data-slot="sticker-thumb"]')).toHaveAttribute('data-state', 'drawn'),
-      )
-      expect(drawImage).toHaveBeenCalled()
-      expect(wave.querySelector('canvas')).not.toBeNull()
-      expect(wave.querySelector('img')).toBeNull()
-
-      await user.hover(wave)
-      const live = wave.querySelector('img[data-slot="sticker-thumb-live"]')
-      expect(live).toHaveAttribute('src', 'data:image/gif;base64,emoji-1')
-      expect(live).toHaveAttribute('loading', 'lazy')
-      expect(live).toHaveAttribute('decoding', 'async')
-
-      await user.unhover(wave)
-      expect(wave.querySelector('img')).toBeNull()
-    })
-
-    it('plays a pointed-at sticker even under reduced motion — only autoplay is off', async () => {
-      const realMatch = window.matchMedia
-      window.matchMedia = ((query: string) => ({
-        ...realMatch(query),
-        matches: query.includes('prefers-reduced-motion'),
-        addEventListener: () => {},
-        removeEventListener: () => {},
-      })) as typeof window.matchMedia
-      try {
-        const { user } = await openPicker()
-        const wave = await screen.findByRole('option', { name: 'Wave' })
-        await waitFor(() =>
-          expect(wave.querySelector('[data-slot="sticker-thumb"]')).toHaveAttribute('data-state', 'drawn'),
-        )
-        // Nothing in the picker plays by itself either way.
-        expect(wave.querySelector('img')).toBeNull()
-        await user.hover(wave)
-        expect(wave.querySelector('img[data-slot="sticker-thumb-live"]')).not.toBeNull()
-      } finally {
-        window.matchMedia = realMatch
-      }
-    })
-
-    it('moves with the arrow keys and chooses with Enter', async () => {
-      const { user, onSelect } = await openPicker()
-      await screen.findByRole('option', { name: 'Nod' })
-      // From the search field into the grid, then one cell along.
-      await user.tab()
-      expect(screen.getByRole('option', { name: 'Wave' })).toHaveFocus()
-      await user.keyboard('{ArrowRight}')
-      expect(screen.getByRole('option', { name: 'Nod' })).toHaveFocus()
-      await user.keyboard('{Enter}')
+    await waitFor(() =>
       expect(onSelect).toHaveBeenCalledWith(
         expect.objectContaining({ emoji: expect.objectContaining({ id: 'emoji-2' }) }),
-      )
-    })
-
-    it('lets go of every still frame when the picker closes', async () => {
-      const { user } = await openPicker()
-      const wave = await screen.findByRole('option', { name: 'Wave' })
-      await waitFor(() =>
-        expect(wave.querySelector('[data-slot="sticker-thumb"]')).toHaveAttribute('data-state', 'drawn'),
-      )
-      const canvas = wave.querySelector('canvas')!
-      expect(io.observers.length).toBeGreaterThan(0)
-      await user.keyboard('{Escape}')
-      await waitFor(() => expect(screen.queryByRole('listbox')).toBeNull())
-      expect(canvas.width).toBe(0)
-      expect(canvas.height).toBe(0)
-    })
-  })
-
-  describe('paging', () => {
-    const MANY = Array.from({ length: STICKER_PAGE * 2 + 5 }, (_, i) => ({
-      id: `many-${i}`,
-      name: `Sticker ${i}`,
-      tags: null,
-      semantic_status: 'confirmed',
-      file_format: 'gif',
-    }))
-    let io: IntersectionControl
-
-    beforeEach(() => {
-      // Nothing is on screen until the test says so.
-      io = installIntersectionObserver()
-      mocks.listEmojis.mockResolvedValueOnce(MANY as never)
-      mocks.fileUrl.mockImplementation((id?: string) => Promise.resolve(`data:image/gif;base64,${id}`))
-      Object.defineProperty(HTMLImageElement.prototype, 'decode', {
-        configurable: true,
-        value: () => new Promise(() => {}),
-      })
-    })
-
-    afterEach(() => {
-      io.restore()
-      mocks.fileUrl.mockImplementation(() => Promise.resolve('asset://wave.png'))
-    })
-
-    it('draws one page of cells and asks only for the files of the ones near the viewport', async () => {
-      const user = userEvent.setup()
-      render(<EmojiPicker assistantId="assistant-many" onSelect={vi.fn()} />)
-      await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
-      await user.click(screen.getByRole('button', { name: 'Emoji' }))
-      await screen.findByRole('option', { name: 'Sticker 0' })
-
-      expect(screen.getAllByRole('option')).toHaveLength(STICKER_PAGE)
-      expect(mocks.fileUrl).not.toHaveBeenCalled()
-
-      // The first two rows come near.
-      const cells = [...document.querySelectorAll('[data-slot="sticker-cell-body"]')]
-      for (const cell of cells.slice(0, 8)) io.intersect(cell, true)
-      await waitFor(() => expect(mocks.fileUrl).toHaveBeenCalledTimes(8))
-      expect(mocks.fileUrl.mock.calls.map(([id]) => id).sort()).toEqual(
-        Array.from({ length: 8 }, (_, i) => `many-${i}`).sort(),
-      )
-
-      // The end of the page comes near: the next page is drawn, and nothing
-      // on it is fetched until it is near too.
-      const more = document.querySelector('[data-slot="sticker-grid-more"]')!
-      io.intersect(more, true)
-      await waitFor(() => expect(screen.getAllByRole('option')).toHaveLength(STICKER_PAGE * 2))
-      expect(mocks.fileUrl).toHaveBeenCalledTimes(8)
-    })
+      ),
+    )
   })
 })

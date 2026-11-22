@@ -4,12 +4,10 @@ import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@k
 import { Sidebar } from '@/components/base'
 import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
-import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
-import { Row, Section, Stage } from './shell'
+import { Section, Stage } from './shell'
 import { NavigationParts } from './parts'
 
 function TabsCase() {
-  const [pill, setPill] = useState('all')
   return (
     <Stage>
       <Tabs defaultSelectedKey="usage">
@@ -26,17 +24,6 @@ function TabsCase() {
         <TabPanel id="mcp">MCP 面板</TabPanel>
         <TabPanel id="general">通用面板</TabPanel>
       </Tabs>
-      {(['blue', 'gray'] as const).map((variant) => (
-        <Row key={variant} label={`PillTab · ${variant}`}>
-          <PillTabList>
-            {['all', 'approvals', 'questions'].map((id) => (
-              <PillTab key={id} variant={variant} isSelected={pill === id} onSelect={() => setPill(id)}>
-                {{ all: '全部', approvals: '审批', questions: '提问' }[id]}
-              </PillTab>
-            ))}
-          </PillTabList>
-        </Row>
-      ))}
     </Stage>
   )
 }
@@ -126,7 +113,7 @@ function SidebarCase() {
 export default function Navigation() {
   return (
     <>
-      <Section title="Tabs / PillTab">
+      <Section title="Tabs">
         <TabsCase />
       </Section>
       <Section title="Pagination">

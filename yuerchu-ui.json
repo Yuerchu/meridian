@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "633b39f1d9e965a0e295765fc344bf8c1839acaa"
+    "commit": "f1d89796e312b3a88cb7287737efd3f5da24f81a"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -15,6 +15,7 @@
     "components/copy-button/copy-button.tsx",
     "components/dialog/dialog.tsx",
     "components/drawer/drawer.tsx",
+    "components/emoji-picker/emoji-picker.tsx",
     "components/empty-state/empty-state.tsx",
     "components/kbd/kbd.tsx",
     "components/link/link.tsx",
@@ -49,6 +50,7 @@
   ],
   "dependencies": {
     "@number-flow/react": "0.6.2",
+    "frimousse": "0.4.0",
     "motion": "14.9.1",
     "pinyin-pro": "3.29.5",
     "react-aria": "3.53.1",
@@ -83,6 +85,14 @@
     "components/drawer/drawer.css": "3c13b73c22763bd5da9f8811badb69ce258496f87d6560793bae18b08c79624c",
     "components/drawer/drawer.strings.ts": "af926e684f468439768e2a5dd4142038d55ddbb421f8e720ff986be84787e95b",
     "components/drawer/drawer.tsx": "34373bb649343d553771f0fdf093ca2e67a2551602f192e938575b84e330c0bd",
+    "components/emoji-picker/emoji-catalog.ts": "d6af7e1c0792ab715c7d72fd1b9c5e5a610fe5a37b5f9c2033e94e7601a98963",
+    "components/emoji-picker/emoji-data-en.ts": "45c8dddb1be3e9d10a2185ddb90c8dd5a9e6e9d1bba48d20966f02ac4e68050b",
+    "components/emoji-picker/emoji-data-zh.ts": "46fc6b07f3b0b5d79e5214927bd49e913ceba4b13844298215748c9430b365d7",
+    "components/emoji-picker/emoji-grid.tsx": "be0438f09c7fe1a2ff4225c44e1b133ad6c43b63f9e98e6e059b46a3e2779cca",
+    "components/emoji-picker/emoji-packs.tsx": "7cd1643527ca6d9d5ea8a6033981db6b53f7b5efbb3ba8497d7147cb88f5262f",
+    "components/emoji-picker/emoji-picker.css": "3be4212177b1200bd507f49e4820b912dc810306a1b8b63491bb596ab05992da",
+    "components/emoji-picker/emoji-picker.strings.ts": "299a1d452a9e03e1b5f173ba9e99ed9bf9b4d05b3381a53928721d1635bff57f",
+    "components/emoji-picker/emoji-picker.tsx": "c3d8573e1c16b1732a79c675577f0b25be99e856661c85f9b216bea4691716e8",
     "components/empty-state/empty-state.css": "7f1c902d9705cf3e55dd0e18bb17d12461f195ba5e22484bb2048ddc5c6b63f7",
     "components/empty-state/empty-state.tsx": "aa750bbc771b5f02a32b86ce3dc04013685dd3f3ecf2ea2b593dfd565949a347",
     "components/field/field.css": "1067c08c8cecbccf9d27197a7592ff802bd1d1a640b9282f635433e4c7712142",

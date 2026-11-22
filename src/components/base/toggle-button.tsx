@@ -10,8 +10,7 @@ import { buttonStyles, type ButtonSize } from './buttons/button'
 
 /**
  * A `Button` that stays pressed. Same sizes as `Button`, drawn from the same
- * style maps. Selection follows the registry's blue pill tab
- * (tabs/pill-tab.tsx, `blue`): unselected is neutral — no fill,
+ * style maps. Selection is the old blue pill: unselected is neutral — no fill,
  * `text-text-secondary`, the pill tab's hover wash — and selected is the blue
  * pill `bg-pill-tab-blue-selected-background` with `text-accent-500`.
  */

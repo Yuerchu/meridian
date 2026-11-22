@@ -1,0 +1,17 @@
+@layer components {
+  .m-emoji-picker__popover {
+    --ui-popover-padding: var(--space-2);
+  }
+
+  .m-emoji-picker__note {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-emoji-picker__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-4);
+  }
+}

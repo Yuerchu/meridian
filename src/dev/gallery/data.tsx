@@ -1,14 +1,7 @@
 import { useState } from 'react'
 import { Check, FileText, Folder } from '@keyline-icons/react/two-tone'
 
-import {
-  DataGrid,
-  Disclosure,
-  ListBox,
-  ScrollShadow,
-  type DataGridColumn,
-  type DataGridSelection,
-} from '@/components/base'
+import { DataGrid, Disclosure, ListBox, type DataGridColumn, type DataGridSelection } from '@/components/base'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -119,22 +112,6 @@ function Disclosures() {
   )
 }
 
-function Scroll() {
-  return (
-    <Stage>
-      <ScrollShadow hideScrollBar orientation="horizontal" className="min-w-0">
-        <div className="flex w-max gap-2">
-          {Array.from({ length: 18 }, (_, i) => (
-            <span key={i} className="rounded-full bg-background-secondary-default px-3 py-1 text-body-2-medium">
-              表情包 {i + 1}
-            </span>
-          ))}
-        </div>
-      </ScrollShadow>
-    </Stage>
-  )
-}
-
 export default function Data() {
   return (
     <>
@@ -156,9 +133,6 @@ export default function Data() {
             <Switch />
           </SettingsRow>
         </SettingsGroup>
-      </Section>
-      <Section title="ScrollShadow">
-        <Scroll />
       </Section>
       <DataParts />
     </>
