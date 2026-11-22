@@ -1,0 +1,104 @@
+@layer components {
+  .ui-nav-list {
+    min-width: 0;
+  }
+
+  .ui-nav-list__items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .ui-nav-list__section + .ui-nav-list__section,
+  .ui-nav-list__item + .ui-nav-list__section {
+    margin-block-start: var(--space-4);
+  }
+
+  .ui-nav-list__header {
+    display: block;
+    padding: var(--space-1) var(--space-3);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  /* ---------- 导航项 ---------- */
+  .ui-nav-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    min-height: var(--control-md);
+    padding: var(--space-1) var(--space-3);
+    border-radius: var(--radius-item);
+    color: var(--text-secondary);
+    font: var(--text-body);
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-nav-item[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-nav-item[aria-current="page"] {
+    background: var(--surface-muted);
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .ui-nav-item[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-nav-item[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-nav-item__icon {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .ui-nav-item__icon svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  /* 侧边栏收起成图标条时，没有图标的项显示名称的第一个字，放在图标的位置 */
+  .ui-nav-item__initial {
+    justify-content: center;
+    width: var(--icon-md);
+    font: var(--text-small-medium);
+  }
+
+  .ui-nav-item__label {
+    transition: opacity var(--dur-fast) var(--ease-standard);
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-nav-item__trailing {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  @media (forced-colors: active) {
+    .ui-nav-item[aria-current="page"] {
+      outline: 2px solid CanvasText;
+      outline-offset: calc(-1 * var(--focus-ring-width));
+    }
+  }
+}

@@ -36,6 +36,11 @@ export interface MenuProps<T extends object> extends Omit<AriaMenuProps<T>, "chi
   /** 菜单项内容，可静态传入 MenuItem、MenuSection、MenuSeparator，或配合 items 使用渲染函数。 */
   children?: ReactNode | ((item: T) => ReactNode);
   /**
+   * `popover` 包一层定位弹层，放在 MenuTrigger 里。`inline` 只渲染菜单本身，放进 Drawer 或自己的布局里，不再套 Popover。
+   * @default "popover"
+   */
+  variant?: "popover" | "inline";
+  /**
    * 弹出方向，视口空间不足时会自动翻转。默认由 React Aria 根据触发上下文决定，主菜单向下左对齐，子菜单向右展开。
    */
   placement?: AriaPopoverProps["placement"];
@@ -48,11 +53,13 @@ export interface MenuProps<T extends object> extends Omit<AriaMenuProps<T>, "chi
  *
  * @promote onAction, items, selectionMode, selectedKeys, onSelectionChange, disabledKeys, onClose
  */
-export function Menu<T extends object>({ placement, className, ...props }: MenuProps<T>) {
+export function Menu<T extends object>({ placement, variant = "popover", className, ...props }: MenuProps<T>) {
+  const menu = <AriaMenu {...(props as AriaMenuProps<T>)} className={withUiClass("ui-menu", className)} data-variant={variant} />;
+  if (variant === "inline") return menu;
   return (
     // placement 不设默认值：MenuTrigger / SubmenuTrigger 会通过上下文给出各自的方向，这里写死会覆盖子菜单的方向
     <Popover {...(placement ? { placement } : null)} className="ui-menu__popover">
-      <AriaMenu {...(props as AriaMenuProps<T>)} className={withUiClass("ui-menu", className)} />
+      {menu}
     </Popover>
   );
 }
@@ -66,6 +73,8 @@ export interface MenuItemProps<T extends object = object> extends Omit<AriaMenuI
   icon?: ReactNode;
   /** 快捷键提示文案，例如“⌘C”，实际快捷键事件需由页面自行监听。 */
   shortcut?: string;
+  /** 行尾的当前值或状态，例如“高”。随菜单项名称一起读出，不占第二行。不叫 value：那是 React Aria 菜单项自己的值。 */
+  trailing?: ReactNode;
   /**
    * 仅用于 CommandPalette 检索的额外关键词（如拼音、英文或别名），例如为“设置”补充 ["shezhi", "settings", "preferences"]，界面中不展示也不读出。
    */
@@ -85,6 +94,7 @@ export function MenuItem<T extends object = object>({
   description,
   icon,
   shortcut,
+  trailing,
   tone = "default",
   textValue,
   className,
@@ -93,7 +103,7 @@ export function MenuItem<T extends object = object>({
   return (
     <AriaMenuItem
       {...props}
-      textValue={textValue ?? (typeof children === "string" ? children : undefined)}
+      textValue={textValue ?? (typeof children === "string" ? (typeof trailing === "string" && trailing ? `${children}，${trailing}` : children) : undefined)}
       className={withUiClass("ui-menu-item", className)}
       data-tone={tone}
     >
@@ -120,6 +130,7 @@ export function MenuItem<T extends object = object>({
             ) : null}
           </span>
           {shortcut ? <Keyboard className="ui-menu-item__shortcut">{shortcut}</Keyboard> : null}
+          {trailing != null && trailing !== "" ? <span className="ui-menu-item__value">{trailing}</span> : null}
           {hasSubmenu ? (
             <span className="ui-menu-item__submenu" aria-hidden="true">
               <ChevronRightIcon />

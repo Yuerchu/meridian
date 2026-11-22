@@ -61,10 +61,12 @@
   .ui-drawer:is([data-side="right"], [data-side="left"]) {
     inset-block: 0;
     width: min(var(--ui-drawer-size), 100%);
+    padding-block: var(--ui-safe-top) var(--ui-safe-bottom);
   }
 
   .ui-drawer[data-side="right"] {
     inset-inline-end: 0;
+    padding-inline-end: var(--ui-safe-right);
     border-start-start-radius: var(--radius-surface);
     border-end-start-radius: var(--radius-surface);
     --ui-drawer-from: 100% 0;
@@ -72,6 +74,7 @@
 
   .ui-drawer[data-side="left"] {
     inset-inline-start: 0;
+    padding-inline-start: var(--ui-safe-left);
     border-start-end-radius: var(--radius-surface);
     border-end-end-radius: var(--radius-surface);
     --ui-drawer-from: -100% 0;
@@ -90,6 +93,7 @@
     inset-inline: 0;
     inset-block-end: 0;
     max-height: 60%;
+    padding-block-end: var(--ui-safe-bottom);
     border-start-start-radius: var(--radius-surface);
     border-start-end-radius: var(--radius-surface);
     --ui-drawer-from: 0 100%;

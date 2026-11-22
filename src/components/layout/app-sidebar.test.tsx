@@ -1,6 +1,5 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Sidebar } from '@/components/base'
 
 import { AppSidebar } from './app-sidebar'
 import { useConversationStore, type ConversationSession } from '@/stores/conversation-store'
@@ -95,18 +94,12 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onCreateHostedSession: vi.fn().mockResolvedValue(null),
     ...over,
   }
-  // `collapsible="icon"` matches the app's provider — the icon-rail guard
-  // reads it, so a default-collapsible provider here would never collapse.
-  const ui = (current: typeof props, panelOpen: boolean) => (
-    <Sidebar.Provider open={panelOpen} onOpenChange={() => {}} collapsible="icon">
-      <AppSidebar {...current} />
-    </Sidebar.Provider>
-  )
-  const view = render(ui(props, true))
+  const ui = (current: typeof props, collapsed: boolean) => <AppSidebar {...current} isCollapsed={collapsed} />
+  const view = render(ui(props, false))
   return {
     props,
-    setPanelOpen: (open: boolean) => view.rerender(ui(props, open)),
-    update: (next: Partial<typeof props>) => view.rerender(ui({ ...props, ...next }, true)),
+    setPanelOpen: (open: boolean) => view.rerender(ui(props, !open)),
+    update: (next: Partial<typeof props>) => view.rerender(ui({ ...props, ...next }, false)),
   }
 }
 

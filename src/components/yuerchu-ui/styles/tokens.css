@@ -212,6 +212,18 @@
     --z-sticky: 10; /* 吸顶的表头、侧边栏里吸附的元素 */
     --z-overlay: 100; /* 对话框、命令面板、抽屉和它们的遮罩 */
     --z-toast: 200; /* Toast：在对话框上面，打开对话框时也能看到 */
+
+    /* ---------- 安全区 ----------
+       默认读系统 inset。WebView 里 env() 常为 0，宿主把真实 inset 写进这四个变量即可，不用改组件选择器。 */
+    --ui-safe-top: env(safe-area-inset-top, 0px);
+    --ui-safe-right: env(safe-area-inset-right, 0px);
+    --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --ui-safe-left: env(safe-area-inset-left, 0px);
+    /* 浮层离屏幕边缘的距离。写在根上，使用方覆盖根变量即可，不用选中库的类。 */
+    --ui-toast-top: max(var(--space-4), var(--ui-safe-top));
+    --ui-toast-bottom: max(var(--space-4), var(--ui-safe-bottom));
+    --ui-notification-top: max(var(--space-4), var(--ui-safe-top));
+    --ui-notification-bottom: max(var(--space-4), var(--ui-safe-bottom));
   }
 
   /* ---------- 语义色：暗色 ----------

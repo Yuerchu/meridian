@@ -9,7 +9,11 @@
     justify-content: center;
     box-sizing: border-box;
     height: var(--visual-viewport-height, 100dvh);
-    padding: var(--space-4);
+    padding:
+      max(var(--space-4), var(--ui-safe-top))
+      max(var(--space-4), var(--ui-safe-right))
+      max(var(--space-4), var(--ui-safe-bottom))
+      max(var(--space-4), var(--ui-safe-left));
     background: var(--overlay);
   }
 

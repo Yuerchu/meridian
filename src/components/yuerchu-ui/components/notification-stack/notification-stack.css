@@ -1,7 +1,5 @@
 @layer components {
   .ui-notification-dock {
-    --ui-notification-top: max(var(--space-4), env(safe-area-inset-top));
-    --ui-notification-bottom: max(var(--space-4), env(safe-area-inset-bottom));
     --ui-notification-offset: 0px;
 
     position: fixed;
@@ -12,7 +10,7 @@
     box-sizing: border-box;
     /* 用两侧边界约束滚动高度；局部 CSS zoom 会再放大 100dvh，最后几项落到真实视口之外。 */
     inset-block: var(--ui-notification-top) var(--ui-notification-bottom);
-    inset-inline: var(--space-4);
+    inset-inline: max(var(--space-4), var(--ui-safe-left)) max(var(--space-4), var(--ui-safe-right));
     max-width: 360px;
     pointer-events: none;
   }
@@ -43,8 +41,7 @@
     > .ui-toast-region[data-placement="top"],
   :where(:has(> .ui-notification-dock[data-placement="bottom-end"]:not(:empty, [inert], [aria-hidden="true"])))
     > .ui-toast-region[data-placement="bottom-end"] {
-    --ui-toast-shared-space: calc(max(var(--space-4), env(safe-area-inset-top))
-      + max(var(--space-4), env(safe-area-inset-bottom)) + var(--space-2));
+    --ui-toast-shared-space: calc(var(--ui-toast-top) + var(--ui-toast-bottom) + var(--space-2));
     max-height: calc((100% - var(--ui-toast-shared-space)) / 2);
     overflow-y: auto;
     overscroll-behavior: contain;

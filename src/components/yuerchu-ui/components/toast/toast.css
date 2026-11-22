@@ -13,15 +13,15 @@
 
   .ui-toast-region[data-placement="top"] {
     /* 刘海屏：避开状态栏 */
-    inset-block-start: max(var(--space-4), env(safe-area-inset-top));
+    inset-block-start: var(--ui-toast-top);
     inset-inline: 0;
     flex-direction: column; /* 新的在最上面 */
     margin-inline: auto;
   }
 
   .ui-toast-region[data-placement="bottom-end"] {
-    inset-block-end: max(var(--space-4), env(safe-area-inset-bottom));
-    inset-inline-end: var(--space-4);
+    inset-block-end: var(--ui-toast-bottom);
+    inset-inline-end: max(var(--space-4), var(--ui-safe-right));
     flex-direction: column-reverse; /* 新的在最下面 */
   }
 

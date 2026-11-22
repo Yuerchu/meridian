@@ -113,9 +113,13 @@ class Queue extends AriaToastQueue<null> {
   private held = false;
   /** 标签页切到后台时：用户看不见，不该替他倒计时 */
   private hidden = false;
-  /** 计时器现在是否停着 */
+  /** 计时器现在是否停着。模态不另存一份：每次看页面上还有没有 aria-modal，避免观察器晚到时记错。 */
   get paused() {
-    return this.held || this.hidden;
+    return this.held || this.hidden || this.modalOpen();
+  }
+  private modalOpen() {
+    if (typeof document === "undefined") return false;
+    return [...document.querySelectorAll('[aria-modal="true"]')].some((el) => !el.closest(".ui-toast-region"));
   }
   pauseAll() {
     super.pauseAll();
@@ -130,6 +134,10 @@ class Queue extends AriaToastQueue<null> {
   setHidden(hidden: boolean) {
     if (this.hidden === hidden) return;
     this.hidden = hidden;
+    this.sync();
+  }
+  /** 模态打开或关闭后，让倒计时条和计时器跟上。打开与否在 sync 里现查。 */
+  syncModal() {
     this.sync();
   }
   private sync() {
@@ -301,6 +309,14 @@ export function ToastRegion({ "aria-label": ariaLabel, placement = "top" }: Toas
     sync();
     document.addEventListener("visibilitychange", sync);
     return () => document.removeEventListener("visibilitychange", sync);
+  }, []);
+  // 模态打开时暂停。只认对话框的 aria-modal，不算提示自己；关掉后不清除悬停造成的暂停。
+  useEffect(() => {
+    const sync = () => queue.syncModal();
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["aria-modal"] });
+    return () => observer.disconnect();
   }, []);
   useEffect(() => {
     // 被聚焦或悬停的最后一条卸载时不一定有 blur/leave；不要让下一批继承交互暂停。后台暂停仍由 hidden 保留。

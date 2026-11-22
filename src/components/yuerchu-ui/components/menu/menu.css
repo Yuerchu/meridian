@@ -2,7 +2,8 @@
   .ui-menu__popover {
     --ui-popover-padding: var(--space-1);
 
-    --ui-popover-min-width: max(var(--trigger-width, 0px), calc(var(--space-8) * 6));
+    --ui-popover-min-width: var(--ui-menu-width, max(var(--trigger-width, 0px), calc(var(--space-8) * 6)));
+    width: var(--ui-menu-width, auto);
   }
 
   .ui-menu {
@@ -112,6 +113,13 @@
     margin-inline-start: var(--space-4);
     font: var(--text-small);
     color: var(--text-secondary);
+  }
+
+  .ui-menu-item__value {
+    flex: none;
+    margin-inline-start: auto;
+    color: var(--text-secondary);
+    font: var(--text-small);
   }
 
   /* ---------- 分组、分隔线 ---------- */

@@ -35,7 +35,8 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ContextMenu } from '@/components/base'
-import { Sidebar, useSidebar } from '@/components/base'
+import { Sidebar as SidebarContainer } from '@/components/yuerchu-ui/components/sidebar/sidebar'
+import { Sidebar } from '@/components/base'
 import {
   Archive,
   ArrowInDownDashedPanel,
@@ -112,6 +113,14 @@ interface AppSidebarProps {
   /** Start a hosted Claude Code session in `cwd`. Resolves to the reason it
    *  failed, or `null`. Desktop only. */
   onCreateHostedSession: (cwd: string) => Promise<string | null>
+  /** Whether the desktop sidebar is collapsed to an icon rail. */
+  isCollapsed?: boolean
+  /** Called when the desktop sidebar collapse state changes. */
+  onCollapsedChange?: (collapsed: boolean) => void
+  /** Whether the mobile drawer is open. */
+  isDrawerOpen?: boolean
+  /** Called when the mobile drawer open state changes. */
+  onDrawerOpenChange?: (open: boolean) => void
 }
 
 /**
@@ -782,6 +791,10 @@ export function AppSidebar({
   onDeleteProject,
   onRenameProject,
   onCreateHostedSession,
+  isCollapsed = false,
+  onCollapsedChange,
+  isDrawerOpen = false,
+  onDrawerOpenChange,
 }: AppSidebarProps) {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
@@ -797,10 +810,7 @@ export function AppSidebar({
    * that works, which is what this used to do and called conservative.
    */
   const canHostSessions = platform !== 'android' || isRemote
-  const { setMobileOpen, isOpen, isMobile, collapsible } = useSidebar()
-  // The rail test: the desktop panel is an icon rail only
-  // under `collapsible="icon"`, and the mobile sheet is never one.
-  const isIconCollapsed = collapsible === 'icon' && !isMobile && !isOpen
+  const isIconCollapsed = isCollapsed
   const [showNewProject, setShowNewProject] = useState(false)
   const [showNewHosted, setShowNewHosted] = useState(false)
   // Held here because `settingsSide`/`chatSide` below are rendered twice under
@@ -889,25 +899,25 @@ export function AppSidebar({
     })
   }, [])
 
-  // The sheet is a level of its own, claimed by `Sheet` itself — see
-  // `base/sheet.tsx`. A no-op on a desktop, where the panel never opens as a
-  // sheet in the first place.
+  // The drawer is a level of its own, claimed by `Sidebar` itself — see
+  // `yuerchu-ui/components/sidebar/sidebar.tsx`. A no-op on a desktop, where
+  // the panel never opens as a drawer in the first place.
 
   /**
-   * Wraps a row's action so that the mobile sheet gets out of the way.
+   * Wraps a row's action so that the mobile drawer gets out of the way.
    *
    * Everything that changes what fills the pane goes through this; the row
    * actions menu and the new-project form deliberately do not, because they put
-   * their own surface up inside the sheet. Closing an already-closed sheet is a
-   * no-op, which is every press on a wide window.
+   * their own surface up inside the drawer. Closing an already-closed drawer is
+   * a no-op, which is every press on a wide window.
    */
   const dismissing = useCallback(
     <A extends unknown[]>(run: (...args: A) => void) =>
       (...args: A) => {
-        setMobileOpen(false)
+        onDrawerOpenChange?.(false)
         run(...args)
       },
-    [setMobileOpen],
+    [onDrawerOpenChange],
   )
 
   const selectConversation = dismissing(onSelect)
@@ -1535,24 +1545,18 @@ export function AppSidebar({
 
   return (
     <>
-      {/* No density override and no inset utilities here: the panel is drawn at
-          boardui's own scale (36px rows, 20px icons — the `--spacing: 0.2rem`
-          that used to shrink it to 80% is what made it look like nothing else
-          on the page), and it adds the device's safe-area insets to its own
-          padding itself, because a `pt-[var(--safe-top)]` passed in would
-          replace that padding rather than extend it. */}
-      <Sidebar>{side('d-', isIconCollapsed)}</Sidebar>
-      {/* Renders nothing above 768px. Below it Sidebar hides the panel outright, so
-          without this a narrow window would have a toggle that toggles nothing.
-          The sheet covers the full height including the cutout and the
-          navigation bar, and it is a separate element from the panel above, so
-          it needs its own copy of the insets rather than inheriting them. */}
-      <Sidebar.Mobile
+      <SidebarContainer
         aria-label={t('sidebar.label')}
-        className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]"
+        isCollapsible
+        isCollapsed={isCollapsed}
+        onCollapsedChange={onCollapsedChange}
+        isResizable
+        isDrawerOpen={isDrawerOpen}
+        onDrawerOpenChange={onDrawerOpenChange}
+        showMobileBar={false}
       >
-        {side('m-', false)}
-      </Sidebar.Mobile>
+        {side('d-', isIconCollapsed)}
+      </SidebarContainer>
 
       <RenameDialog
         isOpen={renameTarget !== null}
