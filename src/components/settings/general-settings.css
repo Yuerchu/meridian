@@ -1,0 +1,31 @@
+@layer components {
+  .m-general__stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .m-general__section,
+  .m-general__hint {
+    margin: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-general__section {
+    font: var(--text-small-medium);
+  }
+
+  .m-general__hint {
+    font: var(--text-caption);
+  }
+
+  .m-general__key-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-general__key {
+    width: min(100%, 20rem);
+  }
+}

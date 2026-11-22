@@ -1,15 +1,14 @@
+import './remote-client-settings.css'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
-import { ItemCard } from '@/components/base'
-
 import { api } from '@/api'
 import { useConnectionState } from '@/hooks/use-connection-state'
-import { cx } from '@/utils/cx'
 import { isRemote, probeRemote, readRemoteConfig, writeRemoteConfig, type ProbeResult } from '@/lib/transport'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -90,35 +89,25 @@ export function RemoteClientSettings() {
   }
 
   if (isRemote) {
-    const offline = state === 'offline'
     return (
-      <div data-slot="remote-client-connected" className="space-y-3">
-        <p data-slot="remote-client-label" className="block text-caption-1-medium text-text-secondary">
+      <div data-slot="remote-client-connected" className="m-remote-client">
+        <p data-slot="remote-client-label" className="m-remote-client__label">
           {t('settings.client.title')}
         </p>
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state it stands for is spelled out beside it. */}
-              <span
-                data-slot="remote-client-state-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  state === 'connected' ? 'bg-status-success' : offline ? 'bg-status-danger' : 'bg-status-warning',
-                )}
-              />
-              {t(`settings.client.state.${state}`)}
-            </ItemCard.Title>
-            <ItemCard.Description className="w-full truncate font-mono" onPointerEnter={titleIfTruncated}>
-              {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
-            </ItemCard.Description>
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-remote-client__card">
+          <p className="m-remote-client__state">
+            {/* Decoration: the state it stands for is spelled out beside it. */}
+            <span data-slot="remote-client-state-dot" data-state={state} aria-hidden className="m-remote-client__dot" />
+            {t(`settings.client.state.${state}`)}
+          </p>
+          <p className="m-remote-client__host" onPointerEnter={titleIfTruncated}>
+            {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
+          </p>
+        </div>
         <Button variant="secondary" onPress={handleDisconnect}>
           {t('settings.client.disconnect')}
         </Button>
-        <p data-slot="remote-client-disconnect-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="remote-client-disconnect-hint" className="m-remote-client__hint">
           {t('settings.client.disconnectHint')}
         </p>
       </div>
@@ -126,15 +115,15 @@ export function RemoteClientSettings() {
   }
 
   return (
-    <div data-slot="remote-client" className="space-y-3">
-      <p data-slot="remote-client-label" className="block text-caption-1-medium text-text-secondary">
+    <div data-slot="remote-client" className="m-remote-client">
+      <p data-slot="remote-client-label" className="m-remote-client__label">
         {t('settings.client.title')}
       </p>
-      <p data-slot="remote-client-intro" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="remote-client-intro" className="m-remote-client__hint">
         {t('settings.client.intro')}
       </p>
 
-      <div data-slot="remote-client-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="remote-client-endpoint" className="m-remote-client__endpoint">
         <TextField
           label={t('settings.client.host')}
           name="remoteClientHost"
@@ -162,10 +151,10 @@ export function RemoteClientSettings() {
         autoComplete="current-password"
         value={token}
         onChange={setToken}
-        className="max-w-xs"
+        className="m-remote-client__token"
       />
 
-      <div data-slot="remote-client-actions" className="flex items-center gap-2">
+      <div data-slot="remote-client-actions" className="m-remote-client__actions">
         <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
           {probing ? t('settings.client.testing') : t('settings.client.test')}
         </Button>
@@ -176,9 +165,9 @@ export function RemoteClientSettings() {
 
       {probe && <ProbeMessage probe={probe} />}
       {error && (
-        <p data-slot="remote-client-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="remote-client-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
     </div>
   )
@@ -197,11 +186,7 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
 
   if (probe.ok) {
     return (
-      <p
-        data-slot="remote-client-probe-ok"
-        role="status"
-        className="text-caption-1-regular text-status-success-soft-foreground"
-      >
+      <p data-slot="remote-client-probe-ok" role="status" className="m-remote-client__ok">
         {t('settings.client.testOk', { version: probe.version })}
       </p>
     )
@@ -218,8 +203,8 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
       : t(probe.reason === 'malformed' ? 'settings.client.testMalformed' : 'settings.client.testUnreachable')
 
   return (
-    <p data-slot="remote-client-probe-failed" role="alert" className="text-caption-1-regular text-status-danger">
+    <Alert data-slot="remote-client-probe-failed" tone="danger" shouldAnnounce>
       {message}
-    </p>
+    </Alert>
   )
 }

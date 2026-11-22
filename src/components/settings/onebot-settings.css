@@ -1,0 +1,92 @@
+@layer components {
+  .m-onebot__stack,
+  .m-onebot__replies,
+  .m-onebot__copy,
+  .m-onebot__status {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-onebot__replies {
+    gap: var(--space-3);
+  }
+
+  .m-onebot__title,
+  .m-onebot__hint,
+  .m-onebot__warning,
+  .m-onebot__status-title {
+    margin: 0;
+  }
+
+  .m-onebot__title,
+  .m-onebot__status-title {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-onebot__status-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: var(--text-body);
+  }
+
+  .m-onebot__hint {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-onebot__warning {
+    color: var(--warning-fg);
+    font: var(--text-caption);
+  }
+
+  .m-onebot__grid {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .m-onebot__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding-block-start: var(--space-2);
+  }
+
+  .m-onebot__saved {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .m-onebot__status {
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-onebot__dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+  }
+
+  .m-onebot__dot[data-running] {
+    background: var(--success-fg);
+  }
+
+  @container (width >= 420px) {
+    .m-onebot__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}

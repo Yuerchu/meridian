@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import './model-page.css'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Disclosure } from '@/components/base'
+import { Button as AriaButton, Disclosure, DisclosurePanel, Heading } from 'react-aria-components'
+import { ChevronRight } from '@keyline-icons/react/two-tone'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -13,7 +15,8 @@ import { assistantsWithModelConflicts } from '@/lib/assistant-model-lock'
 import { assertDecimal38_18 } from '@/lib/decimal'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { SavedHint, SettingsRow, SettingsSection, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { SavedHint, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft, type SettingsStack } from '../settings-stack'
 import { PriceTierEditor } from './price-tier-editor'
@@ -40,6 +43,37 @@ const NEW_PROFILE = '__new__'
 type ConfirmFn = SettingsStack<unknown>['confirm']
 type LimitField = 'contextWindow' | 'compactThreshold' | 'maxOutput'
 
+function ModelFold({
+  slot,
+  expanded,
+  onExpandedChange,
+  label,
+  children,
+}: {
+  slot: string
+  expanded: boolean
+  onExpandedChange: (open: boolean) => void
+  label: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <Disclosure
+      data-slot={slot}
+      className="m-model-page__fold"
+      isExpanded={expanded}
+      onExpandedChange={onExpandedChange}
+    >
+      <Heading className="m-model-page__fold-heading">
+        <AriaButton slot="trigger" className="m-model-page__fold-trigger">
+          {label}
+          <ChevronRight size={14} aria-hidden className="m-model-page__fold-indicator" />
+        </AriaButton>
+      </Heading>
+      <DisclosurePanel className="m-model-page__fold-panel">{children}</DisclosurePanel>
+    </Disclosure>
+  )
+}
+
 function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
   const { t } = useTranslation()
   const options: Array<{ value: Tri; label: string }> = [
@@ -48,8 +82,8 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
     { value: 'off', label: t('settings.model.capOff') },
   ]
   return (
-    <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <p data-slot="capability-tri-label" className="text-caption-1-regular text-text-secondary">
+    <div data-slot="capability-tri-row" className="m-model-page__tri">
+      <p data-slot="capability-tri-label" className="m-model-page__muted">
         {label}
       </p>
       <SettingsSelect
@@ -633,7 +667,7 @@ function ModelConfigEditor({
   // coarse-pointer variants put the extra height back where a finger is doing
   // the aiming and leave the desktop exactly as it was.
   const form = (
-    <div data-slot="model-config-editor" className="space-y-2">
+    <div data-slot="model-config-editor" className="m-model-page__editor">
       {apiFormat === 'litert_lm' && capsError !== null && (
         <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.capabilitiesError')}>
           {capsError}
@@ -641,7 +675,7 @@ function ModelConfigEditor({
       )}
       {localInfo !== null && (
         <SettingsRow label={t('settings.localModel.context')} description={t('settings.localModel.contextHint')}>
-          <p className="text-body-regular text-text-secondary">
+          <p className="m-model-page__value">
             {localInfo.max_context_tokens === null
               ? t('settings.localModel.unavailable')
               : localInfo.max_context_tokens.toLocaleString()}{' '}
@@ -656,7 +690,7 @@ function ModelConfigEditor({
           </p>
         </SettingsRow>
       )}
-      <div data-slot="model-config-limits" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+      <div data-slot="model-config-limits" className="m-model-page__grid">
         <NumberField
           isRequired
           isInvalid={invalidLimits.has('contextWindow')}
@@ -702,7 +736,7 @@ function ModelConfigEditor({
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
-      <div data-slot="model-config-prices" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+      <div data-slot="model-config-prices" className="m-model-page__grid">
         <TextField
           isInvalid={invalidPrices.has('input')}
           label={t('settings.model.inputPrice')}
@@ -760,7 +794,7 @@ function ModelConfigEditor({
           off, it is a thing that does not exist — and an empty section reads as
           a feature that failed to load. */}
       {(caps?.server_tools?.length ?? 0) > 0 && (
-        <div data-slot="server-tools" className="space-y-1.5 pt-1">
+        <div data-slot="server-tools" className="m-model-page__tools">
           <CheckboxGroup
             data-slot="server-tool-options"
             label={t('settings.model.serverTools')}
@@ -796,122 +830,96 @@ function ModelConfigEditor({
             placeholder="5"
             description={t('settings.model.serverToolPriceHint')}
           />
-          <p data-slot="server-tools-hint" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="server-tools-hint" className="m-model-page__muted">
             {t('settings.model.serverToolsHint')}
           </p>
         </div>
       )}
-      <Disclosure
-        data-slot="price-tier-section"
-        className="pt-1"
-        isExpanded={showTiers}
+      <ModelFold
+        slot="price-tier-section"
+        expanded={showTiers}
         onExpandedChange={setShowTiers}
+        label={
+          tiers.length > 0
+            ? t('settings.model.priceTiersCount', { count: tiers.length })
+            : t('settings.model.priceTiers')
+        }
       >
-        <Disclosure.Heading>
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
-            {tiers.length > 0
-              ? t('settings.model.priceTiersCount', { count: tiers.length })
-              : t('settings.model.priceTiers')}
-            <Disclosure.Indicator className="size-3.5" />
-          </Disclosure.Trigger>
-        </Disclosure.Heading>
-        <Disclosure.Content className="min-h-0 w-full">
-          <Disclosure.Body className="pt-1">
-            <PriceTierEditor
-              tiers={tiers}
-              onChange={(next) => {
-                setTiers(next)
-                setDirty(true)
-              }}
-            />
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
-      <Disclosure
-        data-slot="capability-overrides"
-        className="pt-1"
-        isExpanded={showCaps}
+        <PriceTierEditor
+          tiers={tiers}
+          onChange={(next) => {
+            setTiers(next)
+            setDirty(true)
+          }}
+        />
+      </ModelFold>
+      <ModelFold
+        slot="capability-overrides"
+        expanded={showCaps}
         onExpandedChange={setShowCaps}
+        label={t('settings.model.capabilities')}
       >
-        <Disclosure.Heading>
-          {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
-              trigger across the form and the indicator's own `ms-auto` would
-              fling the chevron to the far edge. */}
-          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
-            {t('settings.model.capabilities')}
-            <Disclosure.Indicator className="size-3.5" />
-          </Disclosure.Trigger>
-        </Disclosure.Heading>
-        <Disclosure.Content className="min-h-0 w-full">
-          {/* Body, not a plain wrapper: it is what keeps the panel measurable,
-              so without it the overrides never collapse. */}
-          <Disclosure.Body className="space-y-2">
-            <CheckboxGroup
-              data-slot="effort-whitelist"
-              label={t('settings.model.supportedEfforts')}
-              orientation="horizontal"
-              value={efforts}
-              onChange={(next) => {
-                // Rebuild from the ladder so the stored array stays in
-                // ascending order -- the median coercion ranks on position.
-                setEfforts(EFFORT_LADDER.filter((tier) => next.includes(tier)))
-                effortsDirty.current = true
-                setDirty(true)
-              }}
-            >
-              {EFFORT_LADDER.map((tier) => (
-                <Checkbox key={tier} value={tier}>
-                  {t(`toolbar.thinking.${tier}`)}
-                </Checkbox>
-              ))}
-            </CheckboxGroup>
-            <CheckboxGroup
-              data-slot="readable-mimes"
-              label={t('settings.model.readableMimes')}
-              orientation="horizontal"
-              value={mimes}
-              onChange={(next) => {
-                setMimes(READABLE_MIMES.filter((mime) => next.includes(mime)))
-                mimesDirty.current = true
-                setDirty(true)
-              }}
-            >
-              {READABLE_MIMES.map((mime) => (
-                <Checkbox key={mime} value={mime}>
-                  {mime}
-                </Checkbox>
-              ))}
-            </CheckboxGroup>
-            <CapabilityTriRow
-              label={t('settings.model.capThinking')}
-              value={capThinking}
-              onChange={(value) => {
-                setCapThinking(value)
-                setDirty(true)
-              }}
-            />
-            <CapabilityTriRow
-              label={t('settings.model.capFast')}
-              value={capFast}
-              onChange={(value) => {
-                setCapFast(value)
-                setDirty(true)
-              }}
-            />
-            <p data-slot="capabilities-hint" className="text-caption-1-regular text-text-secondary">
-              {t('settings.model.capabilitiesHint')}
-            </p>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-6 pointer-coarse:h-9 px-0 text-caption-1-regular text-text-secondary hover:text-text-primary"
-              onPress={resetOverrides}
-            >
-              {t('settings.model.capReset')}
-            </Button>
-          </Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>
+        <div className="m-model-page__overrides">
+          <CheckboxGroup
+            data-slot="effort-whitelist"
+            label={t('settings.model.supportedEfforts')}
+            orientation="horizontal"
+            value={efforts}
+            onChange={(next) => {
+              // Rebuild from the ladder so the stored array stays in
+              // ascending order -- the median coercion ranks on position.
+              setEfforts(EFFORT_LADDER.filter((tier) => next.includes(tier)))
+              effortsDirty.current = true
+              setDirty(true)
+            }}
+          >
+            {EFFORT_LADDER.map((tier) => (
+              <Checkbox key={tier} value={tier}>
+                {t(`toolbar.thinking.${tier}`)}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+          <CheckboxGroup
+            data-slot="readable-mimes"
+            label={t('settings.model.readableMimes')}
+            orientation="horizontal"
+            value={mimes}
+            onChange={(next) => {
+              setMimes(READABLE_MIMES.filter((mime) => next.includes(mime)))
+              mimesDirty.current = true
+              setDirty(true)
+            }}
+          >
+            {READABLE_MIMES.map((mime) => (
+              <Checkbox key={mime} value={mime}>
+                {mime}
+              </Checkbox>
+            ))}
+          </CheckboxGroup>
+          <CapabilityTriRow
+            label={t('settings.model.capThinking')}
+            value={capThinking}
+            onChange={(value) => {
+              setCapThinking(value)
+              setDirty(true)
+            }}
+          />
+          <CapabilityTriRow
+            label={t('settings.model.capFast')}
+            value={capFast}
+            onChange={(value) => {
+              setCapFast(value)
+              setDirty(true)
+            }}
+          />
+          <p data-slot="capabilities-hint" className="m-model-page__muted">
+            {t('settings.model.capabilitiesHint')}
+          </p>
+          <Button variant="ghost" size="sm" onPress={resetOverrides}>
+            {t('settings.model.capReset')}
+          </Button>
+        </div>
+      </ModelFold>
     </div>
   )
 
@@ -924,49 +932,37 @@ function ModelConfigEditor({
    * saying so twice is how the two come to disagree.
    */
   const overrideTierSection = (
-    <Disclosure
-      data-slot="override-price-tier-section"
-      className="px-4 pb-3"
-      isExpanded={showOverrideTiers}
+    <ModelFold
+      slot="override-price-tier-section"
+      expanded={showOverrideTiers}
       onExpandedChange={setShowOverrideTiers}
+      label={
+        overrideTiers.length > 0
+          ? t('settings.model.priceTiersCount', { count: overrideTiers.length })
+          : t('settings.model.priceTiers')
+      }
     >
-      <Disclosure.Heading>
-        <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-caption-1-regular text-text-secondary transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50">
-          {overrideTiers.length > 0
-            ? t('settings.model.priceTiersCount', { count: overrideTiers.length })
-            : t('settings.model.priceTiers')}
-          <Disclosure.Indicator className="size-3.5" />
-        </Disclosure.Trigger>
-      </Disclosure.Heading>
-      <Disclosure.Content className="min-h-0 w-full">
-        <Disclosure.Body className="pt-1">
-          <PriceTierEditor
-            namePrefix="modelOverride"
-            tiers={overrideTiers}
-            onChange={(next) => {
-              setOverrideTiers(next)
-              setDirty(true)
-            }}
-          />
-        </Disclosure.Body>
-      </Disclosure.Content>
-    </Disclosure>
+      <PriceTierEditor
+        namePrefix="modelOverride"
+        tiers={overrideTiers}
+        onChange={(next) => {
+          setOverrideTiers(next)
+          setDirty(true)
+        }}
+      />
+    </ModelFold>
   )
 
   const providerSection = (
-    <SettingsSection label={t('settings.model.sectionThisProvider')}>
+    <SettingsGroup headingLevel={3} heading={t('settings.model.sectionThisProvider')}>
       <SettingsRow label={t('settings.model.overridePricing')} description={t('settings.model.overridePricingHint')}>
-        {({ labelId, descriptionId }) => (
-          <Switch
-            aria-labelledby={labelId}
-            aria-describedby={descriptionId}
-            isSelected={overridesPricing}
-            onChange={(next) => {
-              setOverridesPricing(next)
-              setDirty(true)
-            }}
-          />
-        )}
+        <Switch
+          isSelected={overridesPricing}
+          onChange={(next) => {
+            setOverridesPricing(next)
+            setDirty(true)
+          }}
+        />
       </SettingsRow>
       {overridesPricing &&
         (
@@ -978,24 +974,21 @@ function ModelConfigEditor({
           ] as const
         ).map(([field, label, value, setValue]) => (
           <SettingsRow key={field} label={label}>
-            {({ labelId }) => (
-              <TextField
-                isInvalid={invalidPrices.has(field)}
-                ref={priceRefs[field]}
-                aria-labelledby={labelId}
-                name={`modelOverride-${field}-${modelId}`}
-                inputMode="decimal"
-                value={value}
-                onChange={(event) => {
-                  setValue(event)
-                  setDirty(true)
-                }}
-              />
-            )}
+            <TextField
+              isInvalid={invalidPrices.has(field)}
+              ref={priceRefs[field]}
+              name={`modelOverride-${field}-${modelId}`}
+              inputMode="decimal"
+              value={value}
+              onChange={(event) => {
+                setValue(event)
+                setDirty(true)
+              }}
+            />
           </SettingsRow>
         ))}
       {overridesPricing && overrideTierSection}
-    </SettingsSection>
+    </SettingsGroup>
   )
 
   return (
@@ -1014,40 +1007,35 @@ function ModelConfigEditor({
             </Button>
           )}
           {saved && <SavedHint data-slot="model-config-saved" />}
-          <div data-slot="model-config-footer-spacer" className="flex-1" />
+          <div data-slot="model-config-footer-spacer" className="m-model-page__spacer" />
           {priceError && (
-            <p data-slot="model-config-error" role="alert" className="text-caption-1-regular text-status-danger">
+            <Alert data-slot="model-config-error" tone="danger" shouldAnnounce>
               {priceError}
-            </p>
+            </Alert>
           )}
         </>
       }
     >
-      <SettingsSection label={t('settings.model.sectionProfile')}>
+      <SettingsGroup headingLevel={3} heading={t('settings.model.sectionProfile')}>
         <SettingsRow label={t('settings.model.useProfile')} description={sharedNote}>
-          {({ labelId }) => (
-            <SettingsSelect
-              ariaLabelledBy={labelId}
-              value={profileId ?? NEW_PROFILE}
-              options={profileOptions}
-              onChange={handleProfileChange}
-            />
-          )}
+          <SettingsSelect
+            ariaLabel={t('settings.model.useProfile')}
+            value={profileId ?? NEW_PROFILE}
+            options={profileOptions}
+            onChange={handleProfileChange}
+          />
         </SettingsRow>
-        <SettingsRow label={t('settings.model.profileName')} stacked>
-          {({ labelId }) => (
-            <TextField
-              aria-labelledby={labelId}
-              name={`modelProfileName-${modelId}`}
-              value={profileName}
-              onChange={(event) => {
-                setProfileName(event)
-                setDirty(true)
-              }}
-            />
-          )}
+        <SettingsRow label={t('settings.model.profileName')}>
+          <TextField
+            name={`modelProfileName-${modelId}`}
+            value={profileName}
+            onChange={(event) => {
+              setProfileName(event)
+              setDirty(true)
+            }}
+          />
         </SettingsRow>
-      </SettingsSection>
+      </SettingsGroup>
       {form}
       {providerSection}
     </SettingsPage>

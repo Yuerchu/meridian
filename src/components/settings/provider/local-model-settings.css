@@ -1,0 +1,20 @@
+@layer components {
+  .m-local-model__value {
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-local-model__value[data-wrap='anywhere'] {
+    overflow-wrap: anywhere;
+  }
+
+  .m-local-model__note {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-local-model__missing {
+    color: var(--danger-fg);
+    font: var(--text-body);
+  }
+}

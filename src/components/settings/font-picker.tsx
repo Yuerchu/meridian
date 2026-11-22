@@ -1,3 +1,4 @@
+import './font-picker.css'
 import { useContext, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -11,16 +12,9 @@ import {
   Popover as AriaPopover,
   type Key,
 } from 'react-aria-components'
-import { Label } from '@/components/base'
-import {
-  MENU_ITEM,
-  MENU_ITEM_ACTIVE,
-  MENU_ITEMS_CONTAINER,
-  MENU_POPOVER_SURFACE,
-} from '@/components/base/dropdown/menu-styles'
-import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
+import { Label } from '@/components/yuerchu-ui/components/field/field'
+import { ChevronDown } from '@keyline-icons/react/two-tone'
 import { isSafeFamilyName } from '@/lib/fonts'
-import { cx } from '@/utils/cx'
 import { useDismissOnOutsidePress } from '@/utils/use-dismiss-on-outside-press'
 
 /** List key for "use the CSS default stack". Never written to localStorage. */
@@ -116,7 +110,7 @@ export function FontPicker({
   return (
     <AriaComboBox<FontPickerItem>
       data-slot="font-picker"
-      className="flex w-full max-w-xs flex-col gap-1"
+      className="m-font-picker"
       items={items}
       selectedKey={selectedKey}
       onSelectionChange={handleSelectionChange}
@@ -144,18 +138,7 @@ export function FontPicker({
         <>
           <FontPickerDismiss groupRef={groupRef} popoverRef={popoverRef} />
           <Label>{label}</Label>
-          <AriaGroup
-            ref={groupRef}
-            className={cx(
-              'flex w-full items-center justify-between rounded-2lg',
-              'border border-border-button-default bg-background-primary-default shadow-xs',
-              'text-text-primary',
-              'transition-[background-color,border-color,box-shadow] duration-200 ease',
-              'data-[hovered]:border-border-button-hover data-[hovered]:bg-background-primary-hover',
-              'focus-within:ring-2 focus-within:ring-border-focus-ring focus-within:ring-offset-2',
-              'gap-1.5 px-2.5 py-2',
-            )}
-          >
+          <AriaGroup ref={groupRef} className="m-font-picker__group">
             <AriaInput
               autoComplete="off"
               spellCheck={false}
@@ -168,38 +151,23 @@ export function FontPicker({
                 }
                 commitTyped()
               }}
-              className="min-w-0 flex-1 bg-transparent text-body-medium text-text-primary outline-none placeholder:text-text-secondary"
+              className="m-font-picker__input"
             />
             <AriaButton
               aria-label={t('settings.general.fontShowList')}
-              className="shrink-0 text-text-secondary outline-none"
+              data-open={isOpen || undefined}
+              className="m-font-picker__toggle"
             >
-              <ChevronDownSmall
-                className={cx('size-4 transition-transform duration-200 ease', isOpen && 'rotate-180')}
-              />
+              <ChevronDown size={16} aria-hidden />
             </AriaButton>
           </AriaGroup>
-          <AriaPopover
-            ref={popoverRef}
-            isNonModal
-            offset={4}
-            className={cx('min-w-[var(--trigger-width)]', MENU_POPOVER_SURFACE, 'p-2')}
-          >
-            <AriaListBox
-              data-slot="font-picker-list"
-              className={cx(MENU_ITEMS_CONTAINER, 'max-h-[240px] overflow-auto')}
-            >
+          <AriaPopover ref={popoverRef} isNonModal offset={4} className="m-font-picker__popover">
+            <AriaListBox data-slot="font-picker-list" className="m-font-picker__list">
               {(item: FontPickerItem) => (
                 <AriaListBoxItem
                   id={item.id}
                   textValue={item.name}
-                  className={(state) =>
-                    cx(
-                      MENU_ITEM,
-                      'truncate text-body-medium',
-                      (state.isFocused || state.isSelected) && MENU_ITEM_ACTIVE,
-                    )
-                  }
+                  className="m-font-picker__option"
                   style={item.id === SYSTEM_KEY ? undefined : { fontFamily: `"${item.id}"` }}
                 >
                   {item.name}

@@ -1,3 +1,4 @@
+import './onebot-settings.css'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -11,8 +12,6 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 
-import { ItemCard } from '@/components/base'
-import { cx } from '@/utils/cx'
 import type {
   AssistantInfoResponse,
   OneBotConfigInfoResponse,
@@ -349,7 +348,7 @@ export function OneBotSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.onebot.title')} />
 
-      <div data-slot="onebot-enable" className="space-y-1.5">
+      <div data-slot="onebot-enable" className="m-onebot__stack">
         <Switch
           variant="card"
           aria-label={t('settings.onebot.enable')}
@@ -359,16 +358,12 @@ export function OneBotSettings() {
         >
           {t('settings.onebot.enable')}
         </Switch>
-        <p
-          id="onebot-enabled-hint"
-          data-slot="onebot-enable-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="onebot-enabled-hint" data-slot="onebot-enable-hint" className="m-onebot__hint">
           {t('settings.onebot.enableHint')}
         </p>
       </div>
 
-      <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="onebot-endpoint" className="m-onebot__grid">
         <TextField
           label={t('settings.onebot.host')}
           name="onebotHost"
@@ -415,10 +410,10 @@ export function OneBotSettings() {
         description={t('settings.onebot.adminUsersHint')}
       />
 
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <p className="text-body-medium text-text-primary">{t('settings.onebot.replies.title')}</p>
-          <p className="text-caption-1-regular text-text-secondary">{t('settings.onebot.replies.hint')}</p>
+      <div className="m-onebot__replies">
+        <div className="m-onebot__copy">
+          <p className="m-onebot__title">{t('settings.onebot.replies.title')}</p>
+          <p className="m-onebot__hint">{t('settings.onebot.replies.hint')}</p>
         </div>
         {REPLY_SLOTS.map((slot) => (
           <TextArea
@@ -442,7 +437,7 @@ export function OneBotSettings() {
         description={t('settings.onebot.voiceCaptureHint')}
       />
 
-      <div data-slot="onebot-voice-send" className="space-y-1.5">
+      <div data-slot="onebot-voice-send" className="m-onebot__stack">
         <Switch
           variant="card"
           aria-label={t('settings.onebot.voiceSend')}
@@ -452,11 +447,7 @@ export function OneBotSettings() {
         >
           {t('settings.onebot.voiceSend')}
         </Switch>
-        <p
-          id="onebot-voice-send-hint"
-          data-slot="onebot-voice-send-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="onebot-voice-send-hint" data-slot="onebot-voice-send-hint" className="m-onebot__hint">
           {t('settings.onebot.voiceSendHint')}
         </p>
       </div>
@@ -472,7 +463,7 @@ export function OneBotSettings() {
             description={t('settings.onebot.voiceSendGroupsHint')}
           />
 
-          <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+          <div data-slot="onebot-voice-tts" className="m-onebot__grid">
             <TextField
               label={t('settings.onebot.voiceTtsModel')}
               name="onebotVoiceModel"
@@ -515,7 +506,7 @@ export function OneBotSettings() {
               because one of the four is a keychain entry this page never
               sees. */}
           {voiceReady && !voiceReady.ready && (
-            <p data-slot="onebot-voice-not-ready" role="status" className="text-caption-1-regular text-status-warning">
+            <p data-slot="onebot-voice-not-ready" role="status" className="m-onebot__warning">
               {t('settings.onebot.voiceNotReady', {
                 missing: [
                   !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
@@ -540,17 +531,17 @@ export function OneBotSettings() {
       />
 
       {error && (
-        <p data-slot="onebot-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="onebot-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="onebot-actions" className="flex items-center gap-3 pt-2">
+      <div data-slot="onebot-actions" className="m-onebot__actions">
         <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="onebot-saved" role="status" className="sr-only">
+          <span data-slot="onebot-saved" role="status" className="m-onebot__saved">
             {t('common.saved')}
           </span>
         )}
@@ -564,30 +555,25 @@ export function OneBotSettings() {
       </div>
 
       {status && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state it stands for is spelled out beside it,
-                so announcing the dot too would only say it twice. */}
-              <span
-                data-slot="onebot-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  running ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
-            </ItemCard.Title>
-            {running && (
-              <ItemCard.Description className="w-full whitespace-normal">
-                {t('settings.onebot.clients', { count: status.connected_clients })}
-                {' · '}
-                {status.host}:{status.port}
-              </ItemCard.Description>
-            )}
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-onebot__status">
+          <p className="m-onebot__status-title">
+            {/* Decoration: the state it stands for is spelled out beside it. */}
+            <span
+              data-slot="onebot-status-dot"
+              data-running={running || undefined}
+              aria-hidden
+              className="m-onebot__dot"
+            />
+            {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
+          </p>
+          {running && (
+            <p className="m-onebot__hint">
+              {t('settings.onebot.clients', { count: status.connected_clients })}
+              {' · '}
+              {status.host}:{status.port}
+            </p>
+          )}
+        </div>
       )}
     </SettingsPane>
   )

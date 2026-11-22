@@ -1,0 +1,69 @@
+@layer components {
+  .m-voice-corpus__notice,
+  .m-voice-corpus__loading,
+  .m-voice-corpus__summary {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-voice-corpus__loading,
+  .m-voice-corpus__row,
+  .m-voice-corpus__forget {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-voice-corpus__forget {
+    align-items: flex-start;
+  }
+
+  .m-voice-corpus__list,
+  .m-voice-corpus__export {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-voice-corpus__list {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-voice-corpus__row {
+    padding: var(--space-3) var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-voice-corpus__row:last-child {
+    border-block-end: none;
+  }
+
+  .m-voice-corpus__text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-voice-corpus__title {
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-voice-corpus__summary {
+    font: var(--text-caption);
+    white-space: normal;
+  }
+
+  .m-voice-corpus__sender {
+    min-width: 0;
+    flex: 1;
+  }
+}

@@ -1,0 +1,34 @@
+@layer components {
+  /* Both branches are `pane` containers: a grid inside `children` resolves
+     against whichever of the two it landed in, and the dialog's is portalled
+     to `body`, so it is not a descendant of the pane that rendered it. */
+  .m-drilldown__inline,
+  .m-drilldown__body {
+    container-name: pane;
+    container-type: inline-size;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .m-drilldown__inline {
+    gap: var(--space-2);
+  }
+
+  .m-drilldown__body {
+    gap: var(--space-4);
+  }
+
+  .m-drilldown__title {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  /* The dialog is the whole window on a phone, so the system bars are its to
+     keep clear of. The inset goes on the dialog's own box, where its padding is
+     known, rather than on a part of the library's. */
+  .ui-dialog.m-drilldown {
+    padding-block: var(--safe-top) var(--safe-bottom);
+  }
+}

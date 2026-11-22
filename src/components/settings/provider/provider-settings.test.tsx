@@ -360,7 +360,8 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await screen.findByRole('button', { name: 'Provider One' })
     const list = container.querySelector<HTMLElement>('[data-slot="provider-list"]')!
-    const rows = list.querySelectorAll<HTMLElement>('[data-slot="settings-link-row"]')
+    const card = list.querySelector<HTMLElement>('.ui-settings-group__rows')!
+    const rows = card.querySelectorAll<HTMLElement>('[data-slot="settings-link-row"]')
     expect(rows).toHaveLength(2)
     // What the stack's focus return finds the row by.
     expect(rows[0]).toHaveAttribute('data-key', 'p1')
@@ -370,7 +371,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const icon = rows[0].querySelector('[data-slot="settings-link-row-icon"]')!
     expect(icon.nextElementSibling).toHaveAttribute('data-slot', 'settings-link-row-text')
     // Adding is the card's last row.
-    expect(list.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
+    expect(card.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
     expect(within(list).getByRole('button', { name: i18n.t('settings.provider.addProvider') })).toBeInTheDocument()
 
     await waitFor(() => {
@@ -1362,10 +1363,9 @@ describe('ProviderPage failure paths and cached models', () => {
     expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
   })
 
-  // The page is rows in cards now (the MCP server page's grammar), where a
-  // row's label is a <p> and cannot name anything: each control has to be
-  // named through the row's ids, or it is a field a screen reader calls
-  // "edit text" and nothing else.
+  // The page is rows in cards now (the MCP server page's grammar). The row
+  // names each control through React Aria context rather than leaving a screen
+  // reader with an anonymous "edit text".
   it('draws the editor as rows whose controls are named by their labels', async () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
@@ -1376,7 +1376,7 @@ describe('ProviderPage failure paths and cached models', () => {
       if (!card) throw new Error('no identity card')
       return card
     })
-    expect(identity.querySelectorAll('[data-slot="settings-row"]').length).toBeGreaterThanOrEqual(4)
+    expect(identity.querySelectorAll('.ui-settings-row').length).toBeGreaterThanOrEqual(4)
     expect(within(identity).getByRole('textbox', { name: i18n.t('settings.provider.name') })).toHaveValue(
       'Provider One',
     )

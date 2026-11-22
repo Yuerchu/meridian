@@ -1,3 +1,4 @@
+import './settings-shell.css'
 import { ProviderSettings } from './provider'
 import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
@@ -98,10 +99,7 @@ export default function SettingsPage({
   // — the web equivalent of `clipToPadding=true`. Sides matter in landscape,
   // where the 3-button bar moves to one edge.
   return (
-    <div
-      data-slot="settings-scroller"
-      className="@container/settings h-full overflow-y-auto overscroll-contain pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
-    >
+    <div data-slot="settings-scroller" className="m-settings-shell">
       {/* Against the layer, not the window: this is the chat's width minus the
           sidebar, so a 769px window leaves 519px here and the roomier padding
           was taking 9% of it. The container is declared on the scroller above
@@ -112,7 +110,7 @@ export default function SettingsPage({
           the registry settings-modal's content pane) and carries that cap
           itself — `SettingsPane`, `SettingsPage`, `MasterDetail` and the
           skeleton — so moving between sections never moves the column. */}
-      <div data-slot="settings-panel" className="mx-auto w-full p-4 @2xl/settings:p-6">
+      <div data-slot="settings-panel" className="m-settings-shell__panel">
         {panel}
       </div>
     </div>

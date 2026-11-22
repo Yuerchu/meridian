@@ -1,15 +1,14 @@
+import './scope-nav.css'
 import type * as React from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bookmark, UserX } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Card } from '@/components/base'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsInlineAction, SettingsNavRow } from '../primitives'
 import { subjectLabel } from './labels'
 import { useRelativeTime } from '@/hooks/use-relative-time'
-import { cx } from '@/utils/cx'
 import type { MemorySubjectInfoResponse, ProjectInfoResponse } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
 
@@ -74,7 +73,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
       label={label}
       value={count === null ? undefined : String(count)}
       trailing={null}
-      className={cx(indent && 'pl-6')}
+      data-indent={indent || undefined}
       onPress={onPress}
       data-slot="memory-scope-row"
     />
@@ -89,7 +88,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
    * and should not outweigh the rows it is offering.
    */
   const moreRow = (slot: string, expanded: boolean, total: number, onToggle: () => void) => (
-    <SettingsInlineAction key={`${slot}-more`} className="my-1 ml-6" onPress={onToggle} data-slot={slot}>
+    <SettingsInlineAction key={`${slot}-more`} className="m-scope-nav__more" onPress={onToggle} data-slot={slot}>
       {expanded ? t('settings.memory.nav.showLess') : t('settings.memory.nav.showAll', { count: total })}
     </SettingsInlineAction>
   )
@@ -102,8 +101,8 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     // Same container and same stop as the `flex-row` rule in `memory-settings`,
     // and they have to stay that way: on different stops there is a width where
     // this is 224px wide inside a column layout, lying across the list.
-    <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 @xl/pane:w-56">
-      <div data-slot="memory-scope-nav-title" className="px-2 pb-1 text-caption-1-medium text-text-secondary">
+    <div data-slot="memory-scope-nav" className="m-scope-nav">
+      <div data-slot="memory-scope-nav-title" className="m-scope-nav__title">
         {t('settings.memory.nav.scope')}
       </div>
 
@@ -166,22 +165,19 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
         moreRow('memory-scope-more-people', allSubjects, subjects.length, () => setAllSubjects((v) => !v))}
 
       {selectedPerson && (
-        <Card data-slot="memory-person-card" className="mt-3">
-          <Card.Header>
-            <Card.Title>
+        <section data-slot="memory-person-card" className="m-scope-nav__person-card">
+          <div className="m-scope-nav__person-header">
+            <h3 className="m-scope-nav__person-title">
               <SubjectName subject={selectedPerson} />
-            </Card.Title>
-            <Card.Description>
+            </h3>
+            <p className="m-scope-nav__person-description">
               {t('settings.memory.person.lastSeen', {
                 when: relativeTime(selectedPerson.last_seen_at),
               })}
-            </Card.Description>
-          </Card.Header>
+            </p>
+          </div>
           {selectedPerson.opted_out && (
-            <div
-              data-slot="memory-person-opted-out"
-              className="text-caption-1-regular text-status-warning-soft-foreground"
-            >
+            <div data-slot="memory-person-opted-out" className="m-scope-nav__opted-out">
               {t('settings.memory.person.optedOut')}
             </div>
           )}
@@ -189,7 +185,6 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           <Button
             icon={<Bookmark />}
             variant="secondary"
-            className="w-full justify-start text-body-regular"
             onPress={async () => {
               await api.setMemorySubjectFlags({
                 subjectScopeId: selectedPerson.scope_id,
@@ -206,7 +201,6 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           <Button
             icon={<UserX />}
             variant="destructive"
-            className="w-full justify-start text-body-regular"
             onPress={async () => {
               const ok = await confirm({
                 heading: t('settings.memory.person.forgetConfirmTitle'),
@@ -221,7 +215,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
           >
             {t('settings.memory.person.forget')}
           </Button>
-        </Card>
+        </section>
       )}
       {confirmDialog}
     </div>
@@ -239,7 +233,7 @@ function SubjectName({ subject }: { subject: MemorySubjectInfoResponse }) {
   return (
     <>
       {label.name}{' '}
-      <span data-slot="memory-subject-id" className="font-mono text-caption-1-regular text-text-secondary">
+      <span data-slot="memory-subject-id" className="m-scope-nav__subject-id">
         {label.id}
       </span>
     </>

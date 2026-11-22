@@ -1,0 +1,87 @@
+@layer components {
+  .m-developer__section,
+  .m-developer__copy,
+  .m-developer__level,
+  .m-developer__lines {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-developer__label,
+  .m-developer__title,
+  .m-developer__hint,
+  .m-developer__speak {
+    margin: 0;
+  }
+
+  .m-developer__label,
+  .m-developer__hint {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-developer__label {
+    font: var(--text-small-medium);
+  }
+
+  .m-developer__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-developer__title {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-developer__actions,
+  .m-developer__line {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .m-developer__actions {
+    flex-wrap: wrap;
+  }
+
+  .m-developer__speak,
+  .m-developer__line[data-verdict='fail'] {
+    color: var(--danger-fg);
+  }
+
+  .m-developer__line[data-verdict='pass'] {
+    color: var(--success-fg);
+  }
+
+  .m-developer__line {
+    color: var(--text);
+    font: var(--text-caption);
+  }
+
+  .m-developer__pending,
+  .m-developer__detail {
+    color: var(--text-secondary);
+  }
+
+  .m-developer__pending {
+    width: var(--icon-sm);
+    flex-shrink: 0;
+    text-align: center;
+  }
+
+  .m-developer__line-text {
+    min-width: 0;
+  }
+
+  .m-developer__detail {
+    margin-inline-start: var(--space-1);
+    overflow-wrap: anywhere;
+  }
+}

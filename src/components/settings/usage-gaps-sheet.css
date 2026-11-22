@@ -1,0 +1,56 @@
+@layer components {
+  .m-usage-gaps__list,
+  .m-usage-gaps__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-usage-gaps__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-6);
+  }
+
+  .m-usage-gaps__note,
+  .m-usage-gaps__meta {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-usage-gaps__row {
+    min-width: 0;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+  }
+
+  .m-usage-gaps__head {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .m-usage-gaps__text {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-usage-gaps__title {
+    margin: 0;
+    overflow: hidden;
+    color: var(--text);
+    font: var(--text-body-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-usage-gaps__reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+}

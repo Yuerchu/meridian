@@ -1,3 +1,4 @@
+import './price-tier-editor.css'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
@@ -33,17 +34,13 @@ export function PriceTierEditor({
   const add = () => onChange([...tiers, blankTier()])
 
   return (
-    <div data-slot="price-tiers" className="space-y-2">
-      <p data-slot="price-tiers-hint" className="text-caption-1-regular text-text-secondary">
+    <div data-slot="price-tiers" className="m-price-tier">
+      <p data-slot="price-tiers-hint" className="m-price-tier__hint">
         {t('settings.model.priceTiersHint')}
       </p>
       {tiers.map((tier, index) => (
-        <div
-          key={tier.id}
-          data-slot="price-tier"
-          className="rounded-lg border border-border-button-default p-2 space-y-2"
-        >
-          <div data-slot="price-tier-header" className="flex items-end gap-2">
+        <div key={tier.id} data-slot="price-tier" className="m-price-tier__card">
+          <div data-slot="price-tier-header" className="m-price-tier__header">
             <TextField
               label={t('settings.model.tierThreshold')}
               name={`${namePrefix}TierThreshold-${index}`}
@@ -58,13 +55,12 @@ export function PriceTierEditor({
                 size="sm"
                 variant="ghost"
                 aria-label={t('settings.model.removeTier')}
-                className="touch-hitbox hover:text-status-danger"
                 onPress={() => remove(index)}
               />
               <Tooltip>{t('settings.model.removeTier')}</Tooltip>
             </TooltipTrigger>
           </div>
-          <div data-slot="price-tier-rates" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+          <div data-slot="price-tier-rates" className="m-price-tier__rates">
             <TextField
               label={t('settings.model.inputPrice')}
               name={`${namePrefix}TierInputPrice-${index}`}
@@ -98,13 +94,7 @@ export function PriceTierEditor({
           </div>
         </div>
       ))}
-      <Button
-        icon={<Plus />}
-        size="sm"
-        variant="secondary"
-        className="h-7 pointer-coarse:h-10 rounded-md text-caption-1-regular"
-        onPress={add}
-      >
+      <Button icon={<Plus />} size="sm" variant="secondary" onPress={add}>
         {t('settings.model.addTier')}
       </Button>
     </div>

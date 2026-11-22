@@ -1,7 +1,5 @@
+import './context-meter.css'
 import { useTranslation } from 'react-i18next'
-
-import { cx } from '@/utils/cx'
-
 import { formatDefinitionTokens } from './format'
 
 export interface ContextMeterSegment {
@@ -9,14 +7,6 @@ export interface ContextMeterSegment {
   name: string
   tokens: number
 }
-
-const SEGMENT_FILL = [
-  'bg-accent-500',
-  'bg-accent-500/80',
-  'bg-accent-500/60',
-  'bg-accent-500/45',
-  'bg-accent-500/30',
-] as const
 
 /**
  * How much of the prompt prefix the enabled MCP tool definitions take, as a
@@ -41,13 +31,13 @@ export function ContextMeter({
   const valuetext = t('settings.mcp.meterValueText', { tools: toolsLabel, tokens: tokensLabel })
 
   return (
-    <div data-slot="mcp-context-meter" className="flex flex-col gap-2 px-3 py-2.5 pr-2.5">
-      <p data-slot="mcp-context-meter-line" className="text-body-2-regular text-text-secondary">
-        <span className="tabular-nums text-text-primary">{toolsLabel}</span>
-        <span aria-hidden className="mx-1.5">
+    <div data-slot="mcp-context-meter" className="m-context-meter">
+      <p data-slot="mcp-context-meter-line" className="m-context-meter__line">
+        <span className="m-context-meter__number">{toolsLabel}</span>
+        <span aria-hidden className="m-context-meter__separator">
           ·
         </span>
-        <span className="tabular-nums text-text-primary">{tokensLabel}</span>
+        <span className="m-context-meter__number">{tokensLabel}</span>
         <span> {t('settings.mcp.tokensEstimate')}</span>
       </p>
       <div
@@ -58,19 +48,17 @@ export function ContextMeter({
         aria-valuemax={total}
         aria-valuenow={total}
         aria-valuetext={valuetext}
-        className="flex h-1.5 w-full overflow-hidden rounded-full bg-background-tertiary-default"
+        className="m-context-meter__track"
       >
         {segments.map((segment, index) => (
           <span
             key={segment.id}
             data-slot="mcp-context-meter-segment"
+            data-series={index + 1}
             data-hot={hotId === segment.id || undefined}
+            data-dimmed={hotId !== null && hotId !== segment.id ? true : undefined}
             title={`${segment.name} · ${formatDefinitionTokens(segment.tokens)}`}
-            className={cx(
-              'h-full min-w-0 transition-opacity duration-150',
-              SEGMENT_FILL[index % SEGMENT_FILL.length],
-              hotId && hotId !== segment.id ? 'opacity-40' : 'opacity-100',
-            )}
+            className="m-context-meter__segment"
             style={{ flexGrow: segment.tokens, flexBasis: 0 }}
           />
         ))}

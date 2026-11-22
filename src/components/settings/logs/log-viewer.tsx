@@ -1,11 +1,13 @@
+import './log-viewer.css'
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ChevronLeft, Download, RefreshCw, Search } from '@keyline-icons/react/two-tone'
+import { ChevronLeft, Download, RefreshCw } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
-import { InputGroup } from '@/components/base'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
@@ -55,15 +57,15 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   const unavailable = logs.settings !== null && !logs.settings.available
 
   return (
-    <div data-slot="log-viewer" className="flex h-full flex-col gap-4">
-      <div data-slot="log-viewer-header" className="flex flex-wrap items-center gap-2">
+    <div data-slot="log-viewer" className="m-log-viewer">
+      <div data-slot="log-viewer-header" className="m-log-viewer__header">
         <Button icon={<ChevronLeft />} variant="secondary" size="sm" onPress={onBack}>
           {t('settings.about.logs.back')}
         </Button>
-        <h2 data-slot="log-viewer-title" className="text-title-3-medium">
+        <h2 data-slot="log-viewer-title" className="m-log-viewer__title">
           {t('settings.about.logs.title')}
         </h2>
-        <div data-slot="log-viewer-actions" className="ml-auto flex items-center gap-2">
+        <div data-slot="log-viewer-actions" className="m-log-viewer__actions">
           <Button
             variant="secondary"
             size="sm"
@@ -83,16 +85,16 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <p data-slot="log-viewer-export-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="log-viewer-export-hint" className="m-log-viewer__note">
         {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
       </p>
       {exportError && (
-        <p data-slot="log-viewer-export-error" role="alert" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="log-viewer-export-error" tone="danger" shouldAnnounce>
           {t('settings.about.logs.exportFailed', { error: exportError })}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
+      <div data-slot="log-toolbar" className="m-log-viewer__toolbar">
         <SettingsSelect
           ariaLabel={t('settings.about.logs.levelFilter')}
           value={logs.level}
@@ -100,18 +102,15 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           onChange={logs.setLevel}
         />
 
-        <InputGroup className="max-w-xs flex-1">
-          <InputGroup.Prefix>
-            <Search className="size-4" />
-          </InputGroup.Prefix>
-          <InputGroup.Input
+        <div className="m-log-viewer__search">
+          <SearchField
             aria-label={t('settings.about.logs.searchPlaceholder')}
             name="logSearch"
             value={logs.search}
-            onChange={(e: import('react').ChangeEvent<HTMLInputElement>) => logs.setSearch(e.target.value)}
+            onChange={logs.setSearch}
             placeholder={t('settings.about.logs.searchPlaceholder')}
           />
-        </InputGroup>
+        </div>
 
         <SettingsSelect
           ariaLabel={t('settings.about.logs.rangeFilter')}
@@ -123,7 +122,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span data-slot="log-viewer-count" className="ml-auto text-caption-1-regular text-text-secondary">
+          <span data-slot="log-viewer-count" className="m-log-viewer__count" aria-live="polite">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
@@ -131,24 +130,20 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
 
       {/* A page of log lines is read, not operated: the rows only carry a copy
           button, so the list itself is the tab stop that scrolls it. */}
-      <div
-        data-slot="log-list"
-        tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border-button-default outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
-      >
+      <div data-slot="log-list" tabIndex={0} className="m-log-viewer__list">
         {unavailable ? (
           <EmptyState heading={t('settings.about.logs.unavailable')} headingLevel={3} size="sm" />
         ) : logs.error ? (
-          <p data-slot="log-viewer-error" role="alert" className="p-6 text-body-regular text-status-danger">
+          <Alert data-slot="log-viewer-error" tone="danger" shouldAnnounce>
             {t('settings.about.logs.loadError')}
-          </p>
+          </Alert>
         ) : logs.loading ? (
           <div
             data-slot="log-viewer-loading"
             role="status"
             aria-busy="true"
             aria-label={t('common.loading')}
-            className="space-y-3 p-3"
+            className="m-log-viewer__loading"
           >
             {Array.from({ length: 5 }, (_, i) => (
               <Skeleton key={i} shape="rect" width="100%" height="3rem" />
@@ -167,14 +162,14 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             {logs.entries.map((entry) => (
               <LogRow key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`} entry={entry} />
             ))}
-            <div data-slot="log-viewer-footer" className="flex flex-col items-center gap-2 p-3">
+            <div data-slot="log-viewer-footer" className="m-log-viewer__footer">
               {logs.truncated && (
-                <p data-slot="log-viewer-truncated" className="text-caption-1-regular text-text-secondary">
+                <p data-slot="log-viewer-truncated" className="m-log-viewer__note">
                   {t('settings.about.logs.truncated')}
                 </p>
               )}
               {logs.capped ? (
-                <p data-slot="log-viewer-capped" className="text-caption-1-regular text-text-secondary">
+                <p data-slot="log-viewer-capped" className="m-log-viewer__note">
                   {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                 </p>
               ) : logs.canLoadOlder ? (

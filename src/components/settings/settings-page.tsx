@@ -1,7 +1,7 @@
+import './settings-page.css'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowLeft } from '@keyline-icons/react/two-tone'
-import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 import { useSettingsLevel } from './settings-stack'
 
@@ -17,8 +17,8 @@ import { useSettingsLevel } from './settings-stack'
  * the settings tests find it that way, but mostly because "Back" survives a
  * glance in a dense form better than a glyph does.
  *
- * `@container/pane` is declared here, on the element that also carries the
- * width, so a grid inside resolves against the box it is actually in. Note that
+ * The named `pane` container lives on the element that also carries the width,
+ * so a grid inside resolves against the box it is actually in. Note that
  * `container-type` implies `contain: layout`, which makes this the containing
  * block for any `position: fixed` descendant.
  */
@@ -40,28 +40,22 @@ export function SettingsPage({
   const { t } = useTranslation()
   const { index, pop } = useSettingsLevel()
   return (
-    <div
-      data-slot="settings-page"
-      className={cx('@container/pane mx-auto flex w-full max-w-settings flex-col gap-6', className)}
-      {...props}
-    >
+    <div data-slot="settings-page" className={['m-settings-page', className].filter(Boolean).join(' ')} {...props}>
       {index > 0 && (
-        <div data-slot="settings-page-bar" className="flex items-center gap-2">
+        <div data-slot="settings-page-bar" className="m-settings-page__bar">
           <Button
             icon={<ArrowLeft />}
             data-slot="settings-page-back"
-            variant="secondary"
+            variant="ghost"
+            size="sm"
             onPress={() => void pop()}
-            // `-ms-2` pulls the ghost button's own padding back to the content
-            // edge, so the label lines up with the form below it.
-            className="-ms-2 h-9 gap-1 rounded-lg px-2 text-body-regular text-text-secondary hover:text-text-primary"
           >
             {t('common.back')}
           </Button>
         </div>
       )}
       <SettingsHeader title={title} subtitle={subtitle} actions={actions} />
-      <div data-slot="settings-page-body" className="flex flex-col gap-6">
+      <div data-slot="settings-page-body" className="m-settings-page__body">
         {children}
       </div>
       {footer && <SettingsPageFooter>{footer}</SettingsPageFooter>}
@@ -80,5 +74,11 @@ export function SettingsPage({
  * page's dirty guard, which is what the bar being always in reach was for.
  */
 export function SettingsPageFooter({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="settings-page-footer" className={cx('flex items-center gap-2', className)} {...props} />
+  return (
+    <div
+      data-slot="settings-page-footer"
+      className={['m-settings-page__footer', className].filter(Boolean).join(' ')}
+      {...props}
+    />
+  )
 }

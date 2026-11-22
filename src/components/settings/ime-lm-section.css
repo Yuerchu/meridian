@@ -1,0 +1,74 @@
+@layer components {
+  .m-ime-lm {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-ime-lm__head,
+  .m-ime-lm__row,
+  .m-ime-lm__title,
+  .m-ime-lm__hints {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-ime-lm__head {
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-ime-lm__label,
+  .m-ime-lm__hint,
+  .m-ime-lm__detail {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-ime-lm__label {
+    font: var(--text-small-medium);
+  }
+
+  .m-ime-lm__bundles {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-ime-lm__row {
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-ime-lm__row:last-child {
+    border-block-end: none;
+  }
+
+  .m-ime-lm__text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-ime-lm__name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-ime-lm__detail {
+    overflow-wrap: anywhere;
+  }
+
+  .m-ime-lm__hints {
+    gap: var(--space-3);
+    padding-block-start: var(--space-1);
+  }
+}

@@ -1,3 +1,4 @@
+import './android-file-access.css'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -94,12 +95,12 @@ export function AndroidFileAccess() {
   }
 
   return (
-    <div data-slot="android-file-access" className="space-y-4">
+    <div data-slot="android-file-access" className="m-file-access">
       <div data-slot="file-access-heading">
-        <h3 data-slot="file-access-title" className="text-body-medium">
+        <h3 data-slot="file-access-title" className="m-file-access__title">
           {t('settings.fileAccess.title')}
         </h3>
-        <p data-slot="file-access-description" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="file-access-description" className="m-file-access__hint">
           {t('settings.fileAccess.description')}
         </p>
       </div>
@@ -110,32 +111,28 @@ export function AndroidFileAccess() {
         </Alert>
       )}
 
-      <div data-slot="file-access-saf" className="space-y-1.5">
-        <p data-slot="file-access-saf-label" className="block text-caption-1-medium text-text-secondary">
+      <div data-slot="file-access-saf" className="m-file-access__stack">
+        <p data-slot="file-access-saf-label" className="m-file-access__label">
           {t('settings.fileAccess.safDirs')}
         </p>
         {safRoots.length === 0 ? (
           <EmptyState heading={t('settings.fileAccess.safEmpty')} headingLevel={3} size="sm" />
         ) : (
-          <ul data-slot="file-access-saf-list" className="space-y-1">
+          <ul data-slot="file-access-saf-list" className="m-file-access__roots">
             {safRoots.map((root) => (
-              <li
-                key={root.uri}
-                data-slot="file-access-saf-root"
-                className="flex items-center justify-between rounded-md border px-2 py-1.5 text-caption-1-regular"
-              >
-                <div data-slot="file-access-saf-root-text" className="min-w-0">
+              <li key={root.uri} data-slot="file-access-saf-root" className="m-file-access__root">
+                <div data-slot="file-access-saf-root-text" className="m-file-access__root-text">
                   <div
                     data-slot="file-access-saf-root-name"
                     onPointerEnter={titleIfTruncated}
-                    className="truncate text-caption-1-medium"
+                    className="m-file-access__root-name"
                   >
                     {root.display_name}
                   </div>
                   <div
                     data-slot="file-access-saf-root-prefix"
                     onPointerEnter={titleIfTruncated}
-                    className="truncate text-caption-1-regular text-text-secondary"
+                    className="m-file-access__root-prefix"
                   >
                     {root.virtual_prefix}
                   </div>
@@ -145,7 +142,6 @@ export function AndroidFileAccess() {
                     variant="ghost"
                     icon={<X />}
                     size="sm"
-                    className="shrink-0"
                     onPress={() => handleRemove(root.uri)}
                     aria-label={t('settings.fileAccess.removeDir')}
                   />
@@ -160,7 +156,7 @@ export function AndroidFileAccess() {
         </Button>
       </div>
 
-      <div data-slot="file-access-manage" className="space-y-1.5">
+      <div data-slot="file-access-manage" className="m-file-access__stack">
         <Switch
           variant="card"
           aria-label={t('settings.fileAccess.manageToggle')}
@@ -170,18 +166,14 @@ export function AndroidFileAccess() {
         >
           {t('settings.fileAccess.manageToggle')}
         </Switch>
-        <p
-          id="manage-storage-hint"
-          data-slot="file-access-manage-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="manage-storage-hint" data-slot="file-access-manage-hint" className="m-file-access__hint">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}
         </p>
       </div>
 
-      <p data-slot="file-access-approval-note" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="file-access-approval-note" className="m-file-access__hint">
         {t('settings.fileAccess.approvalNote')}
       </p>
     </div>

@@ -1,25 +1,24 @@
+import './memory-settings.css'
 import { useState } from 'react'
-import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { Bin, Plus, X } from '@keyline-icons/react/two-tone'
+import { Bin, Plus } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { MemoryType } from '@/types'
-import { DisclosureGroup } from '@/components/base'
+import { DisclosureGroup } from 'react-aria-components'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
-import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
-import { ActionBar } from '@/components/base'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
 import { memoryOriginLabel, memoryTypeLabel } from './memory/labels'
-import { SettingsCard, SettingsHeader, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
-import { cx } from '@/utils/cx'
+import { SettingsHeader, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -79,7 +78,7 @@ export function MemorySettings() {
     // and silently never match. For the same reason it carries the settings
     // width itself — it was the one page left full-width when every page
     // moved to one; e2e/settings-width.spec.ts is what now notices.
-    <div data-slot="memory-settings" className="@container/pane mx-auto w-full max-w-settings space-y-4">
+    <div data-slot="memory-settings" className="m-memory-settings">
       <SettingsHeader
         title={t('settings.memory.title')}
         subtitle={t('settings.memory.subtitle')}
@@ -113,9 +112,9 @@ export function MemorySettings() {
       {/* Stacked until this panel — not the window — can hold two columns.
           224px of nav, 16px of gap and 320px for the list itself. Must stay on
           the same stop as `ScopeNav`'s own width rule: keyed differently, one of
-          them flips first and the stacked layout gets a 224px column lying
+          them flips first and the layout gets a 224px column lying
           across it. */}
-      <div data-slot="memory-layout" className="flex flex-col gap-4 @xl/pane:flex-row">
+      <div data-slot="memory-layout" className="m-memory-settings__layout">
         <ScopeNav
           filter={browser.filter}
           onFilterChange={browser.setFilter}
@@ -125,15 +124,15 @@ export function MemorySettings() {
           onChanged={browser.refresh}
         />
 
-        <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
-          <div data-slot="memory-toolbar" className="flex items-center gap-2">
+        <div data-slot="memory-list" className="m-memory-settings__list">
+          <div data-slot="memory-toolbar" className="m-memory-settings__toolbar">
             <TextField
               aria-label={t('settings.memory.search')}
               name="memorySearch"
               value={browser.search}
               onChange={(e) => browser.setSearch(e)}
               placeholder={t('settings.memory.search')}
-              className="flex-1"
+              className="m-memory-settings__search"
             />
             <SettingsSelect
               ariaLabel={t('settings.memory.originFilter')}
@@ -144,67 +143,50 @@ export function MemorySettings() {
           </div>
 
           {actionError && (
-            <p
-              data-slot="memory-action-error"
-              role="alert"
-              className="text-caption-1-regular text-status-danger break-all"
-            >
+            <Alert data-slot="memory-action-error" tone="danger" shouldAnnounce>
               {actionError}
-            </p>
+            </Alert>
           )}
 
           {/* A draft memory is a card of rows like any other settings form
               (settings-profile.tsx): each field named on its own row, and the
               two ways out as words rather than a pair of unlabelled glyphs. */}
           {showAdd && (
-            <SettingsCard data-slot="memory-add-form">
-              <SettingsRow label={t('settings.memory.key')} stacked>
-                {({ labelId }) => (
-                  <TextField
-                    aria-labelledby={labelId}
-                    name="memoryKey"
-                    value={newKey}
-                    onChange={(e) => setNewKey(e)}
-                    spellCheck="false"
-                    className="w-full @sm/pane:w-64"
-                    autoFocus
-                  />
-                )}
+            <SettingsGroup>
+              <SettingsRow label={t('settings.memory.key')}>
+                <TextField
+                  name="memoryKey"
+                  value={newKey}
+                  onChange={(e) => setNewKey(e)}
+                  spellCheck="false"
+
+                  autoFocus
+                />
               </SettingsRow>
               <SettingsRow label={t('settings.memory.type')}>
-                {({ labelId }) => (
-                  <SettingsSelect
-                    ariaLabelledBy={labelId}
-                    value={newType}
-                    options={typeOptions}
-                    onChange={setNewType}
-                  />
-                )}
+                <SettingsSelect
+                  ariaLabel={t('settings.memory.type')}
+                  value={newType}
+                  options={typeOptions}
+                  onChange={setNewType}
+                />
               </SettingsRow>
-              <SettingsRow
-                label={t('settings.memory.content')}
-                stacked
-                className="@sm/pane:flex-col @sm/pane:items-stretch"
-              >
-                {({ labelId }) => (
-                  <TextArea
-                    aria-labelledby={labelId}
-                    name="memoryContent"
-                    value={newContent}
-                    onChange={(e) => setNewContent(e)}
-                    onKeyDown={(event) => {
-                      if (event.nativeEvent.isComposing) return
-                      if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                        event.preventDefault()
-                        void handleAdd()
-                      }
-                    }}
-                    rows={3}
-                    className="w-full"
-                  />
-                )}
+              <SettingsRow label={t('settings.memory.content')}>
+                <TextArea
+                  name="memoryContent"
+                  value={newContent}
+                  onChange={(e) => setNewContent(e)}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return
+                    if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                      event.preventDefault()
+                      void handleAdd()
+                    }
+                  }}
+                  rows={3}
+                />
               </SettingsRow>
-              <div data-slot="memory-add-actions" className="flex items-center justify-end gap-2 py-2.5 pr-2.5">
+              <div data-slot="memory-add-actions" className="m-memory-settings__add-actions">
                 <Button size="sm" variant="secondary" onPress={() => setShowAdd(false)}>
                   {t('common.cancel')}
                 </Button>
@@ -212,7 +194,7 @@ export function MemorySettings() {
                   {t('settings.memory.add')}
                 </Button>
               </div>
-            </SettingsCard>
+            </SettingsGroup>
           )}
 
           {browser.loading ? (
@@ -242,13 +224,10 @@ export function MemorySettings() {
               is hidden rather than unmounted, for the same reason. */}
           <DisclosureGroup
             data-slot="memory-rows"
-            // The card itself (settings-rows.tsx `SettingsCard`): one surface,
-            // rows dividing themselves. Empty, an unhidden card would be a grey
-            // stripe with nothing in it.
-            className={cx(
-              'flex flex-col rounded-2xl bg-background-secondary-default pl-3',
-              browser.visible.length === 0 && 'hidden',
-            )}
+            // One surface with rows dividing themselves. Empty, an unhidden
+            // card would be a stripe with nothing in it.
+            className="m-memory-settings__rows"
+            hidden={browser.visible.length === 0}
             aria-busy={browser.loading}
           >
             {browser.visible.map((m) => (
@@ -262,77 +241,44 @@ export function MemorySettings() {
             ))}
           </DisclosureGroup>
 
-          {/* Fixed to the bottom of the viewport rather than appended below the
-              list, which is where it used to be — on a long list you had to
-              scroll to the end to reach the actions for rows at the top.
-
-              Through a portal, because ActionBar renders itself in place and it
-              is `position: fixed`. This panel is a query container now, and
-              `container-type` brings `contain: layout` with it — which makes the
-              container the containing block for its fixed descendants. Left
-              here, the bar would drop out of the viewport and into the panel,
-              scrolling with the list it exists to stay clear of. */}
-          {createPortal(
-            <ActionBar data-slot="memory-bulk-bar" isOpen={browser.selected.size > 0}>
-              <ActionBar.Prefix>
-                {/* The count is the only thing that says a selection exists, so
-                  it announces itself rather than only appearing. */}
-                <span
-                  data-slot="memory-selected-count"
-                  aria-live="polite"
-                  className="text-body-regular text-text-secondary"
-                >
-                  {t('settings.memory.selectedCount', { count: browser.selected.size })}
-                </span>
-              </ActionBar.Prefix>
-              <ActionBar.Content>
-                <Button
-                  variant="secondary"
-                  onPress={browser.selectAllVisible}
-                  isDisabled={browser.selected.size === browser.visible.length}
-                >
-                  {t('settings.memory.selectAll')}
-                </Button>
-                <Button
-                  icon={<Bin />}
-                  variant="destructive"
-                  onPress={async () => {
-                    const ok = await confirm({
-                      heading: t('settings.memory.deleteConfirmTitle'),
-                      description: t('settings.memory.deleteConfirmBody'),
-                      confirmLabel: t('common.delete'),
-                      tone: 'danger',
-                    })
-                    if (!ok) return
-                    setActionError(null)
-                    try {
-                      await api.deleteMemories([...browser.selected])
-                    } catch (reason) {
-                      setActionError(String(reason))
-                      return
-                    }
-                    browser.clearSelection()
-                    browser.refresh()
-                  }}
-                >
-                  {t('settings.memory.deleteSelected')}
-                </Button>
-              </ActionBar.Content>
-              <ActionBar.Suffix>
-                <TooltipTrigger>
-                  <Button
-                    icon={<X />}
-                    size="sm"
-                    variant="ghost"
-                    aria-label={t('settings.memory.clearSelection')}
-                    onPress={browser.clearSelection}
-                  />
-                  <Tooltip>{t('settings.memory.clearSelection')}</Tooltip>
-                </TooltipTrigger>
-              </ActionBar.Suffix>
-            </ActionBar>,
-            document.body,
-          )}
+          {/* The library's bulk bar: it keeps its own height in the flow, so it
+              needs no portal out of this query container, and it announces the
+              count and returns focus to the list when it closes. */}
+          <SelectionBar selectedCount={browser.selected.size} onClear={browser.clearSelection}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={browser.selectAllVisible}
+              isDisabled={browser.selected.size === browser.visible.length}
+            >
+              {t('settings.memory.selectAll')}
+            </Button>
+            <Button
+              size="sm"
+              icon={<Bin />}
+              variant="destructive"
+              onPress={async () => {
+                const ok = await confirm({
+                  heading: t('settings.memory.deleteConfirmTitle'),
+                  description: t('settings.memory.deleteConfirmBody'),
+                  confirmLabel: t('common.delete'),
+                  tone: 'danger',
+                })
+                if (!ok) return
+                setActionError(null)
+                try {
+                  await api.deleteMemories([...browser.selected])
+                } catch (reason) {
+                  setActionError(String(reason))
+                  return
+                }
+                browser.clearSelection()
+                browser.refresh()
+              }}
+            >
+              {t('settings.memory.deleteSelected')}
+            </Button>
+          </SelectionBar>
         </div>
       </div>
 

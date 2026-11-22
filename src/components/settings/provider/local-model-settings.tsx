@@ -1,3 +1,4 @@
+import './local-model-settings.css'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -5,8 +6,8 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import type { LocalInferenceBackend, LocalModelInfoResponse } from '@/types'
-import { SettingsRow, SettingsSelect } from '../primitives'
-
+import { SettingsSelect } from '../primitives'
+import { SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 export function LocalModelSettings({
   providerId,
   modelPath,
@@ -62,32 +63,26 @@ export function LocalModelSettings({
   return (
     <>
       <SettingsRow
-        stacked
-        className="@sm/pane:flex-col @sm/pane:items-stretch"
         label={t('settings.localModel.backend')}
-        description={t('settings.localModel.backendHint')}
-      >
-        {({ labelId }) =>
-          backend === null ? (
-            <p className="text-body-regular text-status-danger">{t('settings.localModel.missingBackend')}</p>
-          ) : (
-            <SettingsSelect
-              ariaLabelledBy={labelId}
-              value={backend}
-              options={options}
-              onChange={onBackendChange}
-
-              disabled={isRemote}
-            />
-          )
+        description={
+          isRemote
+            ? `${t('settings.localModel.backendHint')} ${t('settings.localModel.hostOnly')}`
+            : t('settings.localModel.backendHint')
         }
-      </SettingsRow>
-      {isRemote && <SettingsRow label={t('settings.localModel.hostOnly')} />}
-      <SettingsRow
-        label={t('settings.localModel.metadata')}
-        description={t('settings.localModel.metadataHint')}
-        stacked
       >
+        {backend === null ? (
+          <p className="m-local-model__missing">{t('settings.localModel.missingBackend')}</p>
+        ) : (
+          <SettingsSelect
+            ariaLabel={t('settings.localModel.backend')}
+            value={backend}
+            options={options}
+            onChange={onBackendChange}
+            disabled={isRemote}
+          />
+        )}
+      </SettingsRow>
+      <SettingsRow label={t('settings.localModel.metadata')} description={t('settings.localModel.metadataHint')}>
         <Button
           size="sm"
           variant="secondary"
@@ -97,50 +92,45 @@ export function LocalModelSettings({
         >
           {t(info === null ? 'settings.localModel.inspect' : 'settings.localModel.inspectAgain')}
         </Button>
-        {error !== null && (
-          <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.inspectError')}>
-            {error}
-          </Alert>
-        )}
       </SettingsRow>
+      {error !== null && (
+        <Alert tone="danger" shouldAnnounce heading={t('settings.localModel.inspectError')}>
+          {error}
+        </Alert>
+      )}
       {info !== null && error === null && (
         <>
-          <SettingsRow
-            stacked
-            label={t('settings.localModel.fileAlias')}
-            description={t('settings.localModel.fileAliasHint')}
-            className="@sm/pane:flex-col @sm/pane:items-stretch"
-          >
-            <p className="break-all text-body-regular text-text-secondary">{info.file_name}</p>
-          </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.identity')}>
-            <p className="text-body-regular text-text-secondary">{t('settings.localModel.unavailable')}</p>
-          </SettingsRow>
-          <SettingsRow label={t('settings.localModel.runtime')}>
-            <p className="text-body-regular text-text-secondary">{info.runtime_version}</p>
-          </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.kind')}>
-            <p className="text-body-regular text-text-secondary">{t(`settings.localModel.kind.${info.kind}`)}</p>
-          </SettingsRow>
-          <SettingsRow label={t('settings.localModel.fileSize')}>
-            <p className="text-body-regular text-text-secondary">
-              {t('settings.localModel.bytes', { count: info.file_size_bytes })}
+          <SettingsRow label={t('settings.localModel.fileAlias')} description={t('settings.localModel.fileAliasHint')}>
+            <p className="m-local-model__value" data-wrap="anywhere">
+              {info.file_name}
             </p>
           </SettingsRow>
+          <SettingsRow label={t('settings.localModel.identity')}>
+            <p className="m-local-model__value">{t('settings.localModel.unavailable')}</p>
+          </SettingsRow>
+          <SettingsRow label={t('settings.localModel.runtime')}>
+            <p className="m-local-model__value">{info.runtime_version}</p>
+          </SettingsRow>
+          <SettingsRow label={t('settings.localModel.kind')}>
+            <p className="m-local-model__value">{t(`settings.localModel.kind.${info.kind}`)}</p>
+          </SettingsRow>
+          <SettingsRow label={t('settings.localModel.fileSize')}>
+            <p className="m-local-model__value">{t('settings.localModel.bytes', { count: info.file_size_bytes })}</p>
+          </SettingsRow>
           <SettingsRow label={t('settings.localModel.resolved')} description={t('settings.localModel.notInitialized')}>
-            <p className="text-body-regular text-text-secondary">
+            <p className="m-local-model__value">
               {info.resolved_backend === null
                 ? t('settings.localModel.unavailable')
                 : info.resolved_backend.toUpperCase()}
             </p>
           </SettingsRow>
           {info.modalities.map((item) => (
-            <SettingsRow key={item.modality} label={t(`settings.localModel.modality.${item.modality}`)} stacked>
-              <p className="text-body-regular text-text-secondary">
+            <SettingsRow key={item.modality} label={t(`settings.localModel.modality.${item.modality}`)}>
+              <p className="m-local-model__value">
                 {item.preferred_backends.map((value) => value.toUpperCase()).join(', ')}
               </p>
               {item.preferred_backends.includes('npu') && (
-                <p className="text-caption-1-regular text-text-secondary">
+                <p className="m-local-model__note">
                   {t('settings.localModel.npuTarget', {
                     brand:
                       item.npu_brand === null
@@ -153,10 +143,10 @@ export function LocalModelSettings({
             </SettingsRow>
           ))}
           <SettingsRow label={t('settings.localModel.context')} description={t('settings.localModel.contextHint')}>
-            <p className="text-body-regular text-text-secondary">{number(info.max_context_tokens)}</p>
+            <p className="m-local-model__value">{number(info.max_context_tokens)}</p>
           </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.contextMode')}>
-            <p className="text-body-regular text-text-secondary">
+          <SettingsRow label={t('settings.localModel.contextMode')}>
+            <p className="m-local-model__value">
               {t(
                 info.max_context_tokens === null
                   ? 'settings.localModel.unavailable'
@@ -166,25 +156,25 @@ export function LocalModelSettings({
               )}
             </p>
           </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.thinking')}>
-            <p className="text-body-regular text-text-secondary">
+          <SettingsRow label={t('settings.localModel.thinking')}>
+            <p className="m-local-model__value">
               {t(info.supports_thinking ? 'settings.localModel.declared' : 'settings.localModel.notDeclared')}
             </p>
           </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.tools')}>
-            <p className="text-body-regular text-text-secondary">
+          <SettingsRow label={t('settings.localModel.tools')}>
+            <p className="m-local-model__value">
               {t(info.supports_function_calling ? 'settings.localModel.declared' : 'settings.localModel.notDeclared')}
             </p>
           </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.speculative')}>
-            <p className="text-body-regular text-text-secondary">
+          <SettingsRow label={t('settings.localModel.speculative')}>
+            <p className="m-local-model__value">
               {t(
                 info.supports_speculative_decoding ? 'settings.localModel.declared' : 'settings.localModel.notDeclared',
               )}
             </p>
           </SettingsRow>
-          <SettingsRow stacked label={t('settings.localModel.sampler')}>
-            <p className="text-body-regular text-text-secondary">
+          <SettingsRow label={t('settings.localModel.sampler')}>
+            <p className="m-local-model__value">
               {info.sampler_defaults === null
                 ? t('settings.localModel.unavailable')
                 : t('settings.localModel.samplerValues', {
@@ -196,21 +186,23 @@ export function LocalModelSettings({
             </p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.visionBudget')}>
-            <p className="text-body-regular text-text-secondary">{number(info.max_vision_token_budget)}</p>
+            <p className="m-local-model__value">{number(info.max_vision_token_budget)}</p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.visionSignatures')}>
-            <p className="break-all text-body-regular text-text-secondary">{list(info.vision_signature_lengths)}</p>
+            <p className="m-local-model__value" data-wrap="anywhere">
+              {list(info.vision_signature_lengths)}
+            </p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.embeddingDimension')}>
-            <p className="text-body-regular text-text-secondary">{number(info.embedding_dimension)}</p>
+            <p className="m-local-model__value">{number(info.embedding_dimension)}</p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.embeddingSignatures')}>
-            <p className="break-all text-body-regular text-text-secondary">{list(info.embedding_signature_lengths)}</p>
+            <p className="m-local-model__value" data-wrap="anywhere">
+              {list(info.embedding_signature_lengths)}
+            </p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.minimumVersion')}>
-            <p className="text-body-regular text-text-secondary">
-              {info.min_runtime_version ?? t('settings.localModel.unavailable')}
-            </p>
+            <p className="m-local-model__value">{info.min_runtime_version ?? t('settings.localModel.unavailable')}</p>
           </SettingsRow>
         </>
       )}

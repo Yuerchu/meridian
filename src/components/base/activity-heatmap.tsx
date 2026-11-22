@@ -8,10 +8,10 @@ import { cx } from '@/utils/cx'
  * on whatever surface the card sits on.
  */
 const STEPS = [
-  'var(--color-background-tertiary-default)',
-  'color-mix(in srgb, var(--heatmap-color) 25%, var(--color-background-tertiary-default))',
-  'color-mix(in srgb, var(--heatmap-color) 50%, var(--color-background-tertiary-default))',
-  'color-mix(in srgb, var(--heatmap-color) 75%, var(--color-background-tertiary-default))',
+  'var(--surface-inset)',
+  'color-mix(in srgb, var(--heatmap-color) 25%, var(--surface-inset))',
+  'color-mix(in srgb, var(--heatmap-color) 50%, var(--surface-inset))',
+  'color-mix(in srgb, var(--heatmap-color) 75%, var(--surface-inset))',
   'var(--heatmap-color)',
 ] as const
 
@@ -37,7 +37,7 @@ function ActivityHeatmap({
   less,
   more,
   'aria-label': ariaLabel,
-  color = 'var(--color-chart-6)',
+  color = 'var(--series-1)',
   className,
 }: {
   data: readonly (readonly number[])[]

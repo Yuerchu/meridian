@@ -1,3 +1,4 @@
+import './acp-settings.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -5,7 +6,6 @@ import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
-import { cx } from '@/utils/cx'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
@@ -196,12 +196,12 @@ export function AcpSettings() {
       />
 
       {saveError && (
-        <p data-slot="acp-save-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="acp-save-error" tone="danger" shouldAnnounce>
           {saveError}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="acp-actions" className="flex items-center gap-2">
+      <div data-slot="acp-actions" className="m-acp__actions">
         <Button variant="primary" onPress={() => void save()} isDisabled={!config.command.trim()}>
           {t('common.save')}
         </Button>
@@ -212,29 +212,20 @@ export function AcpSettings() {
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
         {dirty && !checking && (
-          <p data-slot="acp-save-before-check" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="acp-save-before-check" className="m-acp__note">
             {t('settings.acp.saveBeforeCheck')}
           </p>
         )}
       </div>
 
       {check && (
-        <div
-          data-slot="acp-check-result"
-          role="status"
-          className={cx(
-            'rounded-lg border px-3 py-2 text-caption-1-regular',
-            check.ok
-              ? 'border-status-success text-status-success-soft-foreground'
-              : 'border-status-danger text-status-danger',
-          )}
-        >
+        <Alert data-slot="acp-check-result" tone={check.ok ? 'success' : 'danger'} shouldAnnounce>
           {check.ok ? (
             <>
               <p data-slot="acp-check-agent">
                 {t('settings.acp.checkOk', { agent: check.agent ?? t('settings.acp.unnamedAgent') })}
               </p>
-              <p data-slot="acp-check-protocol" className="mt-1 text-text-secondary">
+              <p data-slot="acp-check-protocol" className="m-acp__note">
                 {t('settings.acp.protocolVersion', { version: check.protocol_version ?? '?' })}
                 {check.load_session ? ` · ${t('settings.acp.supportsResume')}` : ''}
               </p>
@@ -243,14 +234,12 @@ export function AcpSettings() {
             // The adapter's own stderr, which is where "command not found" and a
             // node stack trace both end up. Wrapped rather than truncated: the
             // useful part is often at the end.
-            <p data-slot="acp-check-error" className="break-words whitespace-pre-wrap">
-              {check.error}
-            </p>
+            <p data-slot="acp-check-error">{check.error}</p>
           )}
-        </div>
+        </Alert>
       )}
 
-      <p data-slot="acp-auth-note" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="acp-auth-note" className="m-acp__note">
         {t('settings.acp.authNote')}
       </p>
     </SettingsPane>

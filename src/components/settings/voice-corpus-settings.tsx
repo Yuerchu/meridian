@@ -1,15 +1,14 @@
+import './voice-corpus-settings.css'
 import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
-import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
-import { ItemCard } from '@/components/base'
-import { ItemCardGroup } from '@/components/base'
 import { api } from '@/api'
 import type { VoiceCorpusDeleteResponse, VoiceCorpusSessionInfoResponse } from '@/types'
 import { can } from '@/lib/capabilities'
@@ -138,12 +137,12 @@ export function VoiceCorpusSettings() {
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
       {error && (
-        <p data-slot="voice-corpus-error" role="alert" className="text-status-danger text-body-regular">
+        <Alert data-slot="voice-corpus-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
       {notice && (
-        <p data-slot="voice-corpus-notice" role="status" className="text-text-secondary text-body-regular">
+        <p data-slot="voice-corpus-notice" role="status" className="m-voice-corpus__notice">
           {notice}
         </p>
       )}
@@ -153,7 +152,7 @@ export function VoiceCorpusSettings() {
           data-slot="voice-corpus-loading"
           role="status"
           aria-label={t('common.loading')}
-          className="flex items-center gap-2 text-body-regular text-text-secondary"
+          className="m-voice-corpus__loading"
         >
           <span aria-hidden>
             <Spinner size="sm" />
@@ -161,54 +160,49 @@ export function VoiceCorpusSettings() {
           {t('common.loading')}
         </div>
       ) : sessions.length === 0 ? (
-        <p data-slot="voice-corpus-empty" className="text-text-secondary text-body-regular">
+        <p data-slot="voice-corpus-empty" className="m-voice-corpus__notice">
           {t('settings.voiceCorpus.empty')}
         </p>
       ) : (
-        <ItemCardGroup variant="outline">
-          {sessions.map((session, index) => (
-            <Fragment key={session.handle}>
-              {index > 0 && <Separator />}
-              <ItemCard>
-                <ItemCard.Content className="min-w-0">
-                  <ItemCard.Title className="w-full truncate font-mono" onPointerEnter={titleIfTruncated}>
-                    {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
-                  </ItemCard.Title>
-                  <ItemCard.Description className="w-full whitespace-normal">
-                    {t('settings.voiceCorpus.summary', {
-                      clips: session.clips,
-                      size: formatSize(session.bytes, sizeNumber),
-                      untranscribed: session.untranscribed,
-                    })}
-                  </ItemCard.Description>
-                </ItemCard.Content>
-                <ItemCard.Action>
-                  <TooltipTrigger>
-                    <Button
-                      icon={<Bin />}
-                      size="sm"
-                      variant="ghost"
-                      isDisabled={busy}
-                      onPress={() => deleteSession(session)}
-                      aria-label={t('settings.voiceCorpus.deleteSession')}
-                    />
-                    <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
-                  </TooltipTrigger>
-                </ItemCard.Action>
-              </ItemCard>
-            </Fragment>
+        <div className="m-voice-corpus__list">
+          {sessions.map((session) => (
+            <div key={session.handle} className="m-voice-corpus__row">
+              <span className="m-voice-corpus__text">
+                <span className="m-voice-corpus__title" onPointerEnter={titleIfTruncated}>
+                  {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
+                </span>
+                <span className="m-voice-corpus__summary">
+                  {t('settings.voiceCorpus.summary', {
+                    clips: session.clips,
+                    size: formatSize(session.bytes, sizeNumber),
+                    untranscribed: session.untranscribed,
+                  })}
+                </span>
+              </span>
+              <TooltipTrigger>
+                <Button
+                  icon={<Bin />}
+                  size="sm"
+                  variant="ghost"
+                  isDisabled={busy}
+                  onPress={() => deleteSession(session)}
+                  aria-label={t('settings.voiceCorpus.deleteSession')}
+                />
+                <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
+              </TooltipTrigger>
+            </div>
           ))}
-        </ItemCardGroup>
+        </div>
       )}
 
-      <div data-slot="voice-corpus-forget-row" className="flex items-start gap-2">
+      <div data-slot="voice-corpus-forget-row" className="m-voice-corpus__forget">
         <TextField
           label={t('settings.voiceCorpus.forgetSender')}
           description={t('settings.voiceCorpus.forgetSenderHint')}
           value={senderInput}
           onChange={setSenderInput}
           placeholder="12345"
-          className="flex-1"
+          className="m-voice-corpus__sender"
         />
         <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
           {t('settings.voiceCorpus.forget')}
@@ -216,14 +210,14 @@ export function VoiceCorpusSettings() {
       </div>
 
       {can.exportToDisk && (
-        <div data-slot="voice-corpus-export" className="flex flex-col gap-2">
+        <div data-slot="voice-corpus-export" className="m-voice-corpus__export">
           <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
             {t('settings.voiceCorpus.includeUntranscribed')}
           </Checkbox>
           <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
             {t('settings.voiceCorpus.includeSender')}
           </Checkbox>
-          <p data-slot="voice-corpus-export-hint" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="voice-corpus-export-hint" className="m-voice-corpus__notice">
             {t('settings.voiceCorpus.exportHint')}
           </p>
           <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>

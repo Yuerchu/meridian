@@ -1,8 +1,7 @@
-import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import './ime-learning-section.css'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import { ItemCard, ItemCardGroup } from '@/components/base'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
@@ -156,15 +155,15 @@ export function ImeLearningSection() {
   }
 
   return (
-    <div data-slot="ime-learned" className="space-y-1.5">
-      <div data-slot="ime-learned-head" className="flex items-center justify-between gap-3">
-        <p data-slot="ime-learned-summary" className="text-caption-1-medium text-text-secondary">
+    <div data-slot="ime-learned" className="m-ime-learned">
+      <div data-slot="ime-learned-head" className="m-ime-learned__head">
+        <p data-slot="ime-learned-summary" className="m-ime-learned__summary">
           {learning === null
             ? t('settings.ime.learned.title')
             : t('settings.ime.learned.summary', { words: learning.words.length, transitions: learning.transitions })}
         </p>
         {learning !== null && (
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="m-ime-learned__actions">
             {can.exportToDisk && (
               <Button size="sm" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
                 {t('settings.ime.learned.export')}
@@ -203,13 +202,13 @@ export function ImeLearningSection() {
       )}
 
       {learning !== null && learning.pending > 0 && (
-        <p data-slot="ime-learned-pending" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="ime-learned-pending" className="m-ime-learned__hint">
           {t('settings.ime.learned.pending')}
         </p>
       )}
 
       {open && learning !== null && (
-        <div data-slot="ime-learned-list" className="space-y-2">
+        <div data-slot="ime-learned-list" className="m-ime-learned__list">
           <SearchField
             aria-label={t('settings.ime.learned.search')}
             value={query}
@@ -218,45 +217,44 @@ export function ImeLearningSection() {
           />
 
           {matching.length === 0 ? (
-            <p data-slot="ime-learned-none" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="ime-learned-none" className="m-ime-learned__hint">
               {t('settings.ime.learned.none')}
             </p>
           ) : (
-            <ItemCardGroup variant="outline">
-              {matching.slice(0, SHOWN).map((word, index) => (
-                <Fragment key={word.text}>
-                  {index > 0 && <Separator />}
-                  <ItemCard>
-                    <ItemCard.Content className="min-w-0">
-                      <ItemCard.Title className="flex w-full items-center gap-2">
-                        <span data-slot="ime-learned-word" onPointerEnter={titleIfTruncated} className="truncate">
-                          {word.text}
-                        </span>
-                        {word.user_word && <Badge size="sm">{t('settings.ime.learned.userWord')}</Badge>}
-                      </ItemCard.Title>
-                      <ItemCard.Description>
-                        {t('settings.ime.learned.count', { count: word.count })}
-                      </ItemCard.Description>
-                    </ItemCard.Content>
-                    <ItemCard.Action>
-                      <TooltipTrigger>
-                        <Button
-                          icon={<Bin />}
-                          size="sm"
-                          variant="ghost"
-                          aria-label={t('settings.ime.learned.forget', { word: word.text })}
-                          onPress={() => handleForget(word)}
-                        />
-                        <Tooltip>{t('settings.ime.learned.forget', { word: word.text })}</Tooltip>
-                      </TooltipTrigger>
-                    </ItemCard.Action>
-                  </ItemCard>
-                </Fragment>
+            <div className="m-ime-learned__words">
+              {matching.slice(0, SHOWN).map((word) => (
+                <div key={word.text} className="m-ime-learned__row">
+                  <span className="m-ime-learned__text">
+                    <span className="m-ime-learned__title">
+                      <span
+                        data-slot="ime-learned-word"
+                        onPointerEnter={titleIfTruncated}
+                        className="m-ime-learned__word"
+                      >
+                        {word.text}
+                      </span>
+                      {word.user_word && <Badge size="sm">{t('settings.ime.learned.userWord')}</Badge>}
+                    </span>
+                    <span className="m-ime-learned__count">
+                      {t('settings.ime.learned.count', { count: word.count })}
+                    </span>
+                  </span>
+                  <TooltipTrigger>
+                    <Button
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('settings.ime.learned.forget', { word: word.text })}
+                      onPress={() => handleForget(word)}
+                    />
+                    <Tooltip>{t('settings.ime.learned.forget', { word: word.text })}</Tooltip>
+                  </TooltipTrigger>
+                </div>
               ))}
-            </ItemCardGroup>
+            </div>
           )}
           {matching.length > SHOWN && (
-            <p data-slot="ime-learned-more" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="ime-learned-more" className="m-ime-learned__hint">
               {t('settings.ime.learned.more', { count: matching.length - SHOWN })}
             </p>
           )}

@@ -1,3 +1,4 @@
+import './general-settings.css'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
@@ -196,14 +197,14 @@ export function GeneralSettings() {
 
       <SettingsSelect label={t('settings.general.theme')} value={theme} options={themeOptions} onChange={setTheme} />
 
-      <div data-slot="general-fonts" className="space-y-3">
+      <div data-slot="general-fonts" className="m-general__stack">
         <FontPicker label={t('settings.general.fontUi')} value={sans} onChange={setSans} families={fontFamilies} />
         <FontPicker label={t('settings.general.fontCode')} value={mono} onChange={setMono} families={fontFamilies} />
-        <p data-slot="general-font-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="general-font-hint" className="m-general__hint">
           {t('settings.general.fontHint')}
         </p>
         {fontListFailed && (
-          <p data-slot="general-font-list-error" role="status" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="general-font-list-error" role="status" className="m-general__hint">
             {t('settings.general.fontListError')}
           </p>
         )}
@@ -215,7 +216,7 @@ export function GeneralSettings() {
           role="status"
           aria-busy="true"
           aria-label={t('common.loading')}
-          className="space-y-3"
+          className="m-general__stack"
         >
           {Array.from({ length: 3 }, (_, i) => (
             <Skeleton key={i} shape="rect" width="min(100%, 20rem)" height="2.25rem" />
@@ -262,8 +263,8 @@ export function GeneralSettings() {
       )}
 
       {prefsState === 'ready' && (
-        <div data-slot="general-web-search" className="space-y-3">
-          <p data-slot="general-section-label" className="block text-caption-1-medium text-text-secondary">
+        <div data-slot="general-web-search" className="m-general__stack">
+          <p data-slot="general-section-label" className="m-general__section">
             {t('settings.general.webSearch')}
           </p>
           {/* The heading above names the whole section, not this control, so both
@@ -275,7 +276,7 @@ export function GeneralSettings() {
             options={SEARCH_PROVIDERS}
             onChange={(value) => void handleSearchProviderChange(value)}
           />
-          <div data-slot="general-search-key-row" className="flex items-center gap-2">
+          <div data-slot="general-search-key-row" className="m-general__key-row">
             <PasswordField
               aria-label={t('settings.provider.apiKey')}
               name="searchApiKey"
@@ -288,7 +289,7 @@ export function GeneralSettings() {
                 if (e.key === 'Enter') handleSaveSearchKey()
               }}
               placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
-              className="max-w-xs"
+              className="m-general__key"
             />
             <Button
               aria-label={t('settings.general.save')}
@@ -296,29 +297,25 @@ export function GeneralSettings() {
               onPress={handleSaveSearchKey}
               isDisabled={!searchApiKey.trim()}
             >
-              {searchKeySaved && <Check aria-hidden="true" className="w-4 h-4" />}
+              {searchKeySaved && <Check size={16} aria-hidden />}
               {t('settings.general.save')}
             </Button>
           </div>
-          <p data-slot="general-search-hint" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="general-search-hint" className="m-general__hint">
             {t('settings.general.searchHint')}
           </p>
           {searchKeyError && (
-            <p
-              data-slot="general-search-key-error"
-              role="alert"
-              className="text-caption-1-regular text-status-danger break-all"
-            >
+            <Alert data-slot="general-search-key-error" tone="danger" shouldAnnounce>
               {searchKeyError}
-            </p>
+            </Alert>
           )}
         </div>
       )}
 
       {prefError && (
-        <p data-slot="general-pref-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="general-pref-error" tone="danger" shouldAnnounce>
           {prefError}
-        </p>
+        </Alert>
       )}
 
       {platform === 'android' && <AndroidFileAccess />}

@@ -1,0 +1,19 @@
+@layer components {
+  .m-emoji-embedder__value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .m-emoji-embedder__path {
+    min-width: 0;
+    max-width: 16rem;
+    overflow: hidden;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

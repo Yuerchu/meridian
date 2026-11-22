@@ -1,3 +1,4 @@
+import './hooks-settings.css'
 import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -9,10 +10,8 @@ import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
-
-import { ItemCard } from '@/components/base'
 import { api } from '@/api'
-import { cx } from '@/utils/cx'
+
 import type {
   AssistantInfoResponse,
   HookConfigInfoResponse,
@@ -115,7 +114,7 @@ function ModelPicker({
   ]
 
   return (
-    <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="model-picker" className="m-hooks__grid">
       <Select
         aria-label={t('settings.assistant.provider')}
         selectedKey={providerId || '_none'}
@@ -385,7 +384,7 @@ export function HooksSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.hooks.title')} />
 
-      <div data-slot="hooks-enable" className="space-y-1.5">
+      <div data-slot="hooks-enable" className="m-hooks__stack">
         <Switch
           variant="card"
           aria-label={t('settings.hooks.enable')}
@@ -395,13 +394,13 @@ export function HooksSettings() {
         >
           {t('settings.hooks.enable')}
         </Switch>
-        <p data-slot="hooks-enable-hint" id={enableHintId} className="text-caption-1-regular text-text-secondary">
+        <p data-slot="hooks-enable-hint" id={enableHintId} className="m-hooks__hint">
           {t('settings.hooks.enableHint')}
         </p>
       </div>
 
-      <div data-slot="hooks-review-model" className="space-y-1.5">
-        <p data-slot="hooks-review-model-label" className="block text-caption-1-medium text-text-secondary">
+      <div data-slot="hooks-review-model" className="m-hooks__stack">
+        <p data-slot="hooks-review-model-label" className="m-hooks__label">
           {t('settings.hooks.reviewModel')}
         </p>
         <ModelPicker
@@ -410,12 +409,12 @@ export function HooksSettings() {
           onChange={(review_model) => setConfig({ ...config, review_model })}
           onDirtyChange={setModelDraftDirty}
         />
-        <p data-slot="hooks-review-model-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="hooks-review-model-hint" className="m-hooks__hint">
           {t('settings.hooks.reviewModelHint')}
         </p>
       </div>
 
-      <div data-slot="hooks-assistant" className="space-y-1.5">
+      <div data-slot="hooks-assistant" className="m-hooks__stack">
         {/* Through the `label` slot rather than a sibling `Label`: only inside
             the Select's own context does React Aria wire it to the trigger. */}
         <Select
@@ -431,12 +430,12 @@ export function HooksSettings() {
             </ListBoxItem>
           ))}
         </Select>
-        <p data-slot="hooks-assistant-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="hooks-assistant-hint" className="m-hooks__hint">
           {t('settings.hooks.assistantHint')}
         </p>
       </div>
 
-      <div data-slot="hooks-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="hooks-endpoint" className="m-hooks__grid">
         <TextField
           label={t('settings.hooks.host')}
           name="hooksHost"
@@ -456,7 +455,7 @@ export function HooksSettings() {
         />
       </div>
 
-      <div data-slot="hooks-timeout" className="space-y-1.5">
+      <div data-slot="hooks-timeout" className="m-hooks__stack">
         <NumberField
           label={t('settings.hooks.timeout')}
           value={draftToNumber(timeoutInput)}
@@ -466,12 +465,12 @@ export function HooksSettings() {
           maxValue={1200}
           formatOptions={PLAIN_INTEGER}
         />
-        <p data-slot="hooks-timeout-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="hooks-timeout-hint" className="m-hooks__hint">
           {t('settings.hooks.timeoutHint')}
         </p>
       </div>
 
-      <div data-slot="hooks-max-rounds" className="space-y-1.5">
+      <div data-slot="hooks-max-rounds" className="m-hooks__stack">
         <NumberField
           label={t('settings.hooks.maxRounds')}
           value={draftToNumber(roundsInput)}
@@ -481,14 +480,14 @@ export function HooksSettings() {
           maxValue={20}
           formatOptions={PLAIN_INTEGER}
         />
-        <p data-slot="hooks-max-rounds-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="hooks-max-rounds-hint" className="m-hooks__hint">
           {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
       {/* A generated key shown read-only, with copy: the library's rule is not to
           mask a key nobody types, so there is no reveal toggle. */}
-      <div data-slot="hooks-token" className="flex items-end gap-2">
+      <div data-slot="hooks-token" className="m-hooks__token">
         <TextField
           label={t('settings.hooks.token')}
           description={t('settings.hooks.tokenHint')}
@@ -497,7 +496,7 @@ export function HooksSettings() {
           spellCheck="false"
           value={config.token ?? ''}
           placeholder={t('settings.hooks.tokenPending')}
-          className="min-w-0 flex-1"
+          className="m-hooks__token-field"
         />
         <CopyButton value={config.token ?? ''} isDisabled={!config.token} />
         <Button variant="secondary" onPress={handleRegenerate}>
@@ -506,17 +505,17 @@ export function HooksSettings() {
       </div>
 
       {error && (
-        <p data-slot="hooks-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="hooks-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="hooks-actions" className="flex items-center gap-3 pt-2">
+      <div data-slot="hooks-actions" className="m-hooks__actions">
         <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="hooks-saved-status" role="status" className="sr-only">
+          <span data-slot="hooks-saved-status" role="status" className="m-hooks__saved">
             {t('common.saved')}
           </span>
         )}
@@ -530,33 +529,29 @@ export function HooksSettings() {
       </div>
 
       {status && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              <span
-                data-slot="hooks-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  running ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
-            </ItemCard.Title>
-            {running && (
-              <ItemCard.Description className="w-full whitespace-normal break-all">
-                http://{status.host}:{status.port}/hooks/exit-plan
-              </ItemCard.Description>
-            )}
-            {/* The one thing worth showing when nothing works: the plugin reads
-                this file to find us, so its absence is the whole diagnosis. */}
-            {status.handshake_path && (
-              <ItemCard.Description className="w-full whitespace-normal break-all">
-                {t('settings.hooks.handshake')}: {status.handshake_path}
-              </ItemCard.Description>
-            )}
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-hooks__status">
+          <p className="m-hooks__status-title">
+            <span
+              data-slot="hooks-status-dot"
+              data-running={running || undefined}
+              aria-hidden
+              className="m-hooks__dot"
+            />
+            {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
+          </p>
+          {running && (
+            <p className="m-hooks__endpoint">
+              http://{status.host}:{status.port}/hooks/exit-plan
+            </p>
+          )}
+          {/* The one thing worth showing when nothing works: the plugin reads
+              this file to find us, so its absence is the whole diagnosis. */}
+          {status.handshake_path && (
+            <p className="m-hooks__endpoint">
+              {t('settings.hooks.handshake')}: {status.handshake_path}
+            </p>
+          )}
+        </div>
       )}
       {confirmDialog}
     </SettingsPane>

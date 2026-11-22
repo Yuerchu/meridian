@@ -1,16 +1,17 @@
+import './assistant-settings.css'
 import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus } from '@keyline-icons/react/two-tone'
+import { ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 import { Star } from '@keyline-icons/react/fill'
-import { Disclosure, DisclosureGroup } from '@/components/base'
+import { Button as AriaButton, Disclosure, DisclosureGroup, DisclosurePanel, Heading } from 'react-aria-components'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft } from '@/lib/number-draft'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { Segment } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -228,7 +229,7 @@ function AssistantEditor({
   ]
 
   return (
-    <div data-slot="assistant-editor" className="space-y-4 px-1 pb-4">
+    <div data-slot="assistant-editor" className="m-assistant__editor">
       <TextField
         label={t('settings.assistant.name')}
         name={`assistantName-${assistant.id}`}
@@ -263,7 +264,7 @@ function AssistantEditor({
         emptyProviderLabel={t('settings.assistant.providerDefault')}
       />
 
-      <div data-slot="assistant-params" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+      <div data-slot="assistant-params" className="m-assistant__grid">
         <NumberField
           label={t('settings.assistant.temperature')}
           value={draftToNumber(temperature)}
@@ -298,8 +299,8 @@ function AssistantEditor({
         />
       </div>
 
-      <div data-slot="assistant-auto-compact" className="space-y-1.5">
-        <p data-slot="assistant-auto-compact-label" className="block text-caption-1-regular text-text-secondary">
+      <div data-slot="assistant-auto-compact" className="m-assistant__stack">
+        <p data-slot="assistant-auto-compact-label" className="m-assistant__label">
           {t('settings.assistant.autoCompact')}
         </p>
         <Checkbox isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
@@ -307,22 +308,22 @@ function AssistantEditor({
         </Checkbox>
       </div>
 
-      <div data-slot="assistant-thinking" className="space-y-1.5">
-        <p data-slot="assistant-thinking-label" className="block text-caption-1-regular text-text-secondary">
+      <div data-slot="assistant-thinking" className="m-assistant__stack">
+        <p data-slot="assistant-thinking-label" className="m-assistant__label">
           {t('settings.assistant.thinking')}
         </p>
-        <div data-slot="assistant-thinking-toggle" className="flex items-center gap-3">
+        <div data-slot="assistant-thinking-toggle" className="m-assistant__row">
           <Checkbox isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
             {t('settings.assistant.thinkingEnabled')}
           </Checkbox>
         </div>
         {modelConflicts.includes('thinking') && (
-          <p data-slot="assistant-thinking-unsupported" className="text-caption-1-regular text-status-danger">
+          <p data-slot="assistant-thinking-unsupported" className="m-assistant__danger">
             {t('settings.assistant.thinkingUnsupported')}
           </p>
         )}
         {thinkingEnabled && (
-          <div data-slot="assistant-thinking-budget" className="space-y-1 mt-2">
+          <div data-slot="assistant-thinking-budget" className="m-assistant__stack">
             <NumberField
               name={`assistantThinkingBudget-${assistant.id}`}
               aria-label={t('settings.assistant.thinkingBudget')}
@@ -331,7 +332,7 @@ function AssistantEditor({
               placeholder={t('settings.assistant.thinkingBudget')}
               formatOptions={{ maximumFractionDigits: 0 }}
             />
-            <p data-slot="assistant-thinking-budget-hint" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="assistant-thinking-budget-hint" className="m-assistant__hint">
               {t('settings.assistant.thinkingBudgetHint')}
             </p>
           </div>
@@ -348,26 +349,19 @@ function AssistantEditor({
               : t('settings.assistant.toolsCustom')
         }
       >
-        <Segment
+        <SegmentedControl
+          data-slot="segment"
           aria-label={t('settings.assistant.tools')}
-          className="mb-2 w-full"
+          className="m-assistant__segment"
           selectedKey={toolMode}
           onSelectionChange={(key) => {
             if (key === 'all' || key === 'preset' || key === 'custom') setToolMode(key)
           }}
         >
-          <Segment.Item id="all" className="pointer-coarse:min-h-11">
-            {t('settings.assistant.toolsAll')}
-          </Segment.Item>
-          {toolPresets.length > 0 && (
-            <Segment.Item id="preset" className="pointer-coarse:min-h-11">
-              {t('settings.tools.preset')}
-            </Segment.Item>
-          )}
-          <Segment.Item id="custom" className="pointer-coarse:min-h-11">
-            {t('settings.assistant.toolsCustom')}
-          </Segment.Item>
-        </Segment>
+          <Segment id="all">{t('settings.assistant.toolsAll')}</Segment>
+          {toolPresets.length > 0 && <Segment id="preset">{t('settings.tools.preset')}</Segment>}
+          <Segment id="custom">{t('settings.assistant.toolsCustom')}</Segment>
+        </SegmentedControl>
         {toolMode === 'preset' && (
           <SettingsSelect
             ariaLabel={t('settings.tools.preset')}
@@ -377,10 +371,7 @@ function AssistantEditor({
           />
         )}
         {toolMode === 'custom' && (
-          <div
-            data-slot="tool-list"
-            className="max-h-40 overflow-y-auto overscroll-contain border border-border-button-default rounded-lg"
-          >
+          <div data-slot="tool-list" className="m-assistant__scroll">
             {/* `role="group"` with a name, rather than `CheckboxGroup`: the
                 boxes below commit one at a time and two of the three sibling
                 grids write straight through to the backend on each toggle. A
@@ -390,7 +381,7 @@ function AssistantEditor({
               data-slot="tool-grid"
               role="group"
               aria-label={t('settings.assistant.tools')}
-              className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
+              className="m-assistant__checks"
             >
               {allTools.map((tool) => (
                 <Checkbox
@@ -403,11 +394,11 @@ function AssistantEditor({
                     setSelectedTools(next)
                   }}
                 >
-                  <span data-slot="tool-name" onPointerEnter={titleIfTruncated} className="truncate font-mono">
+                  <span data-slot="tool-name" onPointerEnter={titleIfTruncated} className="m-assistant__mono">
                     {tool.name}
                   </span>
                   {tool.source === 'mcp' && (
-                    <span data-slot="tool-source" className="text-caption-1-regular text-text-secondary">
+                    <span data-slot="tool-source" className="m-assistant__hint">
                       MCP
                     </span>
                   )}
@@ -424,7 +415,7 @@ function AssistantEditor({
             data-slot="emoji-pack-grid"
             role="group"
             aria-label={t('settings.assistant.emojiPacks')}
-            className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2 border border-border-button-default rounded-lg"
+            className="m-assistant__checks m-assistant__checks--framed"
           >
             {allPacks.map((pack) => (
               <Checkbox
@@ -444,7 +435,7 @@ function AssistantEditor({
                   }
                 }}
               >
-                <span data-slot="emoji-pack-name" onPointerEnter={titleIfTruncated} className="truncate">
+                <span data-slot="emoji-pack-name" onPointerEnter={titleIfTruncated} className="m-assistant__truncate">
                   {pack.name}
                 </span>
               </Checkbox>
@@ -455,18 +446,15 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
-          <p data-slot="skill-hint" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="skill-hint" className="m-assistant__hint">
             {t('settings.skills.assistantHint')}
           </p>
-          <div
-            data-slot="skill-list"
-            className="max-h-40 overflow-y-auto overscroll-contain border border-border-button-default rounded-lg"
-          >
+          <div data-slot="skill-list" className="m-assistant__scroll">
             <div
               data-slot="skill-grid"
               role="group"
               aria-label={t('settings.skills.assistantSection')}
-              className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
+              className="m-assistant__checks"
             >
               {allSkills.map((skill) => (
                 <Checkbox
@@ -490,7 +478,7 @@ function AssistantEditor({
                     }
                   }}
                 >
-                  <span data-slot="skill-name" onPointerEnter={titleIfTruncated} className="truncate">
+                  <span data-slot="skill-name" onPointerEnter={titleIfTruncated} className="m-assistant__truncate">
                     {skill.display_name}
                   </span>
                 </Checkbox>
@@ -498,29 +486,25 @@ function AssistantEditor({
             </div>
           </div>
           {skillError && (
-            <p data-slot="skill-error" role="alert" className="text-caption-1-regular text-status-danger">
+            <Alert data-slot="skill-error" tone="danger" shouldAnnounce>
               {skillError}
-            </p>
+            </Alert>
           )}
         </SettingsDrilldown>
       )}
 
       {saveError && (
-        <p
-          data-slot="assistant-save-error"
-          role="alert"
-          className="text-caption-1-regular text-status-danger break-all"
-        >
+        <Alert data-slot="assistant-save-error" tone="danger" shouldAnnounce>
           {saveError}
-        </p>
+        </Alert>
       )}
-      <div data-slot="assistant-editor-actions" className="flex items-center gap-2 pt-1">
+      <div data-slot="assistant-editor-actions" className="m-assistant__actions">
         <Button onPress={handleSave}>{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
           <Button
             variant="destructive"
-            className="ml-auto"
+            className="m-assistant__aside"
             onPress={() => {
               setSaveError(null)
               void onDelete(assistant.id).catch((reason) => setSaveError(String(reason)))
@@ -664,7 +648,7 @@ export function AssistantSettings() {
           is off), so the single-open rule lives in the primitive rather than in
           the click handler. */}
       <DisclosureGroup
-        className="flex flex-col gap-1"
+        className="m-assistant__rows"
         expandedKeys={expandedId ? [expandedId] : []}
         onExpandedChange={(keys) => void changeExpanded(([...keys][0] as string | undefined) ?? null)}
       >
@@ -674,42 +658,29 @@ export function AssistantSettings() {
           const providerName = providers.find((p) => p.id === a.provider_id)?.name
 
           return (
-            <Disclosure
-              key={a.id}
-              id={a.id}
-              className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
-            >
-              <Disclosure.Heading>
-                {/* `flex` is not optional: Disclosure.Indicator carries `shrink-0`,
-                    which only means something inside a flex container.
-                    `text-start` undoes the button element's centred UA default. */}
-                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
+            <Disclosure key={a.id} id={a.id} className="m-assistant__row-card">
+              <Heading>
+                <AriaButton slot="trigger" className="m-assistant__trigger">
                   <span
                     data-slot="assistant-row-name"
                     onPointerEnter={titleIfTruncated}
-                    className="min-w-0 flex-1 truncate"
+                    className="m-assistant__row-name"
                   >
                     {a.name}
                   </span>
                   {isDefault && (
-                    <span data-slot="assistant-row-default" className="shrink-0 text-status-warning">
-                      <Star aria-hidden="true" className="w-3.5 h-3.5" />
-                      <span data-slot="assistant-row-default-label" className="sr-only">
+                    <span data-slot="assistant-row-default" className="m-assistant__default">
+                      <Star size={14} aria-hidden />
+                      <span data-slot="assistant-row-default-label" className="m-assistant__saved">
                         {t('settings.assistant.defaultBadge')}
                       </span>
                     </span>
                   )}
-                  {/* Both truncate, and both need `min-w-0` to be allowed to.
-                      A model id has no spaces in it, so its min-content width is
-                      the whole string: on a narrow row these two took what they
-                      liked and the assistant's own name — the one thing the row
-                      is for — was squeezed to nothing before either of them gave
-                      up a character. */}
                   {providerName && (
                     <span
                       data-slot="assistant-row-provider"
                       onPointerEnter={titleIfTruncated}
-                      className="min-w-0 truncate text-caption-1-regular text-text-secondary"
+                      className="m-assistant__meta"
                     >
                       {providerName}
                     </span>
@@ -718,35 +689,25 @@ export function AssistantSettings() {
                     <span
                       data-slot="assistant-row-model"
                       onPointerEnter={titleIfTruncated}
-                      className="min-w-0 truncate text-caption-1-regular text-text-secondary"
+                      className="m-assistant__meta"
                     >
                       {a.model_id}
                     </span>
                   )}
-                  <Disclosure.Indicator className="size-4 shrink-0 text-text-secondary" />
-                </Disclosure.Trigger>
-              </Disclosure.Heading>
-              {/* `min-h-0` is load-bearing: the card is a flex column, and a flex
-                  item's default `min-height: auto` floors it at its content height. */}
-              <Disclosure.Content className="min-h-0 w-full">
-                {/* Body, not a plain wrapper: it is what keeps the panel
-                    measurable, so without it the editor never collapses. */}
-                <Disclosure.Body>
-                  {/* A collapsed panel is only hidden, not unmounted, so the
-                      editor still has to be gated: mounting one per row would
-                      fire its provider/model/tool/skill fetches for the whole
-                      list on every visit to this page. */}
-                  {isExpanded && (
-                    <AssistantEditor
-                      assistant={a}
-                      providers={providers}
-                      onSave={handleSave}
-                      onDelete={isDefault ? undefined : handleDelete}
-                      onDirtyChange={handleDirtyChange}
-                    />
-                  )}
-                </Disclosure.Body>
-              </Disclosure.Content>
+                  <ChevronRight size={16} aria-hidden className="m-assistant__chevron" />
+                </AriaButton>
+              </Heading>
+              <DisclosurePanel className="m-assistant__panel">
+                {isExpanded && (
+                  <AssistantEditor
+                    assistant={a}
+                    providers={providers}
+                    onSave={handleSave}
+                    onDelete={isDefault ? undefined : handleDelete}
+                    onDirtyChange={handleDirtyChange}
+                  />
+                )}
+              </DisclosurePanel>
             </Disclosure>
           )
         })}

@@ -4,9 +4,9 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useTranslation } from 'react-i18next'
-import { cx } from '@/utils/cx'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import type { SettingsTab } from './tabs'
+import './settings-stack.css'
 
 /**
  * One thing at a time, with a way back.
@@ -276,7 +276,11 @@ export function SettingsStack<L>({
   )
 
   return (
-    <div data-slot="settings-stack" ref={setRoot} className={cx('w-full', className)}>
+    <div
+      data-slot="settings-stack"
+      ref={setRoot}
+      className={className ? `m-settings-stack ${className}` : 'm-settings-stack'}
+    >
       {levels.map((_, index) => (
         <HistoryClaim
           key={index}

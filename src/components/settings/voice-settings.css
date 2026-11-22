@@ -1,0 +1,72 @@
+@layer components {
+  .m-voice__section,
+  .m-voice__copy,
+  .m-voice__footer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-voice__label,
+  .m-voice__title,
+  .m-voice__meta,
+  .m-voice__progress {
+    margin: 0;
+  }
+
+  .m-voice__label {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .m-voice__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-voice__loading,
+  .m-voice__installed,
+  .m-voice__download,
+  .m-voice__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-voice__installed {
+    justify-content: space-between;
+  }
+
+  .m-voice__copy,
+  .m-voice__progress {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-voice__title {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-voice__meta,
+  .m-voice__progress,
+  .m-voice__loading {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-voice__meta {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-voice__download {
+    gap: var(--space-3);
+  }
+}

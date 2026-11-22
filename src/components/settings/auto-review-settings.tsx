@@ -1,3 +1,4 @@
+import './auto-review-settings.css'
 import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -151,7 +152,7 @@ function ModelPicker({
   ]
 
   return (
-    <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="model-picker" className="m-autoreview__picker">
       <Select
         aria-label={t('settings.assistant.provider')}
         selectedKey={providerId || '_none'}
@@ -337,23 +338,24 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <NumberField
-        label={t('settings.approvals.ttl')}
-        description={t('settings.approvals.ttlHint')}
-        value={draftToNumber(settings.ttl)}
-        onChange={(value) => setSettings({ ...settings, ttl: numberToDraft(value) })}
-        minValue={0}
-        maxValue={MAX_TTL_MINUTES}
-        formatOptions={PLAIN_INTEGER}
-        className="max-w-32"
-      />
+      <div className="m-autoreview__ttl">
+        <NumberField
+          label={t('settings.approvals.ttl')}
+          description={t('settings.approvals.ttlHint')}
+          value={draftToNumber(settings.ttl)}
+          onChange={(value) => setSettings({ ...settings, ttl: numberToDraft(value) })}
+          minValue={0}
+          maxValue={MAX_TTL_MINUTES}
+          formatOptions={PLAIN_INTEGER}
+        />
+      </div>
       {normaliseTtl(settings.ttl) === 0 && (
-        <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
+        <Alert data-slot="approvals-ttl-never" tone="warning">
           {t('settings.approvals.ttlNever')}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="autoreview-enable" className="space-y-1.5">
+      <div data-slot="autoreview-enable" className="m-autoreview__stack">
         <Switch
           variant="card"
           aria-label={t('settings.autoReview.enable')}
@@ -363,20 +365,16 @@ export function AutoReviewSettings() {
         >
           {t('settings.autoReview.enable')}
         </Switch>
-        <p
-          id="autoreview-enabled-hint"
-          data-slot="autoreview-enable-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="autoreview-enabled-hint" data-slot="autoreview-enable-hint" className="m-autoreview__hint">
           {t('settings.autoReview.enableHint')}
         </p>
       </div>
 
-      <div data-slot="autoreview-model" className="space-y-1.5">
-        <span data-slot="autoreview-model-label" className="text-body-medium">
+      <div data-slot="autoreview-model" className="m-autoreview__stack">
+        <span data-slot="autoreview-model-label" className="m-autoreview__label">
           {t('settings.autoReview.model')}
         </span>
-        <p data-slot="autoreview-model-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="autoreview-model-hint" className="m-autoreview__hint">
           {t('settings.autoReview.modelHint')}
         </p>
         <ModelPicker
@@ -385,13 +383,13 @@ export function AutoReviewSettings() {
           onChange={(model) => setSettings({ ...settings, model })}
         />
         {incomplete && (
-          <p data-slot="autoreview-no-model" className="text-caption-1-regular text-status-warning-soft-foreground">
+          <Alert data-slot="autoreview-no-model" tone="warning">
             {t('settings.autoReview.noModel')}
-          </p>
+          </Alert>
         )}
       </div>
 
-      <div data-slot="autoreview-escalate" className="space-y-1.5">
+      <div data-slot="autoreview-escalate" className="m-autoreview__stack">
         <Switch
           variant="card"
           aria-label={t('settings.autoReview.escalate')}
@@ -401,11 +399,7 @@ export function AutoReviewSettings() {
         >
           {t('settings.autoReview.escalate')}
         </Switch>
-        <p
-          id="autoreview-escalate-hint"
-          data-slot="autoreview-escalate-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="autoreview-escalate-hint" data-slot="autoreview-escalate-hint" className="m-autoreview__hint">
           {t('settings.autoReview.escalateHint')}
         </p>
       </div>
@@ -433,17 +427,17 @@ export function AutoReviewSettings() {
       />
 
       {error && (
-        <p data-slot="autoreview-error" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="autoreview-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="autoreview-actions" className="flex items-center gap-3">
+      <div data-slot="autoreview-actions" className="m-autoreview__actions">
         <Button onPress={handleSave} isDisabled={saving}>
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="autoreview-saved" className="text-caption-1-regular text-status-success">
+          <span data-slot="autoreview-saved" className="m-autoreview__saved">
             {t('common.saved')}
           </span>
         )}

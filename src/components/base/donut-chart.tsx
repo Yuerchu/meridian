@@ -101,7 +101,7 @@ function DonutChart({
       <div data-slot="donut-chart-ring" className="relative shrink-0" style={{ width: size, height: size }}>
         {/* eslint-disable-next-line no-restricted-syntax -- the chart itself: a ring of arcs sized from the data */}
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-          <circle cx={c} cy={c} r={r} fill="none" stroke="var(--color-chart-track)" strokeWidth={thickness} />
+          <circle cx={c} cy={c} r={r} fill="none" stroke="var(--surface-inset)" strokeWidth={thickness} />
           {segments}
         </svg>
         <div

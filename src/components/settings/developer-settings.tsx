@@ -1,13 +1,12 @@
+import './developer-settings.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleX, Play } from '@keyline-icons/react/two-tone'
-import { Card } from '@/components/base'
-import { Meter } from '@/components/yuerchu-ui/components/meter/meter'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
+import { Meter } from '@/components/yuerchu-ui/components/meter/meter'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { cx } from '@/utils/cx'
 import { encodePcm16Base64, openCapture } from '@/lib/web-audio-capture'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -277,21 +276,20 @@ export function DeveloperSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
-      <div data-slot="developer-mic-probe" className="space-y-1.5">
+      <div data-slot="developer-mic-probe" className="m-developer__section">
         {/* Names the section, not a control — there is no field under it, only a
             card that titles itself. It was a `<label>` pointing at nothing. */}
-        <p data-slot="developer-section-label" className="text-caption-1-medium text-text-secondary">
+        <p data-slot="developer-section-label" className="m-developer__label">
           {t('settings.developer.micProbe')}
         </p>
-        <Card>
-          <Card.Header>
-            <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>
-            <Card.Description>{t('settings.developer.micProbeHint')}</Card.Description>
-          </Card.Header>
-          {/* `.card__footer` is a flex row that does not wrap, and the third
-              button here is the Android-only one — so the case with the most
-              buttons is also the narrowest screen they ever appear on. */}
-          <Card.Footer className="flex-wrap gap-2">
+        <div className="m-developer__card">
+          <div className="m-developer__copy">
+            <p className="m-developer__title">{t('settings.developer.micProbeTitle')}</p>
+            <p className="m-developer__hint">{t('settings.developer.micProbeHint')}</p>
+          </div>
+          {/* The third button is Android-only, and that is also the narrowest
+              screen these buttons appear on, so the row wraps. */}
+          <div className="m-developer__actions">
             <Button icon={<Play />} variant="secondary" size="sm" onPress={() => record(true)} isDisabled={busy}>
               {t('settings.developer.probe.runWorklet')}
             </Button>
@@ -305,11 +303,11 @@ export function DeveloperSettings() {
                 {t('settings.developer.probe.runTranscribe')}
               </Button>
             )}
-          </Card.Footer>
+          </div>
 
           {recording && (
-            <div data-slot="mic-probe-level" className="space-y-1">
-              <p data-slot="mic-probe-speak-now" className="text-caption-1-regular text-status-danger">
+            <div data-slot="mic-probe-level" className="m-developer__level">
+              <p data-slot="mic-probe-speak-now" className="m-developer__speak">
                 {t('settings.developer.probe.speakNow')}
               </p>
               {/* A meter, not a progress bar: this is a level within a known
@@ -324,27 +322,22 @@ export function DeveloperSettings() {
           )}
 
           {lines.length > 0 && (
-            <ul data-slot="mic-probe-lines" className="space-y-1.5 text-caption-1-regular">
+            <ul data-slot="mic-probe-lines" className="m-developer__lines">
               {lines.map((l) => (
-                <li key={l.id} data-slot="mic-probe-line" className="flex items-start gap-2">
+                <li key={l.id} data-slot="mic-probe-line" data-verdict={l.verdict} className="m-developer__line">
                   {l.verdict === 'pass' ? (
-                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-success" />
+                    <CircleCheck size={14} aria-hidden />
                   ) : l.verdict === 'fail' ? (
-                    <CircleX className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
+                    <CircleX size={14} aria-hidden />
                   ) : (
-                    <span
-                      data-slot="mic-probe-pending-mark"
-                      className="mt-0.5 w-3.5 shrink-0 text-center text-text-secondary"
-                    >
+                    <span data-slot="mic-probe-pending-mark" className="m-developer__pending" aria-hidden>
                       ·
                     </span>
                   )}
-                  <span data-slot="mic-probe-line-text" className="min-w-0">
-                    <span data-slot="mic-probe-line-label" className={cx(l.verdict === 'fail' && 'text-status-danger')}>
-                      {l.label}
-                    </span>
+                  <span data-slot="mic-probe-line-text" className="m-developer__line-text">
+                    <span data-slot="mic-probe-line-label">{l.label}</span>
                     {l.detail && (
-                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-text-secondary">
+                      <span data-slot="mic-probe-line-detail" className="m-developer__detail">
                         — {l.detail}
                       </span>
                     )}
@@ -353,7 +346,7 @@ export function DeveloperSettings() {
               ))}
             </ul>
           )}
-        </Card>
+        </div>
       </div>
     </SettingsPane>
   )

@@ -68,7 +68,8 @@ describe('McpSettings pages', () => {
     // The transport is a tag describing the row, not part of its name.
     expect(remote).toHaveAccessibleDescription(/HTTP/)
     const list = container.querySelector<HTMLElement>('[data-slot="mcp-server-list"]')!
-    expect(list.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
+    const card = list.querySelector<HTMLElement>('.ui-settings-group__rows')!
+    expect(card.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
     expect(within(list).getByRole('button', { name: i18n.t('settings.mcp.addServer') })).toBeInTheDocument()
   })
 

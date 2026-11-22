@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { SettingsNavRow, SettingsPane, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsNavRow, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsPage } from './settings-page'
 
 type Level = 'all' | 'warn' | 'error'
@@ -29,48 +30,23 @@ describe('SettingsNavRow', () => {
 })
 
 describe('SettingsRow', () => {
-  /**
-   * The label is a `<p>`, so it names nothing on its own. A row whose control
-   * does not take the ids — or carry its own `aria-label` — is a switch a
-   * screen reader announces as "switch", with no indication of what it turns
-   * on. The function child is the mechanism, so this pins that it is wired.
-   */
-  it('lends its label and description to a control that asks for them', () => {
+  it('names and describes its control through React Aria context', () => {
     render(
       <SettingsRow label="Auto-connect" description="Reconnects on launch">
-        {({ labelId, descriptionId }) => (
-          <Switch aria-labelledby={labelId} aria-describedby={descriptionId} isSelected={false} onChange={() => {}} />
-        )}
+        <Switch isSelected={false} onChange={() => {}} />
       </SettingsRow>,
     )
     const control = screen.getByRole('switch', { name: 'Auto-connect' })
     expect(control).toHaveAccessibleDescription('Reconnects on launch')
   })
 
-  it('offers no description id when there is no description', () => {
-    const seen: Array<string | undefined> = []
+  it('leaves the control without a description when the row has none', () => {
     render(
       <SettingsRow label="Shell">
-        {({ descriptionId }) => {
-          seen.push(descriptionId)
-          return <span>bash</span>
-        }}
+        <Switch isSelected={false} onChange={() => {}} />
       </SettingsRow>,
     )
-    expect(seen).toEqual([undefined])
-  })
-
-  /** A field that cannot shrink drops under its label on a narrow pane. */
-  it('stacks only when asked', () => {
-    const { container, rerender } = render(<SettingsRow label="Base URL">field</SettingsRow>)
-    expect(container.querySelector('[data-slot="settings-row"]')).not.toHaveClass('flex-col')
-
-    rerender(
-      <SettingsRow label="Base URL" stacked>
-        field
-      </SettingsRow>,
-    )
-    expect(container.querySelector('[data-slot="settings-row"]')).toHaveClass('flex-col')
+    expect(screen.getByRole('switch', { name: 'Shell' })).not.toHaveAttribute('aria-describedby')
   })
 })
 
@@ -206,17 +182,16 @@ describe('the settings width', () => {
         <SettingsPage title="Page" />
       </>,
     )
-    for (const slot of ['settings-pane', 'settings-skeleton', 'settings-page']) {
+    const shells = [
+      { slot: 'settings-pane', className: 'm-settings-pane', stylesheet: 'primitives.css' },
+      { slot: 'settings-skeleton', className: 'm-settings-skeleton', stylesheet: 'primitives.css' },
+      { slot: 'settings-page', className: 'm-settings-page', stylesheet: 'settings-page.css' },
+    ]
+    for (const { slot, className, stylesheet } of shells) {
       const el = container.querySelector(`[data-slot="${slot}"]`)
-      expect(el, slot).not.toBeNull()
-      if (slot === 'settings-skeleton') {
-        expect(el).toHaveClass('m-settings-skeleton')
-        const css = readFileSync(resolve(__dirname, 'primitives.css'), 'utf8')
-        expect(css).toMatch(/max-width:\s*var\(--content-settings\)/)
-      } else {
-        expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
-        expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
-      }
+      expect(el, slot).toHaveClass(className)
+      const css = readFileSync(resolve(__dirname, stylesheet), 'utf8')
+      expect(css, slot).toMatch(/max-width:\s*var\(--content-settings\)/)
     }
   })
 })

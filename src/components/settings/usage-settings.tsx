@@ -9,15 +9,13 @@ import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tool
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
-import { KPI } from '@/components/base'
-import { ActivityHeatmap, BarChart, BarList, ChartCard, ChartLegend, DonutChart } from '@/components/base'
+import { ActivityHeatmap, BarChart, BarList, DonutChart } from '@/components/base'
 import { DataGrid, type DataGridColumn } from '@/components/base'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { compareDecimals, decimal, decimalPercent, sumDecimals, type DecimalString } from '@/lib/decimal'
-import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { UsageGapsSheet } from './usage-gaps-sheet'
@@ -70,14 +68,14 @@ const DAY_MS = 86_400_000
  * the two cache figures are subsets of the prompt, so drawing them beside a full
  * input band would count the cached part twice.
  *
- * Blue and cyan for the two halves of the prompt, so they read as parts of one
- * thing; magenta for the reply, which is the other thing.
+ * The four library series, in stacking order. They are categorical, not status:
+ * a band landing on amber would be read as a warning.
  */
 const SERIES = [
-  { key: 'uncached', color: 'var(--color-chart-3)', labelKey: 'settings.usage.legend.uncached' },
-  { key: 'cacheRead', color: 'var(--color-chart-2)', labelKey: 'settings.usage.legend.cacheRead' },
-  { key: 'cacheWrite', color: 'var(--color-chart-1)', labelKey: 'settings.usage.legend.cacheWrite' },
-  { key: 'output', color: 'var(--color-chart-4)', labelKey: 'settings.usage.legend.output' },
+  { key: 'uncached', color: 'var(--series-3)', labelKey: 'settings.usage.legend.uncached' },
+  { key: 'cacheRead', color: 'var(--series-2)', labelKey: 'settings.usage.legend.cacheRead' },
+  { key: 'cacheWrite', color: 'var(--series-1)', labelKey: 'settings.usage.legend.cacheWrite' },
+  { key: 'output', color: 'var(--series-4)', labelKey: 'settings.usage.legend.output' },
 ] as const
 
 type SeriesKey = (typeof SERIES)[number]['key']
@@ -90,10 +88,10 @@ type Split = Record<SeriesKey, number>
  * never recreate them from token counts.
  */
 const COST_SERIES = [
-  { key: 'input_cost', color: 'var(--color-chart-3)', labelKey: 'settings.usage.cost.input' },
-  { key: 'cache_cost', color: 'var(--color-chart-2)', labelKey: 'settings.usage.cost.cache' },
-  { key: 'output_cost', color: 'var(--color-chart-4)', labelKey: 'settings.usage.cost.output' },
-  { key: 'tool_cost', color: 'var(--color-chart-1)', labelKey: 'settings.usage.cost.tools' },
+  { key: 'input_cost', color: 'var(--series-3)', labelKey: 'settings.usage.cost.input' },
+  { key: 'cache_cost', color: 'var(--series-2)', labelKey: 'settings.usage.cost.cache' },
+  { key: 'output_cost', color: 'var(--series-4)', labelKey: 'settings.usage.cost.output' },
+  { key: 'tool_cost', color: 'var(--series-1)', labelKey: 'settings.usage.cost.tools' },
 ] as const
 
 type CostSeriesKey = (typeof COST_SERIES)[number]['key']
@@ -287,15 +285,15 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
         header: t('settings.usage.byRequestType.role'),
         isRowHeader: true,
         cell: (row) => (
-          <span className="block truncate text-body-regular">{row.label ?? t(`settings.usage.kind.${row.key}`)}</span>
+          <span className="m-usage-settings__truncate">{row.label ?? t(`settings.usage.kind.${row.key}`)}</span>
         ),
       },
       {
         id: 'hitRate',
         header: t('settings.usage.kpi.cacheRate'),
         align: 'end',
-        headerClassName: 'w-24 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        headerClassName: 'm-usage-settings__col-rate',
+        cellClassName: 'm-usage-settings__cell',
         cell: (row) =>
           row.cache_reported_input_tokens > 0
             ? percent.format(row.cache_reported_input_cache_read_tokens / row.cache_reported_input_tokens)
@@ -305,16 +303,16 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
         id: 'replies',
         header: t('settings.usage.byRequestType.replies'),
         align: 'end',
-        headerClassName: 'w-20 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        headerClassName: 'm-usage-settings__col-count',
+        cellClassName: 'm-usage-settings__cell',
         cell: (row) => compact.format(row.messages),
       },
       {
         id: 'tokens',
         header: t('settings.usage.tokenColumn'),
         align: 'end',
-        headerClassName: 'w-24 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        headerClassName: 'm-usage-settings__col-tokens',
+        cellClassName: 'm-usage-settings__cell',
         cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
       {
@@ -322,8 +320,8 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
         header: t('settings.usage.kpi.cost'),
         align: 'end',
         pinned: 'end',
-        headerClassName: 'w-28 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-body-regular tabular-nums',
+        headerClassName: 'm-usage-settings__col-cost',
+        cellClassName: 'm-usage-settings__cell-strong',
         cell: (row) => displayedCost(row, t, locale),
       },
     ],
@@ -332,17 +330,17 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
 
   if (rows.length === 0) return null
   return (
-    <ChartCard title={t('settings.usage.byRequestType.title')}>
+    <FigureCard title={t('settings.usage.byRequestType.title')}>
       <DataGrid<UsageBucketInfoResponse>
         aria-label={t('settings.usage.byRequestType.title')}
         variant="secondary"
         columns={columns}
         data={rows}
         getRowId={(row) => `kind:${row.key}`}
-        contentClassName="min-w-lg table-fixed"
-        scrollContainerClassName="overflow-x-auto overscroll-contain"
+        contentClassName="m-usage-settings__table"
+        scrollContainerClassName="m-usage-settings__scroller"
       />
-    </ChartCard>
+    </FigureCard>
   )
 }
 
@@ -370,28 +368,28 @@ function CacheMisses({ misses }: { misses: UsageCacheMissInfoResponse }) {
   if (misses.measured_messages === 0) return null
   const qualifier: CostQualifier = misses.has_unpriced_misses ? 'lower_bound' : 'exact'
   return (
-    <ChartCard title={t('settings.usage.cacheMisses.title')}>
-      <div className="grid grid-cols-1 gap-3 @sm/pane:grid-cols-3">
+    <FigureCard title={t('settings.usage.cacheMisses.title')}>
+      <div className="m-usage-settings__misses">
         <Kpi title={t('settings.usage.cacheMisses.tokens')}>
-          <KPI.Value data-slot="cache-missed-tokens" className="block truncate">
+          <span data-slot="cache-missed-tokens" className="m-usage-settings__value">
             {compact.format(misses.missed_tokens)}
-          </KPI.Value>
+          </span>
         </Kpi>
         <Kpi title={t('settings.usage.cacheMisses.cost')}>
-          <KPI.Value data-slot="cache-missed-cost" className="block truncate">
+          <span data-slot="cache-missed-cost" className="m-usage-settings__value">
             {formatCostAmount(misses.missed_cost, qualifier, locale)}
-          </KPI.Value>
+          </span>
         </Kpi>
         <Kpi title={t('settings.usage.cacheMisses.count')}>
-          <KPI.Value data-slot="cache-missed-count" className="block truncate">
+          <span data-slot="cache-missed-count" className="m-usage-settings__value">
             {compact.format(misses.miss_count)}
-          </KPI.Value>
+          </span>
         </Kpi>
       </div>
-      <p className="text-caption-1-regular text-text-secondary">
+      <p className="m-usage-settings__note">
         {t('settings.usage.cacheMisses.note', { measured: misses.measured_messages })}
       </p>
-    </ChartCard>
+    </FigureCard>
   )
 }
 
@@ -511,7 +509,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     <SettingsPane>
       <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
 
-      <div data-slot="usage-filters" className="flex flex-wrap items-center gap-x-6 gap-y-3">
+      <div data-slot="usage-filters" className="m-usage-settings__filters">
         <Filter
           label={t('settings.usage.rangeLabel')}
           selectedKey={String(range)}
@@ -544,7 +542,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </Button>
           }
         >
-          <Hint className="min-w-0 break-words" label={error}>
+          <Hint className="m-usage-settings__error-text" label={error}>
             {t('settings.usage.loadError')}
           </Hint>
         </Alert>
@@ -561,24 +559,24 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
         />
       ) : (
         <>
-          <div data-slot="usage-kpis" className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
+          <div data-slot="usage-kpis" className="m-usage-settings__kpis">
             <Kpi title={t('settings.usage.kpi.cost')}>
-              <KPI.Value data-slot="cost-total" className="block truncate">
+              <span data-slot="cost-total" className="m-usage-settings__value">
                 {displayedCost(total, t, locale)}
-              </KPI.Value>
+              </span>
             </Kpi>
             {/* The count is formatted before it goes in, not by i18next: passing
                 the raw number leaves it ungrouped, and "13830144" sitting under
                 "1514.9万" reads as two different quantities. */}
             <Kpi title={t('settings.usage.kpi.input')} note={tokenNote}>
-              <KPI.Value data-slot="input-total" className="block truncate">
+              <span data-slot="input-total" className="m-usage-settings__value">
                 {tokenTotal(total.input_tokens, total, t, compact)}
-              </KPI.Value>
+              </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
-              <KPI.Value data-slot="output-total" className="block truncate">
+              <span data-slot="output-total" className="m-usage-settings__value">
                 {tokenTotal(total.output_tokens, total, t, compact)}
-              </KPI.Value>
+              </span>
             </Kpi>
             <Kpi
               title={t('settings.usage.kpi.cacheRateAssistant')}
@@ -591,9 +589,9 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
                   : t('settings.usage.kpi.replies', { count: assistantKind.messages })
               }
             >
-              <KPI.Value data-slot="cache-rate" className="block truncate">
+              <span data-slot="cache-rate" className="m-usage-settings__value">
                 {hitRate === null ? '—' : percent.format(hitRate)}
-              </KPI.Value>
+              </span>
             </Kpi>
           </div>
 
@@ -604,10 +602,8 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
           {localQualifier !== 'exact' && (
             <p
               data-slot={total.unpriced_messages > 0 ? 'unpriced-warning' : 'estimated-warning'}
-              className={cx(
-                'text-caption-1-regular',
-                total.unpriced_messages > 0 ? 'text-status-warning' : 'text-text-secondary',
-              )}
+              className="m-usage-settings__warning"
+              data-tone={total.unpriced_messages > 0 ? 'warning' : undefined}
             >
               {localQualifier === 'partial_estimate'
                 ? t('settings.usage.partialEstimate', {
@@ -623,7 +619,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             <Button
               size="sm"
               variant="secondary"
-              className="self-start"
+              className="m-usage-settings__start"
               data-slot="usage-gaps-show"
               onPress={() => setGapsOpen(true)}
             >
@@ -631,45 +627,45 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </Button>
           )}
           {billingNote && (
-            <p data-slot="billing-coverage-warning" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="billing-coverage-warning" className="m-usage-settings__note">
               {billingNote}
             </p>
           )}
 
           <CostBreakdown bucket={total} />
 
-          <ChartCard title={t('settings.usage.trend')}>
+          <FigureCard title={t('settings.usage.trend')}>
             <TokenTrend days={report?.days ?? []} />
-          </ChartCard>
+          </FigureCard>
 
-          <div data-slot="usage-cost-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
-            <ChartCard title={t('settings.usage.byProvider')}>
+          <div data-slot="usage-cost-charts" className="m-usage-settings__charts">
+            <FigureCard title={t('settings.usage.byProvider')}>
               <CostBars buckets={report?.providers ?? []} />
-            </ChartCard>
-            <ChartCard title={t('settings.usage.byModel')}>
+            </FigureCard>
+            <FigureCard title={t('settings.usage.byModel')}>
               <CostBars buckets={report?.models ?? []} />
-            </ChartCard>
+            </FigureCard>
           </div>
 
-          <div data-slot="usage-token-charts" className="grid gap-3 @2xl/pane:grid-cols-2">
-            <ChartCard title={t('settings.usage.tokensByModel')}>
+          <div data-slot="usage-token-charts" className="m-usage-settings__charts">
+            <FigureCard title={t('settings.usage.tokensByModel')}>
               <TokensByModel buckets={report?.models ?? []} />
-            </ChartCard>
-            <ChartCard title={t('settings.usage.composition')}>
+            </FigureCard>
+            <FigureCard title={t('settings.usage.composition')}>
               <TokenComposition total={total} />
-            </ChartCard>
+            </FigureCard>
           </div>
 
-          <ChartCard title={t('settings.usage.activity')}>
+          <FigureCard title={t('settings.usage.activity')}>
             <Activity grid={report?.activity ?? []} />
-          </ChartCard>
+          </FigureCard>
 
           {/* The one place on this page where the tabs really do switch the
               content beneath them, so this one has panels. Only the selected
               panel renders, and `rows` is that dimension's data — the fetch is
               keyed on the same state the tab is. */}
-          <section data-slot="usage-breakdown" className="space-y-2">
-            <h3 data-slot="usage-breakdown-title" className="text-body-medium">
+          <section data-slot="usage-breakdown" className="m-usage-settings__section">
+            <h3 data-slot="usage-breakdown-title" className="m-usage-settings__title">
               {t('settings.usage.breakdown')}
             </h3>
             <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
@@ -802,33 +798,39 @@ function UsageSkeleton() {
 /**
  * A figure with a caption.
  *
- * The old `KPI.Value` rendered through `NumberValue`, which took a number and
- * formatted it with `Intl` — right for a count and wrong for the two figures here
- * that are not plain numbers (a cost with no currency, a rate that can be "no
- * data"). So the value slot takes a node and the card keeps everything else.
+ * The value is a node, not a formatted number: a cost has no currency, and a
+ * rate can be "no data". `min-width: 0` is what lets a six-decimal cost truncate
+ * instead of drawing out through the side of the card.
  */
 function Kpi({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
-    <KPI>
-      <KPI.Header>
-        <KPI.Title>{title}</KPI.Title>
-      </KPI.Header>
-      <KPI.Content>
-        {/* `min-w-0` here and `block truncate` on each value: `.kpi__content` is
-            a `1fr auto` grid, so without the floor this column never narrows,
-            and `truncate` does nothing to an inline span. A cost carries up to
-            six decimals, which is a long string at `text-title-1-regular` —
-            it used to be drawn straight out through the side of the card. */}
-        <div data-slot="kpi-body" className="min-w-0">
-          {children}
-          {note && (
-            <p data-slot="kpi-note" className="mt-0.5 truncate text-caption-1-regular text-text-secondary">
-              {note}
-            </p>
-          )}
-        </div>
-      </KPI.Content>
-    </KPI>
+    <section data-slot="kpi" className="m-usage-settings__kpi">
+      <span data-slot="kpi-title" className="m-usage-settings__kpi-title">
+        {title}
+      </span>
+      <div data-slot="kpi-body" className="m-usage-settings__kpi-body">
+        {children}
+        {note && (
+          <p data-slot="kpi-note" className="m-usage-settings__kpi-note">
+            {note}
+          </p>
+        )}
+      </div>
+    </section>
+  )
+}
+
+/** A chart with its title. The heading is how the card is found. */
+function FigureCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section data-slot="chart-card" className="m-usage-settings__card">
+      <div data-slot="chart-card-header" className="m-usage-settings__card-header">
+        <h3 data-slot="chart-card-title" className="m-usage-settings__card-title">
+          {title}
+        </h3>
+      </div>
+      {children}
+    </section>
   )
 }
 
@@ -854,40 +856,41 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
           ? t('settings.usage.pricedPartsOnly')
           : null
   return (
-    <section data-slot="cost-breakdown" className="space-y-2" aria-labelledby="usage-cost-breakdown-title">
-      <div data-slot="cost-breakdown-header" className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="text-body-medium">
+    <section
+      data-slot="cost-breakdown"
+      className="m-usage-settings__section"
+      aria-labelledby="usage-cost-breakdown-title"
+    >
+      <div data-slot="cost-breakdown-header" className="m-usage-settings__breakdown-header">
+        <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="m-usage-settings__title">
           {t('settings.usage.costBreakdown')}
         </h3>
         {note && (
-          <span data-slot="cost-breakdown-note" className="text-caption-1-regular text-text-secondary">
+          <span data-slot="cost-breakdown-note" className="m-usage-settings__note">
             {note}
           </span>
         )}
       </div>
       {bucket.metered_messages === 0 && nonLocalMessages(bucket) > 0 ? (
-        <p data-slot="cost-breakdown-empty" className="text-body-regular text-text-secondary">
+        <p data-slot="cost-breakdown-empty" className="m-usage-settings__note">
           {t('settings.usage.noLocalCostBreakdown')}
         </p>
       ) : (
-        <dl data-slot="cost-breakdown-list" className="grid grid-cols-2 gap-x-6 gap-y-3 @sm/pane:grid-cols-4">
+        <dl data-slot="cost-breakdown-list" className="m-usage-settings__parts">
           {COST_SERIES.map((part) => (
-            <div key={part.key} data-slot="cost-breakdown-part" className="min-w-0">
-              <dt
-                data-slot="cost-breakdown-part-label"
-                className="flex items-center gap-1.5 text-caption-1-regular text-text-secondary"
-              >
+            <div key={part.key} data-slot="cost-breakdown-part" className="m-usage-settings__part">
+              <dt data-slot="cost-breakdown-part-label" className="m-usage-settings__part-label">
                 <span
                   data-slot="cost-breakdown-swatch"
-                  className="size-2 rounded-full"
+                  className="m-usage-settings__swatch"
                   style={{ backgroundColor: part.color }}
                   aria-hidden="true"
                 />
-                <span data-slot="cost-breakdown-part-name" className="truncate">
+                <span data-slot="cost-breakdown-part-name" className="m-usage-settings__part-name">
                   {t(part.labelKey)}
                 </span>
               </dt>
-              <dd data-slot="cost-breakdown-part-value" className="mt-0.5 truncate text-body-medium tabular-nums">
+              <dd data-slot="cost-breakdown-part-value" className="m-usage-settings__part-value">
                 {qualifiedCost(bucket[part.key], componentQualifier(bucket, part.key), t, locale)}
               </dd>
             </div>
@@ -968,7 +971,7 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     // Nothing to rank is not "no usage" when the replies just lost their counts.
     const unknown = buckets.some((bucket) => bucket.incomplete_token_usage_messages > 0)
     return (
-      <p data-slot="tokens-by-model-empty" className="text-body-regular text-text-secondary">
+      <p data-slot="tokens-by-model-empty" className="m-usage-settings__note">
         {t(unknown ? 'settings.usage.tokensUnavailable' : 'settings.usage.noTokens')}
       </p>
     )
@@ -976,7 +979,7 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   return (
     <BarList
       aria-label={t('settings.usage.tokensByModel')}
-      color="var(--color-chart-4)"
+      color="var(--series-4)"
       items={items.map((item) => ({
         key: item.key,
         label: item.label,
@@ -1008,7 +1011,7 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
   if (bands.length === 0) {
     // Every known band at zero with counts missing is unknown usage, not none.
     return (
-      <p data-slot="token-composition-empty" className="text-body-regular text-text-secondary">
+      <p data-slot="token-composition-empty" className="m-usage-settings__note">
         {t(incomplete ? 'settings.usage.tokensUnavailable' : 'settings.usage.noTokens')}
       </p>
     )
@@ -1055,6 +1058,7 @@ function Activity({ grid }: { grid: number[][] }) {
       rowLabels={weekdays}
       columnLabel={(c) => (c % 6 === 0 && c < HOUR_COUNT ? hour(c) : '')}
       caption={(r, c, value) => t('settings.usage.activityCell', { day: weekdays[r], hour: hour(c), count: value })}
+      color="var(--series-1)"
       aria-label={t('settings.usage.activitySummary', {
         day: weekdays[busiest.row],
         hour: hour(busiest.column),
@@ -1098,7 +1102,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
   )
   if (data.length === 0 || bands.length === 0 || compareDecimals(maximum, ZERO_DECIMAL) === 0) {
     return (
-      <p data-slot="cost-bars-empty" className="text-body-regular text-text-secondary">
+      <p data-slot="cost-bars-empty" className="m-usage-settings__note">
         {t('settings.usage.noPricedCost')}
       </p>
     )
@@ -1107,7 +1111,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     <>
       <Legend bands={bands} />
       {qualifier !== 'exact' && (
-        <p data-slot="cost-bars-note" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="cost-bars-note" className="m-usage-settings__note">
           {t(
             qualifier === 'partial_estimate'
               ? 'settings.usage.costChartPartialEstimate'
@@ -1119,19 +1123,15 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
       )}
       {/* Widths are exact decimal percentages. Passing raw costs to Recharts
           would coerce them through IEEE-754 before the first pixel was drawn. */}
-      <div className="space-y-2.5" data-slot="cost-bars">
+      <div className="m-usage-settings__bars" data-slot="cost-bars">
         {data.map((row) => (
-          <div
-            key={row.bucket.key}
-            data-slot="cost-bar-row"
-            className="grid grid-cols-[minmax(5rem,auto)_minmax(0,1fr)] items-center gap-2"
-          >
-            <Hint className="max-w-40 truncate text-caption-1-regular text-text-secondary" label={row.name}>
+          <div key={row.bucket.key} data-slot="cost-bar-row" className="m-usage-settings__bar-row">
+            <Hint className="m-usage-settings__bar-label" label={row.name}>
               {row.name}
             </Hint>
             <div
               data-slot="cost-bar"
-              className="flex h-3.5 min-w-0 overflow-hidden rounded-lg bg-background-tertiary-default"
+              className="m-usage-settings__bar"
               role="img"
               aria-label={`${row.name}: ${formatCostAmount(row.total, bucketCostQualifier(row.bucket), locale)}`}
             >
@@ -1142,7 +1142,7 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
                   <Hint
                     key={band.key}
                     focusable={false}
-                    className="block h-full first:rounded-s-lg last:rounded-e-lg"
+                    className="m-usage-settings__bar-seg"
                     style={{ width: decimalPercent(amount, maximum), backgroundColor: band.color }}
                     label={`${t(band.labelKey)}: ${formatCostAmount(
                       amount,
@@ -1166,7 +1166,23 @@ function CostBars({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
  */
 function Legend({ bands }: { bands: readonly { key: string; color: string; labelKey: string }[] }) {
   const { t } = useTranslation()
-  return <ChartLegend items={bands.map((band) => ({ key: band.key, color: band.color, label: t(band.labelKey) }))} />
+  return (
+    <div data-slot="chart-legend" className="m-usage-settings__legend">
+      {bands.map((band) => (
+        <span key={band.key} data-slot="chart-legend-item" className="m-usage-settings__legend-item">
+          <span
+            data-slot="chart-legend-swatch"
+            aria-hidden="true"
+            className="m-usage-settings__swatch"
+            style={{ backgroundColor: band.color }}
+          />
+          <span data-slot="chart-legend-label" className="m-usage-settings__legend-label">
+            {t(band.labelKey)}
+          </span>
+        </span>
+      ))}
+    </div>
+  )
 }
 
 interface UsageGridRow extends UsageBucketInfoResponse {
@@ -1355,18 +1371,15 @@ function BucketTable({
         isRowHeader: true,
         cell: (row) =>
           row.conversationCount > 1 ? (
-            <span data-slot="usage-row-label-group" className="block min-w-0">
+            <span data-slot="usage-row-label-group" className="m-usage-settings__row-group">
               <span
                 data-slot="usage-row-label"
                 onPointerEnter={titleIfTruncated}
-                className="block truncate text-body-regular"
+                className="m-usage-settings__row-label"
               >
                 {row.displayLabel}
               </span>
-              <span
-                data-slot="usage-row-label-summary"
-                className="block truncate text-caption-1-regular text-text-secondary"
-              >
+              <span data-slot="usage-row-label-summary" className="m-usage-settings__row-summary">
                 {t('settings.usage.conversationGroupSummary', {
                   conversations: row.conversationCount,
                   messages: row.messages,
@@ -1376,11 +1389,9 @@ function BucketTable({
           ) : (
             <Hint
               focusable={false}
-              className={cx(
-                'block truncate text-body-regular',
-                row.isDeleted && 'text-text-secondary italic',
-                row.isConversationInstance && 'text-text-secondary',
-              )}
+              className="m-usage-settings__row-label"
+              data-muted={row.isDeleted || row.isConversationInstance || undefined}
+              data-deleted={row.isDeleted || undefined}
               label={row.isConversationInstance ? (row.conversationId ?? row.displayLabel) : row.displayLabel}
             >
               {row.displayLabel}
@@ -1391,8 +1402,8 @@ function BucketTable({
         id: 'tokens',
         header: t('settings.usage.tokenColumn'),
         align: 'end',
-        headerClassName: 'w-30 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-caption-1-regular text-text-secondary tabular-nums',
+        headerClassName: 'm-usage-settings__col-wide',
+        cellClassName: 'm-usage-settings__cell',
         cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
       },
       {
@@ -1400,8 +1411,8 @@ function BucketTable({
         header: t('settings.usage.kpi.cost'),
         align: 'end',
         pinned: dimension === 'conversation' ? undefined : 'end',
-        headerClassName: 'w-32 whitespace-nowrap',
-        cellClassName: 'whitespace-nowrap text-body-regular tabular-nums',
+        headerClassName: 'm-usage-settings__col-cost',
+        cellClassName: 'm-usage-settings__cell-strong',
         cell: (row) => {
           const qualifier = bucketCostQualifier(row)
           const localQualifier = costQualifier(row.unpriced_messages, row.estimated_messages)
@@ -1419,12 +1430,21 @@ function BucketTable({
           const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
           if (!hint)
             return (
-              <span data-slot="usage-row-cost" className={cx(qualifier !== 'exact' && 'text-text-secondary')}>
+              <span
+                data-slot="usage-row-cost"
+                className="m-usage-settings__cell-strong"
+                data-muted={qualifier !== 'exact' || undefined}
+              >
                 {displayedCost(row, t, locale)}
               </span>
             )
           return (
-            <Hint focusable={false} className={cx(qualifier !== 'exact' && 'text-text-secondary')} label={hint}>
+            <Hint
+              focusable={false}
+              className="m-usage-settings__cell-strong"
+              data-muted={qualifier !== 'exact' || undefined}
+              label={hint}
+            >
               {displayedCost(row, t, locale)}
             </Hint>
           )
@@ -1438,7 +1458,7 @@ function BucketTable({
         align: 'end',
         pinned: 'end',
         // A small icon button and the cell's padding: 32 + 2 × 12.
-        headerClassName: 'w-14 whitespace-nowrap',
+        headerClassName: 'm-usage-settings__col-actions',
         cell: (row) => {
           if (!row.conversationId) return null
           const conversationId = row.conversationId
@@ -1488,8 +1508,8 @@ function BucketTable({
       // hover. `width` on a column does nothing outside a resizable container.
       // Below 32rem (a phone) the grid scrolls inside its own card instead of
       // crushing the ids or widening the page.
-      contentClassName="min-w-lg table-fixed"
-      scrollContainerClassName="overflow-x-auto overscroll-contain"
+      contentClassName="m-usage-settings__table"
+      scrollContainerClassName="m-usage-settings__scroller"
     />
   )
 }

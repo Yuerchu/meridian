@@ -1,10 +1,9 @@
+import './ime-settings.css'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
-import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
-import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ItemCard, ItemCardGroup } from '@/components/base'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -17,7 +16,6 @@ import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { usePlatform } from '@/hooks/use-platform'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { cx } from '@/utils/cx'
 import type {
   AndroidImeStatusInfoResponse,
   ImeConfigInfoResponse,
@@ -357,39 +355,29 @@ export function ImeSettings() {
       />
 
       {android && androidStatus && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0 space-y-1">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state is spelled out beside it. */}
-              <span
-                data-slot="ime-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  androidStatus.current ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {!androidStatus.enabled
-                ? t('settings.ime.android.notEnabled')
-                : androidStatus.current
-                  ? t('settings.ime.android.current')
-                  : t('settings.ime.android.enabledNotCurrent')}
-            </ItemCard.Title>
-            {/* Only when there is a button below to take them there. */}
-            {!androidStatus.current && (
-              <ItemCard.Description className="w-full whitespace-normal">
-                {t('settings.ime.android.statusHint')}
-              </ItemCard.Description>
-            )}
-            <ItemCard.Description className="w-full whitespace-normal break-all font-mono text-caption-2-regular">
-              {androidStatus.data_dir}
-            </ItemCard.Description>
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-ime__status">
+          <p className="m-ime__status-title">
+            {/* Decoration: the state is spelled out beside it. */}
+            <span
+              data-slot="ime-status-dot"
+              data-on={androidStatus.current || undefined}
+              aria-hidden
+              className="m-ime__dot"
+            />
+            {!androidStatus.enabled
+              ? t('settings.ime.android.notEnabled')
+              : androidStatus.current
+                ? t('settings.ime.android.current')
+                : t('settings.ime.android.enabledNotCurrent')}
+          </p>
+          {/* Only when there is a button below to take them there. */}
+          {!androidStatus.current && <p className="m-ime__hint">{t('settings.ime.android.statusHint')}</p>}
+          <p className="m-ime__path">{androidStatus.data_dir}</p>
+        </div>
       )}
 
       {android && androidStatus && !androidStatus.current && (
-        <div data-slot="ime-android-actions" className="flex flex-wrap items-center gap-3">
+        <div data-slot="ime-android-actions" className="m-ime__actions">
           {!androidStatus.enabled ? (
             <Button variant="primary" onPress={() => api.openAndroidImeSettings().catch((e) => setError(String(e)))}>
               {t('settings.ime.android.openSettings')}
@@ -403,53 +391,47 @@ export function ImeSettings() {
       )}
 
       {!android && status && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0 space-y-1">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state is spelled out beside it. */}
-              <span
-                data-slot="ime-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  registered && hostRunning ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {!status.installed
-                ? t('settings.ime.notInstalled')
-                : !registered
-                  ? t('settings.ime.notRegistered')
-                  : hostRunning
-                    ? t('settings.ime.hostRunning')
-                    : t('settings.ime.hostStopped')}
-            </ItemCard.Title>
-            <ItemCard.Description className="w-full whitespace-normal">
-              {registered && (
-                <span data-slot="ime-status-arch">
-                  {status.registered_x86 ? t('settings.ime.registeredBoth') : t('settings.ime.registeredX64Only')}
-                </span>
-              )}
-              {hostRunning && (
-                <span data-slot="ime-status-host">
-                  {' · '}
-                  {t('settings.ime.hostDetail', {
-                    version: status.host_version ?? '?',
-                    count: status.sessions,
-                  })}
-                  {!status.protocol_compatible && ` · ${t('settings.ime.protocolMismatch')}`}
-                </span>
-              )}
-            </ItemCard.Description>
-            <ItemCard.Description className="w-full whitespace-normal break-all font-mono text-caption-2-regular">
-              {status.data_dir}
-            </ItemCard.Description>
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-ime__status">
+          <p className="m-ime__status-title">
+            {/* Decoration: the state is spelled out beside it. */}
+            <span
+              data-slot="ime-status-dot"
+              data-on={(registered && hostRunning) || undefined}
+              aria-hidden
+              className="m-ime__dot"
+            />
+            {!status.installed
+              ? t('settings.ime.notInstalled')
+              : !registered
+                ? t('settings.ime.notRegistered')
+                : hostRunning
+                  ? t('settings.ime.hostRunning')
+                  : t('settings.ime.hostStopped')}
+          </p>
+          <p className="m-ime__hint">
+            {registered && (
+              <span data-slot="ime-status-arch">
+                {status.registered_x86 ? t('settings.ime.registeredBoth') : t('settings.ime.registeredX64Only')}
+              </span>
+            )}
+            {hostRunning && (
+              <span data-slot="ime-status-host">
+                {' · '}
+                {t('settings.ime.hostDetail', {
+                  version: status.host_version ?? '?',
+                  count: status.sessions,
+                })}
+                {!status.protocol_compatible && ` · ${t('settings.ime.protocolMismatch')}`}
+              </span>
+            )}
+          </p>
+          <p className="m-ime__path">{status.data_dir}</p>
+        </div>
       )}
 
       {!android && (
         <>
-          <div data-slot="ime-actions" className="flex flex-wrap items-center gap-3">
+          <div data-slot="ime-actions" className="m-ime__actions">
             <Button
               variant={registered ? 'secondary' : 'primary'}
               isDisabled={!status?.installed || busy !== null}
@@ -478,11 +460,11 @@ export function ImeSettings() {
               </Button>
             )}
           </div>
-          <p data-slot="ime-register-hint" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="ime-register-hint" className="m-ime__hint">
             {t('settings.ime.registerHint')}
           </p>
 
-          <div data-slot="ime-enable" className="space-y-1.5">
+          <div data-slot="ime-enable" className="m-ime__stack">
             <Switch
               variant="card"
               aria-label={t('settings.ime.enableForUser')}
@@ -493,17 +475,14 @@ export function ImeSettings() {
             >
               {t('settings.ime.enableForUser')}
             </Switch>
-            <p id="ime-enable-hint" data-slot="ime-enable-hint" className="text-caption-1-regular text-text-secondary">
+            <p id="ime-enable-hint" data-slot="ime-enable-hint" className="m-ime__hint">
               {t('settings.ime.enableForUserHint')}
             </p>
           </div>
         </>
       )}
 
-      <div
-        data-slot="ime-config"
-        className={cx('grid grid-cols-1 gap-3', android ? '@sm/pane:grid-cols-1' : '@sm/pane:grid-cols-3')}
-      >
+      <div data-slot="ime-config" data-columns={android ? '1' : '3'} className="m-ime__config">
         {!android && (
           <SettingsSelect<ImeScheme>
             label={t('settings.ime.scheme')}
@@ -540,11 +519,11 @@ export function ImeSettings() {
           ]}
         />
       </div>
-      <p data-slot="ime-scheme-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="ime-scheme-hint" className="m-ime__hint">
         {t(android ? 'settings.ime.schemeHintAndroid' : 'settings.ime.schemeHint')}
       </p>
 
-      <div data-slot="ime-learning" className="space-y-1.5">
+      <div data-slot="ime-learning" className="m-ime__stack">
         <Switch
           variant="card"
           aria-label={t('settings.ime.learning')}
@@ -554,14 +533,14 @@ export function ImeSettings() {
         >
           {t('settings.ime.learning')}
         </Switch>
-        <p id="ime-learning-hint" data-slot="ime-learning-hint" className="text-caption-1-regular text-text-secondary">
+        <p id="ime-learning-hint" data-slot="ime-learning-hint" className="m-ime__hint">
           {t('settings.ime.learningHint')}
         </p>
       </div>
 
       <ImeLearningSection />
 
-      <div data-slot="ime-prediction" className="space-y-1.5">
+      <div data-slot="ime-prediction" className="m-ime__stack">
         <Switch
           variant="card"
           aria-label={t('settings.ime.prediction')}
@@ -571,11 +550,7 @@ export function ImeSettings() {
         >
           {t('settings.ime.prediction')}
         </Switch>
-        <p
-          id="ime-prediction-hint"
-          data-slot="ime-prediction-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
+        <p id="ime-prediction-hint" data-slot="ime-prediction-hint" className="m-ime__hint">
           {t(android ? 'settings.ime.predictionHintAndroid' : 'settings.ime.predictionHint')}
         </p>
       </div>
@@ -610,29 +585,29 @@ export function ImeSettings() {
       </Switch>
 
       {error && (
-        <p data-slot="ime-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="ime-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="ime-save" className="flex items-center gap-3 pt-2">
+      <div data-slot="ime-save" className="m-ime__save">
         <Button variant="secondary" onPress={handleSave} isDisabled={saving || !dirty}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="ime-saved" role="status" className="sr-only">
+          <span data-slot="ime-saved" role="status" className="m-ime__saved">
             {t('common.saved')}
           </span>
         )}
       </div>
 
-      <div data-slot="ime-dictionaries" className="space-y-1.5">
-        <div data-slot="ime-dictionaries-head" className="flex items-center justify-between gap-3">
-          <p data-slot="ime-dictionaries-label" className="text-caption-1-medium text-text-secondary">
+      <div data-slot="ime-dictionaries" className="m-ime__stack">
+        <div data-slot="ime-dictionaries-head" className="m-ime__dict-head">
+          <p data-slot="ime-dictionaries-label" className="m-ime__label">
             {t('settings.ime.dictionaries')}
           </p>
           {can.importFromDisk && (
-            <div data-slot="ime-dictionaries-actions" className="flex flex-wrap items-center gap-2">
+            <div data-slot="ime-dictionaries-actions" className="m-ime__actions">
               <Button
                 size="sm"
                 variant="secondary"
@@ -655,11 +630,7 @@ export function ImeSettings() {
           )}
         </div>
         {downloading && (
-          <div
-            data-slot="ime-downloading"
-            role="status"
-            className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
-          >
+          <div data-slot="ime-downloading" role="status" className="m-ime__busy">
             <span aria-hidden>
               <Spinner size="sm" />
             </span>
@@ -667,49 +638,43 @@ export function ImeSettings() {
           </div>
         )}
         {staged && (
-          <ItemCard variant="outline">
-            <ItemCard.Content className="min-w-0 space-y-3">
-              <CheckboxGroup
-                label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
-                value={chosen}
-                onChange={setChosen}
-              >
-                {staged.roots.map((root) => (
-                  <Checkbox key={root.path} value={root.path}>
-                    <span className="break-all">
-                      {root.name ?? root.path}
-                      <span className="text-text-secondary">
-                        {' · '}
-                        {root.path}
-                        {root.imports > 0 && ` · ${t('settings.ime.rootImports', { count: root.imports })}`}
-                      </span>
+          <div className="m-ime__staged">
+            <CheckboxGroup
+              label={t('settings.ime.chooseRoots', { count: staged.roots.length })}
+              value={chosen}
+              onChange={setChosen}
+            >
+              {staged.roots.map((root) => (
+                <Checkbox key={root.path} value={root.path}>
+                  <span className="m-ime__root">
+                    {root.name ?? root.path}
+                    <span className="m-ime__root-path">
+                      {' · '}
+                      {root.path}
+                      {root.imports > 0 && ` · ${t('settings.ime.rootImports', { count: root.imports })}`}
                     </span>
-                  </Checkbox>
-                ))}
-              </CheckboxGroup>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="primary"
-                  onPress={handleImportChosen}
-                  isDisabled={chosen.length === 0 || importing}
-                  isPending={importing}
-                >
-                  {t('settings.ime.importChosen')}
-                </Button>
-                <Button size="sm" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
-                  {t('common.cancel')}
-                </Button>
-              </div>
-            </ItemCard.Content>
-          </ItemCard>
+                  </span>
+                </Checkbox>
+              ))}
+            </CheckboxGroup>
+            <div className="m-ime__actions">
+              <Button
+                size="sm"
+                variant="primary"
+                onPress={handleImportChosen}
+                isDisabled={chosen.length === 0 || importing}
+                isPending={importing}
+              >
+                {t('settings.ime.importChosen')}
+              </Button>
+              <Button size="sm" variant="secondary" onPress={handleCancelStaged} isDisabled={importing}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </div>
         )}
         {importing && (
-          <div
-            data-slot="ime-importing"
-            role="status"
-            className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
-          >
+          <div data-slot="ime-importing" role="status" className="m-ime__busy">
             <span aria-hidden>
               <Spinner size="sm" />
             </span>
@@ -736,61 +701,58 @@ export function ImeSettings() {
           </Alert>
         ))}
         {dictionaries.length === 0 ? (
-          <p data-slot="ime-dictionaries-empty" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="ime-dictionaries-empty" className="m-ime__hint">
             {t('settings.ime.dictionariesEmpty')}
           </p>
         ) : (
-          <ItemCardGroup variant="outline">
-            {dictionaries.map((dict, index) => (
-              <Fragment key={dict.file}>
-                {index > 0 && <Separator />}
-                <ItemCard>
-                  <ItemCard.Content className="min-w-0">
-                    <ItemCard.Title className="w-full truncate" onPointerEnter={titleIfTruncated}>
-                      {dict.name}
-                    </ItemCard.Title>
-                    <ItemCard.Description className="w-full whitespace-normal">
-                      {t('settings.ime.dictionaryDetail', {
-                        count: dict.entries,
-                        size:
-                          dict.size_bytes === null
-                            ? t('settings.ime.dictionarySizeUnknown')
-                            : formatBytes(dict.size_bytes),
-                        license: dict.license,
-                      })}
-                    </ItemCard.Description>
-                    <DictionaryStateLine state={dict.state} />
-                  </ItemCard.Content>
-                  <ItemCard.Action className="flex items-center gap-2">
-                    <Switch
-                      aria-label={t('settings.ime.dictionaryEnabled', { name: dict.name })}
-                      isSelected={dict.enabled}
-                      onChange={(selected) => handleToggleDictionary(dict.file, selected)}
-                    ></Switch>
-                    <TooltipTrigger>
-                      <Button
-                        icon={<Bin />}
-                        size="sm"
-                        variant="ghost"
-                        aria-label={t('settings.ime.removeDictionary', { name: dict.name })}
-                        onPress={() => handleRemoveDictionary(dict)}
-                      />
-                      <Tooltip>{t('settings.ime.removeDictionary', { name: dict.name })}</Tooltip>
-                    </TooltipTrigger>
-                  </ItemCard.Action>
-                </ItemCard>
-              </Fragment>
+          <div className="m-ime__dicts">
+            {dictionaries.map((dict) => (
+              <div key={dict.file} className="m-ime__dict">
+                <span className="m-ime__dict-text">
+                  <span className="m-ime__dict-name" onPointerEnter={titleIfTruncated}>
+                    {dict.name}
+                  </span>
+                  <span className="m-ime__hint">
+                    {t('settings.ime.dictionaryDetail', {
+                      count: dict.entries,
+                      size:
+                        dict.size_bytes === null
+                          ? t('settings.ime.dictionarySizeUnknown')
+                          : formatBytes(dict.size_bytes),
+                      license: dict.license,
+                    })}
+                  </span>
+                  <DictionaryStateLine state={dict.state} />
+                </span>
+                <span className="m-ime__dict-actions">
+                  <Switch
+                    aria-label={t('settings.ime.dictionaryEnabled', { name: dict.name })}
+                    isSelected={dict.enabled}
+                    onChange={(selected) => handleToggleDictionary(dict.file, selected)}
+                  ></Switch>
+                  <TooltipTrigger>
+                    <Button
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('settings.ime.removeDictionary', { name: dict.name })}
+                      onPress={() => handleRemoveDictionary(dict)}
+                    />
+                    <Tooltip>{t('settings.ime.removeDictionary', { name: dict.name })}</Tooltip>
+                  </TooltipTrigger>
+                </span>
+              </div>
             ))}
-          </ItemCardGroup>
+          </div>
         )}
-        <p data-slot="ime-dictionaries-hint" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="ime-dictionaries-hint" className="m-ime__hint">
           {t('settings.ime.dictionariesHint')}
         </p>
       </div>
 
       <ImeLmSection canImport={!android} />
 
-      <p data-slot="ime-limitations" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="ime-limitations" className="m-ime__hint">
         {t(android ? 'settings.ime.limitationsAndroid' : 'settings.ime.limitations')}
       </p>
 
@@ -809,11 +771,7 @@ function DictionaryStateLine({ state }: { state: ImeDictionaryState }) {
   if (state.kind === 'ready') return null
   if (state.kind === 'upgrading') {
     return (
-      <div
-        data-slot="ime-dictionary-state"
-        role="status"
-        className="flex items-center gap-2 text-caption-1-regular text-text-secondary"
-      >
+      <div data-slot="ime-dictionary-state" role="status" className="m-ime__busy">
         <span aria-hidden>
           <Spinner size="sm" />
         </span>
@@ -828,7 +786,7 @@ function DictionaryStateLine({ state }: { state: ImeDictionaryState }) {
         ? t('settings.ime.dictionaryTooNew')
         : t('settings.ime.dictionaryUnreadable', { error: state.error })
   return (
-    <p data-slot="ime-dictionary-state" role="alert" className="text-caption-1-regular text-status-danger break-all">
+    <p data-slot="ime-dictionary-state" role="alert" className="m-ime__danger">
       {message}
     </p>
   )

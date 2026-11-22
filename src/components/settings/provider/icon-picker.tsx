@@ -1,9 +1,12 @@
+import './icon-picker.css'
 import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ListBox, Sheet } from '@/components/base'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProviderMark } from '@/components/ui/provider-icon'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 /** The one key that is not a key: putting the mark back to whatever the catalog says. */
 const FOLLOW_VENDOR = 'default'
@@ -55,18 +58,24 @@ export function ProviderIconPicker({
   catalogId,
   providerType,
   onChange,
-  labelledBy,
+  ariaLabel,
 }: {
   value: string | null
   catalogId: string | null
   providerType: string
   onChange: (icon: string | null) => void
-  labelledBy?: string
+  ariaLabel?: string
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const names = useIconNames(open)
+  const close = () => {
+    setOpen(false)
+    setFilter('')
+  }
+  // The library's Drawer does not know about the back gesture.
+  useHistoryLevel(open, close)
 
   const visible = useMemo(() => {
     const query = filter.trim().toLowerCase()
@@ -78,92 +87,73 @@ export function ProviderIconPicker({
       <Button
         data-slot="provider-icon-trigger"
         variant="secondary"
-        aria-labelledby={labelledBy}
+        aria-label={ariaLabel}
         onPress={() => setOpen(true)}
-        className="w-[202px] justify-start"
+        className="m-icon-picker__trigger"
       >
         {/* Button puts its children in one label span, so the button's own
             gap never reaches between the mark and the name. */}
-        <span data-slot="provider-icon-trigger-content" className="flex min-w-0 items-center gap-1.5">
+        <span data-slot="provider-icon-trigger-content" className="m-icon-picker__trigger-content">
           <ProviderMark icon={value} catalogId={catalogId} providerType={providerType} size={16} />
-          <span data-slot="provider-icon-trigger-label" className="truncate">
+          <span data-slot="provider-icon-trigger-label" className="m-icon-picker__trigger-label">
             {value ?? t('settings.provider.iconDefault')}
           </span>
         </span>
       </Button>
-      <Sheet
+      <Drawer
         isOpen={open}
-        onOpenChange={(next) => {
-          setOpen(next)
-          if (!next) setFilter('')
-        }}
-        placement="bottom"
+        onOpenChange={(next) => (next ? setOpen(true) : close())}
+        heading={t('settings.provider.iconChoose')}
+        side="bottom"
+        size="lg"
+        className="m-icon-picker"
       >
-        <Sheet.Backdrop>
-          {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
-            sheet's default `background-primary`: a field's tertiary well is the same
-            neutral-800 as primary in dark, so on the default the field had no edge. */}
-          <Sheet.Content className="mx-auto bg-background-full sm:max-w-lg sm:rounded-b-2xl">
-            <Sheet.Dialog aria-label={t('settings.provider.iconChoose')} className="pb-[max(1rem,var(--safe-bottom))]">
-              <Sheet.Handle />
-              <Sheet.Header>
-                <Sheet.Heading>{t('settings.provider.iconChoose')}</Sheet.Heading>
-              </Sheet.Header>
-              <Sheet.Body className="space-y-3">
-                <SearchField
-                  aria-label={t('settings.provider.iconFilter')}
-                  name="providerIconFilter"
-                  autoComplete="off"
-                  value={filter}
-                  onChange={setFilter}
-                  placeholder={t('settings.provider.iconFilter')}
-                />
-                {/* The grid scrolls rather than the sheet: the filter box has
-                    to stay reachable while a hundred and fifty marks go past,
-                    and `data-sheet-no-drag` is what stops a downward flick
-                    inside it from closing the sheet instead of scrolling. */}
-                <ListBox
-                  aria-label={t('settings.provider.iconChoose')}
-                  layout="grid"
-                  selectionMode="single"
-                  data-sheet-no-drag
-                  selectedKeys={[value ?? FOLLOW_VENDOR]}
-                  onSelectionChange={(keys) => {
-                    const [key] = [...keys]
-                    if (typeof key !== 'string') return
-                    onChange(key === FOLLOW_VENDOR ? null : key)
-                    setOpen(false)
-                  }}
-                  renderEmptyState={() => (
-                    <p data-slot="provider-icon-empty" className="p-3 text-caption-1-regular text-text-secondary">
-                      {t('settings.provider.iconNoMatch')}
-                    </p>
-                  )}
-                  className="grid max-h-[40vh] grid-cols-3 gap-1 overflow-y-auto overscroll-contain @sm/pane:grid-cols-4"
-                >
-                  {[FOLLOW_VENDOR, ...visible].map((name) => (
-                    <ListBox.Item
-                      key={name}
-                      id={name}
-                      textValue={name === FOLLOW_VENDOR ? t('settings.provider.iconDefault') : name}
-                      className="flex-col gap-1 px-2 py-2 text-center"
-                    >
-                      {name === FOLLOW_VENDOR ? (
-                        <ProviderMark icon={null} catalogId={catalogId} providerType={providerType} size={20} />
-                      ) : (
-                        <ProviderMark icon={name} size={20} />
-                      )}
-                      <span data-slot="provider-icon-name" className="w-full truncate text-caption-2-regular">
-                        {name === FOLLOW_VENDOR ? t('settings.provider.iconDefault') : name}
-                      </span>
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </Sheet.Body>
-            </Sheet.Dialog>
-          </Sheet.Content>
-        </Sheet.Backdrop>
-      </Sheet>
+        <SearchField
+          aria-label={t('settings.provider.iconFilter')}
+          name="providerIconFilter"
+          autoComplete="off"
+          value={filter}
+          onChange={setFilter}
+          placeholder={t('settings.provider.iconFilter')}
+        />
+        {/* The grid scrolls rather than the drawer: the filter box has to stay
+            reachable while a hundred and fifty marks go past. */}
+        <ListBox
+          aria-label={t('settings.provider.iconChoose')}
+          selectionMode="single"
+          selectedKeys={[value ?? FOLLOW_VENDOR]}
+          onSelectionChange={(keys) => {
+            const [key] = [...keys]
+            if (typeof key !== 'string') return
+            onChange(key === FOLLOW_VENDOR ? null : key)
+            setOpen(false)
+          }}
+          renderEmptyState={() => (
+            <p data-slot="provider-icon-empty" className="m-icon-picker__empty">
+              {t('settings.provider.iconNoMatch')}
+            </p>
+          )}
+          className="m-icon-picker__grid"
+        >
+          {[FOLLOW_VENDOR, ...visible].map((name) => (
+            <ListBoxItem
+              key={name}
+              id={name}
+              textValue={name === FOLLOW_VENDOR ? t('settings.provider.iconDefault') : name}
+              className="m-icon-picker__item"
+            >
+              {name === FOLLOW_VENDOR ? (
+                <ProviderMark icon={null} catalogId={catalogId} providerType={providerType} size={20} />
+              ) : (
+                <ProviderMark icon={name} size={20} />
+              )}
+              <span data-slot="provider-icon-name" className="m-icon-picker__name">
+                {name === FOLLOW_VENDOR ? t('settings.provider.iconDefault') : name}
+              </span>
+            </ListBoxItem>
+          ))}
+        </ListBox>
+      </Drawer>
     </>
   )
 }

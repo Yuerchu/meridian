@@ -5,7 +5,8 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { api } from '@/api'
 import type { ProviderInfoResponse } from '@/types'
-import { SettingsAddRow, SettingsCard, SettingsLinkRow, SettingsSkeleton } from '../primitives'
+import { SettingsAddRow, SettingsLinkRow, SettingsSkeleton } from '../primitives'
+import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsPage } from '../settings-page'
 import { useSettingsResume } from '../settings-stack'
 import { defaultUrlFor, loadProviderCatalog } from './catalog'
@@ -115,31 +116,33 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
           card's last row rather than a lone "+" in the header. The row says
           where the provider points, which is what tells a relay apart from the
           vendor it fronts when both draw the same mark. */}
-      <SettingsCard data-slot="provider-list">
-        {providers.map((provider) => (
-          <SettingsLinkRow
-            key={provider.id}
-            // What the stack's focus return looks for when this page comes back.
-            data-key={provider.id}
-            icon={
-              <ProviderMark
-                icon={provider.icon}
-                catalogId={provider.catalog_id}
-                providerType={provider.provider_type}
-                size={20}
-              />
-            }
-            label={provider.name}
-            value={hostOf(provider.base_url)}
-            onPress={() => onOpen(provider.id)}
+      <div data-slot="provider-list">
+        <SettingsGroup>
+          {providers.map((provider) => (
+            <SettingsLinkRow
+              key={provider.id}
+              // What the stack's focus return looks for when this page comes back.
+              data-key={provider.id}
+              icon={
+                <ProviderMark
+                  icon={provider.icon}
+                  catalogId={provider.catalog_id}
+                  providerType={provider.provider_type}
+                  size={20}
+                />
+              }
+              label={provider.name}
+              value={hostOf(provider.base_url)}
+              onPress={() => onOpen(provider.id)}
+            />
+          ))}
+          <SettingsAddRow
+            label={t('settings.provider.addProvider')}
+            description={providers.length === 0 ? t('settings.provider.noProviders') : undefined}
+            onPress={() => void handleCreate()}
           />
-        ))}
-        <SettingsAddRow
-          label={t('settings.provider.addProvider')}
-          description={providers.length === 0 ? t('settings.provider.noProviders') : undefined}
-          onPress={() => void handleCreate()}
-        />
-      </SettingsCard>
+        </SettingsGroup>
+      </div>
     </SettingsPage>
   )
 }

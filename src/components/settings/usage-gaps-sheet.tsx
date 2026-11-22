@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import './usage-gaps-sheet.css'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Card, Sheet } from '@/components/base'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Dialog } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
 
@@ -35,7 +36,6 @@ export function UsageGapsSheet({
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const hintId = useId()
   const [found, setFound] = useState<UsageGapListResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -55,69 +55,55 @@ export function UsageGapsSheet({
   const time = new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' })
 
   return (
-    <Sheet isOpen={isOpen} onOpenChange={onOpenChange} placement="right">
-      <Sheet.Backdrop>
-        <Sheet.Content>
-          <Sheet.Dialog
-            aria-describedby={hintId}
-            // Portalled, so no ancestor's inset reaches it.
-            className="w-[28rem] max-w-[85vw] pb-[max(1.5rem,var(--safe-bottom))] pr-[max(1.5rem,var(--safe-right))]"
-            data-slot="usage-gaps"
+    <Dialog
+      isOpen={isOpen}
+      onOpenChange={onOpenChange}
+      heading={t('settings.usage.gaps.title')}
+      description={t('settings.usage.gaps.hint')}
+    >
+      <div data-slot="usage-gaps" className="m-usage-gaps__list">
+        {error ? (
+          <Alert
+            tone="danger"
+            shouldAnnounce
+            actions={
+              <Button size="sm" variant="secondary" onPress={load}>
+                {t('settings.usage.retry')}
+              </Button>
+            }
           >
-            <Sheet.CloseTrigger aria-label={t('common.close')} />
-            <Sheet.Header className="gap-1">
-              <Sheet.Heading>{t('settings.usage.gaps.title')}</Sheet.Heading>
-              <p id={hintId} className="text-body-regular text-text-secondary">
-                {t('settings.usage.gaps.hint')}
+            {t('settings.usage.gaps.loadError')}
+          </Alert>
+        ) : !found ? (
+          <div role="status" aria-label={t('common.loading')} className="m-usage-gaps__loading">
+            <span aria-hidden>
+              <Spinner />
+            </span>
+          </div>
+        ) : found.items.length === 0 ? (
+          <EmptyState heading={t('settings.usage.gaps.empty')} headingLevel={3} size="sm" />
+        ) : (
+          <>
+            {found.total > found.items.length && (
+              <p data-slot="usage-gaps-truncated" className="m-usage-gaps__note">
+                {t('settings.usage.gaps.truncated', { shown: found.items.length, total: found.total })}
               </p>
-            </Sheet.Header>
-
-            <Sheet.Body className="space-y-2">
-              {error ? (
-                <Alert
-                  tone="danger"
-                  shouldAnnounce
-                  actions={
-                    <Button size="sm" variant="secondary" onPress={load}>
-                      {t('settings.usage.retry')}
-                    </Button>
-                  }
-                >
-                  {t('settings.usage.gaps.loadError')}
-                </Alert>
-              ) : !found ? (
-                <div role="status" aria-label={t('common.loading')} className="flex justify-center p-6">
-                  <span aria-hidden>
-                    <Spinner />
-                  </span>
-                </div>
-              ) : found.items.length === 0 ? (
-                <EmptyState heading={t('settings.usage.gaps.empty')} headingLevel={3} size="sm" />
-              ) : (
-                <>
-                  {found.total > found.items.length && (
-                    <p data-slot="usage-gaps-truncated" className="text-caption-1-regular text-text-secondary">
-                      {t('settings.usage.gaps.truncated', { shown: found.items.length, total: found.total })}
-                    </p>
-                  )}
-                  {found.items.map((gap) => (
-                    <GapRow
-                      key={gap.id}
-                      gap={gap}
-                      when={time.format(new Date(gap.created_at))}
-                      onOpen={() => {
-                        onOpenChange(false)
-                        onOpenConversation(gap.conversation_id)
-                      }}
-                    />
-                  ))}
-                </>
-              )}
-            </Sheet.Body>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+            )}
+            {found.items.map((gap) => (
+              <GapRow
+                key={gap.id}
+                gap={gap}
+                when={time.format(new Date(gap.created_at))}
+                onOpen={() => {
+                  onOpenChange(false)
+                  onOpenConversation(gap.conversation_id)
+                }}
+              />
+            ))}
+          </>
+        )}
+      </div>
+    </Dialog>
   )
 }
 
@@ -138,11 +124,11 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
   const model = [gap.provider_name, gap.model_id].filter(Boolean).join(' · ')
 
   return (
-    <Card data-slot="usage-gap-row" variant="secondary">
-      <div className="flex min-w-0 items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-body-medium text-text-primary">{title}</p>
-          <p className="text-caption-1-regular text-text-secondary">
+    <article data-slot="usage-gap-row" className="m-usage-gaps__row">
+      <div className="m-usage-gaps__head">
+        <div className="m-usage-gaps__text">
+          <p className="m-usage-gaps__title">{title}</p>
+          <p className="m-usage-gaps__meta">
             {when}
             {model && ` · ${model}`}
             {gap.role !== 'assistant' && ` · ${t(`settings.usage.gaps.role.${gap.role}`)}`}
@@ -158,11 +144,11 @@ function GapRow({ gap, when, onOpen }: { gap: UsageGapInfoResponse; when: string
           />
         )}
       </div>
-      <div className="mt-2 flex flex-wrap gap-1">
+      <div className="m-usage-gaps__reasons">
         {reasons.map((reason) => (
           <Badge key={reason}>{reason}</Badge>
         ))}
       </div>
-    </Card>
+    </article>
   )
 }

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import './memory-trash.css'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUTurnLeft, Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
-import { Card, Sheet } from '@/components/base'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -11,6 +12,7 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import type { MemoryInfoResponse } from '@/types'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 interface MemoryTrashProps {
   open: boolean
@@ -28,9 +30,6 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
-  // `Sheet.Heading` is wired up for us, the hint under it is not — without this
-  // the drawer announces its title and nothing else.
-  const hintId = useId()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -48,7 +47,8 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
     if (open) load()
   }, [open, load])
 
-  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`.
+  // The back gesture closes the drawer: the library's Drawer does not know about it.
+  useHistoryLevel(open, () => onOpenChange(false))
 
   const deletedByLabel = (by: string | null) => {
     switch (by) {
@@ -63,114 +63,97 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
 
   return (
     <>
-      <Sheet isOpen={open} onOpenChange={onOpenChange} placement="right">
-        <Sheet.Backdrop>
-          <Sheet.Content>
-            <Sheet.Dialog
-              aria-describedby={hintId}
-              // Portalled, so no ancestor's inset reaches it: the restore and purge
-              // buttons on the last row would sit under the navigation bar.
-              className="w-[28rem] max-w-[85vw] pb-[max(1.5rem,var(--safe-bottom))] pr-[max(1.5rem,var(--safe-right))]"
-              data-slot="memory-trash"
+      <Drawer
+        isOpen={open}
+        onOpenChange={onOpenChange}
+        heading={t('settings.memory.trash.title')}
+        description={t('settings.memory.trash.retentionHint')}
+        // Portalled, so no ancestor's inset reaches it: the restore and purge
+        // buttons on the last row would sit under the navigation bar.
+        className="m-memory-trash"
+        data-slot="memory-trash"
+      >
+        <div className="m-memory-trash__body">
+          {loading ? (
+            <div
+              data-slot="memory-trash-loading"
+              role="status"
+              aria-label={t('common.loading')}
+              className="m-memory-trash__loading"
             >
-              <Sheet.CloseTrigger aria-label={t('common.close')} />
-              <Sheet.Header className="gap-1">
-                <Sheet.Heading>{t('settings.memory.trash.title')}</Sheet.Heading>
-                <p id={hintId} data-slot="memory-trash-hint" className="text-body-regular text-text-secondary">
-                  {t('settings.memory.trash.retentionHint')}
-                </p>
-              </Sheet.Header>
-
-              <Sheet.Body className="space-y-2">
-                {loading ? (
-                  <div
-                    data-slot="memory-trash-loading"
-                    role="status"
-                    aria-label={t('common.loading')}
-                    className="flex justify-center p-6"
-                  >
-                    <span aria-hidden>
-                      <Spinner />
-                    </span>
-                  </div>
-                ) : error ? (
-                  <Alert
-                    tone="danger"
-                    shouldAnnounce
-                    actions={
-                      <Button size="sm" variant="secondary" onPress={() => void load()}>
-                        {t('settings.memory.retry')}
-                      </Button>
-                    }
-                  >
-                    {t('settings.memory.trash.loadError')}
-                  </Alert>
-                ) : rows.length === 0 ? (
-                  <EmptyState heading={t('settings.memory.trash.empty')} headingLevel={3} size="sm" />
-                ) : null}
-                {/* Secondary, not the default surface: the drawer itself is
+              <span aria-hidden>
+                <Spinner />
+              </span>
+            </div>
+          ) : error ? (
+            <Alert
+              tone="danger"
+              shouldAnnounce
+              actions={
+                <Button size="sm" variant="secondary" onPress={() => void load()}>
+                  {t('settings.memory.retry')}
+                </Button>
+              }
+            >
+              {t('settings.memory.trash.loadError')}
+            </Alert>
+          ) : rows.length === 0 ? (
+            <EmptyState heading={t('settings.memory.trash.empty')} headingLevel={3} size="sm" />
+          ) : null}
+          {/* Secondary, not the default surface: the drawer itself is
                 `--overlay`, which is the same colour as `--surface`, so only the
                 sunken step reads as a row against it. */}
-                {rows.map((m) => (
-                  <Card key={m.id} data-slot="memory-trash-row" variant="secondary">
-                    <div data-slot="memory-trash-row-header" className="flex min-w-0 flex-wrap items-center gap-2">
-                      <span
-                        data-slot="memory-trash-row-key"
-                        className="min-w-0 flex-1 break-words font-mono text-body-regular [overflow-wrap:anywhere]"
-                      >
-                        {m.key}
-                      </span>
-                      <Badge>{deletedByLabel(m.deleted_by)}</Badge>
-                      <div data-slot="memory-trash-row-actions" className="ms-auto flex shrink-0 items-center gap-1">
-                        <TooltipTrigger>
-                          <Button
-                            variant="ghost"
-                            icon={<ArrowUTurnLeft />}
-                            size="sm"
-                            aria-label={t('settings.memory.trash.restore')}
-                            onPress={async () => {
-                              await api.restoreMemories([m.id])
-                              void load()
-                              onChanged()
-                            }}
-                            data-slot="memory-trash-restore"
-                          />
-                          <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
-                        </TooltipTrigger>
-                        <TooltipTrigger>
-                          <Button
-                            variant="ghost"
-                            icon={<Bin />}
-                            size="sm"
-                            className="hover:text-status-danger"
-                            aria-label={t('settings.memory.trash.purge')}
-                            onPress={async () => {
-                              const accepted = await confirm({
-                                description: t('settings.memory.trash.purgeConfirm', { key: m.key }),
-                                confirmLabel: t('settings.memory.trash.purge'),
-                                tone: 'danger',
-                              })
-                              if (!accepted) return
-                              await api.purgeMemories([m.id])
-                              void load()
-                              onChanged()
-                            }}
-                            data-slot="memory-trash-purge"
-                          />
-                          <Tooltip>{t('settings.memory.trash.purge')}</Tooltip>
-                        </TooltipTrigger>
-                      </div>
-                    </div>
-                    <Card.Description className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                      {m.content}
-                    </Card.Description>
-                  </Card>
-                ))}
-              </Sheet.Body>
-            </Sheet.Dialog>
-          </Sheet.Content>
-        </Sheet.Backdrop>
-      </Sheet>
+          {rows.map((m) => (
+            <section key={m.id} data-slot="memory-trash-row" className="m-memory-trash__row">
+              <div data-slot="memory-trash-row-header" className="m-memory-trash__row-header">
+                <span data-slot="memory-trash-row-key" className="m-memory-trash__row-key">
+                  {m.key}
+                </span>
+                <Badge>{deletedByLabel(m.deleted_by)}</Badge>
+                <div data-slot="memory-trash-row-actions" className="m-memory-trash__row-actions">
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      icon={<ArrowUTurnLeft />}
+                      size="sm"
+                      aria-label={t('settings.memory.trash.restore')}
+                      onPress={async () => {
+                        await api.restoreMemories([m.id])
+                        void load()
+                        onChanged()
+                      }}
+                      data-slot="memory-trash-restore"
+                    />
+                    <Tooltip>{t('settings.memory.trash.restore')}</Tooltip>
+                  </TooltipTrigger>
+                  <TooltipTrigger>
+                    <Button
+                      variant="ghost"
+                      icon={<Bin />}
+                      size="sm"
+                      aria-label={t('settings.memory.trash.purge')}
+                      onPress={async () => {
+                        const accepted = await confirm({
+                          description: t('settings.memory.trash.purgeConfirm', { key: m.key }),
+                          confirmLabel: t('settings.memory.trash.purge'),
+                          tone: 'danger',
+                        })
+                        if (!accepted) return
+                        await api.purgeMemories([m.id])
+                        void load()
+                        onChanged()
+                      }}
+                      data-slot="memory-trash-purge"
+                    />
+                    <Tooltip>{t('settings.memory.trash.purge')}</Tooltip>
+                  </TooltipTrigger>
+                </div>
+              </div>
+              <p className="m-memory-trash__content">{m.content}</p>
+            </section>
+          ))}
+        </div>
+      </Drawer>
       {confirmDialog}
     </>
   )

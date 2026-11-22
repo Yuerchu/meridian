@@ -1,0 +1,102 @@
+@layer components {
+  .m-font-picker {
+    display: flex;
+    width: min(100%, 20rem);
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-font-picker__group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    width: 100%;
+    min-height: var(--control-md);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+    color: var(--text);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-font-picker__group[data-hovered] {
+    border-color: var(--border-control-hover);
+  }
+
+  .m-font-picker__group:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .m-font-picker__input {
+    min-width: 0;
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: var(--text-body-medium);
+    outline: none;
+  }
+
+  .m-font-picker__input::placeholder {
+    color: var(--text-secondary);
+  }
+
+  .m-font-picker__toggle {
+    display: flex;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .m-font-picker__toggle svg {
+    transition: transform var(--dur-standard) var(--ease-standard);
+  }
+
+  .m-font-picker__toggle[data-open] svg {
+    transform: rotate(180deg);
+  }
+
+  .m-font-picker__popover {
+    box-sizing: border-box;
+    min-width: var(--trigger-width);
+    padding: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    box-shadow: var(--shadow-floating);
+  }
+
+  .m-font-picker__list {
+    display: flex;
+    max-height: 15rem;
+    flex-direction: column;
+    overflow: auto;
+    outline: none;
+  }
+
+  .m-font-picker__option {
+    overflow: hidden;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-control);
+    color: var(--text);
+    font: var(--text-body-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: default;
+  }
+
+  .m-font-picker__option[data-focused],
+  .m-font-picker__option[data-selected] {
+    background: var(--surface-muted);
+  }
+}

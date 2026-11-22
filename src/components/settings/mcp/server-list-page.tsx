@@ -1,3 +1,4 @@
+import './server-list-page.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowInDownDashedPanel, Plug } from '@keyline-icons/react/two-tone'
@@ -5,8 +6,9 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import type { McpConnectionStatusInfoResponse, McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
-import { cx } from '@/utils/cx'
-import { SettingsAddRow, SettingsCard, SettingsLinkRow, SettingsSkeleton, SettingsTag } from '../primitives'
+import { SettingsAddRow, SettingsLinkRow, SettingsSkeleton } from '../primitives'
+import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SettingsPage } from '../settings-page'
 import { useSettingsResume } from '../settings-stack'
 import { ContextMeter } from './context-meter'
@@ -116,62 +118,64 @@ export function McpServerListPage({
         </Alert>
       )}
       {meter && (
-        <SettingsCard data-slot="mcp-context-meter-card">
+        <SettingsGroup>
           <ContextMeter segments={meter.segments} toolCount={meter.toolCount} hotId={hotId} />
-        </SettingsCard>
+        </SettingsGroup>
       )}
-      <SettingsCard data-slot="mcp-server-list">
-        {servers.map((server) => {
-          const status = statuses.find((candidate) => candidate.server_id === server.id)
-          const connected = status?.state === 'connected'
-          const stateLabel = connected
-            ? t('settings.mcp.connected')
-            : status?.state === 'connecting'
-              ? t('settings.mcp.connecting')
-              : t('settings.mcp.disconnected')
-          const target = server.transport_type === 'streamablehttp' ? server.url : server.command
-          const serverTools = tools.filter((tool) => tool.server_id === server.id)
-          const enabledTools = serverTools.filter((tool) => tool.enabled)
-          const enabledTokens = enabledTools.reduce((sum, tool) => sum + tool.definition_tokens, 0)
-          const description = connected
-            ? serverTools.length > 0
-              ? t('settings.mcp.connectedToolShare', {
-                  on: enabledTools.length,
-                  total: serverTools.length,
-                  tokens: formatDefinitionTokens(enabledTokens),
-                })
-              : `${stateLabel} · ${t('settings.mcp.toolCount', { count: status?.tool_count ?? 0 })}`
-            : `${stateLabel}${target ? ` · ${target}` : ''}`
-          return (
-            <SettingsLinkRow
-              key={server.id}
-              data-key={server.id}
-              icon={<ServerTile state={status?.state ?? 'disconnected'} />}
-              label={server.name}
-              badge={
-                <SettingsTag data-slot="mcp-server-transport">
-                  {server.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
-                </SettingsTag>
-              }
-              description={description}
-              onHoverStart={() => setHotId(server.id)}
-              onHoverEnd={() => setHotId((current) => (current === server.id ? null : current))}
-              onFocus={() => setHotId(server.id)}
-              onBlur={() => setHotId((current) => (current === server.id ? null : current))}
-              onPress={() => onOpen(server.id)}
-            />
-          )
-        })}
-        <SettingsAddRow
-          label={t('settings.mcp.addServer')}
-          description={t('settings.mcp.addServerHint')}
-          isDisabled={creating}
-          onPress={() => {
-            setCreating(true)
-            void onCreate().finally(() => setCreating(false))
-          }}
-        />
-      </SettingsCard>
+      <div data-slot="mcp-server-list">
+        <SettingsGroup>
+          {servers.map((server) => {
+            const status = statuses.find((candidate) => candidate.server_id === server.id)
+            const connected = status?.state === 'connected'
+            const stateLabel = connected
+              ? t('settings.mcp.connected')
+              : status?.state === 'connecting'
+                ? t('settings.mcp.connecting')
+                : t('settings.mcp.disconnected')
+            const target = server.transport_type === 'streamablehttp' ? server.url : server.command
+            const serverTools = tools.filter((tool) => tool.server_id === server.id)
+            const enabledTools = serverTools.filter((tool) => tool.enabled)
+            const enabledTokens = enabledTools.reduce((sum, tool) => sum + tool.definition_tokens, 0)
+            const description = connected
+              ? serverTools.length > 0
+                ? t('settings.mcp.connectedToolShare', {
+                    on: enabledTools.length,
+                    total: serverTools.length,
+                    tokens: formatDefinitionTokens(enabledTokens),
+                  })
+                : `${stateLabel} · ${t('settings.mcp.toolCount', { count: status?.tool_count ?? 0 })}`
+              : `${stateLabel}${target ? ` · ${target}` : ''}`
+            return (
+              <SettingsLinkRow
+                key={server.id}
+                data-key={server.id}
+                icon={<ServerTile state={status?.state ?? 'disconnected'} />}
+                label={server.name}
+                badge={
+                  <Badge size="sm" data-slot="mcp-server-transport">
+                    {server.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
+                  </Badge>
+                }
+                description={description}
+                onHoverStart={() => setHotId(server.id)}
+                onHoverEnd={() => setHotId((current) => (current === server.id ? null : current))}
+                onFocus={() => setHotId(server.id)}
+                onBlur={() => setHotId((current) => (current === server.id ? null : current))}
+                onPress={() => onOpen(server.id)}
+              />
+            )
+          })}
+          <SettingsAddRow
+            label={t('settings.mcp.addServer')}
+            description={t('settings.mcp.addServerHint')}
+            isDisabled={creating}
+            onPress={() => {
+              setCreating(true)
+              void onCreate().finally(() => setCreating(false))
+            }}
+          />
+        </SettingsGroup>
+      </div>
     </SettingsPage>
   )
 }
@@ -185,26 +189,11 @@ export function McpServerListPage({
  */
 function ServerTile({ state }: { state: McpConnectionStatusInfoResponse['state'] }) {
   return (
-    <span data-slot="mcp-server-tile" className="relative flex size-8 shrink-0 items-center justify-center">
-      <span
-        data-slot="mcp-server-tile-face"
-        className="flex size-8 items-center justify-center rounded-lg bg-background-tertiary-default"
-      >
-        <Plug className="size-4 text-foreground-icon-secondary" aria-hidden />
+    <span data-slot="mcp-server-tile" className="m-mcp-server-list__tile">
+      <span data-slot="mcp-server-tile-face" className="m-mcp-server-list__tile-face">
+        <Plug size={16} aria-hidden />
       </span>
-      <span
-        data-slot="mcp-server-tile-dot"
-        data-state={state}
-        aria-hidden
-        className={cx(
-          'absolute -bottom-0.5 -left-0.5 size-2.5 rounded-full ring-2 ring-background-secondary-default',
-          state === 'connected'
-            ? 'bg-status-success'
-            : state === 'connecting'
-              ? 'bg-status-warning'
-              : 'bg-foreground-icon-tertiary',
-        )}
-      />
+      <span data-slot="mcp-server-tile-dot" data-state={state} aria-hidden className="m-mcp-server-list__tile-dot" />
     </span>
   )
 }

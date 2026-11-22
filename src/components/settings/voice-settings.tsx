@@ -1,9 +1,10 @@
+import './voice-settings.css'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { Card } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -162,17 +163,17 @@ export function VoiceSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
-      <div data-slot="voice-model" className="space-y-1.5">
-        <p data-slot="voice-section-label" className="block text-caption-1-medium text-text-secondary">
+      <div data-slot="voice-model" className="m-voice__section">
+        <p data-slot="voice-section-label" className="m-voice__label">
           {t('settings.voice.model')}
         </p>
-        <Card>
+        <div className="m-voice__card">
           {statusLoading ? (
             <div
               data-slot="voice-model-loading"
               role="status"
               aria-label={t('common.loading')}
-              className="flex items-center gap-2 p-4 text-body-regular text-text-secondary"
+              className="m-voice__loading"
             >
               <span aria-hidden>
                 <Spinner size="sm" />
@@ -180,13 +181,13 @@ export function VoiceSettings() {
               {t('common.loading')}
             </div>
           ) : status?.installed ? (
-            <div data-slot="voice-model-installed" className="flex items-center justify-between gap-2">
-              <Card.Header className="min-w-0">
-                <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
-                <Card.Description className="truncate" onPointerEnter={titleIfTruncated}>
+            <div data-slot="voice-model-installed" className="m-voice__installed">
+              <div className="m-voice__copy">
+                <p className="m-voice__title">{t('settings.voice.modelInstalled')}</p>
+                <p className="m-voice__meta" onPointerEnter={titleIfTruncated}>
                   {formatSize(status.size_bytes, sizeNumber)} · {status.path}
-                </Card.Description>
-              </Card.Header>
+                </p>
+              </div>
               <TooltipTrigger>
                 <Button
                   icon={<Bin />}
@@ -200,7 +201,7 @@ export function VoiceSettings() {
               </TooltipTrigger>
             </div>
           ) : downloading ? (
-            <div data-slot="voice-model-download" className="flex items-center gap-3">
+            <div data-slot="voice-model-download" className="m-voice__download">
               <ProgressCircle
                 aria-label={t('settings.voice.downloading')}
                 {...(progress.total
@@ -208,7 +209,7 @@ export function VoiceSettings() {
                   : { isIndeterminate: true })}
                 size="sm"
               />
-              <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">
+              <span data-slot="voice-download-progress" className="m-voice__progress">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
@@ -218,12 +219,12 @@ export function VoiceSettings() {
             </div>
           ) : (
             <>
-              <Card.Header>
-                <Card.Title>{t('settings.voice.modelMissing')}</Card.Title>
-                <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
-              </Card.Header>
-              <Card.Footer className="flex-col items-start gap-2">
-                <div data-slot="voice-model-actions" className="flex gap-2">
+              <div className="m-voice__copy">
+                <p className="m-voice__title">{t('settings.voice.modelMissing')}</p>
+                <p className="m-voice__meta">{t('settings.voice.modelHint')}</p>
+              </div>
+              <div className="m-voice__footer">
+                <div data-slot="voice-model-actions" className="m-voice__actions">
                   <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
@@ -242,19 +243,19 @@ export function VoiceSettings() {
                   </Button>
                 </div>
                 {!can.importFromDisk && (
-                  <p data-slot="voice-import-unavailable" className="text-caption-1-regular text-text-secondary">
+                  <p data-slot="voice-import-unavailable" className="m-voice__meta">
                     {t('capability.importFromDisk')}
                   </p>
                 )}
-              </Card.Footer>
+              </div>
             </>
           )}
           {error && (
-            <p data-slot="voice-error" role="alert" className="text-caption-1-regular text-status-danger">
+            <Alert data-slot="voice-error" tone="danger" shouldAnnounce>
               {error}
-            </p>
+            </Alert>
           )}
-        </Card>
+        </div>
       </div>
 
       <TextField

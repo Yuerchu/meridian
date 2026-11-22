@@ -1,0 +1,112 @@
+@layer components {
+  .m-remote__stack,
+  .m-remote__status {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-remote__label,
+  .m-remote__hint,
+  .m-remote__status-title {
+    margin: 0;
+  }
+
+  .m-remote__label {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .m-remote__hint {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-remote__endpoint {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .m-remote__token-row,
+  .m-remote__actions,
+  .m-remote__address,
+  .m-remote__status-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-remote__token-row {
+    flex-wrap: wrap;
+    align-items: flex-end;
+  }
+
+  .m-remote__actions {
+    gap: var(--space-3);
+    padding-block-start: var(--space-2);
+  }
+
+  .m-remote__saved {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .m-remote__status {
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-remote__status-title {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .m-remote__dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+  }
+
+  .m-remote__dot[data-running] {
+    background: var(--success-fg);
+  }
+
+  .m-remote__addresses {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-remote__address {
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-remote__address:last-child {
+    border-block-end: none;
+  }
+
+  .m-remote__address-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  @container (width >= 420px) {
+    .m-remote__endpoint {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}

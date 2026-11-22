@@ -1,0 +1,133 @@
+@layer components {
+  .m-log-viewer,
+  .m-log-viewer__header,
+  .m-log-viewer__actions,
+  .m-log-viewer__toolbar,
+  .m-log-viewer__loading,
+  .m-log-viewer__footer,
+  .m-log-row,
+  .m-log-row__meta,
+  .m-log-row__fields {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .m-log-viewer {
+    flex-direction: column;
+    height: 100%;
+    gap: var(--space-4);
+  }
+
+  .m-log-viewer__header,
+  .m-log-viewer__toolbar,
+  .m-log-viewer__actions,
+  .m-log-viewer__meta,
+  .m-log-row__meta,
+  .m-log-row__fields {
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .m-log-viewer__title {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-title-3);
+  }
+
+  .m-log-viewer__actions {
+    margin-inline-start: auto;
+  }
+
+  .m-log-viewer__note,
+  .m-log-viewer__count {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-log-viewer__count {
+    margin-inline-start: auto;
+  }
+
+  .m-log-viewer__search {
+    min-width: 0;
+    flex: 1;
+    max-width: 20rem;
+  }
+
+  .m-log-viewer__list {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    outline: 1px solid transparent;
+  }
+
+  .m-log-viewer__list:focus-visible {
+    outline: var(--focus-ring);
+  }
+
+  .m-log-viewer__loading,
+  .m-log-viewer__footer {
+    flex-direction: column;
+    padding: var(--space-3);
+  }
+
+  .m-log-viewer__footer {
+    align-items: center;
+  }
+
+  .m-log-row {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-log-row:last-child {
+    border-block-end: 0;
+  }
+
+  .m-log-row[data-error] {
+    background: var(--danger-bg);
+  }
+
+  .m-log-row__time,
+  .m-log-row__target,
+  .m-log-row__fields {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-log-row__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .m-log-row__target {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-log-row__message {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-body);
+    overflow-wrap: anywhere;
+  }
+
+  .m-log-row__field {
+    overflow-wrap: anywhere;
+  }
+}

@@ -1,13 +1,15 @@
+import './emoji-embedder-settings.css'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from '@keyline-icons/react/two-tone'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
 import { titleIfTruncated } from '@/lib/truncation'
-import { SettingsRow, SettingsSection } from './primitives'
 
 const PREFERENCE_KEY = 'emoji.embedder'
 
@@ -59,47 +61,35 @@ function EmojiEmbedderRow() {
 
   return (
     <div data-slot="emoji-embedder">
-      <SettingsSection label={t('settings.emoji.embedderSection')}>
-        <SettingsRow stacked label={t('settings.emoji.embedder')} description={t('settings.emoji.embedderHint')}>
-          {({ labelId, descriptionId }) => (
-            <>
-              <p
-                data-slot="emoji-embedder-path"
-                aria-labelledby={labelId}
-                aria-describedby={descriptionId}
-                onPointerEnter={titleIfTruncated}
-                className="min-w-0 flex-1 truncate text-body-2-regular text-text-secondary"
-              >
-                {ready ? (path ?? t('settings.emoji.embedderNone')) : '\u00a0'}
-              </p>
-              <Button size="sm" variant="secondary" icon={<FolderOpen />} onPress={() => void handleBrowse()}>
-                {t('settings.emoji.embedderBrowse')}
-              </Button>
-              {path !== null && (
-                <TooltipTrigger>
-                  <Button
-                    icon={<X />}
-                    size="sm"
-                    variant="ghost"
-                    aria-label={t('settings.emoji.embedderClear')}
-                    onPress={() => persist(null)}
-                  />
-                  <Tooltip>{t('settings.emoji.embedderClear')}</Tooltip>
-                </TooltipTrigger>
-              )}
-            </>
-          )}
+      <SettingsGroup heading={t('settings.emoji.embedderSection')} headingLevel={3}>
+        <SettingsRow label={t('settings.emoji.embedder')} description={t('settings.emoji.embedderHint')}>
+          <div className="m-emoji-embedder__value">
+            <p data-slot="emoji-embedder-path" onPointerEnter={titleIfTruncated} className="m-emoji-embedder__path">
+              {ready ? (path ?? t('settings.emoji.embedderNone')) : ' '}
+            </p>
+            <Button size="sm" variant="secondary" icon={<FolderOpen />} onPress={() => void handleBrowse()}>
+              {t('settings.emoji.embedderBrowse')}
+            </Button>
+            {path !== null && (
+              <TooltipTrigger>
+                <Button
+                  icon={<X />}
+                  size="sm"
+                  variant="ghost"
+                  aria-label={t('settings.emoji.embedderClear')}
+                  onPress={() => persist(null)}
+                />
+                <Tooltip>{t('settings.emoji.embedderClear')}</Tooltip>
+              </TooltipTrigger>
+            )}
+          </div>
         </SettingsRow>
-        {error && (
-          <p
-            data-slot="emoji-embedder-error"
-            role="alert"
-            className="px-3 pb-2.5 text-caption-1-regular text-status-danger break-all"
-          >
-            {error}
-          </p>
-        )}
-      </SettingsSection>
+      </SettingsGroup>
+      {error && (
+        <Alert tone="danger" shouldAnnounce data-slot="emoji-embedder-error">
+          {error}
+        </Alert>
+      )}
     </div>
   )
 }

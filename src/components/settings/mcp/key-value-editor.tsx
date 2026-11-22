@@ -1,3 +1,4 @@
+import './key-value-editor.css'
 import { useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin } from '@keyline-icons/react/two-tone'
@@ -5,7 +6,8 @@ import { TextField } from '@/components/yuerchu-ui/components/text-field/text-fi
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { SettingsAddRow, SettingsCard, SettingsSectionLabel } from '../primitives'
+import { SettingsAddRow, SettingsSectionLabel } from '../primitives'
+import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { newPair, type KeyValuePair } from './key-value'
 
 /**
@@ -38,24 +40,20 @@ export function KeyValueEditor({
     onChange(pairs.map((pair) => (pair.id === id ? { ...pair, ...patch } : pair)))
 
   return (
-    <section data-slot="mcp-kv-section" aria-labelledby={headingId} className="flex w-full flex-col gap-2">
-      <div data-slot="mcp-kv-bar" className="flex items-end justify-between gap-3">
-        <div data-slot="mcp-kv-heading" className="flex min-w-0 flex-col gap-0.5">
+    <section data-slot="mcp-kv-section" aria-labelledby={headingId} className="m-kv-editor">
+      <div data-slot="mcp-kv-bar" className="m-kv-editor__bar">
+        <div data-slot="mcp-kv-heading" className="m-kv-editor__heading">
           <SettingsSectionLabel id={headingId}>{label}</SettingsSectionLabel>
           {description && (
-            <p data-slot="mcp-kv-description" className="w-full px-3 text-body-2-regular text-text-secondary">
+            <p data-slot="mcp-kv-description" className="m-kv-editor__description">
               {description}
             </p>
           )}
         </div>
       </div>
-      <SettingsCard>
+      <SettingsGroup>
         {pairs.map((pair, index) => (
-          <div
-            key={pair.id}
-            data-slot="mcp-kv-row"
-            className="flex w-full items-center gap-2 border-b border-separator-border py-2 pr-2.5"
-          >
+          <div key={pair.id} data-slot="mcp-kv-row" className="m-kv-editor__row">
             <TextField
               data-slot="mcp-kv-key"
               aria-label={t('settings.mcp.kv.keyLabel', { index: index + 1 })}
@@ -64,7 +62,7 @@ export function KeyValueEditor({
               value={pair.key}
               placeholder={keyPlaceholder}
               onChange={(event) => update(pair.id, { key: event })}
-              className="min-w-0 flex-[2]"
+              className="m-kv-editor__key"
             />
             {/* Each value reveals on its own (the library's PasswordField); a
                 header toggle showing every secret at once is gone. */}
@@ -76,7 +74,7 @@ export function KeyValueEditor({
               value={pair.value}
               placeholder={t('settings.mcp.kv.valuePlaceholder')}
               onChange={(value) => update(pair.id, { value })}
-              className="min-w-0 flex-[3]"
+              className="m-kv-editor__value"
             />
             <TooltipTrigger>
               <Button
@@ -92,7 +90,7 @@ export function KeyValueEditor({
           </div>
         ))}
         <SettingsAddRow label={addLabel} onPress={() => onChange([...pairs, newPair()])} />
-      </SettingsCard>
+      </SettingsGroup>
     </section>
   )
 }

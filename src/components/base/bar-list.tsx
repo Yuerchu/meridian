@@ -25,7 +25,7 @@ export interface BarListItem {
  */
 function BarList({
   items,
-  color = 'var(--color-chart-6)',
+  color = 'var(--series-1)',
   className,
   'aria-label': ariaLabel,
 }: {

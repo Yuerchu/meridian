@@ -72,7 +72,7 @@ function BarChartBar(props: ComponentProps<typeof RechartsBar>) {
 }
 
 function BarChartTooltip(props: ComponentProps<typeof RechartsTooltip>) {
-  return <RechartsTooltip cursor={{ fill: 'var(--color-chart-track)', opacity: 0.6 }} {...props} />
+  return <RechartsTooltip cursor={{ fill: 'var(--surface-inset)', opacity: 0.6 }} {...props} />
 }
 
 export const BarChart = Object.assign(BarChartRoot, {

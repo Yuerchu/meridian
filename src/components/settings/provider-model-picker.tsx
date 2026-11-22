@@ -1,3 +1,4 @@
+import './provider-model-picker.css'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 
@@ -91,7 +92,7 @@ export function ProviderModelPicker({
   }
 
   return (
-    <div data-slot="provider-model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="provider-model-picker" className="m-provider-model-picker">
       <SettingsSelect
         {...name(t('settings.assistant.provider'))}
         value={providerId || NO_PROVIDER}

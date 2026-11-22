@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { ProviderModelPicker } from './provider-model-picker'
-import { SettingsRow, SettingsSection } from './primitives'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 
 const PREFERENCE_KEY = 'emoji.suggest.model'
@@ -67,12 +68,8 @@ function EmojiSuggestRow() {
 
   return (
     <div data-slot="emoji-suggest">
-      <SettingsSection label={t('settings.emoji.suggestModelSection')}>
-        <SettingsRow
-          stacked
-          label={t('settings.emoji.suggestModel')}
-          description={t('settings.emoji.suggestModelHint')}
-        >
+      <SettingsGroup heading={t('settings.emoji.suggestModelSection')} headingLevel={3}>
+        <SettingsRow label={t('settings.emoji.suggestModel')} description={t('settings.emoji.suggestModelHint')}>
           <ProviderModelPicker
             providers={providers}
             models={models}
@@ -88,16 +85,12 @@ function EmojiSuggestRow() {
             isModelDisabledWithoutProvider
           />
         </SettingsRow>
-        {error && (
-          <p
-            data-slot="emoji-suggest-error"
-            role="alert"
-            className="px-3 pb-2.5 text-caption-1-regular text-status-danger break-all"
-          >
-            {error}
-          </p>
-        )}
-      </SettingsSection>
+      </SettingsGroup>
+      {error && (
+        <Alert tone="danger" shouldAnnounce data-slot="emoji-suggest-error">
+          {error}
+        </Alert>
+      )}
     </div>
   )
 }
