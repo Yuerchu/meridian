@@ -253,7 +253,9 @@ describe('translated-aria-label scope', () => {
     assert.notEqual(rule?.[1]?.allowPropDefaults, true)
   })
   it('lets vendored registry files keep their prop defaults', async () => {
-    const rule = await setting('src/components/base/pagination/pagination.tsx')
+    // Any file still listed in boardui.json; the pagination item was deleted
+    // with the migration, and the fixture has to follow the ledger.
+    const rule = await setting('src/components/base/dropdown/dropdown.tsx')
     assert.equal(rule?.[0], 2)
     assert.equal(rule?.[1]?.allowPropDefaults, true)
   })
