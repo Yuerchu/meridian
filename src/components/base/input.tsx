@@ -1,14 +1,12 @@
-import type { ComponentProps, ReactNode, Ref } from 'react'
+import type { ComponentProps, ReactNode } from 'react'
 import {
   Button as AriaButton,
   Group as AriaGroup,
   Input as AriaInput,
   SearchField as AriaSearchField,
-  TextArea as AriaTextArea,
   type ButtonProps as AriaButtonProps,
   type InputProps as AriaInputProps,
   type SearchFieldProps as AriaSearchFieldProps,
-  type TextAreaProps as AriaTextAreaProps,
 } from 'react-aria-components'
 import { Search, X } from '@keyline-icons/react/two-tone'
 import { cx } from '@/utils/cx'
@@ -151,81 +149,4 @@ export const SearchField = Object.assign(SearchFieldRoot, {
   Input: SearchFieldInput,
   SearchIcon: SearchFieldSearchIcon,
   ClearButton: SearchFieldClearButton,
-})
-
-/* ------------------------------------------------------------- InputGroup */
-
-interface InputGroupRootProps extends Omit<ComponentProps<typeof AriaGroup>, 'className'> {
-  className?: string
-}
-
-/**
- * One field shell around a bare control and its adornments, for a control that
- * is not a form field — a log filter with an icon in front of it.
- */
-function InputGroupRoot({ className, ...props }: InputGroupRootProps) {
-  return (
-    <AriaGroup
-      data-slot="input-group"
-      {...props}
-      className={cx(
-        'flex w-full items-center gap-2 rounded-2lg p-2 text-foreground-icon-tertiary',
-        'bg-background-tertiary-default',
-        'ring-2 ring-transparent ring-inset transition-[background-color,box-shadow,color] duration-[var(--input-transition-ms)] ease',
-        'data-[hovered]:ring-border-button-hover data-[focus-within]:ring-border-button-active',
-        className,
-      )}
-    />
-  )
-}
-
-function InputGroupInput({
-  className,
-  ref,
-  ...props
-}: Omit<AriaInputProps, 'className'> & { className?: string; ref?: Ref<HTMLInputElement> }) {
-  return (
-    <AriaInput
-      ref={ref}
-      data-slot="input-group-input"
-      {...props}
-      className={cx(
-        'min-w-0 flex-1 border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
-        className,
-      )}
-    />
-  )
-}
-
-function InputGroupTextArea({
-  className,
-  ref,
-  ...props
-}: Omit<AriaTextAreaProps, 'className'> & { className?: string; ref?: Ref<HTMLTextAreaElement> }) {
-  return (
-    <AriaTextArea
-      ref={ref}
-      data-slot="input-group-textarea"
-      {...props}
-      className={cx(
-        'min-w-0 flex-1 resize-none border-0 bg-transparent p-0 font-sans text-body-regular text-text-primary outline-none placeholder:text-text-secondary',
-        className,
-      )}
-    />
-  )
-}
-
-function InputGroupPrefix({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="input-group-prefix" {...props} className={cx('flex shrink-0 [&_svg]:size-4', className)} />
-}
-
-function InputGroupSuffix({ className, ...props }: ComponentProps<'span'>) {
-  return <span data-slot="input-group-suffix" {...props} className={cx('flex shrink-0 [&_svg]:size-4', className)} />
-}
-
-export const InputGroup = Object.assign(InputGroupRoot, {
-  Input: InputGroupInput,
-  TextArea: InputGroupTextArea,
-  Prefix: InputGroupPrefix,
-  Suffix: InputGroupSuffix,
 })

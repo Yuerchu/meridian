@@ -1,20 +1,10 @@
 import { useState } from 'react'
-import { Bin, FaceSmile, Search } from '@keyline-icons/react/two-tone'
-import {
-  ActionBar,
-  Command,
-  EmojiPicker,
-  FloatingToc,
-  Kanban,
-  Resizable,
-  TreeView,
-  TreeViewItem,
-} from '@/components/base'
-import { Segment as LegacySegment } from '@/components/base/segment'
-import {
-  SegmentedControl as LegacySegmentedControl,
-  SegmentedControlItem as LegacySegmentedControlItem,
-} from '@/components/base/segmented-control/segmented-control'
+import { Bin, FaceSmile } from '@keyline-icons/react/two-tone'
+import { EmojiPicker, FloatingToc, Kanban, Resizable } from '@/components/base'
+import { CommandPalette } from '@/components/yuerchu-ui/components/command-palette/command-palette'
+import { MenuItem, MenuSection } from '@/components/yuerchu-ui/components/menu/menu'
+import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
+import { Tree, TreeItem } from '@/components/yuerchu-ui/components/tree/tree'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
@@ -77,17 +67,17 @@ export function CoreParts() {
 export function DataParts() {
   return (
     <>
-      <Section title="TreeView / 文件树">
+      <Section title="Tree / 文件树（库）">
         <div className="max-w-sm rounded-2xl bg-background-secondary-default p-2">
-          <TreeView aria-label="改动" size="sm" selectionMode="none" defaultExpandedKeys={['src', 'chat']}>
-            <TreeViewItem id="src" label="src">
-              <TreeViewItem id="chat" label="components/chat">
-                <TreeViewItem id="entry" label="plan-review-entry.tsx" trailingContent="A" />
-                <TreeViewItem id="tab" label="composer-status-tab.tsx" trailingContent="M" />
-              </TreeViewItem>
-              <TreeViewItem id="hook" label="hooks/use-project-branch.ts" trailingContent="A" />
-            </TreeViewItem>
-          </TreeView>
+          <Tree aria-label="改动" size="sm" selectionMode="none" defaultExpandedKeys={['src', 'chat']}>
+            <TreeItem id="src" label="src">
+              <TreeItem id="chat" label="components/chat">
+                <TreeItem id="entry" label="plan-review-entry.tsx" actions={<span aria-hidden>A</span>} />
+                <TreeItem id="tab" label="composer-status-tab.tsx" actions={<span aria-hidden>M</span>} />
+              </TreeItem>
+              <TreeItem id="hook" label="hooks/use-project-branch.ts" actions={<span aria-hidden>A</span>} />
+            </TreeItem>
+          </Tree>
         </div>
       </Section>
       <Section title="Kanban / 看板">
@@ -152,18 +142,6 @@ export function NavigationParts() {
           <Segment id="streamablehttp">HTTP</Segment>
         </SegmentedControl>
       </Section>
-      <Section title="Legacy Segment / 尚未迁移的调用方">
-        <LegacySegment aria-label="旧版智能体类型" defaultSelectedKeys={['native']}>
-          <LegacySegment.Item id="native">原生</LegacySegment.Item>
-          <LegacySegment.Item id="claude_code">Claude Code</LegacySegment.Item>
-        </LegacySegment>
-      </Section>
-      <Section title="Legacy SegmentedControl / 尚未迁移的调用方">
-        <LegacySegmentedControl aria-label="旧版传输" defaultSelectedKeys={['stdio']}>
-          <LegacySegmentedControlItem id="stdio">stdio</LegacySegmentedControlItem>
-          <LegacySegmentedControlItem id="streamablehttp">HTTP</LegacySegmentedControlItem>
-        </LegacySegmentedControl>
-      </Section>
       <Section title="FloatingToc / 对话小地图">
         <div className="relative flex h-40 max-w-md items-center justify-end rounded-2xl bg-background-secondary-default pe-2">
           <FloatingToc placement="right">
@@ -182,39 +160,20 @@ export function NavigationParts() {
           </FloatingToc>
         </div>
       </Section>
-      <Section title="Command / 命令面板底座">
+      <Section title="CommandPalette（库）">
         <Button variant="secondary" onPress={() => setPaletteOpen(true)}>
-          打开 Command
+          打开命令面板
         </Button>
-        <Command>
-          <Command.Backdrop isOpen={paletteOpen} onOpenChange={setPaletteOpen}>
-            <Command.Container size="md">
-              <Command.Dialog aria-label="命令">
-                <Command.Header>
-                  <Command.InputGroup aria-label="命令">
-                    <Command.InputGroup.Prefix>
-                      <Search className="size-4" />
-                    </Command.InputGroup.Prefix>
-                    <Command.InputGroup.Input placeholder="搜索对话和命令…" />
-                    <Command.InputGroup.ClearButton aria-label="清除" />
-                  </Command.InputGroup>
-                </Command.Header>
-                <Command.List aria-label="命令" renderEmptyState={() => '没有结果'}>
-                  <Command.Group heading="操作">
-                    <Command.Item id="new" textValue="新对话" onAction={() => setPaletteOpen(false)}>
-                      新对话
-                    </Command.Item>
-                  </Command.Group>
-                  <Command.Group heading="最近">
-                    <Command.Item id="c1" textValue="鉴权改走 middleware">
-                      鉴权改走 middleware
-                    </Command.Item>
-                  </Command.Group>
-                </Command.List>
-              </Command.Dialog>
-            </Command.Container>
-          </Command.Backdrop>
-        </Command>
+        <CommandPalette isOpen={paletteOpen} onOpenChange={setPaletteOpen} shortcut={false} aria-label="命令">
+          <MenuSection header="操作">
+            <MenuItem id="new">新对话</MenuItem>
+          </MenuSection>
+          <MenuSection header="最近">
+            <MenuItem id="c1" description="middleware 之后不再读环境变量">
+              鉴权改走 middleware
+            </MenuItem>
+          </MenuSection>
+        </CommandPalette>
       </Section>
     </>
   )
@@ -227,20 +186,17 @@ export function OverlayParts() {
   const [emoji, setEmoji] = useState(false)
   return (
     <>
-      <Section title="ActionBar / 批量操作条（固定在视口底部）">
+      <Section title="SelectionBar / 批量选择（库）">
         <Button variant="secondary" onPress={() => setBar((v) => !v)}>
-          {bar ? '收起' : '选中 3 项'}
+          {bar ? '清空选择' : '选中 3 项'}
         </Button>
-        <ActionBar isOpen={bar}>
-          <ActionBar.Prefix>
-            <span className="text-body-regular text-text-secondary">已选 3 项</span>
-          </ActionBar.Prefix>
-          <ActionBar.Content>
-            <Button icon={<Bin />} variant="destructive" onPress={() => setBar(false)}>
+        {bar && (
+          <SelectionBar selectedCount={3} onClear={() => setBar(false)}>
+            <Button icon={<Bin />} size="sm" variant="destructive" onPress={() => setBar(false)}>
               删除所选
             </Button>
-          </ActionBar.Content>
-        </ActionBar>
+          </SelectionBar>
+        )}
       </Section>
       <Section title="useConfirm / 确认">
         <Button

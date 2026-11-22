@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@keyline-icons/react/two-tone'
 
-import { Pagination, Sidebar } from '@/components/base'
+import { Sidebar } from '@/components/base'
+import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
 import { PillTab, PillTabList } from '@/components/base/tabs/pill-tab'
 import { Row, Section, Stage } from './shell'
@@ -44,15 +45,7 @@ function PaginationCase() {
   const [page, setPage] = useState(3)
   return (
     <Stage>
-      <Pagination
-        page={page}
-        totalPages={12}
-        onChange={setPage}
-        aria-label="贴纸分页"
-        previousLabel="上一页"
-        nextLabel="下一页"
-        pageLabel={(n) => `第 ${n} 页`}
-      />
+      <Pagination page={page} totalPages={12} onChange={setPage} aria-label="贴纸分页" />
     </Stage>
   )
 }

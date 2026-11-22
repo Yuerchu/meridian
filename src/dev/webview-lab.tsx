@@ -26,19 +26,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
-import {
-  ContextMenu,
-  Disclosure,
-  InputGroup,
-  Kbd,
-  Label,
-  Markdown,
-  Sidebar,
-  TextField as BoardTextField,
-} from '@/components/base'
+import { ContextMenu, Disclosure, Kbd, Label, Markdown, Sidebar, TextField as BoardTextField } from '@/components/base'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { TextArea as AriaTextArea } from 'react-aria-components'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -672,7 +664,7 @@ export default function WebViewLab() {
         </Section>
 
         {/* Same tree as the real composer — `chat/input-bar.tsx` — minus everything
-            that needs Tauri: same wrappers, same `TextField > InputGroup` with the
+            that needs Tauri: the same field wrapper with a bare textarea inside,
             column layout. Reproduced here because the chat screen cannot run in a
             browser at all (every IPC call throws), and without it the only way to
             check a composer change was to ask someone to right-click in a dev
@@ -716,15 +708,15 @@ export default function WebViewLab() {
                   <ContextMenu.Trigger className="block w-full">
                     {/* The boardui composer probe, rewritten with the composer itself (Yuerchu/ui#547). */}
                     <BoardTextField aria-label="发送消息">
-                      <InputGroup className="flex flex-col gap-2 rounded-2xl py-2">
+                      <div className="flex flex-col gap-2 rounded-2xl py-2">
                         <div data-slot="webview-lab-composer-textarea" className="relative w-full">
-                          <InputGroup.TextArea
+                          <AriaTextArea
                             rows={1}
                             placeholder="发送消息…"
                             className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
                           />
                         </div>
-                        <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
+                        <div className="flex w-full items-center gap-1 border-0 px-3 py-0">
                           <TooltipTrigger>
                             <Button icon={<Plus />} size="sm" variant="ghost" aria-label="加号" />
                             <Tooltip>加号</Tooltip>
@@ -734,8 +726,8 @@ export default function WebViewLab() {
                             <Button icon={<ArrowUp />} size="sm" aria-label="发送" className="rounded-full" />
                             <Tooltip>发送</Tooltip>
                           </TooltipTrigger>
-                        </InputGroup.Suffix>
-                      </InputGroup>
+                        </div>
+                      </div>
                     </BoardTextField>
                   </ContextMenu.Trigger>
                   <ContextMenu.Popover>

@@ -2,11 +2,9 @@ import { useContext, type ComponentProps, type ReactElement, type ReactNode } fr
 import {
   Button as AriaButton,
   Disclosure as AriaDisclosure,
-  DisclosureGroup as AriaDisclosureGroup,
   DisclosurePanel as AriaDisclosurePanel,
   DisclosureStateContext,
   type ButtonProps as AriaButtonProps,
-  type DisclosureGroupProps as AriaDisclosureGroupProps,
   type DisclosurePanelProps as AriaDisclosurePanelProps,
   type DisclosureProps as AriaDisclosureProps,
 } from 'react-aria-components'
@@ -171,16 +169,3 @@ export const Disclosure = Object.assign(DisclosureRoot, {
   Content: DisclosureContent,
   Body: DisclosureBody,
 })
-
-export interface DisclosureGroupProps extends Omit<AriaDisclosureGroupProps, 'className' | 'children'> {
-  className?: string
-  children?: ReactNode
-}
-
-export function DisclosureGroup({ className, children, ...props }: DisclosureGroupProps) {
-  return (
-    <AriaDisclosureGroup data-slot="disclosure-group" {...props} className={cx('flex flex-col', className)}>
-      {children}
-    </AriaDisclosureGroup>
-  )
-}

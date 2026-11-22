@@ -6,7 +6,6 @@ import {
   ChatAttachmentGroup,
   ChatSource,
   ChatSources,
-  PromptSuggestion,
   RichTextEditor,
   type RichTextEditorFormatCommand,
 } from '@/components/base'
@@ -14,7 +13,7 @@ import { FileDiffCard } from '@/components/chat/file-diff-card'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { ShikiCode } from '@/components/chat/shiki-code'
 import { parsePatchText } from '@/lib/patch-parse'
-import { noop, PLAN_MD, UNIFIED_PATCH } from './fixtures'
+import { PLAN_MD, UNIFIED_PATCH } from './fixtures'
 import { Section, Stage } from './shell'
 
 const MARKDOWN = [
@@ -132,17 +131,6 @@ export default function Content() {
             </ChatSources.Content>
           </ChatSources>
         </Stage>
-      </Section>
-      <Section title="PromptSuggestion">
-        <PromptSuggestion>
-          <PromptSuggestion.Items>
-            {['帮我写一封邮件', '解释这段代码', '总结这篇文章'].map((text) => (
-              <PromptSuggestion.Item key={text} onPress={noop}>
-                {text}
-              </PromptSuggestion.Item>
-            ))}
-          </PromptSuggestion.Items>
-        </PromptSuggestion>
       </Section>
     </>
   )

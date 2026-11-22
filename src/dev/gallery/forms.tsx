@@ -1,11 +1,10 @@
 import { Select } from '@/components/yuerchu-ui/components/select/select'
-import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Label } from '@/components/yuerchu-ui/components/field/field'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useState } from 'react'
-import { Search } from '@keyline-icons/react/two-tone'
 
-import { InputGroup } from '@/components/base'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
@@ -15,7 +14,6 @@ import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { CopyButton } from '@/components/yuerchu-ui/components/copy-button/copy-button'
-import { ChevronDownSmall } from '@/components/foundations/icons/chevrons'
 import { Row, Section, Stage } from './shell'
 
 function TextFields() {
@@ -40,12 +38,7 @@ function TextFields() {
       <TextArea label="参数" rows={3} placeholder={'每行一个参数'} />
       <div className="grid gap-4 sm:grid-cols-2">
         <SearchField aria-label="搜索表情" placeholder="SearchField" />
-        <InputGroup>
-          <InputGroup.Prefix>
-            <Search className="size-4" />
-          </InputGroup.Prefix>
-          <InputGroup.Input aria-label="InputGroup" placeholder="InputGroup" />
-        </InputGroup>
+        <SearchField aria-label="搜索对话" placeholder="SearchField · 小号" size="sm" />
       </div>
     </Stage>
   )
@@ -152,9 +145,6 @@ function Pickers() {
           </Select>
         ))}
       </div>
-      <Row label="ChevronDownSmall">
-        <ChevronDownSmall className="size-4 text-text-secondary" />
-      </Row>
     </Stage>
   )
 }
@@ -162,7 +152,7 @@ function Pickers() {
 export default function Forms() {
   return (
     <>
-      <Section title="TextField / Input / TextArea / SearchField / InputGroup">
+      <Section title="TextField / Input / TextArea / SearchField">
         <TextFields />
       </Section>
       <Section title="Checkbox / Radio">
@@ -173,6 +163,18 @@ export default function Forms() {
       </Section>
       <Section title="Segment / Slider / Select">
         <Pickers />
+      </Section>
+      <Section title="ListBox / Label（库）">
+        <Stage>
+          <Label>移动到</Label>
+          <ListBox aria-label="移动到" selectionMode="single" defaultSelectedKeys={['meridian']}>
+            <ListBoxItem id="none">不属于任何项目</ListBoxItem>
+            <ListBoxItem id="meridian">meridian</ListBoxItem>
+            <ListBoxItem id="core" description="Apache-2.0 子模块">
+              meridian-core
+            </ListBoxItem>
+          </ListBox>
+        </Stage>
       </Section>
     </>
   )

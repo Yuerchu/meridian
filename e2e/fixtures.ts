@@ -43,7 +43,9 @@ export async function openApp(page: Page, { theme, quiet = true, background = fa
   const flags = [quiet && 'quiet', background && 'background'].filter(Boolean)
   await page.goto(flags.length > 0 ? `/?demo=${flags.join(',')}` : '/')
   await expect(page.getByText('演示数据')).toBeVisible()
-  await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/)
+  // Yuerchu UI's tokens switch on `data-theme`; the pre-paint script and lib/theme
+  // write that attribute, and there is no `dark` class any more.
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await settle(page)
 }
 

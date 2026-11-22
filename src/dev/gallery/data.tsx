@@ -1,19 +1,17 @@
 import { useState } from 'react'
-import { Check, FileText, Folder, Plug } from '@keyline-icons/react/two-tone'
+import { Check, FileText, Folder } from '@keyline-icons/react/two-tone'
 
 import {
   DataGrid,
   Disclosure,
-  DisclosureGroup,
-  ItemCard,
-  ItemCardGroup,
   ListBox,
   ScrollShadow,
   type DataGridColumn,
   type DataGridSelection,
 } from '@/components/base'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
-import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { Section, Stage } from './shell'
 import { DataParts } from './parts'
 
@@ -96,7 +94,7 @@ function Lists() {
 
 function Disclosures() {
   return (
-    <DisclosureGroup className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       {['默认助手', '代码审查员'].map((name, i) => (
         <Disclosure
           key={name}
@@ -117,37 +115,7 @@ function Disclosures() {
           </Disclosure.Content>
         </Disclosure>
       ))}
-    </DisclosureGroup>
-  )
-}
-
-function ItemCards() {
-  return (
-    <ItemCardGroup variant="transparent">
-      <ItemCardGroup.Header className="px-1.5">
-        <ItemCardGroup.Title>MCP 服务器</ItemCardGroup.Title>
-      </ItemCardGroup.Header>
-      <ItemCardGroup className="overflow-hidden">
-        {SERVERS.slice(0, 3).map((s) => (
-          <ItemCard key={s.id}>
-            <ItemCard.Icon>
-              <Plug />
-            </ItemCard.Icon>
-            <ItemCard.Content>
-              <ItemCard.Title>{s.name}</ItemCard.Title>
-              <ItemCard.Description>
-                {s.transport} · {s.tools} 个工具
-              </ItemCard.Description>
-            </ItemCard.Content>
-            <ItemCard.Action>
-              <Button size="sm" variant="secondary">
-                编辑
-              </Button>
-            </ItemCard.Action>
-          </ItemCard>
-        ))}
-      </ItemCardGroup>
-    </ItemCardGroup>
+    </div>
   )
 }
 
@@ -176,11 +144,18 @@ export default function Data() {
       <Section title="ListBox">
         <Lists />
       </Section>
-      <Section title="Disclosure / DisclosureGroup">
+      <Section title="Disclosure">
         <Disclosures />
       </Section>
-      <Section title="ItemCard">
-        <ItemCards />
+      <Section title="SettingsGroup / SettingsRow（库）">
+        <SettingsGroup heading="通用" description="这些设置仅对当前设备生效。">
+          <SettingsRow label="外观" description="浅色、深色或跟随系统。">
+            <Switch defaultSelected />
+          </SettingsRow>
+          <SettingsRow label="发送消息" description="关闭后使用 Ctrl + Enter 发送。">
+            <Switch />
+          </SettingsRow>
+        </SettingsGroup>
       </Section>
       <Section title="ScrollShadow">
         <Scroll />

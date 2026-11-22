@@ -20,6 +20,13 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/components/yuerchu-ui/components/dialog/dialog'
 import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { Menu, MenuItem, MenuSection, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import {
+  NotificationCard,
+  NotificationStack,
+} from '@/components/yuerchu-ui/components/notification-stack/notification-stack'
+import { ToastRegion, toast } from '@/components/yuerchu-ui/components/toast/toast'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { PALETTE_PROJECTS, PALETTE_ROWS } from './fixtures'
 import { Row, Section, Stage } from './shell'
@@ -84,6 +91,87 @@ function Menus() {
             </ContextMenu.Menu>
           </ContextMenu.Popover>
         </ContextMenu>
+      </Row>
+      <Row label="Menu（库）">
+        <MenuTrigger>
+          <Button variant="secondary" size="sm">
+            权限 · 手动
+          </Button>
+          <Menu aria-label="权限">
+            <MenuSection header="权限">
+              <MenuItem id="ask" icon={<Hammer />} description="每次修改前询问">
+                手动
+              </MenuItem>
+              <MenuItem id="accept" icon={<Pen />}>
+                接受编辑
+              </MenuItem>
+            </MenuSection>
+            <MenuSection header="对话">
+              <MenuItem id="rename" shortcut="F2">
+                重命名
+              </MenuItem>
+              <MenuItem id="delete" tone="danger">
+                删除
+              </MenuItem>
+              <MenuItem id="disabled" isDisabled description="正在运行">
+                不可用
+              </MenuItem>
+            </MenuSection>
+          </Menu>
+        </MenuTrigger>
+      </Row>
+    </Stage>
+  )
+}
+
+/** The library's own overlays: a drawer, a pending-notification stack, a toast. */
+function LibraryOverlays() {
+  const [drawer, setDrawer] = useState(false)
+  const [pending, setPending] = useState(false)
+  return (
+    <Stage>
+      <Row label="Drawer">
+        <Button variant="secondary" onPress={() => setDrawer(true)}>
+          打开抽屉
+        </Button>
+        <Drawer
+          isOpen={drawer}
+          onOpenChange={setDrawer}
+          heading="后台命令输出"
+          description="npm run dev"
+          footer={
+            <Button variant="secondary" onPress={() => setDrawer(false)}>
+              关闭
+            </Button>
+          }
+        >
+          <p className="m-overlays__popover-body">编译完成，监听 5173 端口。</p>
+        </Drawer>
+      </Row>
+      <Row label="NotificationStack / Toast">
+        <Button variant="secondary" onPress={() => setPending((v) => !v)}>
+          {pending ? '收起待处理' : '弹出待处理'}
+        </Button>
+        <Button variant="secondary" onPress={() => toast({ title: '已复制到剪贴板' })}>
+          弹一条 Toast
+        </Button>
+        {pending && (
+          <NotificationStack aria-label="待处理演示">
+            <NotificationCard
+              key="demo"
+              heading="鉴权改走 middleware"
+              description="run_command 想运行 cargo test --all"
+              dismissLabel="忽略"
+              onDismiss={() => setPending(false)}
+              actions={
+                <Button size="sm" variant="primary" onPress={() => setPending(false)}>
+                  允许
+                </Button>
+              }
+            />
+          </NotificationStack>
+        )}
+        <ToastRegion />
       </Row>
     </Stage>
   )
@@ -259,8 +347,11 @@ function HotkeyProbe() {
 export default function Overlays() {
   return (
     <>
-      <Section title="Dropdown / ContextMenu">
+      <Section title="Dropdown / ContextMenu / Menu">
         <Menus />
+      </Section>
+      <Section title="Drawer / NotificationStack / Toast（库）">
+        <LibraryOverlays />
       </Section>
       <Section title="Tooltip / Popover">
         <Hints />

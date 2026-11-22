@@ -107,27 +107,6 @@
         "DropdownItem variant=\"danger\" (row-actions-menu destructive actions): text-text-error-primary; isDisabled rows: cursor-not-allowed text-text-disabled."
       ]
     },
-    "segmented-control": {
-      "files": ["src/components/base/segmented-control/segmented-control.tsx"],
-      "upstream": {
-        "src/components/base/segmented-control/segmented-control.tsx": "629b165aadfb42fcd2ed7a77e338f1b1aeb2e906533fcd78be5f11e729447878"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): SegmentedControlItem (RAC ToggleButton) hover:/focus-visible: → data-[hovered]/data-[focus-visible]."
-      ]
-    },
-    "pagination": {
-      "files": ["src/components/base/pagination/pagination.tsx"],
-      "upstream": {
-        "src/components/base/pagination/pagination.tsx": "944b90dbb2bd2b16c1438fc4382c8c0643b1cfb954c984b96a169407f3f52644"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the page cells are react-aria-components Button instead of native <button onClick>; hover:/focus-visible: → data-[hovered]/data-[focus-visible]; Previous/Next are wired with onPress/isDisabled (the base Button is RAC here).",
-        "Icons: keyline two-tone ArrowLeft/ArrowRight replace @remixicon/react RiArrowLeftLine/RiArrowRightLine (project icon decision 2026-09-23).",
-        "API addition: pageLabel prop (default the registry's \"Go to page N\") so callers can translate a page cell's accessible name — settings/emoji-settings.tsx. The registry now carries aria-label / previousLabel / nextLabel itself.",
-        "useIsCompact takes a callback ref: the registry's mount-once effect never observed the nav when the first render had one page (returned null) and a second page appeared later."
-      ]
-    },
     "tabs": {
       "files": ["src/components/base/tabs/pill-tab.tsx", "src/components/base/tabs/tabs.tsx"],
       "upstream": {
@@ -199,18 +178,6 @@
         "src/components/foundations/template-copy/template-copy.tsx": "1db60e15c1a5d6a710a08d249e05e3853521f604e8dcf5757c1ad4a75bad011f"
       },
       "patches": []
-    },
-    "tree-view": {
-      "files": ["src/components/base/tree-view/tree-view.tsx", "src/components/base/dropdown/menu-styles.ts"],
-      "upstream": {
-        "src/components/base/tree-view/tree-view.tsx": "56de13008fe9543f9518a2a4bf9c78790098caa49e2c467f1da98c1ffe5c8989",
-        "src/components/base/dropdown/menu-styles.ts": "98673114fe832b05991f61a84728873a5d3985fd382e66523958321572ab63db"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the chevron (RAC Button) hover: → data-[hovered]; menu-styles MENU_ITEM_INTERACTIVE as recorded under select and dropdown, the same file.",
-        "Icons: keyline two-tone ChevronRight / Folder / FolderOpen / File replace @remixicon/react RiArrowRightSLine / RiFolder3Line / RiFolderOpenLine / RiFileLine (project icon decision 2026-09-23).",
-        "Readable text: the empty state and trailingContent text-tertiary → text-secondary (owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled rows keep text-placeholder."
-      ]
     }
   }
 }

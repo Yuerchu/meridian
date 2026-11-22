@@ -1,16 +1,41 @@
+import type { ReactNode } from 'react'
 import {
   ActivityHeatmap,
   AreaChart,
   BarChart,
   BarList,
-  ChartCard,
-  ChartLegend,
   DonutChart,
-  KPI,
   type BarListItem,
   type DonutChartItem,
 } from '@/components/base'
 import { Section } from './shell'
+
+/** A gallery-only frame for a chart. The usage page draws its own card and
+ *  legend now, so boardui's are deleted; the charts are what is on show here. */
+function ChartCard({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
+  return (
+    <figure className="m-0 flex flex-col gap-3 rounded-2xl bg-background-primary-default p-4 shadow-card">
+      <figcaption className="flex items-center justify-between gap-3">
+        <span className="text-body-medium">{title}</span>
+        {action}
+      </figcaption>
+      {children}
+    </figure>
+  )
+}
+
+function ChartLegend({ items }: { items: readonly { key: string; color: string; label: string }[] }) {
+  return (
+    <span className="flex flex-wrap items-center gap-3 text-caption-1-regular text-text-secondary">
+      {items.map((item) => (
+        <span key={item.key} className="flex items-center gap-1.5">
+          <span className="size-2 rounded-full" style={{ background: item.color }} />
+          {item.label}
+        </span>
+      ))}
+    </span>
+  )
+}
 
 const DAYS = ['10-01', '10-02', '10-03', '10-04', '10-05', '10-06', '10-07']
 
@@ -100,24 +125,6 @@ export default function Charts() {
   const legend = BANDS.map((band) => ({ key: band.key, color: band.color, label: band.label }))
   return (
     <>
-      <Section title="KPI">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            ['花费', '¥12.48'],
-            ['输入', '1514.9万'],
-            ['输出', '86.2万'],
-          ].map(([title, value]) => (
-            <KPI key={title}>
-              <KPI.Header>
-                <KPI.Title>{title}</KPI.Title>
-              </KPI.Header>
-              <KPI.Content>
-                <KPI.Value>{value}</KPI.Value>
-              </KPI.Content>
-            </KPI>
-          ))}
-        </div>
-      </Section>
       <Section title="ChartCard · ChartLegend · BarChart（堆叠，只有最上一段带圆角）">
         <div className="grid gap-3 lg:grid-cols-2">
           <ChartCard title="每日 token" action={<ChartLegend items={legend} />}>

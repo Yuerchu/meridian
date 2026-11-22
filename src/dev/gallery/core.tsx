@@ -2,7 +2,7 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { useState } from 'react'
 import { Bin, Bookmark, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Card, Kbd, Spinner, ToggleButton } from '@/components/base'
+import { Avatar, Kbd, Spinner, ToggleButton } from '@/components/base'
 import { Kbd as NativeKbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Link } from '@/components/yuerchu-ui/components/link/link'
 import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
@@ -127,29 +127,6 @@ function Avatars() {
   )
 }
 
-function Cards() {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      {(['primary', 'secondary'] as const).map((variant) => (
-        <Card key={variant} variant={variant}>
-          <Card.Header>
-            <Card.Title>MCP 服务器</Card.Title>
-            <Card.Description>为智能体扩展更多工具。（{variant}）</Card.Description>
-          </Card.Header>
-          <Card.Content className="px-4 pb-4">
-            <Separator />
-          </Card.Content>
-          <Card.Footer>
-            <Button size="sm" variant="secondary">
-              添加
-            </Button>
-          </Card.Footer>
-        </Card>
-      ))}
-    </div>
-  )
-}
-
 function Spinners() {
   return (
     <Stage>
@@ -199,8 +176,10 @@ export default function Core() {
       <Section title="Avatar">
         <Avatars />
       </Section>
-      <Section title="Card / Separator">
-        <Cards />
+      <Section title="Separator">
+        <Stage>
+          <Separator />
+        </Stage>
       </Section>
       <Section title="Spinner">
         <Spinners />
