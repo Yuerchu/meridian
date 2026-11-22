@@ -84,7 +84,10 @@ export async function openConversation(page: Page, title: string): Promise<void>
   await revealSidebar(page)
   await page.getByRole('row', { name: title, exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
-  await expect(page.getByRole('log')).toBeVisible()
+  // The transcript is a log, but it is no longer the only one: the library's
+  // notification stack and React Aria each mount a live region with the same
+  // role, so a bare `getByRole('log')` matches three.
+  await expect(page.locator('[data-slot="message-scroller-content"]')).toBeVisible()
   await settle(page)
 }
 
@@ -139,7 +142,8 @@ export async function openLocalModel(page: Page): Promise<void> {
   await page.getByRole('button', { name: '获取模型列表', exact: true }).click()
   await expect(page.getByRole('row', { name: 'demo-12b-gpu.litertlm', exact: true })).toBeVisible()
   const backendOverflow = await page.getByRole('button', { name: /文本推理后端/ }).evaluate((element) => {
-    const row = element.closest('[data-slot="settings-row"]')
+    // The library's settings row has no data-slot; the class is the row.
+    const row = element.closest('.ui-settings-row')
     if (row === null) throw new Error('backend has no settings row')
     return element.getBoundingClientRect().right - row.getBoundingClientRect().right
   })

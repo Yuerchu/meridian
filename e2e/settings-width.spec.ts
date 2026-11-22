@@ -57,6 +57,9 @@ test('every settings page is at the settings width', async ({ page }) => {
     })
   }
 
-  const off = Object.entries(widths).filter(([, width]) => width !== '532px')
+  // `--content-settings` is 33.25rem, and the library sets the root font to
+  // 14px (`font: var(--text-body)`), so the column is 466px rather than the
+  // 532px it was at a 16px root.
+  const off = Object.entries(widths).filter(([, width]) => width !== '466px')
   expect(off, JSON.stringify(widths, null, 2)).toEqual([])
 })
