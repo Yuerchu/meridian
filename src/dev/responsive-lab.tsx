@@ -1,8 +1,9 @@
+import './responsive-lab.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ToggleButton, ToggleButtonGroup } from 'react-aria-components'
 
-import { ListBox } from '@/components/base'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -13,8 +14,8 @@ import { runDetectors, type Finding, type Severity } from './responsive-detector
  * A width you can point the detectors at.
  *
  * **Why an iframe.** Every responsive decision in this app is keyed to the
- * *viewport* — `useIsMobile` reads `innerWidth`, Tailwind's `md:` is a media
- * query, and Sidebar hides the panel at `max-width: 768px`. Nothing else
+ * *viewport* — `useIsMobile` reads `innerWidth`, media queries react to it,
+ * and Sidebar hides the panel at `max-width: 768px`. Nothing else
  * moves those: `transform: scale` is a visual lie, element `zoom` leaves media
  * queries and `innerWidth` disagreeing with each other, and a resizable `div`
  * only reaches the container queries that the settings pane has just started
@@ -104,16 +105,12 @@ export function ResponsiveFrame() {
   const active = CASES.find((c) => c.id === params.caseId)
   if (!active)
     return (
-      <div data-slot="responsive-frame-missing" className="p-4 text-body-regular text-status-danger">
+      <div data-slot="responsive-frame-missing" className="m-dev-responsive-frame__missing">
         No such case: {params.caseId}
       </div>
     )
   return (
-    <div
-      data-slot="responsive-frame-content"
-      data-responsive-probe="content"
-      className="h-svh overflow-y-auto bg-background-full text-text-primary"
-    >
+    <div data-slot="responsive-frame-content" data-responsive-probe="content" className="m-dev-responsive-frame">
       {active.render()}
     </div>
   )
@@ -124,12 +121,6 @@ export function ResponsiveFrame() {
 // ---------------------------------------------------------------------------
 
 const SEVERITY_ORDER: Record<Severity, number> = { fail: 0, warn: 1, info: 2 }
-
-const SEVERITY_CLASS: Record<Severity, string> = {
-  fail: 'text-status-danger',
-  warn: 'text-status-warning',
-  info: 'text-text-secondary',
-}
 
 export default function ResponsiveLab() {
   const [caseId, setCaseId] = useState(CASES[0].id)
@@ -188,12 +179,12 @@ export default function ResponsiveLab() {
   const active = CASES.find((c) => c.id === caseId)
 
   return (
-    <div data-slot="responsive-lab" className="flex h-svh flex-col bg-background-full text-text-primary">
-      <header data-slot="responsive-lab-header" className="shrink-0 border-b border-border-button-default px-4 py-2">
-        <h1 data-slot="responsive-lab-title" className="text-body-medium">
+    <div data-slot="responsive-lab" className="m-dev-responsive-lab">
+      <header data-slot="responsive-lab-header" className="m-dev-responsive-lab__header">
+        <h1 data-slot="responsive-lab-title" className="m-dev-responsive-lab__title">
           Responsive harness
         </h1>
-        <p data-slot="responsive-lab-intro" className="mt-1 text-caption-1-regular text-text-secondary">
+        <p data-slot="responsive-lab-intro" className="m-dev-responsive-lab__intro">
           Overflow, escapes and short viewports are measured. Touch targets are{' '}
           <em data-slot="responsive-lab-intro-emphasis">computed</em> — coarse-pointer CSS does not apply in a desktop
           browser, so green is not a promise about a phone. The keyboard row checks the mechanism, not Android&rsquo;s
@@ -202,11 +193,8 @@ export default function ResponsiveLab() {
         </p>
       </header>
 
-      <div data-slot="responsive-lab-body" className="flex min-h-0 flex-1">
-        <aside
-          data-slot="responsive-lab-controls"
-          className="w-72 shrink-0 space-y-4 overflow-y-auto border-r border-border-button-default p-3 text-caption-1-regular"
-        >
+      <div data-slot="responsive-lab-body" className="m-dev-responsive-lab__body">
+        <aside data-slot="responsive-lab-controls" className="m-dev-responsive-lab__controls">
           <Field label="Case">
             <ListBox
               aria-label="Case"
@@ -220,19 +208,13 @@ export default function ResponsiveLab() {
               }}
             >
               {CASES.map((c) => (
-                <ListBox.Item
-                  key={c.id}
-                  id={c.id}
-                  textValue={c.label}
-                  className="min-h-7 rounded-lg px-2 py-1 text-caption-1-regular"
-                >
+                <ListBoxItem key={c.id} id={c.id} textValue={c.label}>
                   {c.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
+                </ListBoxItem>
               ))}
             </ListBox>
             {active && (
-              <p data-slot="responsive-lab-watch-for" className="mt-1 text-text-secondary">
+              <p data-slot="responsive-lab-watch-for" className="m-dev-responsive-lab__note">
                 {active.watchFor}
               </p>
             )}
@@ -261,7 +243,7 @@ export default function ResponsiveLab() {
                 { value: 'js', label: 'coarse (JS only)' },
               ]}
             />
-            <p data-slot="responsive-lab-pointer-note" className="mt-1 text-text-secondary">
+            <p data-slot="responsive-lab-pointer-note" className="m-dev-responsive-lab__note">
               Moves <code data-slot="responsive-lab-pointer-note-code">isCoarsePointer()</code>. CSS{' '}
               <code data-slot="responsive-lab-pointer-note-code">@media (pointer: coarse)</code> is untouched — that is
               why hit areas are computed rather than measured.
@@ -277,7 +259,7 @@ export default function ResponsiveLab() {
             />
           </Field>
 
-          <div data-slot="responsive-lab-actions" className="flex gap-2">
+          <div data-slot="responsive-lab-actions" className="m-dev-responsive-lab__actions">
             <Button size="sm" onPress={measure}>
               Measure
             </Button>
@@ -287,17 +269,14 @@ export default function ResponsiveLab() {
           </div>
 
           {reading && (
-            <p data-slot="responsive-lab-reading" className="text-text-secondary">
+            <p data-slot="responsive-lab-reading" className="m-dev-responsive-lab__reading">
               innerWidth {reading.inner} · clientWidth {reading.client}
               {reading.inner !== reading.client && ` (${reading.inner - reading.client}px of scrollbar)`}
             </p>
           )}
         </aside>
 
-        <main
-          data-slot="responsive-lab-stage"
-          className="min-w-0 flex-1 overflow-auto bg-background-secondary-default p-4"
-        >
+        <main data-slot="responsive-lab-stage" className="m-dev-responsive-lab__stage">
           <iframe
             data-slot="responsive-frame"
             ref={frameRef}
@@ -305,17 +284,22 @@ export default function ResponsiveLab() {
             src={src}
             title="Responsive frame"
             style={{ width, height }}
-            className="border border-border-button-default bg-background-full"
+            className="m-dev-responsive-lab__frame"
           />
 
           {sorted && (
-            <div data-slot="responsive-lab-findings" className="mt-4 space-y-1 text-caption-1-regular">
-              <p data-slot="responsive-lab-findings-summary" className="text-caption-1-medium">
+            <div data-slot="responsive-lab-findings" className="m-dev-responsive-lab__findings">
+              <p data-slot="responsive-lab-findings-summary" className="m-dev-responsive-lab__findings-summary">
                 {sorted.length === 0 ? 'Nothing found.' : `${sorted.length} finding(s)`}
               </p>
               {sorted.map((f, i) => (
-                <p key={i} data-slot="responsive-lab-finding" className={SEVERITY_CLASS[f.severity]}>
-                  <span data-slot="responsive-lab-finding-severity" className="font-mono">
+                <p
+                  key={i}
+                  data-slot="responsive-lab-finding"
+                  className="m-dev-responsive-lab__finding"
+                  data-severity={f.severity}
+                >
+                  <span data-slot="responsive-lab-finding-severity" className="m-dev-responsive-lab__finding-severity">
                     {f.severity}
                   </span>{' '}
                   · {f.detector} · {f.path} — {f.detail}
@@ -332,7 +316,7 @@ export default function ResponsiveLab() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div data-slot="responsive-lab-field">
-      <p data-slot="responsive-lab-field-label" className="mb-1 text-caption-1-medium">
+      <p data-slot="responsive-lab-field-label" className="m-dev-responsive-lab__field-label">
         {label}
       </p>
       {children}
@@ -355,8 +339,6 @@ function Choices<T extends string | number>({
   value: T
   onChange: (value: T) => void
 }) {
-  const pillClass =
-    'inline-flex h-7 items-center rounded-full px-2.5 text-caption-1-regular tabular-nums text-[var(--text-secondary)] outline-none data-[hovered]:bg-[var(--surface-hover)] data-[selected]:bg-[var(--ink)] data-[selected]:text-[var(--ink-fg)] data-[focus-visible]:ring-2 data-[focus-visible]:ring-[var(--accent)]'
   return (
     <ToggleButtonGroup
       aria-label={label}
@@ -367,20 +349,20 @@ function Choices<T extends string | number>({
         const next = options.find((o) => keys.has(String(o.value)))
         if (next) onChange(next.value)
       }}
-      className="inline-flex flex-wrap items-center gap-1"
+      className="m-dev-responsive-lab__choices"
     >
       {options.map((o) => {
         const key = String(o.value)
         if (!o.hint) {
           return (
-            <ToggleButton key={key} id={key} className={pillClass}>
+            <ToggleButton key={key} id={key} className="m-dev-responsive-lab__choice">
               {o.label ?? o.value}
             </ToggleButton>
           )
         }
         return (
           <TooltipTrigger key={key}>
-            <ToggleButton id={key} className={pillClass}>
+            <ToggleButton id={key} className="m-dev-responsive-lab__choice">
               {o.label ?? o.value}
             </ToggleButton>
             <Tooltip placement="bottom">{o.hint}</Tooltip>
