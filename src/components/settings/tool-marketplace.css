@@ -117,7 +117,7 @@
     cursor: pointer;
   }
 
-  .m-tools__trigger[data-hovered] {
+  .m-tools__trigger[data-hovered]:not([data-disabled]) {
     background: var(--surface-muted);
   }
 

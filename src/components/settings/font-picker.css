@@ -24,7 +24,7 @@
       background-color var(--dur-fast) var(--ease-standard);
   }
 
-  .m-font-picker__group[data-hovered] {
+  .m-font-picker__group[data-hovered]:not([data-disabled]) {
     border-color: var(--border-control-hover);
   }
 
