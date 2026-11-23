@@ -872,6 +872,31 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
   })
 
+  it('asks before dismissing a dirty add-model drawer and resets draft after discard', async () => {
+    const user = userEvent.setup()
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.provider.addModel') }))
+    const input = await screen.findByRole('textbox', { name: i18n.t('settings.provider.modelId') })
+    await user.type(input, 'draft-model')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
+    const alertDialog = await screen.findByRole('alertdialog', { name: i18n.t('sheet.discard.title') })
+    await user.click(within(alertDialog).getByRole('button', { name: i18n.t('common.cancel') }))
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.provider.modelId') })).toHaveValue('draft-model')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
+    const discardDialog = await screen.findByRole('alertdialog', { name: i18n.t('sheet.discard.title') })
+    await user.click(within(discardDialog).getByRole('button', { name: i18n.t('sheet.discard.confirm') }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: i18n.t('settings.provider.addModel') })).not.toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.addModel') }))
+    expect(await screen.findByRole('textbox', { name: i18n.t('settings.provider.modelId') })).toHaveValue('')
+  })
+
   /**
    * A row reaching Claude through Vertex, or any relay, names no vendor the
    * catalog knows, so its mark was a generic cloud with no way to say

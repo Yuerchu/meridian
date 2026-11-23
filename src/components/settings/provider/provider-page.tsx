@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import { DataGrid, Sheet, type DataGridColumn } from '@/components/base'
+import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -13,6 +14,7 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
 import { SavedHint, SettingsSectionLabel, SettingsSelect, SettingsSkeleton } from '../primitives'
@@ -212,6 +214,7 @@ function ProviderEditor({
   const [modelFilter, setModelFilter] = useState('')
   const [addingModel, setAddingModel] = useState(false)
   const [newModelId, setNewModelId] = useState('')
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   /** Above this many, a filter box appears. */
   const FILTER_THRESHOLD = 8
   const [deleting, setDeleting] = useState(false)
@@ -605,6 +608,32 @@ function ProviderEditor({
     onOpenModel(id)
   }
 
+  const closeAddModel = useCallback(() => {
+    setAddingModel(false)
+    setNewModelId('')
+  }, [])
+
+  const requestCloseAddModel = useCallback(async () => {
+    if (!newModelId.trim()) {
+      closeAddModel()
+      return
+    }
+    setConfirmingDiscard(true)
+    const discard = await confirm({
+      heading: t('sheet.discard.title'),
+      description: t('sheet.discard.body'),
+      confirmLabel: t('sheet.discard.confirm'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    })
+    setConfirmingDiscard(false)
+    if (discard) closeAddModel()
+  }, [newModelId, closeAddModel, confirm, t])
+
+  useHistoryLevel(addingModel && !confirmingDiscard, () => {
+    void requestCloseAddModel()
+  })
+
   /**
    * What this provider announced, plus anything already configured on it.
    *
@@ -648,12 +677,13 @@ function ProviderEditor({
    * stored figure names no currency and inventing one here would be a claim
    * the database does not make.
    */
-  const modelColumns = useMemo<DataGridColumn<ModelRow>[]>(
+  const modelColumns = useMemo<DataTableColumn<ModelRow>[]>(
     () => [
       {
         id: 'model',
         isRowHeader: true,
         header: t('settings.provider.modelColumn'),
+        sortValue: (row) => row.name,
         cell: (row) => (
           <span data-slot="model-row-name" className="m-provider-page__model-name">
             <span
@@ -675,34 +705,43 @@ function ProviderEditor({
         id: 'context',
         header: t('settings.provider.modelContextColumn'),
         align: 'end',
-        headerClassName: 'm-provider-page__figure',
-        cellClassName: 'm-provider-page__figure',
-        cell: (row) =>
-          row.config
-            ? formatTokenCount(row.config.profile.context_window, locale)
-            : t('settings.provider.modelNoValue'),
+        width: 80,
+        sortValue: (row) => row.config?.profile.context_window ?? null,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {row.config
+              ? formatTokenCount(row.config.profile.context_window, locale)
+              : t('settings.provider.modelNoValue')}
+          </span>
+        ),
       },
       {
         id: 'input',
         header: t('settings.provider.modelInputColumn'),
         align: 'end',
-        headerClassName: 'm-provider-page__figure',
-        cellClassName: 'm-provider-page__figure',
-        cell: (row) => formatRate(row.config?.effective_pricing.input_price ?? null, locale, t),
+        width: 80,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {formatRate(row.config?.effective_pricing.input_price ?? null, locale, t)}
+          </span>
+        ),
       },
       {
         id: 'output',
         header: t('settings.provider.modelOutputColumn'),
         align: 'end',
-        headerClassName: 'm-provider-page__figure',
-        cellClassName: 'm-provider-page__figure',
-        cell: (row) => formatRate(row.config?.effective_pricing.output_price ?? null, locale, t),
+        width: 80,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {formatRate(row.config?.effective_pricing.output_price ?? null, locale, t)}
+          </span>
+        ),
       },
       {
         id: 'status',
         header: t('settings.provider.modelStatusColumn'),
         align: 'end',
-        headerClassName: 'm-provider-page__status-column',
+        width: 96,
         cell: (row) => <ModelStatus config={row.config} listed={row.listed} />,
       },
     ],
@@ -798,15 +837,16 @@ function ProviderEditor({
           {activeAuth?.credential_kind === 'none' ? (
             <SettingsRow label={t('settings.provider.modelPath')} description={t('settings.provider.modelPathHint')}>
               <div data-slot="model-path-row" className="m-provider-page__field-row">
-                <TextField
-                  name={`providerModelPath-${provider.id}`}
-                  isDisabled={isRemote}
-                  spellCheck="false"
-                  value={baseUrl === 'local://' ? '' : baseUrl}
-                  onChange={(e) => setBaseUrl(e)}
-                  placeholder={t('settings.provider.modelPathPlaceholder')}
-                  className="m-provider-page__grow"
-                />
+                <div className="m-provider-page__grow">
+                  <TextField
+                    name={`providerModelPath-${provider.id}`}
+                    isDisabled={isRemote}
+                    spellCheck="false"
+                    value={baseUrl === 'local://' ? '' : baseUrl}
+                    onChange={(e) => setBaseUrl(e)}
+                    placeholder={t('settings.provider.modelPathPlaceholder')}
+                  />
+                </div>
                 {!isRemote && (
                   <Button
                     size="sm"
@@ -823,21 +863,22 @@ function ProviderEditor({
             </SettingsRow>
           ) : (
             <SettingsRow label={t('settings.provider.baseUrl')}>
-              <TextField
-                name={`providerBaseUrl-${provider.id}`}
-                isDisabled={isRemote}
-                type="url"
-                inputMode="url"
-                spellCheck="false"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e)}
-                placeholder={
-                  defaultUrlFor(activeAuth, apiFormat) ??
-                  URL_PLACEHOLDERS[apiFormat] ??
-                  URL_PLACEHOLDERS.chat_completions
-                }
-                className="m-provider-page__grow"
-              />
+              <div className="m-provider-page__grow">
+                <TextField
+                  name={`providerBaseUrl-${provider.id}`}
+                  isDisabled={isRemote}
+                  type="url"
+                  inputMode="url"
+                  spellCheck="false"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e)}
+                  placeholder={
+                    defaultUrlFor(activeAuth, apiFormat) ??
+                    URL_PLACEHOLDERS[apiFormat] ??
+                    URL_PLACEHOLDERS.chat_completions
+                  }
+                />
+              </div>
             </SettingsRow>
           )}
 
@@ -929,61 +970,60 @@ function ProviderEditor({
               }
             >
               <div data-slot="provider-api-key-row" className="m-provider-page__field-row">
-                {usesVertexServiceAccount(provider) ? (
-                  <TextArea
-                    name={`providerApiKey-${provider.id}`}
-                    autoComplete="off"
-                    rows={6}
-                    value={apiKey}
-                    onChange={setApiKey}
-                    isDisabled={keyStatus === 'loading' || savingKey}
-                    placeholder={
-                      keyStatus === 'loading'
-                        ? t('settings.provider.apiKeyChecking')
-                        : keyStatus === 'set'
-                          ? t('settings.provider.apiKeyPlaceholderSet')
-                          : t('settings.provider.vertexServiceAccountPlaceholder')
-                    }
-                    className="m-provider-page__grow"
-                  />
-                ) : (
-                  <PasswordField
-                    name={`providerApiKey-${provider.id}`}
-                    // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
-                    autoComplete="current-password"
-                    value={apiKey}
-                    onChange={setApiKey}
-                    isDisabled={keyStatus === 'loading' || savingKey}
-                    placeholder={
-                      keyStatus === 'loading'
-                        ? t('settings.provider.apiKeyChecking')
-                        : keyStatus === 'set'
-                          ? t('settings.provider.apiKeyPlaceholderSet')
-                          : t('settings.provider.apiKeyPlaceholder')
-                    }
-                    // Without `flex-1 min-w-0` the row grew to the input's
-                    // intrinsic width plus the button and ran off a phone.
-                    className="m-provider-page__grow"
-                  />
-                )}
-                <Button
-                  icon={<Key />}
-                  variant="secondary"
-                  className="m-provider-page__key-action"
-                  onPress={handleSaveKey}
-                  isDisabled={!apiKey.trim() || keyStatus === 'loading'}
-                  isPending={savingKey}
-                >
-                  {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
-                </Button>
+                <div className="m-provider-page__grow">
+                  {usesVertexServiceAccount(provider) ? (
+                    <TextArea
+                      name={`providerApiKey-${provider.id}`}
+                      autoComplete="off"
+                      rows={6}
+                      value={apiKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
+                      placeholder={
+                        keyStatus === 'loading'
+                          ? t('settings.provider.apiKeyChecking')
+                          : keyStatus === 'set'
+                            ? t('settings.provider.apiKeyPlaceholderSet')
+                            : t('settings.provider.vertexServiceAccountPlaceholder')
+                      }
+                    />
+                  ) : (
+                    <PasswordField
+                      name={`providerApiKey-${provider.id}`}
+                      // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                      autoComplete="current-password"
+                      value={apiKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
+                      placeholder={
+                        keyStatus === 'loading'
+                          ? t('settings.provider.apiKeyChecking')
+                          : keyStatus === 'set'
+                            ? t('settings.provider.apiKeyPlaceholderSet')
+                            : t('settings.provider.apiKeyPlaceholder')
+                      }
+                    />
+                  )}
+                </div>
+                <div className="m-provider-page__key-action">
+                  <Button
+                    icon={<Key />}
+                    variant="secondary"
+                    onPress={handleSaveKey}
+                    isDisabled={!apiKey.trim() || keyStatus === 'loading'}
+                    isPending={savingKey}
+                  >
+                    {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
+                  </Button>
+                </div>
               </div>
             </SettingsRow>
           </SettingsGroup>
           {keyStatus === 'loading' && (
-            <p data-slot="provider-key-checking" className="m-provider-page__note">
+            <div data-slot="provider-key-checking" className="m-provider-page__note">
               <Spinner size="sm" />
               {t('settings.provider.apiKeyChecking')}
-            </p>
+            </div>
           )}
           {keyStatus === 'set' && (
             <p data-slot="provider-key-saved" className="m-provider-page__note" data-tone="success">
@@ -1124,73 +1164,54 @@ function ProviderEditor({
           </p>
         )}
         {visibleModels.length > 0 && (
-          <div data-slot="provider-model-list">
+          <div data-slot="provider-model-list" className="m-provider-page__model-list">
             {/* A row is still a way into the model's page — `onRowAction`
                 rather than selection, for the reason the provider list gives:
                 a selected row would keep a highlight on a page nobody is
-                looking at. Fixed layout, so the four figures keep the widths
-                their headers give them and the model column takes the rest —
-                about 200px at the settings width, where a long wire id
-                truncates. Below 32rem (a phone) the table scrolls sideways
-                inside its own card instead of each column collapsing to two
-                characters. */}
-            <DataGrid<ModelRow>
+                looking at. */}
+            <DataTable<ModelRow>
               aria-label={t('settings.provider.models')}
-              items={visibleModels}
+              rows={visibleModels}
               columns={modelColumns}
-              contentClassName="m-provider-page__model-table"
+              getRowId={(row) => row.id}
               onRowAction={(key) => typeof key === 'string' && onOpenModel(key)}
             />
           </div>
         )}
-        <Sheet
+        <Drawer
           isOpen={addingModel}
           onOpenChange={(open) => {
-            setAddingModel(open)
-            if (!open) setNewModelId('')
+            if (open) setAddingModel(true)
+            else void requestCloseAddModel()
           }}
-          placement="bottom"
-          // Typed but unsubmitted is unsaved work: dragging the sheet away
-          // would lose it silently, which is the one thing the drag must not do.
-          isDirty={newModelId.trim().length > 0}
+          side="bottom"
+          size="sm"
+          heading={t('settings.provider.addModel')}
+          footer={
+            <>
+              <Button variant="secondary" onPress={() => void requestCloseAddModel()}>
+                {t('common.cancel')}
+              </Button>
+              <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
+                {t('common.confirm')}
+              </Button>
+            </>
+          }
         >
-          <Sheet.Backdrop>
-            {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
-              sheet's default `background-primary`: a field's tertiary well is the same
-              neutral-800 as primary in dark, so on the default the field had no edge. */}
-            <Sheet.Content className="m-provider-page__sheet">
-              <Sheet.Dialog aria-label={t('settings.provider.addModel')} className="m-provider-page__sheet-dialog">
-                <Sheet.Handle />
-                <Sheet.Header>
-                  <Sheet.Heading>{t('settings.provider.addModel')}</Sheet.Heading>
-                </Sheet.Header>
-                <Sheet.Body className="m-provider-page__sheet-body">
-                  <TextField
-                    label={t('settings.provider.modelId')}
-                    name={`newModelId-${provider.id}`}
-                    autoComplete="off"
-                    value={newModelId}
-                    onChange={setNewModelId}
-                    onKeyDown={(event) => {
-                      if (event.nativeEvent.isComposing) return
-                      if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
-                    }}
-                    placeholder="gpt-6-preview"
-                    description={t('settings.provider.addModelHint')}
-                  />
-                </Sheet.Body>
-                <Sheet.Footer>
-                  <Button slot="close" variant="secondary">
-                    {t('common.cancel')}
-                  </Button>
-                  <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
-                    {t('common.confirm')}
-                  </Button>
-                </Sheet.Footer>
-              </Sheet.Dialog>
-            </Sheet.Content>
-          </Sheet.Backdrop>
-        </Sheet>
+          <TextField
+            label={t('settings.provider.modelId')}
+            name={`newModelId-${provider.id}`}
+            autoComplete="off"
+            value={newModelId}
+            onChange={setNewModelId}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
+            }}
+            placeholder="gpt-6-preview"
+            description={t('settings.provider.addModelHint')}
+          />
+        </Drawer>
         {allModels.length === 0 && !fetchingModels && !modelsError && (
           <p data-slot="provider-models-hint" className="m-provider-page__note">
             {t('settings.provider.fetchModelsHint')}

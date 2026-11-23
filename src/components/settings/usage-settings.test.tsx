@@ -483,12 +483,17 @@ it('shows the token composition of the whole range', async () => {
 
   const card = await chartCard('Where the tokens went')
   expect(within(card).getByText('1.5K')).toBeInTheDocument()
-  const rows = within(card).getAllByRole('listitem')
-  // 750 uncached, 250 read from cache, 500 out, of 1500.
-  expect(rows.map((row) => row.textContent)).toEqual([
+  expect(within(card).getByRole('button', { name: 'Input · uncached' })).toBeInTheDocument()
+  expect(within(card).getByRole('button', { name: 'Input · cache hit' })).toBeInTheDocument()
+  expect(within(card).getByRole('button', { name: 'Output' })).toBeInTheDocument()
+
+  await userEvent.click(within(card).getByRole('radio', { name: 'Table' }))
+  const rows = within(card).getAllByRole('row')
+  // Header + 750 uncached, 250 read from cache, 500 out, of 1500.
+  expect(rows.slice(1).map((row) => row.textContent)).toEqual([
     'Input · uncached75050%',
-    'Input · cache hit25017%',
-    'Output50033%',
+    'Input · cache hit25016.7%',
+    'Output50033.3%',
   ])
 })
 
@@ -571,12 +576,11 @@ it('marks incomplete token counts as lower bounds in the ranking and the composi
   ).toEqual(['whole-model3K', 'partial-model≥ 1K'])
 
   const composition = await chartCard('Where the tokens went')
-  expect(within(composition).getByText('≥ 1.5K')).toBeInTheDocument()
-  expect(
-    within(composition)
-      .getAllByRole('listitem')
-      .map((row) => row.textContent),
-  ).toEqual(['Input · uncached≥ 750', 'Input · cache hit≥ 250', 'Output≥ 500'])
+  expect(within(composition).getByText('≥ tokens')).toBeInTheDocument()
+  expect(within(composition).getByText('1.5K')).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Input · uncached' })).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Input · cache hit' })).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Output' })).toBeInTheDocument()
 })
 
 it('holds a place for every chart card while the first report loads', async () => {

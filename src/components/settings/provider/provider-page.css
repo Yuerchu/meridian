@@ -155,37 +155,13 @@
     background: currentColor;
   }
 
-  .m-provider-page__figure {
-    width: 5rem;
+  .m-provider-page__figure-value {
     color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
-    text-align: end;
   }
 
-  .m-provider-page__status-column {
-    width: 6rem;
-    text-align: end;
-  }
-
-  .m-provider-page__model-table {
-    min-width: 32rem;
-    table-layout: fixed;
-  }
-
-  .m-provider-page__sheet {
-    max-width: 32rem;
-    margin-inline: auto;
-    background: var(--background);
-  }
-
-  .m-provider-page__sheet-dialog {
-    padding-block-end: max(var(--space-4), var(--safe-bottom));
-  }
-
-  .m-provider-page__sheet-body {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+  .m-provider-page__model-list {
+    min-width: 0;
   }
 
   @container pane (width < 440px) {

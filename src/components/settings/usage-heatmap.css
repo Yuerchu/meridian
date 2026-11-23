@@ -1,0 +1,99 @@
+@layer components {
+  .m-usage-heatmap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .m-usage-heatmap__grid {
+    display: grid;
+    grid-template-columns: 2rem repeat(var(--heatmap-columns, 24), minmax(0, 1fr));
+    align-items: center;
+    gap: 3px;
+  }
+
+  .m-usage-heatmap__row {
+    display: contents;
+  }
+
+  .m-usage-heatmap__row-label,
+  .m-usage-heatmap__col-label,
+  .m-usage-heatmap__scale-label {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-usage-heatmap__row-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-usage-heatmap__col-label {
+    white-space: nowrap;
+  }
+
+  .m-usage-heatmap__cell {
+    aspect-ratio: 1;
+    border-radius: 3px;
+    outline: none;
+    transition: box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-usage-heatmap__cell[data-focus-visible] {
+    outline: var(--focus-ring);
+  }
+
+  .m-usage-heatmap__cell[data-active] {
+    box-shadow: 0 0 0 1.5px var(--text);
+  }
+
+  .m-usage-heatmap__cell[data-step='0'],
+  .m-usage-heatmap__swatch[data-step='0'] {
+    background-color: var(--surface-inset);
+  }
+
+  .m-usage-heatmap__cell[data-step='1'],
+  .m-usage-heatmap__swatch[data-step='1'] {
+    background-color: color-mix(in srgb, var(--series-1) 25%, var(--surface-inset));
+  }
+
+  .m-usage-heatmap__cell[data-step='2'],
+  .m-usage-heatmap__swatch[data-step='2'] {
+    background-color: color-mix(in srgb, var(--series-1) 50%, var(--surface-inset));
+  }
+
+  .m-usage-heatmap__cell[data-step='3'],
+  .m-usage-heatmap__swatch[data-step='3'] {
+    background-color: color-mix(in srgb, var(--series-1) 75%, var(--surface-inset));
+  }
+
+  .m-usage-heatmap__cell[data-step='4'],
+  .m-usage-heatmap__swatch[data-step='4'] {
+    background-color: var(--series-1);
+  }
+
+  .m-usage-heatmap__footer {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: var(--text-caption);
+  }
+
+  .m-usage-heatmap__caption {
+    flex: 1;
+    min-height: 1rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-usage-heatmap__swatch {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 2px;
+  }
+}

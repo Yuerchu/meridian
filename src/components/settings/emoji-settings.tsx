@@ -1,6 +1,6 @@
 import './emoji-settings.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { SortDescriptor } from 'react-aria-components'
+import type { Key } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import { Bin, Check, ChevronRight, Plus, Sparkles, StickyNote, Upload } from '@keyline-icons/react/two-tone'
 import { Button as AriaButton, Disclosure, DisclosurePanel, Heading } from 'react-aria-components'
@@ -9,9 +9,8 @@ import { TextField } from '@/components/yuerchu-ui/components/text-field/text-fi
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
-import { DataGrid, type DataGridColumn, type DataGridSelection } from '@/components/base'
+import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
-import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
 import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
 import { api } from '@/api'
 import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
@@ -39,8 +38,8 @@ interface PackDetail {
  */
 export const STICKERS_PER_PAGE = 20
 
-/** Stable identity, so a grid whose pack holds no selection never re-renders for it. */
-const NO_SELECTION: DataGridSelection = new Set<string>()
+/** Stable identity, so a table whose pack holds no selection never re-renders for it. */
+const NO_SELECTION: ReadonlySet<Key> = new Set<Key>()
 
 /**
  * Unconfirmed first, and within that in the order the pack already carries.
@@ -106,42 +105,43 @@ function EditableCell({
   const cancelled = useRef(false)
 
   return (
-    <TextField
-      aria-label={ariaLabel}
-      value={draft}
-      placeholder={placeholder}
-      size="sm"
-      className="m-emoji__field"
-      onChange={setDraft}
-      onBlur={() => {
-        if (cancelled.current) {
-          cancelled.current = false
-          return
-        }
-        const next = draft.trim()
-        if (next !== value.trim()) onSave(next)
-      }}
-      // The grid is a React Aria table and reads keys off the row: Space
-      // toggles its selection, Enter actions it, Left/Right walk between
-      // cells. Inside a text field all of those are text, so none of them may
-      // reach the row — a name with a space in it came out without one, and
-      // selected the row on the way. Up and Down mean nothing to a one-line
-      // field and are how the keyboard leaves it for the next row.
-      onKeyUp={(event) => {
-        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') event.stopPropagation()
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') return
-        event.stopPropagation()
-        if (event.nativeEvent.isComposing) return
-        if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-        if (event.key === 'Escape') {
-          cancelled.current = true
-          setDraft(value)
-          ;(event.target as HTMLInputElement).blur()
-        }
-      }}
-    />
+    <div className="m-emoji__field">
+      <TextField
+        aria-label={ariaLabel}
+        value={draft}
+        placeholder={placeholder}
+        size="sm"
+        onChange={setDraft}
+        onBlur={() => {
+          if (cancelled.current) {
+            cancelled.current = false
+            return
+          }
+          const next = draft.trim()
+          if (next !== value.trim()) onSave(next)
+        }}
+        // The table is a React Aria table and reads keys off the row: Space
+        // toggles its selection, Enter actions it, Left/Right walk between
+        // cells. Inside a text field all of those are text, so none of them may
+        // reach the row — a name with a space in it came out without one, and
+        // selected the row on the way. Up and Down mean nothing to a one-line
+        // field and are how the keyboard leaves it for the next row.
+        onKeyUp={(event) => {
+          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') event.stopPropagation()
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') return
+          event.stopPropagation()
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+          if (event.key === 'Escape') {
+            cancelled.current = true
+            setDraft(value)
+            ;(event.target as HTMLInputElement).blur()
+          }
+        }}
+      />
+    </div>
   )
 }
 
@@ -258,8 +258,8 @@ function StickerGrid({
   onDeleteEmoji,
 }: {
   detail: PackDetail
-  selectedKeys: DataGridSelection
-  onSelectionChange: (keys: DataGridSelection) => void
+  selectedKeys: Iterable<Key>
+  onSelectionChange: (keys: Set<Key>) => void
   onSaveSemantics: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
   onSuggest: (id: string) => Promise<EmojiInfoResponse>
   onDeleteEmoji: (id: string) => void
@@ -267,11 +267,6 @@ function StickerGrid({
   const { t } = useTranslation()
   const [error, setError] = useState<string | null>(null)
   const canDelete = !detail.pack.is_builtin
-  const [page, setPage] = useState(1)
-  // Sorting is held here rather than left to the grid, because the grid only
-  // ever sees one page: sorting that page alone would put the smallest of
-  // twenty first, not the smallest of the pack.
-  const [sort, setSort] = useState<SortDescriptor | undefined>(undefined)
 
   // A cell has nowhere to put a failure, so both writes report here instead.
   const save = useCallback(
@@ -293,14 +288,13 @@ function StickerGrid({
     [onSuggest],
   )
 
-  const columns = useMemo<DataGridColumn<EmojiInfoResponse>[]>(
+  const columns = useMemo<DataTableColumn<EmojiInfoResponse>[]>(
     () => [
       {
         id: 'sticker',
         header: t('settings.emoji.stickerColumn'),
         isRowHeader: true,
-        allowsSorting: true,
-        sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
+        sortValue: (emoji) => shownName(emoji),
         // The tags are the name's second line rather than a column of their
         // own: at the settings width (532px) a fourth column left the name two
         // words wide, and the two are read together anyway — what the sticker
@@ -333,28 +327,16 @@ function StickerGrid({
       {
         id: 'seen',
         header: t('settings.emoji.seenColumn'),
-        accessorKey: 'seen_count',
         align: 'end',
-        allowsSorting: true,
-        // Wide enough for the header plus its sort caret: a narrower column
-        // wraps the label one character per line and drags the whole header
-        // row down with it.
-        headerClassName: 'm-emoji__seen-col',
-        // Without this the column sorts as text, and 9 comes after 10.
-        sortFn: (a, b) => a.seen_count - b.seen_count,
+        width: 96,
+        sortValue: (emoji) => emoji.seen_count,
+        cell: (emoji) => <span className="m-emoji__seen">{emoji.seen_count}</span>,
       },
       {
         id: 'actions',
         header: t('settings.emoji.actionsColumn'),
         align: 'end',
-        // Three 32px icon actions (suggest, confirm, delete) and the padding.
-        headerClassName: 'm-emoji__actions-col',
-        // Pinned, because below the settings width — a phone — the table
-        // scrolls sideways, and reviewing a sticker would otherwise mean
-        // scrolling out to press Confirm and back again to read the next name.
-        // Editing a cell and scrolling the row are also the same gesture under
-        // a finger. `end` is logical, so it follows the writing direction.
-        pinned: 'end',
+        width: 128,
         cell: (emoji) => (
           <RowActions
             emoji={emoji}
@@ -369,73 +351,26 @@ function StickerGrid({
     [t, canDelete, save, suggest, onDeleteEmoji],
   )
 
-  const sorted = useMemo(() => {
-    const review = orderForReview(detail.emojis)
-    const column = sort && columns.find((c) => c.id === sort.column)
-    if (!column?.sortFn) return review
-    const out = [...review].sort(column.sortFn)
-    return sort?.direction === 'descending' ? out.reverse() : out
-  }, [detail.emojis, sort, columns])
-  const totalPages = Math.max(1, Math.ceil(sorted.length / STICKERS_PER_PAGE))
-  // A delete can leave the page past the end; the last page stands in for it.
-  const current = Math.min(page, totalPages)
-  const rows = useMemo(
-    () => sorted.slice((current - 1) * STICKERS_PER_PAGE, current * STICKERS_PER_PAGE),
-    [sorted, current],
-  )
-
-  // A selection is of rows the reader can see: turning the page or re-sorting
-  // drops it, and "select all" means this page, not the pack.
-  const select = useCallback(
-    (keys: DataGridSelection) => onSelectionChange(keys === 'all' ? new Set(rows.map((emoji) => emoji.id)) : keys),
-    [onSelectionChange, rows],
-  )
-  const turnTo = useCallback(
-    (next: number) => {
-      setPage(next)
-      onSelectionChange(new Set())
-    },
-    [onSelectionChange],
-  )
+  const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
 
   return (
     <div data-slot="sticker-grid" className="m-emoji__grid">
-      <DataGrid<EmojiInfoResponse>
+      <DataTable<EmojiInfoResponse>
         aria-label={t('settings.emoji.gridLabel', { pack: detail.pack.name })}
-        variant="secondary"
         columns={columns}
-        data={rows}
+        rows={rows}
         getRowId={(emoji) => emoji.id}
         // A builtin pack's stickers cannot be deleted, and deletion is the only
         // thing a selection is for here.
         selectionMode={canDelete ? 'multiple' : 'none'}
-        showSelectionCheckboxes={canDelete}
         selectedKeys={selectedKeys}
-        onSelectionChange={select}
-        sortDescriptor={sort}
-        onSortChange={(next) => {
-          setSort(next)
-          turnTo(1)
-        }}
-        // Fixed layout: the header widths are the widths and the sticker column
-        // takes the rest, about 220px at the settings width (532px). Below
-        // 32rem the grid scrolls sideways inside its own container rather than
-        // crushing the thumbnails or pushing the page out.
-        contentClassName="m-emoji__table"
-        // A collected pack has no ceiling, so the grid keeps its own scroller
+        onSelectionChange={onSelectionChange}
+        pageSize={STICKERS_PER_PAGE}
+        // A collected pack has no ceiling, so the table keeps its own scroller
         // instead of making the settings page arbitrarily long.
-        scrollContainerClassName="m-emoji__scroller"
+        maxHeight={384}
         renderEmptyState={() => <EmptyState heading={t('settings.emoji.noStickers')} headingLevel={3} size="sm" />}
       />
-      {/* One page offers no choice, so it draws no pager. */}
-      {totalPages > 1 && (
-        <Pagination
-          page={current}
-          totalPages={totalPages}
-          onChange={turnTo}
-          aria-label={t('settings.emoji.pagination', { pack: detail.pack.name })}
-        />
-      )}
       {error && (
         <Alert data-slot="sticker-grid-error" tone="danger" shouldAnnounce>
           {error}
@@ -456,8 +391,8 @@ function PackCard({
   onSuggest,
 }: {
   detail: PackDetail
-  selectedKeys: DataGridSelection
-  onSelectionChange: (keys: DataGridSelection) => void
+  selectedKeys: Iterable<Key>
+  onSelectionChange: (keys: Set<Key>) => void
   onDelete?: () => void
   onImport?: () => void
   onDeleteEmoji: (id: string) => void
@@ -525,9 +460,11 @@ function PackCard({
                       </Button>
                     )}
                     {onDelete && !detail.pack.is_builtin && (
-                      <Button icon={<Bin />} variant="destructive" className="m-emoji__aside" onPress={onDelete}>
-                        {t('common.delete')}
-                      </Button>
+                      <span className="m-emoji__aside">
+                        <Button icon={<Bin />} variant="destructive" onPress={onDelete}>
+                          {t('common.delete')}
+                        </Button>
+                      </span>
                     )}
                   </div>
                   {onImport && !can.importFromDisk && (
@@ -552,7 +489,7 @@ export function EmojiSettings() {
   const [newPackName, setNewPackName] = useState('')
   // One selection for the page, not one per pack: the bulk bar is fixed to the
   // viewport, and two packs holding selections would stack two of them there.
-  const [selection, setSelection] = useState<{ packId: string; keys: DataGridSelection } | null>(null)
+  const [selection, setSelection] = useState<{ packId: string; keys: Set<Key> } | null>(null)
   const [bulkSuggest, setBulkSuggest] = useState<{ done: number; total: number } | null>(null)
   const [suggestError, setSuggestError] = useState<string | null>(null)
   const { confirm, confirmDialog } = useConfirm()
@@ -580,10 +517,6 @@ export function EmojiSettings() {
     if (!selection) return []
     const detail = details.find((d) => d.pack.id === selection.packId)
     if (!detail) return []
-    // The grid turns "all" into the ids of the page it shows before it gets
-    // here, so a bare "all" never arrives; were it to, it would mean a whole
-    // pack nobody can see, and deleting that is not what anyone pressed.
-    if (selection.keys === 'all') return []
     return [...selection.keys].map(String)
   }, [selection, details])
 
@@ -736,16 +669,17 @@ export function EmojiSettings() {
       <EmojiEmbedderSettings />
 
       <div data-slot="pack-create" className="m-emoji__create">
-        <TextField
-          value={newPackName}
-          onChange={(e) => setNewPackName(e)}
-          placeholder={t('settings.emoji.packName')}
-          className="m-emoji__field"
-          onKeyDown={(e) => {
-            if (e.nativeEvent.isComposing) return
-            if (e.key === 'Enter') handleCreate()
-          }}
-        />
+        <div className="m-emoji__field">
+          <TextField
+            value={newPackName}
+            onChange={(e) => setNewPackName(e)}
+            placeholder={t('settings.emoji.packName')}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return
+              if (e.key === 'Enter') handleCreate()
+            }}
+          />
+        </div>
         <Button icon={<Plus />} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
           {t('settings.emoji.newPack')}
         </Button>
@@ -757,9 +691,7 @@ export function EmojiSettings() {
             key={d.pack.id}
             detail={d}
             selectedKeys={selection?.packId === d.pack.id ? selection.keys : NO_SELECTION}
-            onSelectionChange={(keys) =>
-              setSelection(keys === 'all' || keys.size > 0 ? { packId: d.pack.id, keys } : null)
-            }
+            onSelectionChange={(keys) => setSelection(keys.size > 0 ? { packId: d.pack.id, keys } : null)}
             onDelete={() => handleDelete(d.pack.id)}
             onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
             onDeleteEmoji={handleDeleteEmoji}

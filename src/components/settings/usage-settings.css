@@ -112,6 +112,8 @@
   }
 
   .m-usage-settings__card {
+    --ui-chart-bg: var(--surface-muted);
+
     gap: var(--space-3);
   }
 
@@ -169,48 +171,105 @@
     font: var(--text-body-medium);
   }
 
-  .m-usage-settings__table {
-    min-width: 32rem;
-    table-layout: fixed;
-  }
-
-  .m-usage-settings__scroller {
-    overflow-x: auto;
-    overscroll-behavior: contain;
-  }
-
-  .m-usage-settings__cell,
-  .m-usage-settings__cell-strong,
-  .m-usage-settings__col-rate,
-  .m-usage-settings__col-count,
-  .m-usage-settings__col-tokens,
-  .m-usage-settings__col-cost,
-  .m-usage-settings__col-wide,
-  .m-usage-settings__col-actions {
-    white-space: nowrap;
-  }
-
   .m-usage-settings__cell,
   .m-usage-settings__cell-strong {
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
-  .m-usage-settings__col-rate,
-  .m-usage-settings__col-tokens {
-    width: 6rem;
+  .m-usage-settings__tree-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
   }
 
-  .m-usage-settings__col-count {
-    width: 5rem;
+  .m-usage-settings__tree-cell[data-level='2'] {
+    padding-inline-start: var(--space-5);
   }
 
-  .m-usage-settings__col-cost,
-  .m-usage-settings__col-wide {
-    width: 7.5rem;
+  .m-usage-settings__tree-spacer {
+    flex-shrink: 0;
+    width: var(--control-sm);
   }
 
-  .m-usage-settings__col-actions {
-    width: 3.5rem;
+  .m-usage-settings__tree-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-usage-settings__expand-icon {
+    display: inline-flex;
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-usage-settings__expand-icon[data-expanded] {
+    transform: rotate(90deg);
+  }
+
+  .m-usage-bar-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .m-usage-bar-list__row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    height: var(--control-md);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-item);
+  }
+
+  .m-usage-bar-list__bar {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    min-width: 2px;
+    border-radius: var(--radius-item);
+    background: color-mix(in srgb, var(--series-4) 14%, transparent);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-usage-bar-list__row:hover .m-usage-bar-list__bar {
+    background: color-mix(in srgb, var(--series-4) 26%, transparent);
+  }
+
+  .m-usage-bar-list__label,
+  .m-usage-bar-list__value,
+  .m-usage-bar-list__share {
+    position: relative;
+  }
+
+  .m-usage-bar-list__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .m-usage-bar-list__value {
+    color: var(--text);
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-usage-bar-list__share {
+    width: 2.5rem;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
   }
 
   .m-usage-settings__row-label[data-muted],

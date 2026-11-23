@@ -61,24 +61,9 @@
     gap: var(--space-3);
   }
 
-  .m-emoji__table {
-    min-width: 32rem;
-    table-layout: fixed;
-  }
-
-  .m-emoji__scroller {
-    max-height: 24rem;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-  }
-
-  .m-emoji__seen-col {
-    width: 6rem;
+  .m-emoji__seen {
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
-  }
-
-  .m-emoji__actions-col {
-    width: 8rem;
   }
 
   .m-emoji__fold,

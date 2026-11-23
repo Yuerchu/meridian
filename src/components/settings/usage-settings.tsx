@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { Key } from 'react-aria-components'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import './usage-settings.css'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
@@ -9,9 +10,11 @@ import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tool
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
-import { ActivityHeatmap, BarChart, BarList, DonutChart } from '@/components/base'
-import { DataGrid, type DataGridColumn } from '@/components/base'
-import { SquareArrowUpRight } from '@keyline-icons/react/two-tone'
+import { BarChart, DonutChart } from '@/components/yuerchu-ui/components/chart/chart'
+import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from '@/components/yuerchu-ui/components/table/table'
+import { ChevronRight, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
+import { UsageHeatmap } from './usage-heatmap'
 
 import { api } from '@/api'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
@@ -278,7 +281,7 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
       kinds.filter((kind) => kind.messages > 0).sort((a, b) => b.messages - a.messages || a.key.localeCompare(b.key)),
     [kinds],
   )
-  const columns = useMemo<DataGridColumn<UsageBucketInfoResponse>[]>(
+  const columns = useMemo<DataTableColumn<UsageBucketInfoResponse>[]>(
     () => [
       {
         id: 'role',
@@ -292,37 +295,39 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
         id: 'hitRate',
         header: t('settings.usage.kpi.cacheRate'),
         align: 'end',
-        headerClassName: 'm-usage-settings__col-rate',
-        cellClassName: 'm-usage-settings__cell',
-        cell: (row) =>
-          row.cache_reported_input_tokens > 0
-            ? percent.format(row.cache_reported_input_cache_read_tokens / row.cache_reported_input_tokens)
-            : '—',
+        width: 96,
+        cell: (row) => (
+          <span className="m-usage-settings__cell">
+            {row.cache_reported_input_tokens > 0
+              ? percent.format(row.cache_reported_input_cache_read_tokens / row.cache_reported_input_tokens)
+              : '—'}
+          </span>
+        ),
       },
       {
         id: 'replies',
         header: t('settings.usage.byRequestType.replies'),
         align: 'end',
-        headerClassName: 'm-usage-settings__col-count',
-        cellClassName: 'm-usage-settings__cell',
-        cell: (row) => compact.format(row.messages),
+        width: 80,
+        cell: (row) => <span className="m-usage-settings__cell">{compact.format(row.messages)}</span>,
       },
       {
         id: 'tokens',
         header: t('settings.usage.tokenColumn'),
         align: 'end',
-        headerClassName: 'm-usage-settings__col-tokens',
-        cellClassName: 'm-usage-settings__cell',
-        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
+        width: 96,
+        cell: (row) => (
+          <span className="m-usage-settings__cell">
+            {tokenTotal(row.input_tokens + row.output_tokens, row, t, compact)}
+          </span>
+        ),
       },
       {
         id: 'cost',
         header: t('settings.usage.kpi.cost'),
         align: 'end',
-        pinned: 'end',
-        headerClassName: 'm-usage-settings__col-cost',
-        cellClassName: 'm-usage-settings__cell-strong',
-        cell: (row) => displayedCost(row, t, locale),
+        width: 120,
+        cell: (row) => <span className="m-usage-settings__cell-strong">{displayedCost(row, t, locale)}</span>,
       },
     ],
     [compact, locale, percent, t],
@@ -331,14 +336,12 @@ function RequestTypeTable({ kinds }: { kinds: UsageBucketInfoResponse[] }) {
   if (rows.length === 0) return null
   return (
     <FigureCard title={t('settings.usage.byRequestType.title')}>
-      <DataGrid<UsageBucketInfoResponse>
+      <DataTable<UsageBucketInfoResponse>
         aria-label={t('settings.usage.byRequestType.title')}
-        variant="secondary"
+        size="sm"
         columns={columns}
-        data={rows}
+        rows={rows}
         getRowId={(row) => `kind:${row.key}`}
-        contentClassName="m-usage-settings__table"
-        scrollContainerClassName="m-usage-settings__scroller"
       />
     </FigureCard>
   )
@@ -616,15 +619,11 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </p>
           )}
           {hasGaps && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="m-usage-settings__start"
-              data-slot="usage-gaps-show"
-              onPress={() => setGapsOpen(true)}
-            >
-              {t('settings.usage.gaps.show')}
-            </Button>
+            <div className="m-usage-settings__start">
+              <Button size="sm" variant="secondary" data-slot="usage-gaps-show" onPress={() => setGapsOpen(true)}>
+                {t('settings.usage.gaps.show')}
+              </Button>
+            </div>
           )}
           {billingNote && (
             <p data-slot="billing-coverage-warning" className="m-usage-settings__note">
@@ -912,10 +911,6 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
 function TokenTrend({ days }: { days: UsageBucketInfoResponse[] }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.resolvedLanguage ?? i18n.language
-  const compact = useMemo(
-    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
-    [locale],
-  )
   const day = useMemo(() => new Intl.DateTimeFormat(locale, { month: 'short', day: 'numeric' }), [locale])
   const data = useMemo(
     () =>
@@ -929,27 +924,16 @@ function TokenTrend({ days }: { days: UsageBucketInfoResponse[] }) {
   const bands = present(data)
   if (data.length === 0) return null
   return (
-    <>
-      <Legend bands={bands} />
-      <BarChart data={data} height={200}>
-        <BarChart.Grid vertical={false} />
-        <BarChart.XAxis dataKey="day" tickMargin={8} />
-        <BarChart.YAxis width={44} tickFormatter={(v: number) => compact.format(v)} />
-        {bands.map((band, i) => (
-          <BarChart.Bar
-            key={band.key}
-            dataKey={band.key}
-            fill={band.color}
-            name={t(band.labelKey)}
-            stackId="tokens"
-            radius={i === bands.length - 1 ? [4, 4, 0, 0] : 0}
-          />
-        ))}
-        <BarChart.Tooltip
-          content={<BarChart.TooltipContent indicator="dot" valueFormatter={(v) => compact.format(Number(v))} />}
-        />
-      </BarChart>
-    </>
+    <BarChart
+      aria-label={t('settings.usage.trend')}
+      data={data}
+      x="day"
+      series={bands.map((band) => ({ key: band.key, label: t(band.labelKey) }))}
+      stacked
+      height={200}
+      showLegend
+      valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+    />
   )
 }
 
@@ -977,17 +961,29 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
     )
   }
   return (
-    <BarList
-      aria-label={t('settings.usage.tokensByModel')}
-      color="var(--series-4)"
-      items={items.map((item) => ({
-        key: item.key,
-        label: item.label,
-        value: item.incomplete ? `≥ ${compact.format(item.tokens)}` : compact.format(item.tokens),
-        width: item.width,
-        share: item.share === null ? undefined : share.format(item.share),
-      }))}
-    />
+    <ul data-slot="bar-list" aria-label={t('settings.usage.tokensByModel')} className="m-usage-bar-list">
+      {items.map((item) => (
+        <li key={item.key} data-slot="bar-list-row" className="m-usage-bar-list__row">
+          <span
+            data-slot="bar-list-bar"
+            aria-hidden="true"
+            className="m-usage-bar-list__bar"
+            style={{ width: item.width }}
+          />
+          <span data-slot="bar-list-label" onPointerEnter={titleIfTruncated} className="m-usage-bar-list__label">
+            {item.label}
+          </span>
+          <span data-slot="bar-list-value" className="m-usage-bar-list__value">
+            {item.incomplete ? `≥ ${compact.format(item.tokens)}` : compact.format(item.tokens)}
+          </span>
+          {item.share !== null && (
+            <span data-slot="bar-list-share" className="m-usage-bar-list__share">
+              {share.format(item.share)}
+            </span>
+          )}
+        </li>
+      ))}
+    </ul>
   )
 }
 
@@ -996,13 +992,7 @@ function TokensByModel({ buckets }: { buckets: UsageBucketInfoResponse[] }) {
  * cache, what was read from it, what was written into it, and the reply.
  */
 function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
-  const { t, i18n } = useTranslation()
-  const locale = i18n.resolvedLanguage ?? i18n.language
-  const compact = useMemo(
-    () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
-    [locale],
-  )
-  const share = useMemo(() => new Intl.NumberFormat(locale, { style: 'percent', maximumFractionDigits: 0 }), [locale])
+  const { t } = useTranslation()
   const parts = split(total)
   const bands = present([parts])
   // A reply missing its input or its output leaves every band, and the whole,
@@ -1016,20 +1006,20 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
       </p>
     )
   }
-  const sum = bands.reduce((acc, band) => acc + parts[band.key], 0)
-  const format = (value: number) => (incomplete ? `≥ ${compact.format(value)}` : compact.format(value))
   return (
     <DonutChart
-      centerValue={format(sum)}
-      centerLabel={t('settings.usage.compositionCenter')}
-      format={format}
-      formatShare={incomplete ? null : (value) => share.format(value)}
-      items={bands.map((band) => ({
+      aria-label={t('settings.usage.composition')}
+      data={bands.map((band) => ({
         key: band.key,
         label: t(band.labelKey),
         value: parts[band.key],
-        color: band.color,
       }))}
+      label="label"
+      value="value"
+      totalLabel={incomplete ? `≥ ${t('settings.usage.compositionCenter')}` : t('settings.usage.compositionCenter')}
+      valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+      height={200}
+      showLegend
     />
   )
 }
@@ -1053,12 +1043,11 @@ function Activity({ grid }: { grid: number[][] }) {
   )
   if (busiest.value === 0) return null
   return (
-    <ActivityHeatmap
+    <UsageHeatmap
       data={grid}
       rowLabels={weekdays}
       columnLabel={(c) => (c % 6 === 0 && c < HOUR_COUNT ? hour(c) : '')}
       caption={(r, c, value) => t('settings.usage.activityCell', { day: weekdays[r], hour: hour(c), count: value })}
-      color="var(--series-1)"
       aria-label={t('settings.usage.activitySummary', {
         day: weekdays[busiest.row],
         hour: hour(busiest.column),
@@ -1309,6 +1298,16 @@ function conversationRows(
     .slice(0, 12)
 }
 
+interface FlatUsageRow {
+  item: UsageGridRow
+  key: string
+  level: number
+  hasChildren: boolean
+  expanded: boolean
+  setSize: number
+  posInSet: number
+}
+
 /** The ranked rows under the charts, with the selected dimension as the row header. */
 function BucketTable({
   buckets,
@@ -1329,6 +1328,10 @@ function BucketTable({
     () => new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }),
     [locale],
   )
+  const [expandedKeys, setExpandedKeys] = useState<Set<Key>>(() => new Set())
+  const tableRef = useRef<HTMLTableElement>(null)
+  const isTree = dimension === 'conversation'
+
   const rows = useMemo<UsageGridRow[]>(() => {
     if (dimension === 'conversation') {
       return conversationRows(buckets, t('settings.usage.deleted'), (id) =>
@@ -1363,154 +1366,263 @@ function BucketTable({
     })
   }, [buckets, dimension, t])
 
-  const columns = useMemo<DataGridColumn<UsageGridRow>[]>(() => {
-    const result: DataGridColumn<UsageGridRow>[] = [
+  const flatRows = useMemo<FlatUsageRow[]>(() => {
+    if (!isTree) return []
+    const out: FlatUsageRow[] = []
+    rows.forEach((item, index) => {
+      const children = item.children
+      const hasChildren = Boolean(children && children.length > 0)
+      const expanded = hasChildren && expandedKeys.has(item.rowId)
+      out.push({
+        item,
+        key: item.rowId,
+        level: 1,
+        hasChildren,
+        expanded,
+        setSize: rows.length,
+        posInSet: index + 1,
+      })
+      if (expanded && children) {
+        children.forEach((child, childIndex) => {
+          out.push({
+            item: child,
+            key: child.rowId,
+            level: 2,
+            hasChildren: false,
+            expanded: false,
+            setSize: children.length,
+            posInSet: childIndex + 1,
+          })
+        })
+      }
+    })
+    return out
+  }, [isTree, rows, expandedKeys])
+
+  const toggle = useCallback((key: Key) => {
+    setExpandedKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  useEffect(() => {
+    if (isTree && tableRef.current) tableRef.current.setAttribute('role', 'treegrid')
+  }, [isTree, flatRows.length])
+
+  const renderLabel = useCallback(
+    (row: UsageGridRow) =>
+      row.conversationCount > 1 ? (
+        <span data-slot="usage-row-label-group" className="m-usage-settings__row-group">
+          <span
+            data-slot="usage-row-label"
+            onPointerEnter={titleIfTruncated}
+            className="m-usage-settings__row-label"
+          >
+            {row.displayLabel}
+          </span>
+          <span data-slot="usage-row-label-summary" className="m-usage-settings__row-summary">
+            {t('settings.usage.conversationGroupSummary', {
+              conversations: row.conversationCount,
+              messages: row.messages,
+            })}
+          </span>
+        </span>
+      ) : (
+        <Hint
+          focusable={false}
+          className="m-usage-settings__row-label"
+          data-muted={row.isDeleted || row.isConversationInstance || undefined}
+          data-deleted={row.isDeleted || undefined}
+          label={row.isConversationInstance ? (row.conversationId ?? row.displayLabel) : row.displayLabel}
+        >
+          {row.displayLabel}
+        </Hint>
+      ),
+    [t],
+  )
+
+  const renderCost = useCallback(
+    (row: UsageGridRow) => {
+      const qualifier = bucketCostQualifier(row)
+      const localQualifier = costQualifier(row.unpriced_messages, row.estimated_messages)
+      const pricingTitle =
+        localQualifier === 'partial_estimate'
+          ? t('settings.usage.partialEstimate', {
+              estimated: row.estimated_messages,
+              unpriced: row.unpriced_messages,
+            })
+          : localQualifier === 'estimated'
+            ? t('settings.usage.estimated', { count: row.estimated_messages })
+            : localQualifier === 'lower_bound'
+              ? t('settings.usage.unpriced', { count: row.unpriced_messages })
+              : undefined
+      const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
+      if (!hint)
+        return (
+          <span
+            data-slot="usage-row-cost"
+            className="m-usage-settings__cell-strong"
+            data-muted={qualifier !== 'exact' || undefined}
+          >
+            {displayedCost(row, t, locale)}
+          </span>
+        )
+      return (
+        <Hint
+          focusable={false}
+          className="m-usage-settings__cell-strong"
+          data-muted={qualifier !== 'exact' || undefined}
+          label={hint}
+        >
+          {displayedCost(row, t, locale)}
+        </Hint>
+      )
+    },
+    [locale, t],
+  )
+
+  const renderAction = useCallback(
+    (row: UsageGridRow) => {
+      if (!row.conversationId) return null
+      const conversationId = row.conversationId
+      const label = t('settings.usage.openConversation', {
+        title: row.conversationTitle || conversationId,
+        // The visual child label is allowed to abbreviate a UUID. The
+        // accessible name is not: two conversations can share that prefix.
+        id: conversationId,
+      })
+      return (
+        <TooltipTrigger>
+          <Button
+            icon={<SquareArrowUpRight />}
+            size="sm"
+            variant="ghost"
+            aria-label={label}
+            onPress={() => onOpenConversation(conversationId)}
+          />
+          <Tooltip placement="left">{label}</Tooltip>
+        </TooltipTrigger>
+      )
+    },
+    [onOpenConversation, t],
+  )
+
+  const columns = useMemo<DataTableColumn<UsageGridRow>[]>(
+    () => [
       {
         id: 'label',
         header: dimensionLabel,
         isRowHeader: true,
-        cell: (row) =>
-          row.conversationCount > 1 ? (
-            <span data-slot="usage-row-label-group" className="m-usage-settings__row-group">
-              <span
-                data-slot="usage-row-label"
-                onPointerEnter={titleIfTruncated}
-                className="m-usage-settings__row-label"
-              >
-                {row.displayLabel}
-              </span>
-              <span data-slot="usage-row-label-summary" className="m-usage-settings__row-summary">
-                {t('settings.usage.conversationGroupSummary', {
-                  conversations: row.conversationCount,
-                  messages: row.messages,
-                })}
-              </span>
-            </span>
-          ) : (
-            <Hint
-              focusable={false}
-              className="m-usage-settings__row-label"
-              data-muted={row.isDeleted || row.isConversationInstance || undefined}
-              data-deleted={row.isDeleted || undefined}
-              label={row.isConversationInstance ? (row.conversationId ?? row.displayLabel) : row.displayLabel}
-            >
-              {row.displayLabel}
-            </Hint>
-          ),
+        cell: renderLabel,
       },
       {
         id: 'tokens',
         header: t('settings.usage.tokenColumn'),
         align: 'end',
-        headerClassName: 'm-usage-settings__col-wide',
-        cellClassName: 'm-usage-settings__cell',
-        cell: (row) => tokenTotal(row.input_tokens + row.output_tokens, row, t, compact),
+        width: 120,
+        cell: (row) => (
+          <span className="m-usage-settings__cell">
+            {tokenTotal(row.input_tokens + row.output_tokens, row, t, compact)}
+          </span>
+        ),
       },
       {
         id: 'cost',
         header: t('settings.usage.kpi.cost'),
         align: 'end',
-        pinned: dimension === 'conversation' ? undefined : 'end',
-        headerClassName: 'm-usage-settings__col-cost',
-        cellClassName: 'm-usage-settings__cell-strong',
-        cell: (row) => {
-          const qualifier = bucketCostQualifier(row)
-          const localQualifier = costQualifier(row.unpriced_messages, row.estimated_messages)
-          const pricingTitle =
-            localQualifier === 'partial_estimate'
-              ? t('settings.usage.partialEstimate', {
-                  estimated: row.estimated_messages,
-                  unpriced: row.unpriced_messages,
-                })
-              : localQualifier === 'estimated'
-                ? t('settings.usage.estimated', { count: row.estimated_messages })
-                : localQualifier === 'lower_bound'
-                  ? t('settings.usage.unpriced', { count: row.unpriced_messages })
-                  : undefined
-          const hint = [pricingTitle, billingCoverage(row, t)].filter(Boolean).join(' ')
-          if (!hint)
-            return (
-              <span
-                data-slot="usage-row-cost"
-                className="m-usage-settings__cell-strong"
-                data-muted={qualifier !== 'exact' || undefined}
-              >
-                {displayedCost(row, t, locale)}
-              </span>
-            )
-          return (
-            <Hint
-              focusable={false}
-              className="m-usage-settings__cell-strong"
-              data-muted={qualifier !== 'exact' || undefined}
-              label={hint}
-            >
-              {displayedCost(row, t, locale)}
-            </Hint>
-          )
-        },
+        width: 120,
+        cell: renderCost,
       },
-    ]
-    if (dimension === 'conversation') {
-      result.push({
-        id: 'actions',
-        header: t('settings.usage.actionColumn'),
-        align: 'end',
-        pinned: 'end',
-        // A small icon button and the cell's padding: 32 + 2 × 12.
-        headerClassName: 'm-usage-settings__col-actions',
-        cell: (row) => {
-          if (!row.conversationId) return null
-          const conversationId = row.conversationId
-          const label = t('settings.usage.openConversation', {
-            title: row.conversationTitle || conversationId,
-            // The visual child label is allowed to abbreviate a UUID. The
-            // accessible name is not: two conversations can share that prefix.
-            id: conversationId,
-          })
-          return (
-            <TooltipTrigger>
-              <Button
-                icon={<SquareArrowUpRight />}
-                size="sm"
-                variant="ghost"
-                aria-label={label}
-                onPress={() => onOpenConversation(conversationId)}
-              />
-              <Tooltip placement="left">{label}</Tooltip>
-            </TooltipTrigger>
-          )
-        },
-      })
-    }
-    return result
-  }, [compact, dimension, dimensionLabel, locale, onOpenConversation, t])
+    ],
+    [compact, dimensionLabel, renderCost, renderLabel, t],
+  )
+
+  if (!isTree) {
+    return (
+      <DataTable<UsageGridRow>
+        aria-label={`${t('settings.usage.breakdown')}: ${dimensionLabel}`}
+        size="sm"
+        columns={columns}
+        rows={rows}
+        getRowId={(row) => row.rowId}
+        isLoading={isLoading}
+        renderEmptyState={() => <span data-slot="usage-grid-empty">{t('settings.usage.empty')}</span>}
+      />
+    )
+  }
 
   return (
-    <DataGrid<UsageGridRow>
+    <Table
+      ref={tableRef}
       aria-label={`${t('settings.usage.breakdown')}: ${dimensionLabel}`}
-      variant="secondary"
-      columns={columns}
-      data={rows}
-      getRowId={(row) => row.rowId}
-      getChildren={dimension === 'conversation' ? (row) => row.children : undefined}
-      treeColumn={dimension === 'conversation' ? 'label' : undefined}
-      renderEmptyState={() =>
-        isLoading ? (
-          <Spinner size="sm" aria-label={t('common.loading')} />
-        ) : (
-          <span data-slot="usage-grid-empty">{t('settings.usage.empty')}</span>
-        )
-      }
-      // Fixed layout, so the widths on the headers are the widths and the named
-      // column takes the rest — about 220px at the settings width (532px),
-      // where long conversation and model ids truncate with the full one on
-      // hover. `width` on a column does nothing outside a resizable container.
-      // Below 32rem (a phone) the grid scrolls inside its own card instead of
-      // crushing the ids or widening the page.
-      contentClassName="m-usage-settings__table"
-      scrollContainerClassName="m-usage-settings__scroller"
-    />
+      size="sm"
+      isLoading={isLoading}
+    >
+      <TableHeader>
+        <Column id="label" isRowHeader>
+          {dimensionLabel}
+        </Column>
+        <Column id="tokens" data-align="end">
+          {t('settings.usage.tokenColumn')}
+        </Column>
+        <Column id="cost" data-align="end">
+          {t('settings.usage.kpi.cost')}
+        </Column>
+        <Column id="actions" data-align="end">
+          {t('settings.usage.actionColumn')}
+        </Column>
+      </TableHeader>
+      <TableBody
+        items={flatRows}
+        renderEmptyState={() => <span data-slot="usage-grid-empty">{t('settings.usage.empty')}</span>}
+      >
+        {(flatRow) => (
+          <Row
+            id={flatRow.key}
+            aria-level={flatRow.level}
+            aria-expanded={flatRow.hasChildren ? flatRow.expanded : undefined}
+            aria-setsize={flatRow.setSize}
+            aria-posinset={flatRow.posInSet}
+          >
+            <Cell>
+              <div className="m-usage-settings__tree-cell" data-level={flatRow.level}>
+                {flatRow.hasChildren ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t(flatRow.expanded ? 'dataGrid.collapseRow' : 'dataGrid.expandRow', {
+                      label: flatRow.item.displayLabel,
+                    })}
+                    icon={
+                      <span
+                        className="m-usage-settings__expand-icon"
+                        data-expanded={flatRow.expanded || undefined}
+                      >
+                        <ChevronRight size={14} aria-hidden />
+                      </span>
+                    }
+                    onPress={() => toggle(flatRow.key)}
+                  />
+                ) : (
+                  <span aria-hidden="true" className="m-usage-settings__tree-spacer" />
+                )}
+                <div className="m-usage-settings__tree-content">{renderLabel(flatRow.item)}</div>
+              </div>
+            </Cell>
+            <Cell data-align="end">
+              <span className="m-usage-settings__cell">
+                {tokenTotal(flatRow.item.input_tokens + flatRow.item.output_tokens, flatRow.item, t, compact)}
+              </span>
+            </Cell>
+            <Cell data-align="end">{renderCost(flatRow.item)}</Cell>
+            <Cell data-align="end">{renderAction(flatRow.item)}</Cell>
+          </Row>
+        )}
+      </TableBody>
+    </Table>
   )
 }
 
