@@ -97,7 +97,7 @@ pub async fn get_hooks_config(app: tauri::AppHandle) -> Result<HookConfigInfoRes
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn save_hooks_config(
+pub async fn set_hooks_config(
     app: tauri::AppHandle,
     request: HookConfigUpdateRequest,
 ) -> Result<HookConfigInfoResponse, String> {
@@ -122,7 +122,7 @@ pub async fn save_hooks_config(
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn regenerate_hooks_token(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn reset_hooks_token(app: tauri::AppHandle) -> Result<String, String> {
     let services = app.services();
     let token = meridian_core::listen_guard::generate_token();
     let config = hooks::HookConfig {

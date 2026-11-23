@@ -75,6 +75,14 @@ pub enum PreferenceKey {
     /// Which Codex release this install claims to be, under `codex_request_shape`.
     #[serde(rename = "codex.client_version")]
     CodexClientVersion,
+    /// How Google's OpenAI-compatible chat-completions adapter encodes thinking
+    /// parameters (`auto`, `google_thinking_config`, or `reasoning_effort`).
+    #[serde(rename = "google.compat_thinking_mode")]
+    GoogleCompatThinkingMode,
+    /// Whether `gemini_generate_content` keeps `includeThoughts: true` when
+    /// `thinking_enabled` is false (e.g. background summary/title passes).
+    #[serde(rename = "google.include_thoughts_when_off")]
+    GoogleIncludeThoughtsWhenOff,
     /// Absolute `.litertlm` path for on-device sticker ranking. Empty is the
     /// lexical name/tag pick. A path on this machine, so remote callers cannot
     /// set it.
@@ -107,6 +115,8 @@ impl PreferenceKey {
             Self::SubAgentExploreModel => "sub_agent.explore.model",
             Self::SubAgentAgentModel => "sub_agent.agent.model",
             Self::CodexClientVersion => "codex.client_version",
+            Self::GoogleCompatThinkingMode => "google.compat_thinking_mode",
+            Self::GoogleIncludeThoughtsWhenOff => "google.include_thoughts_when_off",
             Self::EmojiEmbedder => "emoji.embedder",
             Self::EmojiSuggestModel => "emoji.suggest.model",
         }
@@ -188,14 +198,43 @@ impl VoiceFilterLevel {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GoogleCompatThinkingMode {
+    Auto,
+    GoogleThinkingConfig,
+    ReasoningEffort,
+}
+
+impl GoogleCompatThinkingMode {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::GoogleThinkingConfig => "google_thinking_config",
+            Self::ReasoningEffort => "reasoning_effort",
+        }
+    }
+
+    fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "google_thinking_config" => Ok(Self::GoogleThinkingConfig),
+            "reasoning_effort" => Ok(Self::ReasoningEffort),
+            _ => Err(format!(
+                "preference `google.compat_thinking_mode` has unknown value {value:?}"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PreferenceReadRequest {
     pub key: PreferenceKey,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PreferenceModelSelectionRequest {
     provider_id: String,
     model_id: String,
@@ -257,6 +296,10 @@ pub enum PreferenceUpdateRequest {
     /// the reason it could not be used. `null` clears it back to the default.
     #[serde(rename = "codex.client_version")]
     CodexClientVersion { value: RequiredNullable<String> },
+    #[serde(rename = "google.compat_thinking_mode")]
+    GoogleCompatThinkingMode { value: GoogleCompatThinkingMode },
+    #[serde(rename = "google.include_thoughts_when_off")]
+    GoogleIncludeThoughtsWhenOff { value: bool },
     #[serde(rename = "emoji.embedder")]
     EmojiEmbedder { value: RequiredNullable<String> },
     #[serde(rename = "emoji.suggest.model")]
@@ -304,6 +347,10 @@ pub enum PreferenceInfoResponse {
     SubAgentAgentModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "codex.client_version")]
     CodexClientVersion(Option<String>),
+    #[serde(rename = "google.compat_thinking_mode")]
+    GoogleCompatThinkingMode(Option<GoogleCompatThinkingMode>),
+    #[serde(rename = "google.include_thoughts_when_off")]
+    GoogleIncludeThoughtsWhenOff(Option<bool>),
     #[serde(rename = "emoji.embedder")]
     EmojiEmbedder(Option<String>),
     #[serde(rename = "emoji.suggest.model")]
@@ -449,6 +496,12 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         // Free text, read back as stored. A value this build has never heard of
         // is exactly what the override is for.
         PreferenceKey::CodexClientVersion => PreferenceInfoResponse::CodexClientVersion(raw),
+        PreferenceKey::GoogleCompatThinkingMode => PreferenceInfoResponse::GoogleCompatThinkingMode(
+            raw.map(|value| GoogleCompatThinkingMode::parse(&value)).transpose()?,
+        ),
+        PreferenceKey::GoogleIncludeThoughtsWhenOff => {
+            PreferenceInfoResponse::GoogleIncludeThoughtsWhenOff(optional_bool(key, raw)?)
+        }
         PreferenceKey::EmojiEmbedder => {
             PreferenceInfoResponse::EmojiEmbedder(raw.map(validate_embedder_path).transpose()?)
         }
@@ -516,6 +569,12 @@ impl PreferenceUpdateRequest {
                 PreferenceKey::CodexClientVersion,
                 value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             ),
+            Self::GoogleCompatThinkingMode { value } => {
+                (PreferenceKey::GoogleCompatThinkingMode, Some(value.as_str().into()))
+            }
+            Self::GoogleIncludeThoughtsWhenOff { value } => {
+                (PreferenceKey::GoogleIncludeThoughtsWhenOff, Some(value.to_string()))
+            }
             Self::EmojiEmbedder { value } => (
                 PreferenceKey::EmojiEmbedder,
                 value.0.map(validate_embedder_path).transpose()?,
@@ -653,7 +712,7 @@ mod tests {
     fn model_selection_is_structured_at_ipc_and_canonical_in_storage() {
         let request = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
             "key": "sub_agent.agent.model",
-            "value": { "providerId": "provider-1", "modelId": "qwen:7b" }
+            "value": { "provider_id": "provider-1", "model_id": "qwen:7b" }
         }))
         .unwrap();
         assert_eq!(
@@ -721,5 +780,54 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(clear.into_storage().unwrap(), (PreferenceKey::EmojiEmbedder, None));
+    }
+
+    #[test]
+    fn google_wire_preferences_are_closed_and_round_trip() {
+        let mode = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+            "key": "google.compat_thinking_mode",
+            "value": "reasoning_effort"
+        }))
+        .unwrap();
+        assert_eq!(
+            mode.into_storage().unwrap(),
+            (PreferenceKey::GoogleCompatThinkingMode, Some("reasoning_effort".into()))
+        );
+        assert!(
+            serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+                "key": "google.compat_thinking_mode",
+                "value": "unknown"
+            }))
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(
+                decode_preference(
+                    PreferenceKey::GoogleCompatThinkingMode,
+                    Some("google_thinking_config".into())
+                )
+                .unwrap()
+            )
+            .unwrap(),
+            serde_json::json!({ "key": "google.compat_thinking_mode", "value": "google_thinking_config" })
+        );
+        assert!(decode_preference(PreferenceKey::GoogleCompatThinkingMode, Some("bad".into())).is_err());
+
+        let include_off = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+            "key": "google.include_thoughts_when_off",
+            "value": true
+        }))
+        .unwrap();
+        assert_eq!(
+            include_off.into_storage().unwrap(),
+            (PreferenceKey::GoogleIncludeThoughtsWhenOff, Some("true".into()))
+        );
+        assert_eq!(
+            serde_json::to_value(
+                decode_preference(PreferenceKey::GoogleIncludeThoughtsWhenOff, Some("false".into())).unwrap()
+            )
+            .unwrap(),
+            serde_json::json!({ "key": "google.include_thoughts_when_off", "value": false })
+        );
     }
 }

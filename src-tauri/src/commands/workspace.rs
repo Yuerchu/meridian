@@ -9,8 +9,28 @@ use crate::ServicesExt;
 use meridian_core::db;
 use meridian_core::workspace::{self, WorkspaceRoot};
 
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkspaceReferenceRequest {
+    pub path: String,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub line_start: Option<u32>,
+    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
+    pub line_end: Option<u32>,
+}
+
+impl From<WorkspaceReferenceRequest> for workspace::reference::WorkspaceReferenceRequest {
+    fn from(request: WorkspaceReferenceRequest) -> Self {
+        Self {
+            path: request.path,
+            line_start: request.line_start,
+            line_end: request.line_end,
+        }
+    }
+}
+
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceRootRequest {
     conversation_id: String,
 }
@@ -50,7 +70,7 @@ impl From<WorkspaceRoot> for WorkspaceRootResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceTreeRequest {
     conversation_id: String,
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
@@ -77,7 +97,7 @@ impl From<workspace::tree::TreeEntry> for WorkspaceTreeEntryInfoResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceFileReadRequest {
     conversation_id: String,
     rel_path: String,
@@ -105,7 +125,7 @@ impl From<workspace::read::FileContent> for WorkspaceFileContentResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceReferenceSuggestRequest {
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     conversation_id: Option<String>,
@@ -136,7 +156,7 @@ impl From<workspace::reference::WorkspaceReferenceSuggestion> for WorkspaceRefer
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceReferenceResolveRequest {
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     conversation_id: Option<String>,
@@ -179,7 +199,7 @@ impl From<workspace::reference::WorkspaceReferencePreview> for WorkspaceReferenc
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceReferenceProbeRequest {
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     conversation_id: Option<String>,
@@ -204,7 +224,7 @@ impl From<workspace::reference::WorkspaceReferenceProbe> for WorkspaceReferenceP
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceGitStatusRequest {
     conversation_id: String,
 }
@@ -251,7 +271,7 @@ impl From<workspace::git::GitStatus> for WorkspaceGitStatusResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceGitDiffRequest {
     conversation_id: String,
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
@@ -274,7 +294,7 @@ impl From<workspace::git::GitDiffResult> for WorkspaceGitDiffResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct WorkspaceEditorOpenRequest {
     conversation_id: String,
     rel_path: String,
@@ -311,7 +331,7 @@ fn reference_context(
 /// half stays async (subprocess) — which is why `resolve_workspace_root` hands
 /// back `git_available: false` for the command layer to fill in.
 #[tauri::command]
-pub async fn workspace_root(
+pub async fn get_workspace_root(
     app: tauri::AppHandle,
     request: WorkspaceRootRequest,
 ) -> Result<WorkspaceRootResponse, String> {
@@ -331,7 +351,7 @@ pub async fn workspace_root(
 }
 
 #[tauri::command]
-pub async fn workspace_tree(
+pub async fn list_workspace_entries(
     app: tauri::AppHandle,
     request: WorkspaceTreeRequest,
 ) -> Result<WorkspaceTreeEntryListResponse, String> {
@@ -344,7 +364,7 @@ pub async fn workspace_tree(
 }
 
 #[tauri::command]
-pub async fn workspace_read_file(
+pub async fn read_workspace_file(
     app: tauri::AppHandle,
     request: WorkspaceFileReadRequest,
 ) -> Result<WorkspaceFileContentResponse, String> {
@@ -359,7 +379,7 @@ pub async fn workspace_read_file(
 /// the empty-state composer. Exactly one owner is required, so a caller cannot
 /// use a valid conversation as cover to enumerate a different project.
 #[tauri::command]
-pub async fn workspace_suggest_refs(
+pub async fn search_workspace_refs(
     app: tauri::AppHandle,
     request: WorkspaceReferenceSuggestRequest,
 ) -> Result<WorkspaceReferenceSuggestionListResponse, String> {
@@ -377,7 +397,7 @@ pub async fn workspace_suggest_refs(
 /// checks used when a message is sent. This is the read-only preview endpoint;
 /// sending still performs a fresh authoritative preflight.
 #[tauri::command]
-pub async fn workspace_resolve_ref(
+pub async fn resolve_workspace_ref(
     app: tauri::AppHandle,
     request: WorkspaceReferenceResolveRequest,
 ) -> Result<WorkspaceReferencePreviewResponse, String> {
@@ -407,9 +427,9 @@ pub async fn workspace_resolve_ref(
 
 /// Confirm that a path-looking Markdown token names a real object under the
 /// selected workspace. This performs containment and metadata checks only;
-/// unlike `workspace_resolve_ref`, it never reads file contents.
+/// unlike `resolve_workspace_ref`, it never reads file contents.
 #[tauri::command]
-pub async fn workspace_probe_ref(
+pub async fn test_workspace_ref(
     app: tauri::AppHandle,
     request: WorkspaceReferenceProbeRequest,
 ) -> Result<WorkspaceReferenceProbeResponse, String> {
@@ -422,7 +442,7 @@ pub async fn workspace_probe_ref(
 }
 
 #[tauri::command]
-pub async fn workspace_git_status(
+pub async fn get_workspace_git_status(
     app: tauri::AppHandle,
     request: WorkspaceGitStatusRequest,
 ) -> Result<WorkspaceGitStatusResponse, String> {
@@ -431,7 +451,7 @@ pub async fn workspace_git_status(
 }
 
 #[tauri::command]
-pub async fn workspace_git_diff(
+pub async fn get_workspace_git_diff(
     app: tauri::AppHandle,
     request: WorkspaceGitDiffRequest,
 ) -> Result<WorkspaceGitDiffResponse, String> {
@@ -448,7 +468,7 @@ pub async fn workspace_git_diff(
 /// before it lands in the template: the template is the user's own to break,
 /// but the path came over IPC and must not name something outside the project.
 #[tauri::command]
-pub async fn open_in_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenRequest) -> Result<(), String> {
+pub async fn open_workspace_editor(app: tauri::AppHandle, request: WorkspaceEditorOpenRequest) -> Result<(), String> {
     let WorkspaceEditorOpenRequest {
         conversation_id,
         rel_path,
@@ -593,23 +613,23 @@ mod tests {
     #[test]
     fn workspace_requests_reject_unknown_and_omitted_nullable_fields() {
         let valid = serde_json::json!({
-            "conversationId": "conversation-1",
-            "projectId": null,
+            "conversation_id": "conversation-1",
+            "project_id": null,
             "path": "src/main.rs",
-            "lineStart": null,
-            "lineEnd": null
+            "line_start": null,
+            "line_end": null
         });
         serde_json::from_value::<WorkspaceReferenceResolveRequest>(valid.clone()).unwrap();
 
         let mut missing_nullable = valid.clone();
-        missing_nullable.as_object_mut().unwrap().remove("lineEnd");
+        missing_nullable.as_object_mut().unwrap().remove("line_end");
         assert!(serde_json::from_value::<WorkspaceReferenceResolveRequest>(missing_nullable).is_err());
 
         let mut unknown = valid;
         unknown
             .as_object_mut()
             .unwrap()
-            .insert("legacyPath".into(), serde_json::json!("src/old.rs"));
+            .insert("legacy_path".into(), serde_json::json!("src/old.rs"));
         assert!(serde_json::from_value::<WorkspaceReferenceResolveRequest>(unknown).is_err());
     }
 

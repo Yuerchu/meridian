@@ -23,7 +23,7 @@ use meridian_core::db::sea::ops::{conversation, emoji};
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ComposerDraftReadRequest {
     /// `null` is the welcome composer, which has no conversation yet.
     conversation_id: RequiredNullable<String>,
@@ -38,7 +38,7 @@ pub struct ComposerDraftAttachmentRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ComposerDraftUpsertRequest {
     conversation_id: RequiredNullable<String>,
     body: String,
@@ -50,7 +50,7 @@ pub struct ComposerDraftUpsertRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ComposerDraftDeleteRequest {
     conversation_id: RequiredNullable<String>,
     revision: i64,
@@ -280,7 +280,7 @@ pub async fn get_composer_draft(
 
 /// Store what a composer holds. An empty draft removes the row.
 #[tauri::command]
-pub async fn save_composer_draft(
+pub async fn set_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftUpsertRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
@@ -289,7 +289,7 @@ pub async fn save_composer_draft(
 
 /// Forget a draft once what it held has been sent.
 #[tauri::command]
-pub async fn clear_composer_draft(
+pub async fn delete_composer_draft(
     app: tauri::AppHandle,
     request: ComposerDraftDeleteRequest,
 ) -> Result<ComposerDraftWriteResponse, String> {
@@ -303,11 +303,11 @@ mod tests {
 
     fn upsert(conversation_id: Option<&str>, body: &str, revision: i64) -> ComposerDraftUpsertRequest {
         serde_json::from_value(serde_json::json!({
-            "conversationId": conversation_id,
+            "conversation_id": conversation_id,
             "body": body,
             "attachments": [],
-            "conversationRefs": [],
-            "stickerId": null,
+            "conversation_refs": [],
+            "sticker_id": null,
             "revision": revision,
         }))
         .unwrap()
@@ -316,11 +316,11 @@ mod tests {
     #[test]
     fn requests_are_strict() {
         let complete = serde_json::json!({
-            "conversationId": null, "body": "x", "attachments": [], "conversationRefs": [],
-            "stickerId": null, "revision": 1,
+            "conversation_id": null, "body": "x", "attachments": [], "conversation_refs": [],
+            "sticker_id": null, "revision": 1,
         });
         assert!(serde_json::from_value::<ComposerDraftUpsertRequest>(complete.clone()).is_ok());
-        for key in ["conversationId", "stickerId"] {
+        for key in ["conversation_id", "sticker_id"] {
             let mut missing = complete.clone();
             missing.as_object_mut().unwrap().remove(key);
             assert!(
@@ -333,7 +333,7 @@ mod tests {
         assert!(serde_json::from_value::<ComposerDraftUpsertRequest>(unknown).is_err());
         assert!(serde_json::from_value::<ComposerDraftReadRequest>(serde_json::json!({})).is_err());
         assert!(
-            serde_json::from_value::<ComposerDraftDeleteRequest>(serde_json::json!({ "conversationId": null }))
+            serde_json::from_value::<ComposerDraftDeleteRequest>(serde_json::json!({ "conversation_id": null }))
                 .is_err()
         );
     }
@@ -432,7 +432,7 @@ mod tests {
             }
         );
         let clear: ComposerDraftDeleteRequest =
-            serde_json::from_value(serde_json::json!({ "conversationId": null, "revision": 8 })).unwrap();
+            serde_json::from_value(serde_json::json!({ "conversation_id": null, "revision": 8 })).unwrap();
         assert!(delete_draft(&db, clear, 3).await.unwrap().applied);
         assert!(read_draft(&db, &DraftSlot::NewConversation).await.unwrap().is_none());
         assert!(

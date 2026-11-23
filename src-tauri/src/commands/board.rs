@@ -24,7 +24,7 @@ use meridian_core::db::sea::ops::{
     assistant as assistant_ops, board_task, conversation as conversation_ops, project as project_ops,
 };
 use meridian_core::services::Services;
-use meridian_core::util::now_ms;
+use meridian_core::util::{double_option, now_ms};
 use meridian_core::worktree;
 
 /// The board's own channel: only these commands change a card, so only they
@@ -56,7 +56,7 @@ fn title_of(title: &str) -> Result<String, String> {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct BoardTaskCreateRequest {
     project_id: String,
     title: String,
@@ -65,36 +65,37 @@ pub struct BoardTaskCreateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BoardTaskUpdateRequest {
-    id: String,
-    title: String,
-    request: RequiredNullable<String>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BoardTaskMoveRequest {
-    id: String,
+#[serde(deny_unknown_fields)]
+pub struct BoardTaskPositionRequest {
     stage: BoardStage,
     index: u32,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct BoardTaskUpdateRequest {
+    id: String,
+    title: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    request: Option<Option<String>>,
+    position: Option<BoardTaskPositionRequest>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BoardTaskStartRequest {
     id: String,
     agent_kind: BoardAgentKind,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct BoardTaskWorktreeRemoveRequest {
+#[serde(deny_unknown_fields)]
+pub struct BoardTaskWorktreeDeleteRequest {
     id: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct BoardTaskDeleteRequest {
     id: String,
 }
@@ -113,13 +114,13 @@ async fn card(services: &Services, id: &str) -> Result<meridian_core::db::entity
 }
 
 #[tauri::command]
-pub async fn board_task_list(app: tauri::AppHandle) -> Result<BoardTaskListResponse, String> {
+pub async fn list_board_tasks(app: tauri::AppHandle) -> Result<BoardTaskListResponse, String> {
     let rows = board_task::list(&app.services().db).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
-pub async fn board_task_create(
+pub async fn create_board_task(
     app: tauri::AppHandle,
     request: BoardTaskCreateRequest,
 ) -> Result<BoardTaskInfoResponse, String> {
@@ -161,51 +162,56 @@ pub(crate) async fn create(
 }
 
 #[tauri::command]
-pub async fn board_task_update(
+pub async fn update_board_task(
     app: tauri::AppHandle,
     request: BoardTaskUpdateRequest,
 ) -> Result<BoardTaskInfoResponse, String> {
     let services = app.services();
-    let title = title_of(&request.title)?;
-    let change = board_task::BoardTaskChangeset {
-        title: Some(&title),
-        request: Some(request.request.0.as_deref()),
-        now: now_ms(),
+    let title = request.title.as_deref().map(title_of).transpose()?;
+    let position = match request.position {
+        Some(pos) => Some((pos.stage, usize::try_from(pos.index).map_err(|e| e.to_string())?)),
+        None => None,
     };
-    let updated = services
+    let has_content_patch = title.is_some() || request.request.is_some();
+    let now = now_ms();
+    let found = services
         .db
-        .write(async |tx| board_task::update(tx, &request.id, &change).await)
+        .write(async |tx| {
+            if has_content_patch {
+                let change = board_task::BoardTaskChangeset {
+                    title: title.as_deref(),
+                    request: request.request.as_ref().map(|r| r.as_deref()),
+                    now,
+                };
+                if board_task::update(tx, &request.id, &change).await? == 0 {
+                    return Ok::<_, DbErr>(false);
+                }
+            }
+            if let Some((stage, index)) = position {
+                if !board_task::move_to(tx, &request.id, stage, index, now).await? {
+                    return Ok(false);
+                }
+            } else if !has_content_patch && board_task::get(tx, &request.id).await?.is_none() {
+                return Ok(false);
+            }
+            Ok(true)
+        })
         .await
         .map_err(|e| e.to_string())?;
-    if updated == 0 {
+    if !found {
         return Err(format!("board card `{}` not found", request.id));
     }
-    announce(&services, Some(&request.id));
+    if position.is_some() {
+        // The whole column was renumbered, not just this card.
+        announce(&services, None);
+    } else if has_content_patch {
+        announce(&services, Some(&request.id));
+    }
     card(&services, &request.id).await.map(Into::into)
 }
 
 #[tauri::command]
-pub async fn board_task_move(
-    app: tauri::AppHandle,
-    request: BoardTaskMoveRequest,
-) -> Result<BoardTaskInfoResponse, String> {
-    let services = app.services();
-    let index = usize::try_from(request.index).map_err(|e| e.to_string())?;
-    let moved = services
-        .db
-        .write(async |tx| board_task::move_to(tx, &request.id, request.stage, index, now_ms()).await)
-        .await
-        .map_err(|e| e.to_string())?;
-    if !moved {
-        return Err(format!("board card `{}` not found", request.id));
-    }
-    // The whole column was renumbered, not just this card.
-    announce(&services, None);
-    card(&services, &request.id).await.map(Into::into)
-}
-
-#[tauri::command]
-pub async fn board_task_start(
+pub async fn start_board_task(
     app: tauri::AppHandle,
     request: BoardTaskStartRequest,
 ) -> Result<BoardTaskStartResponse, String> {
@@ -357,9 +363,9 @@ pub(crate) async fn start(
 }
 
 #[tauri::command]
-pub async fn board_task_remove_worktree(
+pub async fn delete_board_task_worktree(
     app: tauri::AppHandle,
-    request: BoardTaskWorktreeRemoveRequest,
+    request: BoardTaskWorktreeDeleteRequest,
 ) -> Result<BoardTaskInfoResponse, String> {
     remove_worktree(&app.services(), &request.id).await
 }
@@ -404,7 +410,7 @@ pub(crate) async fn remove_worktree(services: &Services, id: &str) -> Result<Boa
 }
 
 #[tauri::command]
-pub async fn board_task_delete(app: tauri::AppHandle, request: BoardTaskDeleteRequest) -> Result<(), String> {
+pub async fn delete_board_task(app: tauri::AppHandle, request: BoardTaskDeleteRequest) -> Result<(), String> {
     delete(&app.services(), &request.id).await
 }
 

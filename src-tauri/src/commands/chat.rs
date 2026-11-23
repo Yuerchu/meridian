@@ -498,7 +498,7 @@ impl Drop for TurnGuard<'_> {
 /// Succeeds either way. A stop aimed at a turn that already ended is not a
 /// failure the user needs to see; the front end clears its own state regardless.
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ChatStopRequest {
     pub conversation_id: String,
     pub turn_id: RequiredNullable<String>,
@@ -524,62 +524,62 @@ pub async fn stop_chat(app: tauri::AppHandle, request: ChatStopRequest) -> Resul
 
 #[cfg(test)]
 mod command_contract_tests {
-    use super::{ChatRequest, ChatStopRequest, select_turn_setting};
+    use super::{ChatStartRequest, ChatStopRequest, select_turn_setting};
     use meridian_core::turn::TurnOrigin;
     use serde_json::json;
 
     fn chat_request() -> serde_json::Value {
         json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "message": "hello",
-            "turnId": null,
+            "turn_id": null,
             "replaces": null,
-            "modelOverride": null,
-            "providerOverride": null,
-            "thinkingLevel": null,
-            "assistantId": null,
+            "model_override": null,
+            "provider_override": null,
+            "thinking_level": null,
+            "assistant_id": null,
             "fast": null,
             "mode": null,
             "voice": null,
-            "contextRefs": null,
-            "conversationRefs": null
+            "context_refs": null,
+            "conversation_refs": null
         })
     }
 
     #[test]
     fn chat_request_requires_every_nullable_key_and_rejects_unknown_fields() {
-        serde_json::from_value::<ChatRequest>(chat_request()).unwrap();
+        serde_json::from_value::<ChatStartRequest>(chat_request()).unwrap();
 
         let mut missing = chat_request();
         missing.as_object_mut().unwrap().remove("mode");
-        assert!(serde_json::from_value::<ChatRequest>(missing).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(missing).is_err());
 
         let mut unknown = chat_request();
-        unknown["futureField"] = json!(true);
-        assert!(serde_json::from_value::<ChatRequest>(unknown).is_err());
+        unknown["future_field"] = json!(true);
+        assert!(serde_json::from_value::<ChatStartRequest>(unknown).is_err());
 
         let mut invalid_mode = chat_request();
         invalid_mode["mode"] = json!("future_mode");
-        assert!(serde_json::from_value::<ChatRequest>(invalid_mode).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(invalid_mode).is_err());
 
         let mut incomplete_reference = chat_request();
-        incomplete_reference["contextRefs"] = json!([{
+        incomplete_reference["context_refs"] = json!([{
             "path": "src/main.rs",
-            "lineStart": null
+            "line_start": null
         }]);
-        assert!(serde_json::from_value::<ChatRequest>(incomplete_reference).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(incomplete_reference).is_err());
     }
 
     #[test]
     fn chat_stop_request_requires_explicit_nullable_turn_id() {
         serde_json::from_value::<ChatStopRequest>(json!({
-            "conversationId": "conversation-1",
-            "turnId": null
+            "conversation_id": "conversation-1",
+            "turn_id": null
         }))
         .unwrap();
         assert!(
             serde_json::from_value::<ChatStopRequest>(json!({
-                "conversationId": "conversation-1"
+                "conversation_id": "conversation-1"
             }))
             .is_err()
         );
@@ -677,8 +677,8 @@ impl meridian_core::services::StartTurn for DesktopTurns {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChatRequest {
+#[serde(deny_unknown_fields)]
+pub struct ChatStartRequest {
     pub conversation_id: String,
     pub message: RequiredNullable<String>,
     pub turn_id: RequiredNullable<String>,
@@ -690,7 +690,7 @@ pub struct ChatRequest {
     pub fast: RequiredNullable<bool>,
     pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
     pub voice: RequiredNullable<bool>,
-    pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    pub context_refs: RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>,
     /// Conversations the user dragged into the composer, as bare ids. Not part
     /// of `context_refs`: a dragged thread has no `@` marker in the visible
     /// text, so the reconcile-against-the-message contract cannot apply — the
@@ -731,8 +731,8 @@ pub struct ChatRequest {
 ///
 /// `turn_id` is the front end's, minted before it sent. See
 /// `TurnCoordinator::try_acquire_turn_as` for why it is not minted here.
-pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), String> {
-    let ChatRequest {
+pub async fn start_chat(app: tauri::AppHandle, request: ChatStartRequest) -> Result<(), String> {
+    let ChatStartRequest {
         conversation_id,
         message: RequiredNullable(message),
         turn_id: RequiredNullable(turn_id),
@@ -747,6 +747,7 @@ pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), Str
         context_refs: RequiredNullable(context_refs),
         conversation_refs: RequiredNullable(conversation_refs),
     } = request;
+    let context_refs = context_refs.map(|refs| refs.into_iter().map(Into::into).collect());
     // Decided here rather than inside, so the failure path below can name the
     // turn it is closing without depending on how far the run got.
     //

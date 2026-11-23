@@ -5,17 +5,17 @@ use tauri::Manager;
 
 use crate::ServicesExt;
 use crate::commands::model_config::RequiredNullable;
-use crate::remote::{AppRemote, ListenConfig, ListenStatusResponse, RemoteServer, load_config, save_config};
+use crate::remote::{AppRemote, ListenConfig, RemoteServer, RemoteStatusResponse, load_config, save_config};
 
 #[derive(Debug, serde::Serialize)]
-pub struct ListenConfigInfoResponse {
+pub struct RemoteConfigInfoResponse {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
     pub token: Option<String>,
 }
 
-impl From<ListenConfig> for ListenConfigInfoResponse {
+impl From<ListenConfig> for RemoteConfigInfoResponse {
     fn from(config: ListenConfig) -> Self {
         Self {
             enabled: config.enabled,
@@ -28,15 +28,15 @@ impl From<ListenConfig> for ListenConfigInfoResponse {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ListenConfigUpdateRequest {
+pub struct RemoteConfigUpdateRequest {
     pub enabled: bool,
     pub host: String,
     pub port: u16,
     pub token: RequiredNullable<String>,
 }
 
-impl From<ListenConfigUpdateRequest> for ListenConfig {
-    fn from(config: ListenConfigUpdateRequest) -> Self {
+impl From<RemoteConfigUpdateRequest> for ListenConfig {
+    fn from(config: RemoteConfigUpdateRequest) -> Self {
         Self {
             enabled: config.enabled,
             host: config.host,
@@ -47,12 +47,12 @@ impl From<ListenConfigUpdateRequest> for ListenConfig {
 }
 
 #[tauri::command]
-pub async fn get_listen_status(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
+pub async fn get_remote_status(app: tauri::AppHandle) -> Result<RemoteStatusResponse, String> {
     Ok(app.state::<AppRemote>().0.lock().await.status())
 }
 
 #[tauri::command]
-pub async fn get_listen_config(app: tauri::AppHandle) -> Result<ListenConfigInfoResponse, String> {
+pub async fn get_remote_config(app: tauri::AppHandle) -> Result<RemoteConfigInfoResponse, String> {
     Ok(app.state::<AppRemote>().0.lock().await.config().clone().into())
 }
 
@@ -62,22 +62,23 @@ pub async fn get_listen_config(app: tauri::AppHandle) -> Result<ListenConfigInfo
 /// without one: a user who has never turned this on has no token, and asking
 /// them to invent one is asking for `1234`.
 #[tauri::command]
-pub async fn save_listen_config(
+pub async fn set_remote_config(
     app: tauri::AppHandle,
-    request: ListenConfigUpdateRequest,
-) -> Result<ListenStatusResponse, String> {
+    request: RemoteConfigUpdateRequest,
+) -> Result<RemoteConfigInfoResponse, String> {
     let services = app.services();
     let mut config = ListenConfig::from(request);
     if config.enabled && config.token.as_deref().unwrap_or("").is_empty() {
         config.token = Some(generate_token());
     }
     save_config(&services.db, &config).await?;
-    restart(&app, config).await
+    restart(&app, config.clone()).await?;
+    Ok(config.into())
 }
 
 /// Mint a new token, which disconnects every device using the old one.
 #[tauri::command]
-pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConfigInfoResponse, String> {
+pub async fn reset_remote_token(app: tauri::AppHandle) -> Result<RemoteConfigInfoResponse, String> {
     let services = app.services();
     let mut config = load_config(&services.db).await?;
     config.token = Some(generate_token());
@@ -87,7 +88,7 @@ pub async fn regenerate_listen_token(app: tauri::AppHandle) -> Result<ListenConf
 }
 
 #[tauri::command]
-pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
+pub async fn start_remote(app: tauri::AppHandle) -> Result<RemoteStatusResponse, String> {
     let services = app.services();
     let mut config = load_config(&services.db).await?;
     config.enabled = true;
@@ -99,7 +100,7 @@ pub async fn start_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse,
 }
 
 #[tauri::command]
-pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, String> {
+pub async fn stop_remote(app: tauri::AppHandle) -> Result<RemoteStatusResponse, String> {
     let services = app.services();
     let mut config = load_config(&services.db).await?;
     config.enabled = false;
@@ -107,7 +108,7 @@ pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatusResponse, 
     restart(&app, config).await
 }
 
-pub type ListenAddressesResponse = Vec<String>;
+pub type RemoteAddressesResponse = Vec<String>;
 
 /// The addresses a second device could dial.
 ///
@@ -116,7 +117,7 @@ pub type ListenAddressesResponse = Vec<String>;
 /// interface first is not worth the trouble — they are shown as a list and the
 /// user picks the one their phone is on.
 #[tauri::command]
-pub fn get_listen_addresses(_app: tauri::AppHandle) -> Result<ListenAddressesResponse, String> {
+pub fn list_remote_addresses(_app: tauri::AppHandle) -> Result<RemoteAddressesResponse, String> {
     Ok(local_addresses())
 }
 
@@ -156,7 +157,7 @@ fn hostname() -> Result<String, String> {
 /// The pause is the port: a listener that has just been dropped is not
 /// immediately re-bindable, and without it the restart fails with "address in
 /// use" for a server that is on its way out. Same 300ms the hook server uses.
-async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenStatusResponse, String> {
+async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<RemoteStatusResponse, String> {
     let services = app.services();
     let holder = app.state::<AppRemote>();
     let mut guard = holder.0.lock().await;
@@ -189,15 +190,15 @@ mod tests {
     }
 
     #[test]
-    fn listen_config_request_is_a_closed_complete_object() {
-        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(request()).is_ok());
+    fn remote_config_request_is_a_closed_complete_object() {
+        assert!(serde_json::from_value::<RemoteConfigUpdateRequest>(request()).is_ok());
 
         let mut missing = request();
         missing.as_object_mut().unwrap().remove("token");
-        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(missing).is_err());
+        assert!(serde_json::from_value::<RemoteConfigUpdateRequest>(missing).is_err());
 
         let mut unknown = request();
         unknown["bind_all"] = json!(true);
-        assert!(serde_json::from_value::<ListenConfigUpdateRequest>(unknown).is_err());
+        assert!(serde_json::from_value::<RemoteConfigUpdateRequest>(unknown).is_err());
     }
 }

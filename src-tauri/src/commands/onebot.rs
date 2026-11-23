@@ -13,6 +13,7 @@ pub struct OneBotConfigInfoResponse {
     pub assistant_id: Option<String>,
     pub admin_users: Vec<i64>,
     pub ack_emoji_id: String,
+    pub private_media_origins: Vec<onebot::PrivateMediaOrigin>,
     // The balance threshold used to be here. It is `notify.balance.threshold`
     // now — one threshold, because the watcher that reads it no longer lives
     // inside the chat server and QQ is one outlet among several. See migration
@@ -36,6 +37,7 @@ impl OneBotConfigInfoResponse {
             assistant_id: config.assistant_id,
             admin_users: config.admin_users,
             ack_emoji_id: config.ack_emoji_id,
+            private_media_origins: config.private_media_origins,
             voice_capture_sessions: config.voice_capture_sessions,
             voice_send_enabled: config.voice_send_enabled,
             voice_send_groups: config.voice_send_groups,
@@ -103,6 +105,7 @@ pub struct OneBotConfigUpdateRequest {
     pub assistant_id: RequiredNullable<String>,
     pub admin_users: Vec<i64>,
     pub ack_emoji_id: String,
+    pub private_media_origins: Vec<onebot::PrivateMediaOrigin>,
     pub voice_capture_sessions: Vec<String>,
     pub voice_send_enabled: bool,
     pub voice_send_groups: Vec<String>,
@@ -123,6 +126,7 @@ impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
             assistant_id: config.assistant_id.0,
             admin_users: config.admin_users,
             ack_emoji_id: config.ack_emoji_id,
+            private_media_origins: config.private_media_origins,
             voice_capture_sessions: config.voice_capture_sessions,
             voice_send_enabled: config.voice_send_enabled,
             voice_send_groups: config.voice_send_groups,
@@ -151,11 +155,20 @@ pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfo
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpdateRequest) -> Result<(), String> {
+pub async fn set_onebot_config(
+    app: tauri::AppHandle,
+    request: OneBotConfigUpdateRequest,
+) -> Result<OneBotConfigInfoResponse, String> {
     let services = app.services();
     let replies = request.replies.clone();
     let config = onebot::OneBotConfig::try_from(request)?;
+    let ob = app.state::<onebot::AppOneBot>();
+    let server = ob.0.lock().await;
     onebot::save_settings(&services.db, &config, &replies).await?;
+    if server.credentials_changed(&config) || !config.enabled {
+        // Revoked credentials must not remain live until a manual restart.
+        server.stop().await;
+    }
 
     // 语音策略立刻生效，不等重启。
     //
@@ -170,14 +183,19 @@ pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpda
     // 失败要报出去。这一步读 opt-out 名单和钥匙串，两者都可能失败，而失败之后
     // 配置已经写进库了——不说的话，用户看到的是一次成功的保存加上一个什么都
     // 没变的会话。
-    onebot::refresh_voice_policy(&services, &config).await
+    let result = onebot::refresh_voice_policy(&services, &config).await;
+    drop(server);
+    result?;
+    let saved_config = onebot::load_config(&services.db).await?;
+    let saved_replies = onebot::replies::load(&services.db).await?;
+    Ok(OneBotConfigInfoResponse::from_saved(saved_config, saved_replies))
 }
 
 /// 出站语音差哪一项。设置页照着它说话——四项之中缺哪个只有后端知道，而这个
 /// 功能唯一一种"什么都不说"的失败就是开关开着、工具不出现。
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
+pub async fn get_onebot_voice_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
     let services = app.services();
     let config = onebot::load_config(&services.db).await?;
     Ok(onebot::voice_send_readiness(&services, &config).into())
@@ -187,10 +205,10 @@ pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSend
 #[tauri::command]
 pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
-    let config = onebot::load_config(&services.db).await?;
-
     let ob = app.state::<onebot::AppOneBot>();
     let mut server_guard = ob.0.lock().await;
+    // Serialize the snapshot with saves: never reinstall a revoked token.
+    let config = onebot::load_config(&services.db).await?;
 
     // Stop the previous instance before replacing it so its accept loop exits and
     // releases the listener, instead of hot-spinning on a closed shutdown channel
@@ -231,6 +249,7 @@ mod tests {
             "assistant_id": null,
             "admin_users": [],
             "ack_emoji_id": "76",
+            "private_media_origins": [],
             "voice_capture_sessions": [],
             "voice_send_enabled": false,
             "voice_send_groups": [],
@@ -256,7 +275,7 @@ mod tests {
         moved["balance_alert_threshold"] = json!("1.25");
         assert!(serde_json::from_value::<OneBotConfigUpdateRequest>(moved).is_err());
 
-        for key in ["access_token", "assistant_id"] {
+        for key in ["access_token", "assistant_id", "private_media_origins"] {
             let mut missing = request();
             missing.as_object_mut().unwrap().remove(key);
             assert!(

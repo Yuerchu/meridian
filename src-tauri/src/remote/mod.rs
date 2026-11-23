@@ -64,7 +64,7 @@ impl Default for ListenConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ListenStatusResponse {
+pub struct RemoteStatusResponse {
     pub enabled: bool,
     pub running: bool,
     pub host: String,
@@ -194,8 +194,8 @@ impl RemoteServer {
         self.running.load(Ordering::Relaxed)
     }
 
-    pub fn status(&self) -> ListenStatusResponse {
-        ListenStatusResponse {
+    pub fn status(&self) -> RemoteStatusResponse {
+        RemoteStatusResponse {
             enabled: self.state.config.enabled,
             running: self.is_running(),
             host: self.state.config.host.clone(),

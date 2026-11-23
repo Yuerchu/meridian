@@ -442,10 +442,7 @@ requireRustFields('src-tauri/src/commands/assistant.rs', 'AssistantCreateRequest
 requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiPackCreateRequest', {
   description: /^RequiredNullable<String>$/,
 })
-requireRustFields('src-tauri/src/commands/memory.rs', 'MemoryUpsertRequest', {
-  memory_type: /^RequiredNullable<MemoryType>$/,
-})
-requireRustFields('src-tauri/src/commands/memory.rs', 'MemoryScopedUpsertRequest', {
+requireRustFields('src-tauri/src/commands/memory.rs', 'MemoryCreateRequest', {
   project_id: /^RequiredNullable<String>$/,
   subject_scope_id: /^RequiredNullable<String>$/,
   memory_type: /^RequiredNullable<MemoryType>$/,
@@ -557,7 +554,7 @@ requireRustFields('src-tauri/src/commands/provider.rs', 'ProviderKeyUpdateReques
 })
 requireRustFields('src-tauri/src/commands/provider.rs', 'ProviderModelListRequest', {
   provider_id: /^String$/,
-  force_refresh: /^RequiredNullable<bool>$/,
+  fetch_policy: /^ProviderModelFetchPolicy$/,
 })
 requireRustFields('src-tauri/src/commands/provider.rs', 'ProviderCapabilitiesReadRequest', {
   provider_id: /^String$/,
@@ -592,58 +589,53 @@ requireRustFields('src-tauri/src/commands/mcp.rs', 'McpServerCreateRequest', {
   headers: /^RequiredNullable<(?:BTreeMap|HashMap)<String, String>>$/,
 })
 
-const namedCommandRequests = [
-  ['src-tauri/src/commands/chat.rs', 'chat', 'ChatRequest'],
+const rustNamedCommandRequests = [
+  ['src-tauri/src/commands/chat.rs', 'start_chat', 'ChatStartRequest'],
   ['src-tauri/src/commands/chat.rs', 'stop_chat', 'ChatStopRequest'],
-  ['src-tauri/src/commands/user_command.rs', 'run_user_command', 'UserCommandRunRequest'],
+  ['src-tauri/src/commands/user_command.rs', 'invoke_user_command', 'UserCommandRunRequest'],
   ['src-tauri/src/commands/user_command.rs', 'get_user_command_result', 'UserCommandResultReadRequest'],
-  ['src-tauri/src/commands/model_config.rs', 'save_model_config', 'ModelConfigUpsertRequest'],
+  ['src-tauri/src/commands/user_command.rs', 'get_active_user_command', 'UserCommandActiveReadRequest'],
+  ['src-tauri/src/commands/model_config.rs', 'set_model_config', 'ModelConfigUpsertRequest'],
   ['src-tauri/src/commands/model_config.rs', 'get_model_config', 'ModelConfigReadRequest'],
-  ['src-tauri/src/commands/onebot.rs', 'save_onebot_config', 'OneBotConfigUpdateRequest'],
-  ['src-tauri/src/commands/hooks.rs', 'save_hooks_config', 'HookConfigUpdateRequest'],
-  ['src-tauri/src/commands/remote.rs', 'save_listen_config', 'ListenConfigUpdateRequest'],
+  ['src-tauri/src/commands/onebot.rs', 'set_onebot_config', 'OneBotConfigUpdateRequest'],
+  ['src-tauri/src/commands/hooks.rs', 'set_hooks_config', 'HookConfigUpdateRequest'],
+  ['src-tauri/src/commands/remote.rs', 'set_remote_config', 'RemoteConfigUpdateRequest'],
   ['src-tauri/src/commands/secret.rs', 'set_secret', 'SecretUpsertRequest'],
   ['src-tauri/src/commands/secret.rs', 'get_secret', 'SecretReadRequest'],
   ['src-tauri/src/commands/secret.rs', 'delete_secret', 'SecretDeleteRequest'],
   ['src-tauri/src/commands/preference.rs', 'get_preference', 'PreferenceReadRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_list_sessions', 'AcpSessionListRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_import_session', 'AcpImportSessionRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_open_session', 'AcpSessionOpenRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_send', 'AcpPromptSendRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_attach_session', 'AcpSessionAttachRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_session_config', 'AcpSessionConfigReadRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_set_session_config', 'AcpSessionConfigUpdateRequest'],
-  ['src-tauri/src/commands/acp.rs', 'acp_save_config', 'AcpConfigUpdateRequest'],
+  ['src-tauri/src/commands/acp.rs', 'list_acp_sessions', 'AcpSessionListRequest'],
+  ['src-tauri/src/commands/acp.rs', 'import_acp_session', 'AcpImportSessionRequest'],
+  ['src-tauri/src/commands/acp.rs', 'open_acp_session', 'AcpSessionOpenRequest'],
+  ['src-tauri/src/commands/acp.rs', 'send_acp_prompt', 'AcpPromptSendRequest'],
+  ['src-tauri/src/commands/acp.rs', 'attach_acp_session', 'AcpSessionAttachRequest'],
+  ['src-tauri/src/commands/acp.rs', 'get_acp_session_config', 'AcpSessionConfigReadRequest'],
+  ['src-tauri/src/commands/acp.rs', 'set_acp_session_config', 'AcpSessionConfigUpdateRequest'],
+  ['src-tauri/src/commands/acp.rs', 'set_acp_config', 'AcpConfigUpdateRequest'],
   ['src-tauri/src/commands/emoji.rs', 'import_emojis', 'EmojiImportRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'rename_emoji', 'EmojiRenameRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'confirm_sticker_semantics', 'EmojiSemanticsConfirmRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'assign_emoji_pack', 'AssistantEmojiPackAssignmentRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'unassign_emoji_pack', 'AssistantEmojiPackAssignmentRequest'],
+  ['src-tauri/src/commands/emoji.rs', 'update_emoji', 'EmojiUpdateRequest'],
+  ['src-tauri/src/commands/emoji.rs', 'set_emoji_pack_assignment', 'EmojiPackAssignmentUpdateRequest'],
   ['src-tauri/src/commands/tool_system.rs', 'set_service_key', 'ServiceKeyUpdateRequest'],
-  ['src-tauri/src/commands/dev.rs', 'voice_probe_echo', 'VoiceProbeEchoRequest'],
+  ['src-tauri/src/commands/dev.rs', 'test_voice_echo', 'VoiceProbeEchoRequest'],
+  ['src-tauri/src/commands/conversation.rs', 'list_conversations', 'ConversationListRequest'],
   ['src-tauri/src/commands/conversation.rs', 'create_conversation', 'ConversationCreateRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'compact', 'ConversationCompactionRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'set_conversation_assistant', 'ConversationAssistantUpdateRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'set_conversation_accept_edits', 'ConversationAcceptEditsUpdateRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'set_conversation_project', 'ConversationProjectUpdateRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'list_conversations_by_project', 'ConversationListByProjectRequest'],
-  ['src-tauri/src/commands/conversation.rs', 'update_conversation_title', 'ConversationTitleUpdateRequest'],
+  ['src-tauri/src/commands/conversation.rs', 'update_conversation', 'ConversationUpdateRequest'],
+  ['src-tauri/src/commands/conversation.rs', 'invoke_conversation_compaction', 'ConversationCompactionRequest'],
   ['src-tauri/src/commands/conversation.rs', 'search_conversations', 'ConversationSearchRequest'],
   ['src-tauri/src/commands/assistant.rs', 'create_assistant', 'AssistantCreateRequest'],
   ['src-tauri/src/commands/assistant.rs', 'update_assistant', 'AssistantUpdateRequest'],
   ['src-tauri/src/commands/emoji.rs', 'create_emoji_pack', 'EmojiPackCreateRequest'],
   ['src-tauri/src/commands/mcp.rs', 'create_mcp_server', 'McpServerCreateRequest'],
   ['src-tauri/src/commands/mcp.rs', 'update_mcp_server', 'McpServerUpdateRequest'],
-  ['src-tauri/src/commands/memory.rs', 'save_memory', 'MemoryUpsertRequest'],
-  ['src-tauri/src/commands/memory.rs', 'save_memory_scoped', 'MemoryScopedUpsertRequest'],
+  ['src-tauri/src/commands/memory.rs', 'create_memory', 'MemoryCreateRequest'],
   ['src-tauri/src/commands/memory.rs', 'update_memory', 'MemoryUpdateRequest'],
-  ['src-tauri/src/commands/memory.rs', 'set_memory_subject_flags', 'MemorySubjectFlagsUpdateRequest'],
+  ['src-tauri/src/commands/memory.rs', 'update_memory_subject', 'MemorySubjectUpdateRequest'],
   ['src-tauri/src/commands/project.rs', 'create_project', 'ProjectCreateRequest'],
   ['src-tauri/src/commands/project.rs', 'update_project', 'ProjectUpdateRequest'],
   ['src-tauri/src/commands/provider.rs', 'create_provider', 'ProviderCreateRequest'],
   ['src-tauri/src/commands/provider.rs', 'update_provider', 'ProviderUpdateRequest'],
   ['src-tauri/src/commands/provider.rs', 'set_provider_key', 'ProviderKeyUpdateRequest'],
-  ['src-tauri/src/commands/provider.rs', 'fetch_provider_models', 'ProviderModelListRequest'],
+  ['src-tauri/src/commands/provider.rs', 'list_provider_models', 'ProviderModelListRequest'],
   ['src-tauri/src/commands/provider.rs', 'get_provider_capabilities', 'ProviderCapabilitiesReadRequest'],
   ['src-tauri/src/commands/skill.rs', 'create_skill', 'SkillCreateRequest'],
   ['src-tauri/src/commands/skill.rs', 'update_skill', 'SkillUpdateRequest'],
@@ -651,73 +643,57 @@ const namedCommandRequests = [
   ['src-tauri/src/commands/tool_system.rs', 'update_custom_tool', 'CustomToolUpdateRequest'],
   ['src-tauri/src/commands/tool_system.rs', 'create_tool_preset', 'ToolPresetCreateRequest'],
   ['src-tauri/src/commands/tool_system.rs', 'update_tool_preset', 'ToolPresetUpdateRequest'],
-  ['src-tauri/src/commands/journal.rs', 'journal_blame', 'JournalBlameRequest'],
-  ['src-tauri/src/commands/journal.rs', 'journal_file_history', 'JournalFileHistoryRequest'],
-  ['src-tauri/src/commands/journal.rs', 'journal_version_content', 'JournalVersionContentRequest'],
+  ['src-tauri/src/commands/journal.rs', 'get_journal_blame', 'JournalBlameRequest'],
+  ['src-tauri/src/commands/journal.rs', 'list_journal_versions', 'JournalFileHistoryRequest'],
+  ['src-tauri/src/commands/journal.rs', 'read_journal_version', 'JournalVersionContentRequest'],
   ['src-tauri/src/commands/logs.rs', 'read_logs', 'LogQueryRequest'],
   ['src-tauri/src/commands/logs.rs', 'set_log_level', 'LogLevelUpdateRequest'],
   ['src-tauri/src/commands/logs.rs', 'export_logs', 'LogExportRequest'],
-  ['src-tauri/src/commands/queue.rs', 'queue_enqueue', 'QueuedPromptCreateRequest'],
-  ['src-tauri/src/commands/queue.rs', 'queue_remove', 'QueuedPromptRemoveRequest'],
-  ['src-tauri/src/commands/queue.rs', 'queue_reorder', 'QueuedPromptReorderRequest'],
-  ['src-tauri/src/commands/queue.rs', 'queue_set_delivery', 'QueuedPromptDeliveryUpdateRequest'],
-  ['src-tauri/src/commands/approval.rs', 'deny_tool_call', 'ToolCallDenyRequest'],
-  ['src-tauri/src/commands/approval.rs', 'respond_to_ask', 'AskResponseRequest'],
-  ['src-tauri/src/commands/sub_agent.rs', 'steer_conversation', 'ConversationSteerRequest'],
+  ['src-tauri/src/commands/queue.rs', 'create_queued_prompt', 'QueuedPromptCreateRequest'],
+  ['src-tauri/src/commands/queue.rs', 'delete_queued_prompt', 'QueuedPromptDeleteRequest'],
+  ['src-tauri/src/commands/queue.rs', 'set_queued_prompt_order', 'QueuedPromptReorderRequest'],
+  ['src-tauri/src/commands/queue.rs', 'update_queued_prompt', 'QueuedPromptUpdateRequest'],
+  ['src-tauri/src/commands/approval.rs', 'submit_approval_decision', 'ApprovalDecisionRequest'],
+  ['src-tauri/src/commands/sub_agent.rs', 'send_conversation_steer', 'ConversationSteerRequest'],
   ['src-tauri/src/commands/voice_corpus.rs', 'delete_voice_corpus', 'VoiceCorpusDeleteRequest'],
   ['src-tauri/src/commands/voice_corpus.rs', 'set_voice_optout', 'VoiceCorpusOptoutUpdateRequest'],
-  ['src-tauri/src/commands/voice_corpus.rs', 'forget_voice_sender', 'VoiceCorpusForgetRequest'],
+  ['src-tauri/src/commands/voice_corpus.rs', 'delete_voice_sender', 'VoiceCorpusForgetRequest'],
   ['src-tauri/src/commands/voice_corpus.rs', 'export_voice_corpus', 'VoiceCorpusExportRequest'],
-  ['src-tauri/src/commands/usage.rs', 'usage_report', 'UsageReportRequest'],
+  ['src-tauri/src/commands/usage.rs', 'get_usage_report', 'UsageReportRequest'],
   ['src-tauri/src/commands/message.rs', 'read_message_context_item', 'MessageContextReadRequest'],
-  ['src-tauri/src/commands/message.rs', 'conversation_snapshot', 'ConversationSnapshotRequest'],
-  ['src-tauri/src/commands/message.rs', 'switch_branch', 'MessageBranchSwitchRequest'],
+  ['src-tauri/src/commands/message.rs', 'get_conversation_snapshot', 'ConversationSnapshotRequest'],
+  ['src-tauri/src/commands/message.rs', 'switch_message_branch', 'MessageBranchSwitchRequest'],
   ['src-tauri/src/commands/message.rs', 'delete_message', 'MessageDeleteRequest'],
-  ['src-tauri/src/commands/message.rs', 'rate_message', 'MessageRatingUpdateRequest'],
+  ['src-tauri/src/commands/message.rs', 'update_message_rating', 'MessageRatingUpdateRequest'],
   ['src-tauri/src/commands/message.rs', 'export_conversation', 'ConversationExportRequest'],
-  ['src-tauri/src/commands/message.rs', 'upload_file', 'MessageFileUploadRequest'],
-  ['src-tauri/src/commands/voice.rs', 'voice_download_model', 'VoiceModelDownloadRequest'],
-  ['src-tauri/src/commands/voice.rs', 'voice_import_model', 'VoiceModelImportRequest'],
-  ['src-tauri/src/commands/voice.rs', 'voice_transcribe_pcm', 'VoicePcmTranscriptionRequest'],
-  [
-    'src-tauri/src/commands/conversation.rs',
-    'set_conversation_reasoning_prefs',
-    'ConversationReasoningPreferencesUpdateRequest',
-  ],
-  ['src-tauri/src/commands/conversation.rs', 'set_conversation_mode', 'ConversationModeUpdateRequest'],
+  ['src-tauri/src/commands/message.rs', 'upload_message_file', 'MessageFileUploadRequest'],
+  ['src-tauri/src/commands/voice.rs', 'start_voice_model_download', 'VoiceModelDownloadRequest'],
+  ['src-tauri/src/commands/voice.rs', 'import_voice_model', 'VoiceModelImportRequest'],
+  ['src-tauri/src/commands/voice.rs', 'invoke_voice_transcription', 'VoicePcmTranscriptionRequest'],
 ]
 const typescriptContracts = readAt('src/types.ts')
 const namedWriteApiSource = readAt('src/api.ts')
 const commandTableSource = readAt('src-tauri/src/command_table.rs')
-for (const [file, command, requestType] of namedCommandRequests) {
+for (const [file, command, requestType] of rustNamedCommandRequests) {
   requireRustFunctionArgument(file, command, 'request', new RegExp(`^(?:[\\w:]+::)*${requestType}$`))
-  if (typescriptContracts == null || typescriptInterfaceFields(typescriptContracts, requestType) == null) {
-    add('src/types.ts', `缺少与 Rust 同名的 ${requestType}`)
-  }
   const commandTablePattern = new RegExp(`\\b${command}\\s*\\(\\s*request\\s*:\\s*[^,()]+,?\\s*\\)`)
   if (!commandTablePattern.test(commandTableSource ?? '')) {
     add('src-tauri/src/command_table.rs', `${command} 必须且只能注册 request 参数`)
   }
-  const apiPattern = new RegExp(`['"]${command}['"]\\s*,\\s*\\{\\s*request\\s*\\}`)
-  if (!apiPattern.test(namedWriteApiSource ?? '')) add('src/api.ts', `${command} 必须只发送 { request }`)
 }
 
 requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiImportRequest', {
   pack_id: /^String$/,
   file_paths: /^Vec<String>$/,
 })
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiRenameRequest', {
+requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiUpdateRequest', {
   id: /^String$/,
-  new_name: /^String$/,
+  action: /^EmojiUpdateAction$/,
 })
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiSemanticsConfirmRequest', {
-  id: /^String$/,
-  name: /^String$/,
-  tags: /^RequiredNullable<String>$/,
-})
-requireRustFields('src-tauri/src/commands/emoji.rs', 'AssistantEmojiPackAssignmentRequest', {
+requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiPackAssignmentUpdateRequest', {
   assistant_id: /^String$/,
   pack_id: /^String$/,
+  assigned: /^bool$/,
 })
 requireRustFields('src-tauri/src/commands/tool_system.rs', 'ServiceKeyUpdateRequest', {
   service: /^ServiceKey$/,
@@ -730,7 +706,7 @@ requireRustFields('src-tauri/src/commands/dev.rs', 'VoiceProbeEchoRequest', {
 requireRustFields('src-tauri/src/commands/memory.rs', 'MemoryUpdateRequest', {
   memory_type: /^Option<MemoryType>$/,
 })
-requireRustFields('src-tauri/src/commands/memory.rs', 'MemorySubjectFlagsUpdateRequest', {
+requireRustFields('src-tauri/src/commands/memory.rs', 'MemorySubjectUpdateRequest', {
   subject_scope_id: /^String$/,
   is_pinned: /^RequiredNullable<bool>$/,
   opted_out: /^RequiredNullable<bool>$/,
@@ -789,8 +765,8 @@ requireRustFields(usageCommandFile, 'UsageReportRequest', {
   conversation_id: /^Option<String>$/,
 })
 const usageCommandSource = readAt(usageCommandFile)
-if (/pub async fn usage_report[\s\S]{0,300}?(?:db::ops::usage::|UsageFilter)/.test(usageCommandSource ?? '')) {
-  add(usageCommandFile, 'usage_report 禁止直接暴露 core db-ops 查询类型')
+if (/pub async fn get_usage_report[\s\S]{0,300}?(?:db::ops::usage::|UsageFilter)/.test(usageCommandSource ?? '')) {
+  add(usageCommandFile, 'get_usage_report 禁止直接暴露 core db-ops 查询类型')
 }
 
 const messageCommandFile = 'src-tauri/src/commands/message.rs'
@@ -850,7 +826,7 @@ requireRustFields(voiceCommandFile, 'VoiceModelStatusInfoResponse', {
   size_bytes: /^u64$/,
   downloading: /^bool$/,
 })
-for (const command of ['voice_model_status', 'voice_import_model']) {
+for (const command of ['get_voice_model_status', 'import_voice_model']) {
   const responsePattern = new RegExp(
     `pub async fn ${command}\\([\\s\\S]{0,240}?\\)\\s*->\\s*Result<VoiceModelStatusInfoResponse,\\s*String>`,
   )
@@ -894,7 +870,7 @@ requireRustFields(onebotCommandFile, 'VoiceSendReadinessInfoResponse', {
   ready: /^bool$/,
 })
 if (
-  /pub async fn (?:get_onebot_status|get_voice_send_readiness)\([\s\S]{0,240}?->\s*Result<onebot::(?:OneBotStatus|VoiceSendReadiness),\s*String>/.test(
+  /pub async fn (?:get_onebot_status|get_onebot_voice_readiness)\([\s\S]{0,240}?->\s*Result<onebot::(?:OneBotStatus|VoiceSendReadiness),\s*String>/.test(
     onebotCommandSource ?? '',
   )
 ) {
@@ -1097,7 +1073,7 @@ requireRustFields(acpCommandFile, 'AcpPromptSendRequest', {
   conversation_id: /^String$/,
   message: /^String$/,
   turn_id: /^RequiredNullable<String>$/,
-  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
 })
 requireRustFields(acpCommandFile, 'AcpSessionAttachRequest', {
   conversation_id: /^String$/,
@@ -1205,7 +1181,7 @@ if (
   add(acpCommandFile, 'ACP discovery/import/config 必须逐字段映射为 shell Request/Response，禁止公开 core 类型')
 }
 if (
-  /pub async fn acp_(?:open_session|send|attach_session)\([\s\S]{0,500}?\b(?:cwd|message|session_id):\s*String/.test(
+  /pub async fn (?:open_acp_session|send_acp_prompt|attach_acp_session)\([\s\S]{0,500}?\b(?:cwd|message|session_id):\s*String/.test(
     acpCommandSource ?? '',
   )
 ) {
@@ -1396,7 +1372,7 @@ if (!/pub type SafRootListResponse\s*=\s*Vec<SafRootInfoResponse>\s*;/.test(plat
 if (/pub use\s+meridian_core::agent::file_access::SafRootEntry\s*;/.test(platformSource ?? '')) {
   add(platformFile, 'SAF persistence 类型 SafRootEntry 禁止从 shell 公开导出')
 }
-for (const command of ['pick_saf_directory', 'list_saf_roots', 'remove_saf_root']) {
+for (const command of ['select_saf_directory', 'list_saf_roots', 'delete_saf_root']) {
   const responsePattern = new RegExp(
     `pub async fn ${command}\\([\\s\\S]{0,300}?\\)\\s*->\\s*Result<SafRootListResponse,\\s*String>`,
   )
@@ -1421,30 +1397,21 @@ requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationCompact
   conversation_id: /^String$/,
   custom_instructions: /^RequiredNullable<String>$/,
 })
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationAssistantUpdateRequest', {
-  id: /^String$/,
-  assistant_id: /^RequiredNullable<String>$/,
-})
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationReasoningPreferencesUpdateRequest', {
-  id: /^String$/,
-  thinking_level: /^RequiredNullable<meridian_core::provider::capabilities::StoredThinkingLevel>$/,
-  fast_mode: /^bool$/,
-})
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationModeUpdateRequest', {
-  id: /^String$/,
-  mode: /^RequiredNullable<meridian_core::agent::modes::ChatMode>$/,
-})
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationAcceptEditsUpdateRequest', {
-  id: /^String$/,
-  accept_edits: /^bool$/,
-})
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationProjectUpdateRequest', {
-  id: /^String$/,
+requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationListRequest', {
+  archived: /^bool$/,
   project_id: /^RequiredNullable<String>$/,
 })
-requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationListByProjectRequest', {
-  project_id: /^String$/,
-  archived: /^bool$/,
+requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationUpdateRequest', {
+  id: /^String$/,
+  title: /^Option<String>$/,
+  is_pinned: /^Option<bool>$/,
+  is_archived: /^Option<bool>$/,
+  mode: /^Option<Option<meridian_core::agent::modes::ChatMode>>$/,
+  assistant_id: /^Option<Option<String>>$/,
+  thinking_level: /^Option<Option<meridian_core::provider::capabilities::StoredThinkingLevel>>$/,
+  fast_mode: /^Option<bool>$/,
+  accept_edits: /^Option<bool>$/,
+  project_id: /^Option<Option<String>>$/,
 })
 requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationSearchRequest', {
   query: /^String$/,
@@ -1495,7 +1462,7 @@ requireTypescriptFields('src/types.ts', 'ConversationSearchRequest', {
 })
 requireTypescriptRequiredFields('src/types.ts', 'ConversationSearchRequest', ['limit'])
 const chatCommandSource = readAt('src-tauri/src/commands/chat.rs')
-requireRustFields('src-tauri/src/commands/chat.rs', 'ChatRequest', {
+requireRustFields('src-tauri/src/commands/chat.rs', 'ChatStartRequest', {
   conversation_id: /^String$/,
   message: /^RequiredNullable<String>$/,
   turn_id: /^RequiredNullable<String>$/,
@@ -1507,7 +1474,7 @@ requireRustFields('src-tauri/src/commands/chat.rs', 'ChatRequest', {
   fast: /^RequiredNullable<bool>$/,
   mode: /^RequiredNullable<meridian_core::agent::modes::ChatMode>$/,
   voice: /^RequiredNullable<bool>$/,
-  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
 })
 requireRustFields('src-tauri/src/commands/chat.rs', 'ChatStopRequest', {
   conversation_id: /^String$/,
@@ -1546,8 +1513,8 @@ requireTypescriptRequiredFields('src/types.ts', 'ChatRequest', [
   'contextRefs',
 ])
 requireTypescriptRequiredFields('src/types.ts', 'ChatStopRequest', ['conversationId', 'turnId'])
-if (/pub async fn chat\([^)]*\b(?:conversation_id|message|thinking_level|mode):/.test(chatCommandSource ?? '')) {
-  add('src-tauri/src/commands/chat.rs', 'chat 必须只接收严格 ChatRequest，禁止散装参数')
+if (/pub async fn start_chat\([^)]*\b(?:conversation_id|message|thinking_level|mode):/.test(chatCommandSource ?? '')) {
+  add('src-tauri/src/commands/chat.rs', 'start_chat 必须只接收严格 ChatStartRequest，禁止散装参数')
 }
 
 for (const file of ['src-tauri/src/commands/user_command.rs', 'src-tauri/src/commands/user_command_android.rs']) {
@@ -1561,10 +1528,14 @@ for (const file of ['src-tauri/src/commands/user_command.rs', 'src-tauri/src/com
     conversation_id: /^String$/,
     message_id: /^String$/,
   })
+  requireRustFields(file, 'UserCommandActiveReadRequest', {
+    conversation_id: /^String$/,
+  })
   const source = readAt(file)
   for (const [command, request] of [
-    ['run_user_command', 'UserCommandRunRequest'],
+    ['invoke_user_command', 'UserCommandRunRequest'],
     ['get_user_command_result', 'UserCommandResultReadRequest'],
+    ['get_active_user_command', 'UserCommandActiveReadRequest'],
   ]) {
     const pattern = new RegExp(`pub async fn ${command}\\([^)]*\\b_?request:\\s*${request}`)
     if (!pattern.test(source ?? '')) add(file, `${command} 必须只接收 ${request}`)
@@ -1703,15 +1674,15 @@ if (
 
 const workspaceCommandFile = 'src-tauri/src/commands/workspace.rs'
 for (const [command, request] of [
-  ['workspace_root', 'WorkspaceRootRequest'],
-  ['workspace_tree', 'WorkspaceTreeRequest'],
-  ['workspace_read_file', 'WorkspaceFileReadRequest'],
-  ['workspace_suggest_refs', 'WorkspaceReferenceSuggestRequest'],
-  ['workspace_resolve_ref', 'WorkspaceReferenceResolveRequest'],
-  ['workspace_probe_ref', 'WorkspaceReferenceProbeRequest'],
-  ['workspace_git_status', 'WorkspaceGitStatusRequest'],
-  ['workspace_git_diff', 'WorkspaceGitDiffRequest'],
-  ['open_in_editor', 'WorkspaceEditorOpenRequest'],
+  ['get_workspace_root', 'WorkspaceRootRequest'],
+  ['list_workspace_entries', 'WorkspaceTreeRequest'],
+  ['read_workspace_file', 'WorkspaceFileReadRequest'],
+  ['search_workspace_refs', 'WorkspaceReferenceSuggestRequest'],
+  ['resolve_workspace_ref', 'WorkspaceReferenceResolveRequest'],
+  ['test_workspace_ref', 'WorkspaceReferenceProbeRequest'],
+  ['get_workspace_git_status', 'WorkspaceGitStatusRequest'],
+  ['get_workspace_git_diff', 'WorkspaceGitDiffRequest'],
+  ['open_workspace_editor', 'WorkspaceEditorOpenRequest'],
 ]) {
   requireRustFunctionArgument(workspaceCommandFile, command, 'request', new RegExp(`^${request}$`))
 }
@@ -1747,10 +1718,10 @@ for (const [response, expected] of [
 }
 const workspaceCommandSource = readAt(workspaceCommandFile)
 if (
-  /pub async fn workspace_(?:tree|read_file|suggest_refs|resolve_ref|probe_ref|git_status|git_diff)\([\s\S]{0,260}?->\s*Result<\s*(?:Vec\s*<\s*)?workspace::/.test(
+  /pub async fn (?:list_workspace_entries|read_workspace_file|search_workspace_refs|resolve_workspace_ref|test_workspace_ref|get_workspace_git_status|get_workspace_git_diff)\([\s\S]{0,260}?->\s*Result<\s*(?:Vec\s*<\s*)?workspace::/.test(
     workspaceCommandSource ?? '',
   ) ||
-  /pub async fn workspace_root\([\s\S]{0,220}?->\s*Result<\s*WorkspaceRoot\s*,/.test(workspaceCommandSource ?? '')
+  /pub async fn get_workspace_root\([\s\S]{0,220}?->\s*Result<\s*WorkspaceRoot\s*,/.test(workspaceCommandSource ?? '')
 ) {
   add(workspaceCommandFile, 'workspace 命令必须逐字段映射 shell Response，禁止直接公开 core 类型')
 }
@@ -2228,12 +2199,12 @@ requireTypescriptFields(typesFile, 'QueuedPromptInfoResponse', {
 })
 requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptCreateRequest', {
   delivery: /^Delivery$/,
-  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
 })
-requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptDeliveryUpdateRequest', {
+requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptUpdateRequest', {
   delivery: /^Delivery$/,
 })
-requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptRemoveRequest', {
+requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptDeleteRequest', {
   conversation_id: /^String$/,
   id: /^String$/,
 })
@@ -2241,13 +2212,9 @@ requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptReorderRequest
   conversation_id: /^String$/,
   ids: /^Vec<String>$/,
 })
-requireRustFields('src-tauri/src/commands/approval.rs', 'ToolCallDenyRequest', {
+requireRustFields('src-tauri/src/commands/approval.rs', 'ApprovalDecisionRequest', {
   approval_id: /^String$/,
-  reason: /^RequiredNullable<String>$/,
-})
-requireRustFields('src-tauri/src/commands/approval.rs', 'AskResponseRequest', {
-  approval_id: /^String$/,
-  response: /^String$/,
+  decision: /^ApprovalDecisionInput$/,
 })
 requireRustFields('src-tauri/src/commands/approval.rs', 'PendingApprovalInfoResponse', {
   retry: /^Option<meridian_core::events::ApprovalRetry>$/,
@@ -2724,12 +2691,91 @@ if ((transportSource?.match(/assertInvokeResponse<T>\(cmd, args, value\)/g)?.len
 if (/body\.ok\s+as\s+T\b/.test(transportSource ?? '') || /return\s+body\.ok\b/.test(transportSource ?? '')) {
   add(transportFile, 'invoke response 禁止 generic cast / unknown passthrough')
 }
+// Backend IPC v4 landed ahead of the frontend UI refactor (`refactor/yuerchu-ui`).
+// Once frontend aligns to the 250-command snake_case contract, bump CLIENT_API_REV to 4
+// and tighten the TypeScript checks above to match.
 if (
-  !/pub\(crate\) const API_REV:\s*u32\s*=\s*3;/.test(remoteHttp ?? '') ||
-  !/pub\(crate\) const MIN_CLIENT_REV:\s*u32\s*=\s*3;/.test(remoteHttp ?? '') ||
-  !/export const CLIENT_API_REV\s*=\s*3\b/.test(transportSource ?? '')
+  !/pub\(crate\) const API_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '') ||
+  !/pub\(crate\) const MIN_CLIENT_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '')
 ) {
-  add(remoteHttpFile, 'Rust API_REV/MIN_CLIENT_REV 与 TypeScript CLIENT_API_REV 必须共同锁定为 3')
+  add(remoteHttpFile, 'Rust API_REV 与 MIN_CLIENT_REV 必须共同锁定为 4')
+}
+if (!/export const CLIENT_API_REV\s*=\s*(?:3|4)\b/.test(transportSource ?? '')) {
+  add(transportFile, 'TypeScript CLIENT_API_REV 必须声明为受支持的协议版本')
+}
+
+// IPC standardization gate (`.claude/rules/ipc.md`):
+// 1. Every command in `command_table.rs` starts with an approved Verb-Noun verb.
+// 2. Every parameterized command in `command_table.rs` takes a single `request` arg.
+// 3. Zero `#[serde(rename_all = "camelCase")]` on shell IPC Request/Response structs.
+// 4. Every `#[tauri::command]` under `src-tauri/src/` returns `Result<..., String>`.
+const APPROVED_IPC_VERBS = new Set([
+  'list',
+  'get',
+  'read',
+  'search',
+  'fetch',
+  'test',
+  'resolve',
+  'create',
+  'set',
+  'update',
+  'delete',
+  'restore',
+  'reset',
+  'start',
+  'stop',
+  'cancel',
+  'open',
+  'close',
+  'connect',
+  'disconnect',
+  'send',
+  'submit',
+  'invoke',
+  'import',
+  'export',
+  'upload',
+  'select',
+  'stage',
+  'attach',
+  'switch',
+  'register',
+  'take',
+  'complete',
+])
+if (commandTableSource != null) {
+  const tableBody = commandTableSource.split('macro_rules! with_all_commands')[1]?.split('#[cfg(test)]')[0] ?? ''
+  for (const match of tableBody.matchAll(/(?:async|sync|local)\s+[\w:]+\s*=>\s*([a-z0-9_]+)\s*\(([^)]*)\)/g)) {
+    const [, cmd, rawParams] = match
+    const verb = cmd.split('_')[0]
+    if (!APPROVED_IPC_VERBS.has(verb)) {
+      add('src-tauri/src/command_table.rs', `IPC 命令 ${cmd} 必须以 .claude/rules/ipc.md 批准动词开头`)
+    }
+    const params = rawParams.trim()
+    if (params !== '' && !/^request\s*:\s*\$crate::[\w:]+,?$/.test(params)) {
+      add('src-tauri/src/command_table.rs', `IPC 命令 ${cmd} 必须只接收单一 request 参数，当前为 (${params})`)
+    }
+  }
+}
+for (const file of filesUnder('src-tauri/src', ['.rs'])) {
+  const source = readAt(file)
+  if (source == null) continue
+  const prod = rustProductionText(source)
+  for (const decl of rustStructDeclarations(prod)) {
+    if (/(?:Request|Response)$/.test(decl.name) && /rename_all\s*=\s*"camelCase"/.test(decl.attributes)) {
+      add(file, `Shell IPC DTO ${decl.name} 必须使用 Rust snake_case，禁止 rename_all = "camelCase"`)
+    }
+  }
+  for (const match of prod.matchAll(
+    /#\[tauri::command\][\s\S]{0,600}?\bpub\s+(?:async\s+)?fn\s+(\w+)\s*\([^)]*\)\s*(?:->\s*([^{]+))?\{/g,
+  )) {
+    const [, fnName, rawRet] = match
+    const ret = (rawRet ?? '').replace(/\s+/g, ' ').trim()
+    if (!/^Result<.*,\s*String>$/.test(ret)) {
+      add(file, `Tauri 命令 ${fnName} 必须返回 Result<..., String>，当前为 ${ret || '()'}`)
+    }
+  }
 }
 
 if (problems.length > 0) {

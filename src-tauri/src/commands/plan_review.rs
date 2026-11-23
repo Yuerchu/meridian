@@ -52,13 +52,13 @@ pub async fn ensure_conversation_not_waiting_review(db: &Db, conversation_id: &s
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewReadRequest {
     pub review_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanRevisionListRequest {
     pub document_id: String,
 }
@@ -133,7 +133,7 @@ impl PlanCommentAnchor {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanCommentDraftRequest {
     pub id: String,
     pub state: PlanCommentStateRequest,
@@ -142,14 +142,14 @@ pub struct PlanCommentDraftRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanEditorSchemaFallbackRequest {
     pub from_version: i32,
     pub from_hash: RequiredNullable<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDraftSaveRequest {
     pub review_id: String,
     pub expected_generation: i64,
@@ -168,8 +168,8 @@ pub struct PlanReviewDraftSaveRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PlanReviewDraftDiscardRequest {
+#[serde(deny_unknown_fields)]
+pub struct PlanReviewDraftDeleteRequest {
     pub review_id: String,
     pub expected_generation: i64,
 }
@@ -182,7 +182,7 @@ pub enum PlanReviewDecisionActionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDecisionRequest {
     pub review_id: String,
     pub decision_id: String,
@@ -195,13 +195,13 @@ pub struct PlanReviewDecisionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDeliveryReadRequest {
     pub review_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDeliveryContinueRequest {
     pub delivery_id: String,
 }
@@ -213,7 +213,7 @@ pub enum PlanFileConflictActionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanFileConflictResolveRequest {
     pub document_id: String,
     pub action: PlanFileConflictActionRequest,
@@ -672,7 +672,7 @@ struct OwnedCommentSave {
 }
 
 #[tauri::command]
-pub async fn save_plan_review_draft(
+pub async fn set_plan_review_draft(
     app: tauri::AppHandle,
     request: PlanReviewDraftSaveRequest,
 ) -> Result<PlanReviewDraftSaveResponse, String> {
@@ -823,9 +823,9 @@ pub async fn save_plan_review_draft(
 }
 
 #[tauri::command]
-pub async fn discard_plan_review_draft(
+pub async fn delete_plan_review_draft(
     app: tauri::AppHandle,
-    request: PlanReviewDraftDiscardRequest,
+    request: PlanReviewDraftDeleteRequest,
 ) -> Result<PlanReviewInfoResponse, String> {
     let services = app.services();
     let (response, event) = services
@@ -942,7 +942,7 @@ async fn append_native_review_result(
 }
 
 #[tauri::command]
-pub async fn decide_plan_review(
+pub async fn submit_plan_review_decision(
     app: tauri::AppHandle,
     request: PlanReviewDecisionRequest,
 ) -> Result<PlanReviewDecisionResponse, String> {
@@ -1379,7 +1379,7 @@ async fn dispatch_acp_delivery(
 }
 
 #[tauri::command]
-pub async fn continue_plan_review_delivery(
+pub async fn invoke_plan_review_delivery(
     app: tauri::AppHandle,
     request: PlanReviewDeliveryContinueRequest,
 ) -> Result<PlanReviewDeliveryInfoResponse, String> {
@@ -1414,39 +1414,39 @@ mod tests {
     #[test]
     fn rich_draft_request_carries_an_immutable_baseline_separately_from_the_edit() {
         let request: PlanReviewDraftSaveRequest = serde_json::from_value(serde_json::json!({
-            "reviewId": "review-1",
-            "expectedGeneration": 0,
+            "review_id": "review-1",
+            "expected_generation": 0,
             "mode": "rich",
-            "baseEditorJson": {"type":"doc","content":[{"type":"paragraph"}]},
-            "editorJson": {"type":"doc","content":[{"type":"heading","attrs":{"level":1}}]},
-            "sourceText": null,
-            "baseNormalizedMarkdown": "plain\n",
-            "normalizedMarkdown": "# edited\n",
+            "base_editor_json": {"type":"doc","content":[{"type":"paragraph"}]},
+            "editor_json": {"type":"doc","content":[{"type":"heading","attrs":{"level":1}}]},
+            "source_text": null,
+            "base_normalized_markdown": "plain\n",
+            "normalized_markdown": "# edited\n",
             "comments": [],
-            "globalNote": null,
+            "global_note": null,
             "selection": null,
-            "editorSchemaVersion": 1,
-            "editorSchemaHash": "schema-1",
-            "editorSchemaFallback": null
+            "editor_schema_version": 1,
+            "editor_schema_hash": "schema-1",
+            "editor_schema_fallback": null
         }))
         .unwrap();
         assert_ne!(request.base_editor_json.0, request.editor_json.0);
         assert_ne!(request.base_normalized_markdown, request.normalized_markdown);
 
         let missing_baseline = serde_json::json!({
-            "reviewId": "review-1",
-            "expectedGeneration": 0,
+            "review_id": "review-1",
+            "expected_generation": 0,
             "mode": "rich",
-            "editorJson": {"type":"doc"},
-            "sourceText": null,
-            "baseNormalizedMarkdown": "plain\n",
-            "normalizedMarkdown": "plain\n",
+            "editor_json": {"type":"doc"},
+            "source_text": null,
+            "base_normalized_markdown": "plain\n",
+            "normalized_markdown": "plain\n",
             "comments": [],
-            "globalNote": null,
+            "global_note": null,
             "selection": null,
-            "editorSchemaVersion": 1,
-            "editorSchemaHash": "schema-1",
-            "editorSchemaFallback": null
+            "editor_schema_version": 1,
+            "editor_schema_hash": "schema-1",
+            "editor_schema_fallback": null
         });
         assert!(serde_json::from_value::<PlanReviewDraftSaveRequest>(missing_baseline).is_err());
     }
@@ -1736,21 +1736,21 @@ mod tests {
     #[test]
     fn decision_generation_is_not_deserialized_as_a_review_lock_version() {
         let request: PlanReviewDecisionRequest = serde_json::from_value(serde_json::json!({
-            "reviewId": "review-1",
-            "decisionId": "decision-1",
-            "expectedGeneration": 7,
-            "expectedDraftHash": "abc",
+            "review_id": "review-1",
+            "decision_id": "decision-1",
+            "expected_generation": 7,
+            "expected_draft_hash": "abc",
             "action": "request_changes"
         }))
         .unwrap();
         assert_eq!(request.expected_generation, 7);
         assert!(
             serde_json::from_value::<PlanReviewDecisionRequest>(serde_json::json!({
-                "reviewId": "review-1",
-                "decisionId": "decision-1",
-                "expectedGeneration": 7,
-                "expectedDraftHash": "abc",
-                "expectedLockVersion": 7,
+                "review_id": "review-1",
+                "decision_id": "decision-1",
+                "expected_generation": 7,
+                "expected_draft_hash": "abc",
+                "expected_lock_version": 7,
                 "action": "request_changes"
             }))
             .is_err(),

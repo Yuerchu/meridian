@@ -396,7 +396,7 @@ impl TryFrom<meridian_core::codex_auth::AuthStatus> for CodexAuthStatusResponse 
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderCreateRequest {
     name: String,
     provider_type: ProviderType,
@@ -408,7 +408,7 @@ pub struct ProviderCreateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderUpdateRequest {
     id: String,
     name: Option<String>,
@@ -428,6 +428,12 @@ pub struct ProviderUpdateRequest {
     codex_request_shape: Option<bool>,
     #[serde(default, deserialize_with = "patch_nullable")]
     local_backend: Option<RequiredNullable<LocalInferenceBackend>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderDeleteRequest {
+    id: String,
 }
 
 /// A patch key with three states: absent, null, or a value.
@@ -476,7 +482,7 @@ pub fn list_provider_catalog(_app: tauri::AppHandle) -> Result<ProviderCatalogEn
 ///
 /// Blocking: reads a file, and on some installs the OS credential store.
 #[tauri::command]
-pub async fn codex_auth_status(_app: tauri::AppHandle) -> Result<CodexAuthStatusResponse, String> {
+pub async fn get_codex_auth_status(_app: tauri::AppHandle) -> Result<CodexAuthStatusResponse, String> {
     tokio::task::spawn_blocking(|| {
         let home = meridian_core::codex_auth::storage::find_codex_home()
             .ok_or("Could not work out where the Codex CLI keeps its login (no home directory).")?;
@@ -714,7 +720,8 @@ pub async fn update_provider(
 }
 
 #[tauri::command]
-pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_provider(app: tauri::AppHandle, request: ProviderDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     let secrets = services.secrets.clone();
     // pool-read-before-write: these ids only pick which turn leases to take; the
@@ -741,10 +748,16 @@ pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), St
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderKeyUpdateRequest {
     pub provider_id: String,
     pub api_key: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderKeyTestRequest {
+    pub provider_id: String,
 }
 
 #[tauri::command]
@@ -797,7 +810,8 @@ pub async fn set_provider_key(app: tauri::AppHandle, request: ProviderKeyUpdateR
 }
 
 #[tauri::command]
-pub async fn get_provider_key_exists(app: tauri::AppHandle, provider_id: String) -> Result<bool, String> {
+pub async fn test_provider_key(app: tauri::AppHandle, request: ProviderKeyTestRequest) -> Result<bool, String> {
+    let provider_id = request.provider_id;
     let services = app.services();
     let key_name = provider_secret_name(&provider_id);
     // A read failure is not the same as "no key". Reporting it as absent sends
@@ -819,34 +833,19 @@ pub async fn get_provider_key_exists(app: tauri::AppHandle, provider_id: String)
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderModelFetchPolicy {
+    CacheOnly,
+    CacheFirst,
+    ForceRemote,
+}
+
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderModelListRequest {
     pub provider_id: String,
-    pub force_refresh: RequiredNullable<bool>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderCachedModelListRequest {
-    pub provider_id: String,
-}
-
-/// What the last fetch of this provider's model list left in the cache, and
-/// never anything more.
-///
-/// **Read-only by construction**, which `fetch_provider_models` with
-/// `forceRefresh: false` is not: that one falls through to the provider's API
-/// whenever the cache is empty, so merely opening the provider page made a
-/// network request — and, offline, showed a model-list error nobody asked
-/// for. An empty cache is an empty list here; the fetch happens only when
-/// somebody presses the button that says so.
-#[tauri::command]
-pub async fn list_cached_provider_models(
-    app: tauri::AppHandle,
-    request: ProviderCachedModelListRequest,
-) -> Result<ProviderModelListResponse, String> {
-    cached_models_for(&app.services().db, &request.provider_id).await
+    pub fetch_policy: ProviderModelFetchPolicy,
 }
 
 async fn cached_models_for(
@@ -868,18 +867,24 @@ async fn cached_models_for(
 }
 
 #[tauri::command]
-pub async fn fetch_provider_models(
+pub async fn list_provider_models(
     app: tauri::AppHandle,
     request: ProviderModelListRequest,
 ) -> Result<ProviderModelListResponse, String> {
     let services = app.services();
     let secrets = services.secrets.clone();
-    let provider_id = request.provider_id;
-    let force = request.force_refresh.0.unwrap_or(false);
+    let ProviderModelListRequest {
+        provider_id,
+        fetch_policy,
+    } = request;
+
+    if fetch_policy == ProviderModelFetchPolicy::CacheOnly {
+        return cached_models_for(&services.db, &provider_id).await;
+    }
 
     // pool-read-before-write: the cache read only decides whether to go to the network,
     // and a network call sits between it and the write, which replaces the list whole.
-    if !force {
+    if fetch_policy == ProviderModelFetchPolicy::CacheFirst {
         let cached = meridian_core::db::sea::ops::cached_model::list_by_provider(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?;
@@ -957,6 +962,12 @@ pub async fn fetch_provider_models(
     Ok(models.into_iter().map(Into::into).collect())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderBalanceReadRequest {
+    pub provider_id: String,
+}
+
 /// What is left on this provider's account, for the few upstreams that say.
 ///
 /// Never cached. A balance is the one figure here whose whole value is being
@@ -966,8 +977,9 @@ pub async fn fetch_provider_models(
 #[tauri::command]
 pub async fn get_provider_balance(
     app: tauri::AppHandle,
-    provider_id: String,
+    request: ProviderBalanceReadRequest,
 ) -> Result<Option<ProviderBalanceInfoResponse>, String> {
+    let provider_id = request.provider_id;
     let services = app.services();
     let secrets = services.secrets.clone();
 
@@ -996,7 +1008,7 @@ pub async fn get_provider_balance(
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProviderCapabilitiesReadRequest {
     pub provider_id: String,
     pub model_id: String,
@@ -1060,6 +1072,9 @@ pub async fn get_provider_capabilities(
     if codex_request_shape {
         meridian_core::provider::capabilities::narrow_to_codex_shape(&mut caps);
     }
+    if provider_type == "google" {
+        meridian_core::provider::capabilities::narrow_to_google_wire(Some(&api_format), &model_id, &mut caps);
+    }
     caps.try_into()
 }
 
@@ -1108,35 +1123,35 @@ mod response_contract_tests {
     fn provider_requests_are_strict_and_require_nullable_keys() {
         let mut create = serde_json::json!({
             "name": "OpenAI",
-            "providerType": "openai",
-            "baseUrl": "https://api.openai.com",
-            "apiFormat": null,
-            "catalogId": null,
-            "authOption": null,
-            "localBackend": null
+            "provider_type": "openai",
+            "base_url": "https://api.openai.com",
+            "api_format": null,
+            "catalog_id": null,
+            "auth_option": null,
+            "local_backend": null
         });
         assert!(serde_json::from_value::<ProviderCreateRequest>(create.clone()).is_ok());
-        create.as_object_mut().unwrap().remove("catalogId");
+        create.as_object_mut().unwrap().remove("catalog_id");
         assert!(serde_json::from_value::<ProviderCreateRequest>(create).is_err());
 
-        let mut models = serde_json::json!({ "providerId": "provider-1", "forceRefresh": null });
+        let mut models = serde_json::json!({ "provider_id": "provider-1", "fetch_policy": "cache_first" });
         assert!(serde_json::from_value::<ProviderModelListRequest>(models.clone()).is_ok());
-        models.as_object_mut().unwrap().remove("forceRefresh");
+        models.as_object_mut().unwrap().remove("fetch_policy");
         assert!(serde_json::from_value::<ProviderModelListRequest>(models).is_err());
 
         assert!(
             serde_json::from_value::<ProviderKeyUpdateRequest>(serde_json::json!({
-                "providerId": "provider-1",
-                "apiKey": "secret",
+                "provider_id": "provider-1",
+                "api_key": "secret",
                 "legacy": true
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<ProviderCapabilitiesReadRequest>(serde_json::json!({
-                "providerId": "provider-1",
-                "modelId": "model-1",
-                "futureField": true
+                "provider_id": "provider-1",
+                "model_id": "model-1",
+                "future_field": true
             }))
             .is_err()
         );
@@ -1147,16 +1162,16 @@ mod response_contract_tests {
         let omitted: ProviderUpdateRequest = serde_json::from_value(serde_json::json!({"id":"p1"})).unwrap();
         assert!(omitted.local_backend.is_none());
         let cleared: ProviderUpdateRequest =
-            serde_json::from_value(serde_json::json!({"id":"p1","localBackend":null})).unwrap();
+            serde_json::from_value(serde_json::json!({"id":"p1","local_backend":null})).unwrap();
         assert!(matches!(cleared.local_backend, Some(RequiredNullable(None))));
         let gpu: ProviderUpdateRequest =
-            serde_json::from_value(serde_json::json!({"id":"p1","localBackend":"gpu"})).unwrap();
+            serde_json::from_value(serde_json::json!({"id":"p1","local_backend":"gpu"})).unwrap();
         assert!(matches!(
             gpu.local_backend,
             Some(RequiredNullable(Some(LocalInferenceBackend::Gpu)))
         ));
         assert!(
-            serde_json::from_value::<ProviderUpdateRequest>(serde_json::json!({"id":"p1","localBackend":"future"}))
+            serde_json::from_value::<ProviderUpdateRequest>(serde_json::json!({"id":"p1","local_backend":"future"}))
                 .is_err()
         );
     }
@@ -1427,11 +1442,16 @@ mod cached_model_tests {
 
     #[test]
     fn the_request_is_exact() {
-        serde_json::from_value::<ProviderCachedModelListRequest>(serde_json::json!({ "providerId": "p1" })).unwrap();
+        serde_json::from_value::<ProviderModelListRequest>(serde_json::json!({
+            "provider_id": "p1",
+            "fetch_policy": "cache_only",
+        }))
+        .unwrap();
         assert!(
-            serde_json::from_value::<ProviderCachedModelListRequest>(serde_json::json!({
-                "providerId": "p1",
-                "forceRefresh": false,
+            serde_json::from_value::<ProviderModelListRequest>(serde_json::json!({
+                "provider_id": "p1",
+                "fetch_policy": "cache_only",
+                "force_refresh": false,
             }))
             .is_err()
         );

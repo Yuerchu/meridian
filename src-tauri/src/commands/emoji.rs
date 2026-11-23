@@ -14,48 +14,101 @@ use meridian_core::util::now_ms;
 use meridian_core::{agent, provider};
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiPackListRequest {
+    assistant_id: RequiredNullable<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EmojiPackCreateRequest {
     name: String,
     description: RequiredNullable<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiPackDeleteRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiPackAssignmentUpdateRequest {
+    assistant_id: String,
+    pack_id: String,
+    assigned: bool,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EmojiListFilter {
+    Pack { pack_id: String },
+    Search { query: String },
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiListRequest {
+    filter: EmojiListFilter,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EmojiImportRequest {
     pack_id: String,
     file_paths: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EmojiRenameRequest {
+#[serde(deny_unknown_fields)]
+pub struct EmojiDeleteRequest {
     id: String,
-    new_name: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct EmojiSemanticsConfirmRequest {
-    id: String,
-    name: String,
-    tags: RequiredNullable<String>,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum EmojiUpdateAction {
+    Rename {
+        name: String,
+    },
+    ConfirmSemantics {
+        name: String,
+        tags: RequiredNullable<String>,
+    },
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AssistantEmojiPackAssignmentRequest {
-    assistant_id: String,
-    pack_id: String,
+#[serde(deny_unknown_fields)]
+pub struct EmojiUpdateRequest {
+    id: String,
+    action: EmojiUpdateAction,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiSemanticsSuggestRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmojiFileUrlReadRequest {
+    emoji_id: String,
 }
 
 #[tauri::command]
-pub async fn list_emoji_packs(app: tauri::AppHandle) -> Result<EmojiPackListResponse, String> {
+pub async fn list_emoji_packs(
+    app: tauri::AppHandle,
+    request: EmojiPackListRequest,
+) -> Result<EmojiPackListResponse, String> {
     let services = app.services();
-    pack_ops::list_packs(&services.db)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(|e| e.to_string())
+    let rows = match request.assistant_id.0.as_deref() {
+        Some(assistant_id) => pack_ops::list_packs_for_assistant(&services.db, assistant_id).await,
+        None => pack_ops::list_packs(&services.db).await,
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
@@ -87,7 +140,8 @@ pub async fn create_emoji_pack(
 }
 
 #[tauri::command]
-pub async fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_emoji_pack(app: tauri::AppHandle, request: EmojiPackDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     // The built-in check and the delete share one write lock.
     let refused = services
@@ -107,12 +161,14 @@ pub async fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), 
 }
 
 #[tauri::command]
-pub async fn list_emojis(app: tauri::AppHandle, pack_id: String) -> Result<EmojiListResponse, String> {
+pub async fn list_emojis(app: tauri::AppHandle, request: EmojiListRequest) -> Result<EmojiListResponse, String> {
     let services = app.services();
-    emoji_ops::list_by_pack(&services.db, &pack_id)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(|e| e.to_string())
+    let rows = match request.filter {
+        EmojiListFilter::Pack { pack_id } => emoji_ops::list_by_pack(&services.db, &pack_id).await,
+        EmojiListFilter::Search { query } => emoji_ops::search_emojis(&services.db, &query).await,
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(rows.into_iter().map(Into::into).collect())
 }
 
 #[tauri::command]
@@ -172,7 +228,8 @@ pub async fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -
 }
 
 #[tauri::command]
-pub async fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_emoji(app: tauri::AppHandle, request: EmojiDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     let gone = services
         .db
@@ -190,42 +247,29 @@ pub async fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub async fn rename_emoji(app: tauri::AppHandle, request: EmojiRenameRequest) -> Result<EmojiInfoResponse, String> {
+pub async fn update_emoji(app: tauri::AppHandle, request: EmojiUpdateRequest) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
-    services
-        .db
-        .write(async |tx| emoji_ops::rename_emoji(tx, &request.id, &request.new_name).await)
-        .await
-        .map(Into::into)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn search_emojis(app: tauri::AppHandle, query: String) -> Result<EmojiListResponse, String> {
-    let services = app.services();
-    emoji_ops::search_emojis(&services.db, &query)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn confirm_sticker_semantics(
-    app: tauri::AppHandle,
-    request: EmojiSemanticsConfirmRequest,
-) -> Result<EmojiInfoResponse, String> {
-    let name = request.name.trim();
-    if name.is_empty() {
-        return Err("Sticker name must not be empty".into());
+    match request.action {
+        EmojiUpdateAction::Rename { name } => services
+            .db
+            .write(async |tx| emoji_ops::rename_emoji(tx, &request.id, &name).await)
+            .await
+            .map(Into::into)
+            .map_err(|e| e.to_string()),
+        EmojiUpdateAction::ConfirmSemantics { name, tags } => {
+            let name = name.trim();
+            if name.is_empty() {
+                return Err("Sticker name must not be empty".into());
+            }
+            let tags = tags.0.as_deref().map(str::trim).filter(|v| !v.is_empty());
+            services
+                .db
+                .write(async |tx| emoji_ops::confirm_semantics(tx, &request.id, name, tags).await)
+                .await
+                .map(Into::into)
+                .map_err(|e| e.to_string())
+        }
     }
-    let tags = request.tags.0.as_deref().map(str::trim).filter(|v| !v.is_empty());
-    let services = app.services();
-    services
-        .db
-        .write(async |tx| emoji_ops::confirm_semantics(tx, &request.id, name, tags).await)
-        .await
-        .map(Into::into)
-        .map_err(|e| e.to_string())
 }
 
 /// The model that looks at a sticker for `suggest_sticker_semantics`.
@@ -258,7 +302,11 @@ async fn resolve_suggest_model(
 }
 
 #[tauri::command]
-pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Result<EmojiInfoResponse, String> {
+pub async fn invoke_emoji_semantics_suggestion(
+    app: tauri::AppHandle,
+    request: EmojiSemanticsSuggestRequest,
+) -> Result<EmojiInfoResponse, String> {
+    let id = request.id;
     let services = app.services();
     let secrets = services.secrets.clone();
     let data_dir = services.paths.data_dir.clone();
@@ -336,45 +384,29 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
 }
 
 #[tauri::command]
-pub async fn assign_emoji_pack(
+pub async fn set_emoji_pack_assignment(
     app: tauri::AppHandle,
-    request: AssistantEmojiPackAssignmentRequest,
+    request: EmojiPackAssignmentUpdateRequest,
 ) -> Result<(), String> {
     let services = app.services();
-    services
-        .db
-        .write(async |tx| pack_ops::assign_pack(tx, &request.assistant_id, &request.pack_id, now_ms()).await)
-        .await
-        .map_err(|e| e.to_string())
+    if request.assigned {
+        services
+            .db
+            .write(async |tx| pack_ops::assign_pack(tx, &request.assistant_id, &request.pack_id, now_ms()).await)
+            .await
+            .map_err(|e| e.to_string())
+    } else {
+        services
+            .db
+            .write(async |tx| pack_ops::unassign_pack(tx, &request.assistant_id, &request.pack_id).await)
+            .await
+            .map_err(|e| e.to_string())
+    }
 }
 
 #[tauri::command]
-pub async fn unassign_emoji_pack(
-    app: tauri::AppHandle,
-    request: AssistantEmojiPackAssignmentRequest,
-) -> Result<(), String> {
-    let services = app.services();
-    services
-        .db
-        .write(async |tx| pack_ops::unassign_pack(tx, &request.assistant_id, &request.pack_id).await)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn list_assistant_emoji_packs(
-    app: tauri::AppHandle,
-    assistant_id: String,
-) -> Result<EmojiPackListResponse, String> {
-    let services = app.services();
-    pack_ops::list_packs_for_assistant(&services.db, &assistant_id)
-        .await
-        .map(|rows| rows.into_iter().map(Into::into).collect())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub async fn get_emoji_file_url(app: tauri::AppHandle, emoji_id: String) -> Result<String, String> {
+pub async fn get_emoji_file_url(app: tauri::AppHandle, request: EmojiFileUrlReadRequest) -> Result<String, String> {
+    let emoji_id = request.emoji_id;
     let services = app.services();
     let e = emoji_ops::get_emoji(&services.db, &emoji_id)
         .await
@@ -428,61 +460,63 @@ mod request_dto_tests {
     fn emoji_action_requests_are_closed_and_complete() {
         assert!(
             serde_json::from_value::<EmojiImportRequest>(json!({
-                "packId": "pack-1",
-                "filePaths": ["C:/stickers/one.png"]
+                "pack_id": "pack-1",
+                "file_paths": ["C:/stickers/one.png"]
             }))
             .is_ok()
         );
         assert!(
             serde_json::from_value::<EmojiImportRequest>(json!({
-                "packId": "pack-1",
-                "filePaths": [],
+                "pack_id": "pack-1",
+                "file_paths": [],
                 "copy": true
             }))
             .is_err()
         );
 
         assert!(
-            serde_json::from_value::<EmojiRenameRequest>(json!({
+            serde_json::from_value::<EmojiUpdateRequest>(json!({
                 "id": "emoji-1",
-                "newName": "wave"
+                "action": { "kind": "rename", "name": "wave" }
             }))
             .is_ok()
         );
         assert!(
-            serde_json::from_value::<EmojiRenameRequest>(json!({
-                "id": "emoji-1"
+            serde_json::from_value::<EmojiUpdateRequest>(json!({
+                "id": "emoji-1",
+                "action": { "kind": "rename" }
             }))
             .is_err()
         );
 
         assert!(
-            serde_json::from_value::<EmojiSemanticsConfirmRequest>(json!({
+            serde_json::from_value::<EmojiUpdateRequest>(json!({
                 "id": "emoji-1",
-                "name": "wave",
-                "tags": null
+                "action": { "kind": "confirm_semantics", "name": "wave", "tags": null }
             }))
             .is_ok()
         );
         assert!(
-            serde_json::from_value::<EmojiSemanticsConfirmRequest>(json!({
+            serde_json::from_value::<EmojiUpdateRequest>(json!({
                 "id": "emoji-1",
-                "name": "wave"
+                "action": { "kind": "confirm_semantics", "name": "wave" }
             }))
             .is_err()
         );
 
         assert!(
-            serde_json::from_value::<AssistantEmojiPackAssignmentRequest>(json!({
-                "assistantId": "assistant-1",
-                "packId": "pack-1"
+            serde_json::from_value::<EmojiPackAssignmentUpdateRequest>(json!({
+                "assistant_id": "assistant-1",
+                "pack_id": "pack-1",
+                "assigned": true
             }))
             .is_ok()
         );
         assert!(
-            serde_json::from_value::<AssistantEmojiPackAssignmentRequest>(json!({
-                "assistantId": "assistant-1",
-                "packId": "pack-1",
+            serde_json::from_value::<EmojiPackAssignmentUpdateRequest>(json!({
+                "assistant_id": "assistant-1",
+                "pack_id": "pack-1",
+                "assigned": true,
                 "legacy": true
             }))
             .is_err()

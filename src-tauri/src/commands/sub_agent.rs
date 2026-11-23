@@ -50,7 +50,7 @@ fn default_model_preference(kind: SubAgentKind) -> String {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationSteerRequest {
     conversation_id: String,
     text: String,
@@ -69,7 +69,7 @@ pub struct ConversationSteerRequest {
 /// should not turn up in the transcript as though it had been received. The
 /// caller has it and can say so.
 #[tauri::command]
-pub async fn steer_conversation(app: tauri::AppHandle, request: ConversationSteerRequest) -> Result<(), String> {
+pub async fn send_conversation_steer(app: tauri::AppHandle, request: ConversationSteerRequest) -> Result<(), String> {
     let ConversationSteerRequest { conversation_id, text } = request;
     if text.trim().is_empty() {
         return Err("There is nothing to send.".to_string());
@@ -796,7 +796,7 @@ mod tests {
     #[test]
     fn conversation_steer_request_is_named_and_strict() {
         let request: ConversationSteerRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "text": "check the failing test",
         }))
         .expect("valid steer request");
@@ -805,7 +805,7 @@ mod tests {
 
         assert!(
             serde_json::from_value::<ConversationSteerRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "text": "check the failing test",
                 "urgent": true,
             }))

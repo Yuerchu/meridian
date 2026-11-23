@@ -31,26 +31,26 @@ impl From<VoiceCorpusDeleteSelector> for CorpusSelector {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct VoiceCorpusDeleteRequest {
     selector: VoiceCorpusDeleteSelector,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct VoiceCorpusOptoutUpdateRequest {
     sender_id: String,
     enabled: bool,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct VoiceCorpusForgetRequest {
     sender_id: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct VoiceCorpusExportRequest {
     output_dir: String,
     include_sender: bool,
@@ -218,7 +218,7 @@ pub async fn set_voice_optout(app: tauri::AppHandle, request: VoiceCorpusOptoutU
 /// 已经撤了而名单还没生效——这中间落盘的录音谁都不会再回头删，而按钮已经报告
 /// 成功了。这里顺序是反的：先让拒绝生效，再 drain 并删除。
 #[tauri::command]
-pub async fn forget_voice_sender(
+pub async fn delete_voice_sender(
     app: tauri::AppHandle,
     request: VoiceCorpusForgetRequest,
 ) -> Result<VoiceCorpusForgetResponse, String> {
@@ -340,9 +340,9 @@ mod tests {
     fn export_request_rejects_unknown_fields() {
         assert!(
             serde_json::from_value::<VoiceCorpusExportRequest>(serde_json::json!({
-                "outputDir": "voice-corpus",
-                "includeSender": false,
-                "includeUntranscribed": false,
+                "output_dir": "voice-corpus",
+                "include_sender": false,
+                "include_untranscribed": false,
                 "format": "future"
             }))
             .is_err()

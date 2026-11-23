@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：302
+- 事务根（非测试）：298
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -92,6 +92,7 @@
 | `src-tauri/crates/core/src/background.rs` › `start` | sea-write | background_task |
 | `src-tauri/crates/core/src/bootstrap.rs` › `bootstrap_with_secrets` | sea-write | assistant |
 | `src-tauri/crates/core/src/bootstrap.rs` › `bootstrap_with_secrets` | sea-write | assistant, provider |
+| `src-tauri/crates/core/src/bootstrap.rs` › `bootstrap_with_secrets` | sea-write | notification |
 | `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-read | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `resume_completed_plan_review_queues` | sea-write | plan_review |
 | `src-tauri/crates/core/src/bootstrap.rs` › `seed_tool_catalog` | sea-write | tool_category |
@@ -211,14 +212,13 @@
 | `src-tauri/src/commands/assistant.rs` › `create_assistant` | sea-write | assistant |
 | `src-tauri/src/commands/assistant.rs` › `delete_assistant` | sea-write | assistant, conversation, plan_review |
 | `src-tauri/src/commands/assistant.rs` › `update_assistant` | sea-write | assistant, conversation, model_config, model_profile, plan_review |
-| `src-tauri/src/commands/board.rs` › `board_task_move` | sea-write | board_task |
-| `src-tauri/src/commands/board.rs` › `board_task_update` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `create` | sea-write | board_task, project |
 | `src-tauri/src/commands/board.rs` › `delete` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `remove_worktree` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `start` | sea-write | assistant, board_task, conversation |
 | `src-tauri/src/commands/board.rs` › `start` | sea-write | board_task |
 | `src-tauri/src/commands/board.rs` › `start` | sea-write | conversation |
+| `src-tauri/src/commands/board.rs` › `update_board_task` | sea-write | board_task |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | acp_session, assistant, board_task, conversation, message, project |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
@@ -237,55 +237,50 @@
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
+| `src-tauri/src/commands/conversation.rs` › `apply_conversation_update` | sea-write | conversation, plan_review |
 | `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
-| `src-tauri/src/commands/conversation.rs` › `compact` | sea-read | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `create_conversation` | sea-write | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-read | conversation |
 | `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-write | conversation |
-| `src-tauri/src/commands/conversation.rs` › `get_context_info` | sea-read | assistant, conversation, message, message_context_item, project |
+| `src-tauri/src/commands/conversation.rs` › `get_conversation_context` | sea-read | assistant, conversation, message, message_context_item, project |
+| `src-tauri/src/commands/conversation.rs` › `invoke_conversation_compaction` | sea-read | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `search_conversations` | sea-read | conversation |
-| `src-tauri/src/commands/conversation.rs` › `set_conversation_mode` | sea-write | conversation |
-| `src-tauri/src/commands/conversation.rs` › `set_unless_plan_barrier` | sea-write | conversation, plan_review |
-| `src-tauri/src/commands/conversation.rs` › `toggle_archive_conversation` | sea-write | conversation |
-| `src-tauri/src/commands/conversation.rs` › `toggle_pin_conversation` | sea-write | conversation |
-| `src-tauri/src/commands/conversation.rs` › `update_conversation_title` | sea-write | conversation |
-| `src-tauri/src/commands/emoji.rs` › `assign_emoji_pack` | sea-write | emoji_pack |
-| `src-tauri/src/commands/emoji.rs` › `confirm_sticker_semantics` | sea-write | emoji |
 | `src-tauri/src/commands/emoji.rs` › `create_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/emoji.rs` › `delete_emoji_pack` | sea-write | emoji_pack |
 | `src-tauri/src/commands/emoji.rs` › `delete_emoji` | sea-write | emoji |
 | `src-tauri/src/commands/emoji.rs` › `import_emojis` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `rename_emoji` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `suggest_sticker_semantics` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `unassign_emoji_pack` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `invoke_emoji_semantics_suggestion` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `set_emoji_pack_assignment` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `set_emoji_pack_assignment` | sea-write | emoji_pack |
+| `src-tauri/src/commands/emoji.rs` › `update_emoji` | sea-write | emoji |
+| `src-tauri/src/commands/emoji.rs` › `update_emoji` | sea-write | emoji |
 | `src-tauri/src/commands/logs.rs` › `set_log_level` | sea-write | preference |
 | `src-tauri/src/commands/mcp.rs` › `create_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `delete_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `set_mcp_tool_enabled` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `update_mcp_server` | sea-write | mcp_server |
+| `src-tauri/src/commands/memory.rs` › `create_memory` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `delete_memories` | sea-write | memory |
-| `src-tauri/src/commands/memory.rs` › `forget_memory_subject` | sea-write | memory |
-| `src-tauri/src/commands/memory.rs` › `purge_memories` | sea-write | memory |
+| `src-tauri/src/commands/memory.rs` › `delete_memories` | sea-write | memory |
+| `src-tauri/src/commands/memory.rs` › `delete_memory_subject` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `restore_memories` | sea-write | memory |
-| `src-tauri/src/commands/memory.rs` › `save_memory_scoped` | sea-write | memory |
-| `src-tauri/src/commands/memory.rs` › `set_memory_subject_flags` | sea-write | memory |
+| `src-tauri/src/commands/memory.rs` › `update_memory_subject` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `update_memory` | sea-write | memory |
 | `src-tauri/src/commands/message.rs` › `delete_message` | sea-write | message, plan_review |
 | `src-tauri/src/commands/message.rs` › `export_conversation` | sea-read | assistant, conversation, message |
-| `src-tauri/src/commands/message.rs` › `rate_message` | sea-write | message |
 | `src-tauri/src/commands/message.rs` › `read_message_context_item` | sea-read | conversation, message, message_context_item |
 | `src-tauri/src/commands/message.rs` › `read_once` | sea-read | acp_session_notice, conversation, message, message_context_item, model_config, plan_review, turn, usage |
-| `src-tauri/src/commands/message.rs` › `switch_branch` | sea-write | message, plan_review |
+| `src-tauri/src/commands/message.rs` › `switch_message_branch` | sea-write | message, plan_review |
+| `src-tauri/src/commands/message.rs` › `update_message_rating` | sea-write | message |
 | `src-tauri/src/commands/model_config.rs` › `delete_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/model_config.rs` › `get_model_config` | sea-read | model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `list_model_configs` | sea-read | model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `list_model_profiles` | sea-read | model_profile |
-| `src-tauri/src/commands/model_config.rs` › `save_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
+| `src-tauri/src/commands/model_config.rs` › `set_model_config` | sea-write | conversation, model_config, model_profile, plan_review |
 | `src-tauri/src/commands/notify.rs` › `create_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `delete_notification_webhook` | sea-write | notification |
 | `src-tauri/src/commands/notify.rs` › `update_notification_webhook` | sea-write | notification |
-| `src-tauri/src/commands/plan_review.rs` › `decide_plan_review` | sea-write | acp_session, audit, conversation, memory, message, model_config, model_profile, plan_review, provider, turn |
-| `src-tauri/src/commands/plan_review.rs` › `discard_plan_review_draft` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `delete_plan_review_draft` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `dispatch_acp_delivery` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `dispatch_native_delivery` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `ensure_conversation_not_waiting_review` | sea-read | plan_review |
@@ -293,8 +288,9 @@
 | `src-tauri/src/commands/plan_review.rs` › `get_plan_review` | sea-read | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `resolve_plan_file_conflict` | sea-read | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `resolve_plan_file_conflict` | sea-write | plan_review |
-| `src-tauri/src/commands/plan_review.rs` › `save_plan_review_draft` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `set_plan_review_draft` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `settle_delivery` | sea-write | plan_review · 回调来自 2 处 |
+| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision` | sea-write | acp_session, audit, conversation, memory, message, model_config, model_profile, plan_review, provider, turn |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
 | `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | board_task, conversation, memory, plan_review, project |
@@ -302,30 +298,30 @@
 | `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
 | `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |
 | `src-tauri/src/commands/provider.rs` › `delete_provider` | sea-write | conversation, plan_review, provider |
-| `src-tauri/src/commands/provider.rs` › `fetch_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `get_provider_capabilities` | sea-read | model_config, model_profile, provider |
+| `src-tauri/src/commands/provider.rs` › `list_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `set_provider_key` | sea-write | cached_model, conversation, plan_review |
 | `src-tauri/src/commands/provider.rs` › `update_provider` | sea-write | cached_model, conversation, plan_review, provider |
-| `src-tauri/src/commands/queue.rs` › `queue_enqueue` | sea-write | plan_review, queue, queued_prompt_context_item |
-| `src-tauri/src/commands/queue.rs` › `queue_release` | sea-write | plan_review, queue |
-| `src-tauri/src/commands/queue.rs` › `queue_remove` | sea-write | queue |
-| `src-tauri/src/commands/queue.rs` › `queue_reorder` | sea-write | queue |
-| `src-tauri/src/commands/queue.rs` › `queue_set_delivery` | sea-write | queue, queued_prompt_context_item |
+| `src-tauri/src/commands/queue.rs` › `create_queued_prompt` | sea-write | plan_review, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/queue.rs` › `delete_queued_prompt` | sea-write | queue |
+| `src-tauri/src/commands/queue.rs` › `set_queued_prompt_order` | sea-write | queue |
+| `src-tauri/src/commands/queue.rs` › `start_queued_prompts` | sea-write | plan_review, queue |
+| `src-tauri/src/commands/queue.rs` › `update_queued_prompt` | sea-write | queue, queued_prompt_context_item |
 | `src-tauri/src/commands/skill.rs` › `create_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `delete_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |
 | `src-tauri/src/commands/skill.rs` › `update_skill` | sea-write | skill |
 | `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, turn |
-| `src-tauri/src/commands/todo.rs` › `get_active_todo_list` | sea-read | todo |
+| `src-tauri/src/commands/todo.rs` › `get_todo_list` | sea-read | todo |
 | `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `delete_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `delete_tool_preset` | sea-write | tool_preset |
 | `src-tauri/src/commands/tool_system.rs` › `update_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `update_tool_preset` | sea-write | tool_preset |
-| `src-tauri/src/commands/usage.rs` › `usage_cache_misses` | sea-read | usage |
-| `src-tauri/src/commands/usage.rs` › `usage_gaps` | sea-read | model_config, usage |
-| `src-tauri/src/commands/usage.rs` › `usage_report` | sea-read | model_config, usage |
+| `src-tauri/src/commands/usage.rs` › `get_usage_cache_misses` | sea-read | usage |
+| `src-tauri/src/commands/usage.rs` › `get_usage_report` | sea-read | model_config, usage |
+| `src-tauri/src/commands/usage.rs` › `list_usage_gaps` | sea-read | model_config, usage |
 | `src-tauri/src/commands/user_command.rs` › `get_user_command_result` | sea-read | message, message_context_item |
 | `src-tauri/src/commands/user_command.rs` › `persist_result` | sea-write | message_context_item |
 | `src-tauri/src/commands/user_command.rs` › `prepare` | sea-write | audit, conversation, memory, message, message_context_item, model_config, model_profile, provider |

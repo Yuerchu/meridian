@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 use tauri::Manager;
 
 use crate::ServicesExt;
+use crate::commands::model_config::RequiredNullable;
 #[cfg(target_os = "android")]
 use crate::ime::android;
 use crate::ime::{AppIme, archive, dictionary, hints, learning, models};
@@ -163,7 +164,7 @@ pub struct ImeDictionaryStagedCancelRequest {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ImeDictionaryRemoveRequest {
+pub struct ImeDictionaryDeleteRequest {
     pub file: String,
 }
 
@@ -191,8 +192,9 @@ pub struct ImeLearningInfoResponse {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ImeLearnedWordForgetRequest {
-    pub text: String,
+pub struct ImeLearningDeleteRequest {
+    /// `null` forgets all learned words; a string forgets that one word.
+    pub word: RequiredNullable<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -271,7 +273,7 @@ pub struct ImeLmImportRequest {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ImeLmRemoveRequest {
+pub struct ImeLmDeleteRequest {
     pub dir_name: String,
 }
 
@@ -412,7 +414,7 @@ pub async fn get_ime_config(app: tauri::AppHandle) -> Result<ImeConfigInfoRespon
 
 /// Writes `host.json`; the host reloads it within a second.
 #[tauri::command]
-pub async fn save_ime_config(
+pub async fn set_ime_config(
     app: tauri::AppHandle,
     request: ImeConfigUpdateRequest,
 ) -> Result<ImeConfigInfoResponse, String> {
@@ -571,7 +573,7 @@ pub async fn stage_ime_dictionary(
 /// no longer the current one (already imported, or replaced by a later pick,
 /// which cleaned it) is nothing to do.
 #[tauri::command]
-pub async fn cancel_staged_ime_dictionaries(
+pub async fn cancel_ime_dictionary_staging(
     app: tauri::AppHandle,
     request: ImeDictionaryStagedCancelRequest,
 ) -> Result<(), String> {
@@ -588,7 +590,7 @@ pub async fn cancel_staged_ime_dictionaries(
 /// Imports the chosen roots of the last pick, each into its own `.mdict`,
 /// and clears the staging.
 #[tauri::command]
-pub async fn import_staged_ime_dictionaries(
+pub async fn import_ime_dictionaries(
     app: tauri::AppHandle,
     request: ImeDictionaryStagedImportRequest,
 ) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
@@ -625,7 +627,7 @@ pub async fn import_staged_ime_dictionaries(
 /// Downloads rime-ice from GitHub and imports its Chinese root and
 /// `melt_eng`, on the person's request: dictionaries are imported, never shipped.
 #[tauri::command]
-pub async fn download_ime_rime_ice(app: tauri::AppHandle) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
+pub async fn import_ime_rime_ice(app: tauri::AppHandle) -> Result<Vec<ImeDictionaryImportReportResponse>, String> {
     let dirs = bridge(&app).await.dirs;
     let writes = wait_ime(&app).await.dict_writes.clone();
     let scratch = scratch_root(&dirs);
@@ -676,9 +678,9 @@ pub async fn set_ime_dictionary_enabled(
 }
 
 #[tauri::command]
-pub async fn remove_ime_dictionary(
+pub async fn delete_ime_dictionary(
     app: tauri::AppHandle,
-    request: ImeDictionaryRemoveRequest,
+    request: ImeDictionaryDeleteRequest,
 ) -> Result<ImeDictionaryListResponse, String> {
     let bridge = bridge(&app).await;
     let ime = wait_ime(&app).await;
@@ -702,28 +704,20 @@ pub async fn get_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoRe
     Ok(learning_into(learned))
 }
 
-/// Files the request and answers with the list as it will be once the
-/// keyboard has carried it out.
+/// Files the request (`word: Some(w)` for one word, `word: None` for all) and
+/// answers with the list as it will be once the keyboard has carried it out.
 #[tauri::command]
-pub async fn forget_ime_learned_word(
+pub async fn delete_ime_learning(
     app: tauri::AppHandle,
-    request: ImeLearnedWordForgetRequest,
+    request: ImeLearningDeleteRequest,
 ) -> Result<ImeLearningInfoResponse, String> {
+    let word = request.word.0;
     let bridge = bridge(&app).await;
     let learned = tokio::task::spawn_blocking(move || {
-        learning::forget(&bridge.dirs, &request.text)?;
-        learning::list(&bridge.dirs)
-    })
-    .await
-    .expect("forget task")?;
-    Ok(learning_into(learned))
-}
-
-#[tauri::command]
-pub async fn forget_all_ime_learning(app: tauri::AppHandle) -> Result<ImeLearningInfoResponse, String> {
-    let bridge = bridge(&app).await;
-    let learned = tokio::task::spawn_blocking(move || {
-        learning::forget_all(&bridge.dirs)?;
+        match word {
+            Some(text) => learning::forget(&bridge.dirs, &text)?,
+            None => learning::forget_all(&bridge.dirs)?,
+        }
         learning::list(&bridge.dirs)
     })
     .await
@@ -923,9 +917,9 @@ pub async fn import_ime_lm(
 }
 
 #[tauri::command]
-pub async fn remove_ime_lm(
+pub async fn delete_ime_lm(
     app: tauri::AppHandle,
-    request: ImeLmRemoveRequest,
+    request: ImeLmDeleteRequest,
 ) -> Result<ImeLmStatusInfoResponse, String> {
     let bridge = bridge(&app).await;
     tokio::task::spawn_blocking(move || {
@@ -939,7 +933,7 @@ pub async fn remove_ime_lm(
 /// Recomputes and writes the memory hints now, rather than at the next
 /// minute. The file is written even when nothing changed.
 #[tauri::command]
-pub async fn refresh_ime_memory_hints(app: tauri::AppHandle) -> Result<ImeMemoryHintsInfoResponse, String> {
+pub async fn invoke_ime_memory_hints_refresh(app: tauri::AppHandle) -> Result<ImeMemoryHintsInfoResponse, String> {
     let bridge = bridge(&app).await;
     let found = hints::compute(&app.services()).await?;
     tokio::task::spawn_blocking(move || {
@@ -981,7 +975,7 @@ pub async fn open_android_ime_settings() -> Result<(), String> {
 /// The system's keyboard picker, where it is chosen.
 #[cfg(target_os = "android")]
 #[tauri::command]
-pub async fn show_android_ime_picker() -> Result<(), String> {
+pub async fn open_android_ime_picker() -> Result<(), String> {
     tokio::task::spawn_blocking(android::show_picker)
         .await
         .map_err(|e| e.to_string())?

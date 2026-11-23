@@ -72,14 +72,20 @@ pub struct BackgroundTaskOutputInfoResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct BackgroundTaskListRequest {
+    conversation_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BackgroundTaskStopRequest {
     conversation_id: String,
     id: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct BackgroundTaskOutputReadRequest {
     conversation_id: String,
     id: String,
@@ -90,9 +96,9 @@ pub struct BackgroundTaskOutputReadRequest {
 #[tauri::command]
 pub async fn list_background_tasks(
     app: tauri::AppHandle,
-    conversation_id: String,
+    request: BackgroundTaskListRequest,
 ) -> Result<BackgroundTaskListResponse, String> {
-    Ok(background::list(&app.services().db, &conversation_id)
+    Ok(background::list(&app.services().db, &request.conversation_id)
         .await?
         .into_iter()
         .map(Into::into)
@@ -102,7 +108,7 @@ pub async fn list_background_tasks(
 /// Every conversation with a command running, and how many — what the sidebar
 /// marks. Conversations with none are left out rather than listed at zero.
 #[tauri::command]
-pub async fn background_task_running_counts(app: tauri::AppHandle) -> Result<BackgroundTaskCountListResponse, String> {
+pub async fn list_background_task_counts(app: tauri::AppHandle) -> Result<BackgroundTaskCountListResponse, String> {
     Ok(background::running_counts(&app.services().db)
         .await?
         .into_iter()

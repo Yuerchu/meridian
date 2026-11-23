@@ -131,7 +131,7 @@ async fn sorted_conversation_ids(db: &Db) -> Result<Vec<String>, String> {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct AssistantCreateRequest {
     name: String,
     system_prompt: String,
@@ -190,7 +190,7 @@ pub async fn create_assistant(
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct AssistantUpdateRequest {
     id: String,
     name: Option<String>,
@@ -249,8 +249,14 @@ pub async fn update_assistant(
     finish_guarded_assistant_mutation(guarded).map(Into::into)
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistantDeleteRequest {
+    id: String,
+}
+
 #[tauri::command]
-pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_assistant(app: tauri::AppHandle, request: AssistantDeleteRequest) -> Result<(), String> {
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
@@ -262,7 +268,7 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
         .map_err(|busy| busy.to_string())?;
     let guarded = services
         .db
-        .write(async |tx| delete_assistant_unless_plan_barrier(tx, &id, &conversation_ids).await)
+        .write(async |tx| delete_assistant_unless_plan_barrier(tx, &request.id, &conversation_ids).await)
         .await
         .map_err(|e| e.to_string())?;
     finish_guarded_assistant_mutation(guarded)
@@ -277,8 +283,8 @@ mod tests {
     fn assistant_boolean_updates_reject_integer_encodings() {
         let request = serde_json::from_value::<AssistantUpdateRequest>(serde_json::json!({
             "id": "assistant-1",
-            "thinkingEnabled": true,
-            "autoCompactEnabled": false
+            "thinking_enabled": true,
+            "auto_compact_enabled": false
         }))
         .unwrap();
         assert_eq!(request.thinking_enabled, Some(true));
@@ -287,7 +293,7 @@ mod tests {
         assert!(
             serde_json::from_value::<AssistantUpdateRequest>(serde_json::json!({
                 "id": "assistant-1",
-                "thinkingEnabled": 1
+                "thinking_enabled": 1
             }))
             .is_err()
         );

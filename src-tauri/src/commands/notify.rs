@@ -146,10 +146,7 @@ impl NotificationWebhookInfoResponse {
     }
 }
 
-#[derive(Debug, serde::Serialize)]
-pub struct NotificationWebhookListResponse {
-    pub webhooks: Vec<NotificationWebhookInfoResponse>,
-}
+pub type NotificationWebhookListResponse = Vec<NotificationWebhookInfoResponse>;
 
 #[derive(Debug, serde::Serialize)]
 pub struct WebhookDeliveryInfoResponse {
@@ -208,6 +205,18 @@ pub struct NotificationWebhookUpdateRequest {
     pub secret: RequiredNullable<String>,
     /// As on the create request.
     pub body_template: RequiredNullable<serde_json::Value>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationWebhookDeleteRequest {
+    pub id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct NotificationWebhookTestRequest {
+    pub id: String,
 }
 
 /// Pair a body template with the format that does or does not want one, as the
@@ -272,20 +281,40 @@ pub async fn get_notify_config(app: tauri::AppHandle) -> Result<NotifyConfigInfo
 /// at once means two requests against the same upstream and two alerts for one
 /// condition — the lesson `start_onebot` already carries.
 #[tauri::command]
-pub async fn save_notify_config(app: tauri::AppHandle, request: NotifyConfigUpdateRequest) -> Result<(), String> {
+pub async fn set_notify_config(
+    app: tauri::AppHandle,
+    request: NotifyConfigUpdateRequest,
+) -> Result<NotifyConfigInfoResponse, String> {
     let services = app.services();
     let config = notify::NotifyConfig::try_from(request)?;
     notify::save_config(&services.db, &config).await?;
 
-    let watcher = app.state::<notify::AppNotify>();
-    let mut server = watcher.0.lock().await;
-    server.stop().await;
-    let replacement = notify::NotifyServer::new(services, config);
-    if replacement.config().enabled {
-        replacement.start().await?;
-    }
-    *server = replacement;
-    Ok(())
+    let running = {
+        let watcher = app.state::<notify::AppNotify>();
+        let mut server = watcher.0.lock().await;
+        server.stop().await;
+        let replacement = notify::NotifyServer::new(services.clone(), config);
+        if replacement.config().enabled {
+            replacement.start().await?;
+        }
+        let running = replacement.is_running();
+        *server = replacement;
+        running
+    };
+    let saved = notify::load_config(&services.db).await?;
+    Ok(NotifyConfigInfoResponse {
+        enabled: saved.enabled,
+        balance_threshold: saved.balance_threshold,
+        balance_interval_minutes: saved.balance_interval_minutes,
+        usage_enabled: saved.usage_enabled,
+        usage_check_interval_minutes: saved.usage_check_interval_minutes,
+        usage_window_hours: saved.usage_window_hours,
+        usage_baseline_days: saved.usage_baseline_days,
+        usage_multiplier: saved.usage_multiplier,
+        usage_min_cost: saved.usage_min_cost,
+        usage_cooldown_minutes: saved.usage_cooldown_minutes,
+        running,
+    })
 }
 
 #[tauri::command]
@@ -295,14 +324,12 @@ pub async fn list_notification_webhooks(app: tauri::AppHandle) -> Result<Notific
         .await
         .map_err(|error| error.to_string())?;
 
-    let webhooks = rows
-        .into_iter()
+    rows.into_iter()
         .map(|row| {
             let has_secret = notify::read_webhook_secret(&services.secrets, &row.id).is_some();
             NotificationWebhookInfoResponse::build(row, has_secret)
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    Ok(NotificationWebhookListResponse { webhooks })
+        .collect()
 }
 
 #[tauri::command]
@@ -386,7 +413,11 @@ pub async fn update_notification_webhook(
 }
 
 #[tauri::command]
-pub async fn delete_notification_webhook(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_notification_webhook(
+    app: tauri::AppHandle,
+    request: NotificationWebhookDeleteRequest,
+) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     services
         .db
@@ -408,10 +439,10 @@ pub async fn delete_notification_webhook(app: tauri::AppHandle, id: String) -> R
 #[tauri::command]
 pub async fn test_notification_webhook(
     app: tauri::AppHandle,
-    id: String,
+    request: NotificationWebhookTestRequest,
 ) -> Result<WebhookDeliveryInfoResponse, String> {
     let services = app.services();
-    notify::send_test(&services, &id).await.map(Into::into)
+    notify::send_test(&services, &request.id).await.map(Into::into)
 }
 
 #[cfg(test)]

@@ -17,37 +17,49 @@ use meridian_core::db::sea::ops::queue as ops;
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct QueuedPromptListRequest {
+    conversation_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct QueuedPromptCreateRequest {
     conversation_id: String,
     content: String,
     delivery: Delivery,
-    context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
+    context_refs: RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>,
     /// Conversations dragged into the composer, frozen at enqueue time like
     /// the workspace references above.
     conversation_refs: RequiredNullable<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct QueuedPromptDeliveryUpdateRequest {
+#[serde(deny_unknown_fields)]
+pub struct QueuedPromptUpdateRequest {
     conversation_id: String,
     id: String,
     delivery: Delivery,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct QueuedPromptRemoveRequest {
+#[serde(deny_unknown_fields)]
+pub struct QueuedPromptDeleteRequest {
     conversation_id: String,
     id: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct QueuedPromptReorderRequest {
     conversation_id: String,
     ids: Vec<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct QueuedPromptReleaseRequest {
+    conversation_id: String,
 }
 
 /// An interjection is text: neither runner has anywhere mid-turn to put an
@@ -91,8 +103,11 @@ async fn release_unless_plan_barrier(tx: &WriteTx, conversation_id: &str) -> Res
 /// Settled rows included: the front end draws one leaving, and dropping it here
 /// would make an item vanish a beat before the message it became appears.
 #[tauri::command]
-pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Result<QueuedPromptListResponse, String> {
-    let rows = ops::list(&app.services().db, &conversation_id)
+pub async fn list_queued_prompts(
+    app: tauri::AppHandle,
+    request: QueuedPromptListRequest,
+) -> Result<QueuedPromptListResponse, String> {
+    let rows = ops::list(&app.services().db, &request.conversation_id)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -105,7 +120,7 @@ pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Resul
 /// only circumstance in which this queue is allowed to move — see the header of
 /// `agent::queue`.
 #[tauri::command]
-pub async fn queue_enqueue(
+pub async fn create_queued_prompt(
     app: tauri::AppHandle,
     request: QueuedPromptCreateRequest,
 ) -> Result<QueuedPromptInfoResponse, String> {
@@ -123,8 +138,9 @@ pub async fn queue_enqueue(
     let services = app.services();
     let id = uuid::Uuid::new_v4().to_string();
     let parsed = meridian_core::workspace::reference::parse_message_references(&content);
-    let references =
-        meridian_core::workspace::reference::reconcile_references(context_refs.unwrap_or_default(), parsed)?;
+    let provided_refs: Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest> =
+        context_refs.unwrap_or_default().into_iter().map(Into::into).collect();
+    let references = meridian_core::workspace::reference::reconcile_references(provided_refs, parsed)?;
     if !references.is_empty() && delivery == Delivery::Interject {
         return Err("workspace references can only be queued as follow-up messages".into());
     }
@@ -220,8 +236,8 @@ pub async fn queue_enqueue(
 /// success that did nothing: the second is the record that the agent may be
 /// acting on it, and it is the only reason anyone would ever find out.
 #[tauri::command]
-pub async fn queue_remove(app: tauri::AppHandle, request: QueuedPromptRemoveRequest) -> Result<(), String> {
-    let QueuedPromptRemoveRequest { conversation_id, id } = request;
+pub async fn delete_queued_prompt(app: tauri::AppHandle, request: QueuedPromptDeleteRequest) -> Result<(), String> {
+    let QueuedPromptDeleteRequest { conversation_id, id } = request;
     let services = app.services();
     let removed = services
         .db
@@ -238,7 +254,7 @@ pub async fn queue_remove(app: tauri::AppHandle, request: QueuedPromptRemoveRequ
 
 /// Rewrite the order, wholesale. The list is what the user dragged into place.
 #[tauri::command]
-pub async fn queue_reorder(app: tauri::AppHandle, request: QueuedPromptReorderRequest) -> Result<(), String> {
+pub async fn set_queued_prompt_order(app: tauri::AppHandle, request: QueuedPromptReorderRequest) -> Result<(), String> {
     let QueuedPromptReorderRequest { conversation_id, ids } = request;
     let services = app.services();
     services
@@ -259,11 +275,8 @@ pub async fn queue_reorder(app: tauri::AppHandle, request: QueuedPromptReorderRe
 /// would have made no difference at all. Same rule as everywhere else in this
 /// file: the queue moves because somebody is here.
 #[tauri::command]
-pub async fn queue_set_delivery(
-    app: tauri::AppHandle,
-    request: QueuedPromptDeliveryUpdateRequest,
-) -> Result<(), String> {
-    let QueuedPromptDeliveryUpdateRequest {
+pub async fn update_queued_prompt(app: tauri::AppHandle, request: QueuedPromptUpdateRequest) -> Result<(), String> {
+    let QueuedPromptUpdateRequest {
         conversation_id,
         id,
         delivery,
@@ -296,7 +309,8 @@ pub async fn queue_set_delivery(
 /// comes after a failed step usually assumed it worked. Starting again is a
 /// person's decision, and this is them making it — so it pumps.
 #[tauri::command]
-pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
+pub async fn start_queued_prompts(app: tauri::AppHandle, request: QueuedPromptReleaseRequest) -> Result<(), String> {
+    let conversation_id = request.conversation_id;
     let services = app.services();
     services
         .db
@@ -490,56 +504,56 @@ mod tests {
     #[test]
     fn queued_prompt_create_request_uses_the_closed_delivery_vocabulary() {
         let request: QueuedPromptCreateRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "content": "continue",
             "delivery": "follow_up",
-            "contextRefs": null,
-            "conversationRefs": null,
+            "context_refs": null,
+            "conversation_refs": null,
         }))
         .expect("valid request");
 
         assert_eq!(request.delivery, Delivery::FollowUp);
         assert!(
             serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "content": "continue",
                 "delivery": "follow_up",
-                "conversationRefs": null,
+                "conversation_refs": null,
             }))
             .is_err(),
-            "nullable contextRefs must still be present",
+            "nullable context_refs must still be present",
         );
         assert!(
             serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "content": "continue",
                 "delivery": "follow_up",
-                "contextRefs": null,
+                "context_refs": null,
             }))
             .is_err(),
-            "nullable conversationRefs must still be present",
+            "nullable conversation_refs must still be present",
         );
         assert!(
             serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "content": "continue",
                 "delivery": "later",
-                "contextRefs": null,
-                "conversationRefs": null,
+                "context_refs": null,
+                "conversation_refs": null,
             }))
             .is_err()
         );
 
         assert!(
             serde_json::from_value::<QueuedPromptCreateRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "content": "inspect @src/main.rs",
                 "delivery": "follow_up",
-                "contextRefs": [{
+                "context_refs": [{
                     "path": "src/main.rs",
-                    "lineStart": null
+                    "line_start": null
                 }],
-                "conversationRefs": null,
+                "conversation_refs": null,
             }))
             .is_err(),
             "nested reference range keys must be complete"
@@ -549,11 +563,11 @@ mod tests {
     #[test]
     fn queued_prompt_delivery_update_request_rejects_unknown_fields() {
         assert!(
-            serde_json::from_value::<QueuedPromptDeliveryUpdateRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+            serde_json::from_value::<QueuedPromptUpdateRequest>(serde_json::json!({
+                "conversation_id": "conversation-1",
                 "id": "prompt-1",
                 "delivery": "interject",
-                "futureMode": true,
+                "future_mode": true,
             }))
             .is_err()
         );
@@ -561,33 +575,33 @@ mod tests {
 
     #[test]
     fn queue_mutation_requests_are_named_and_strict() {
-        let remove: QueuedPromptRemoveRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
+        let remove: QueuedPromptDeleteRequest = serde_json::from_value(serde_json::json!({
+            "conversation_id": "conversation-1",
             "id": "prompt-1",
         }))
         .expect("valid remove request");
         assert_eq!(remove.id, "prompt-1");
 
         let reorder: QueuedPromptReorderRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "ids": ["prompt-2", "prompt-1"],
         }))
         .expect("valid reorder request");
         assert_eq!(reorder.ids, ["prompt-2", "prompt-1"]);
 
         assert!(
-            serde_json::from_value::<QueuedPromptRemoveRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+            serde_json::from_value::<QueuedPromptDeleteRequest>(serde_json::json!({
+                "conversation_id": "conversation-1",
                 "id": "prompt-1",
-                "alreadySent": false,
+                "already_sent": false,
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<QueuedPromptReorderRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "ids": ["prompt-1"],
-                "appendMissing": true,
+                "append_missing": true,
             }))
             .is_err()
         );

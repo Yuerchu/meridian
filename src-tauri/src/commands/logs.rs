@@ -30,7 +30,7 @@ impl From<reader::LogRecordLevel> for LogRecordLevel {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LogCursorRequest {
     pub file_index: usize,
     pub byte_offset: u64,
@@ -46,7 +46,6 @@ impl From<LogCursorRequest> for reader::Cursor {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogCursorInfoResponse {
     pub file_index: usize,
     pub byte_offset: u64,
@@ -62,7 +61,6 @@ impl From<reader::Cursor> for LogCursorInfoResponse {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogEntryInfoResponse {
     pub ts: String,
     pub ts_ms: i64,
@@ -96,7 +94,6 @@ impl From<reader::LogEntry> for LogEntryInfoResponse {
 }
 
 #[derive(Debug, Default, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogPageResponse {
     pub entries: Vec<LogEntryInfoResponse>,
     pub next_cursor: Option<LogCursorInfoResponse>,
@@ -118,7 +115,7 @@ impl From<reader::LogPage> for LogPageResponse {
 /// Arguments from the panel. Every field is optional so the frontend can send
 /// only what the user actually chose.
 #[derive(Debug, Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LogQueryRequest {
     pub min_level: Option<logging::LogLevel>,
     pub limit: Option<usize>,
@@ -160,7 +157,6 @@ pub async fn read_logs(_app: tauri::AppHandle, request: LogQueryRequest) -> Resu
 }
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogFileInfoResponse {
     pub name: String,
     pub size: u64,
@@ -184,7 +180,6 @@ pub async fn list_log_files(_app: tauri::AppHandle) -> Result<LogFileListRespons
 }
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogSettingsResponse {
     pub level: logging::LogLevel,
     pub levels: Vec<logging::LogLevel>,
@@ -214,7 +209,7 @@ pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettingsRespon
 
 /// Change the level for this session and remember it for the next one.
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LogLevelUpdateRequest {
     pub level: logging::LogLevel,
 }
@@ -240,13 +235,12 @@ pub async fn set_log_level(app: tauri::AppHandle, request: LogLevelUpdateRequest
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LogExportRequest {
     pub output_path: String,
 }
 
 #[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct LogExportResponse {
     pub bytes_written: u64,
 }
@@ -278,7 +272,7 @@ mod tests {
     fn log_query_rejects_unknown_cursor_fields() {
         assert!(
             serde_json::from_value::<LogQueryRequest>(serde_json::json!({
-                "cursor": { "fileIndex": 1, "byteOffset": 24, "future": true }
+                "cursor": { "file_index": 1, "byte_offset": 24, "future": true }
             }))
             .is_err()
         );

@@ -13,21 +13,21 @@ use meridian_core::journal::blame::{BlameKind, BlameResult, BlameSpan};
 use meridian_core::turn::TurnOrigin;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct JournalBlameRequest {
     conversation_id: String,
     rel_path: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct JournalFileHistoryRequest {
     conversation_id: String,
     rel_path: String,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct JournalVersionContentRequest {
     version_id: String,
 }
@@ -123,7 +123,7 @@ const MAX_BLAME_BYTES: u64 = meridian_core::journal::capture::MAX_SNAPSHOT_BYTES
 /// collide and error each other for no reason. The frontend discards stale
 /// answers by request order instead.
 #[tauri::command]
-pub async fn journal_blame(
+pub async fn get_journal_blame(
     app: tauri::AppHandle,
     request: JournalBlameRequest,
 ) -> Result<JournalBlameResponse, String> {
@@ -175,7 +175,7 @@ pub async fn journal_blame(
 
 /// Every journalled version of one file, oldest first.
 #[tauri::command]
-pub async fn journal_file_history(
+pub async fn list_journal_versions(
     app: tauri::AppHandle,
     request: JournalFileHistoryRequest,
 ) -> Result<JournalVersionListResponse, String> {
@@ -212,7 +212,7 @@ pub async fn journal_file_history(
 /// empty strings: a deleted version has no content and a lost blob is a lost
 /// blob, and the viewer says different things for the two.
 #[tauri::command]
-pub async fn journal_version_content(
+pub async fn read_journal_version(
     app: tauri::AppHandle,
     request: JournalVersionContentRequest,
 ) -> Result<JournalVersionContentResponse, String> {
@@ -245,8 +245,8 @@ mod tests {
     fn journal_blame_request_rejects_unknown_fields() {
         assert!(
             serde_json::from_value::<JournalBlameRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
-                "relPath": "src/main.rs",
+                "conversation_id": "conversation-1",
+                "rel_path": "src/main.rs",
                 "future": true
             }))
             .is_err()

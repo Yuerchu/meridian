@@ -11,7 +11,7 @@ use meridian_core::db::sea::ops::{
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectCreateRequest {
     name: String,
     path: RequiredNullable<String>,
@@ -22,13 +22,19 @@ pub struct ProjectCreateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ProjectUpdateRequest {
     id: String,
     name: Option<String>,
     path: Option<String>,
     assistant_id: Option<String>,
     description: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectDeleteRequest {
+    id: String,
 }
 
 const PLAN_REVIEW_PROJECT_MUTATION_BARRIER: &str = "A conversation in this project is waiting for plan review or its continuation. Finish it before changing or deleting the project workspace.";
@@ -216,11 +222,11 @@ pub async fn update_project(
 }
 
 #[tauri::command]
-pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_project(app: tauri::AppHandle, request: ProjectDeleteRequest) -> Result<(), String> {
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the delete on any difference.
-    let referenced = conversation_ops::ids_by_project(&services.db, &id)
+    let referenced = conversation_ops::ids_by_project(&services.db, &request.id)
         .await
         .map_err(|e| e.to_string())?;
     let _leases = services
@@ -230,7 +236,7 @@ pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), Str
         .map_err(|busy| busy.to_string())?;
     let guarded = services
         .db
-        .write(async |tx| delete_project_unless_plan_barrier(tx, &id, &referenced).await)
+        .write(async |tx| delete_project_unless_plan_barrier(tx, &request.id, &referenced).await)
         .await
         .map_err(|e| e.to_string())?;
     finish_guarded_project_mutation(guarded)
