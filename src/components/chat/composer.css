@@ -1,0 +1,266 @@
+@layer components {
+  .m-composer {
+    position: relative;
+    width: 100%;
+  }
+
+  .m-composer__root {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-composer__shell {
+    container-type: inline-size;
+    container-name: composer;
+    border-radius: 24px;
+    border: 1px solid var(--border-strong);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    transition:
+      box-shadow var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-composer__shell:focus-within {
+    border-color: var(--border-control);
+  }
+
+  .m-composer__shell[data-running] {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .m-composer__shell[data-running]:focus-within {
+    border-color: transparent;
+  }
+
+  .m-composer__shell[data-dragging='true'] {
+    border-style: dashed;
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  .m-composer__content {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-composer__attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--space-1) * 1.5);
+    padding: var(--space-3) var(--space-3) 0;
+  }
+
+  .m-composer__shell-badge {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--space-1) * 1.5);
+    padding: var(--space-2) var(--space-3) 0;
+    font: var(--text-small-medium);
+    color: var(--text-secondary);
+  }
+
+  .m-composer__shell-prefix {
+    font-family: var(--font-mono);
+    color: var(--accent-strong);
+  }
+
+  .m-composer__field {
+    position: relative;
+  }
+
+  .m-composer__textarea {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-height: calc((100svh - var(--ime-bottom, 0px)) * 0.4);
+    resize: none;
+    border: 0;
+    background: transparent;
+    padding: var(--space-3) var(--space-4);
+    font: var(--text-body);
+    color: var(--text);
+    outline: none;
+  }
+
+  .m-composer__textarea[data-disabled] {
+    cursor: not-allowed;
+    color: var(--text-muted);
+  }
+
+  .m-composer__placeholder {
+    pointer-events: none;
+    position: absolute;
+    inset-inline: var(--space-4);
+    top: var(--space-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: start;
+    font: var(--text-body);
+    color: var(--text-secondary);
+  }
+
+  .m-composer__placeholder[data-motion='out'] {
+    animation: m-composer-label-out 220ms var(--ease-standard) forwards;
+  }
+
+  .m-composer__placeholder[data-motion='in'] {
+    animation: m-composer-label-in 220ms var(--ease-standard);
+  }
+
+  @media (pointer: coarse) {
+    .m-composer__textarea,
+    .m-composer__placeholder {
+      font: var(--text-body-lg);
+    }
+  }
+
+  .m-composer__toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2) var(--space-2);
+  }
+
+  /* Scrolling is the fix rather than shrinking when a hosted session adds
+     many knobs: p-1 + negative margin keeps focus rings and coarse-pointer
+     hitboxes from being clipped by the scroll viewport. */
+  .m-composer__toolbar-start {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    flex-shrink: 1;
+    overflow-x: auto;
+    padding: var(--space-1);
+    margin: calc(-1 * var(--space-1));
+    scrollbar-width: none;
+  }
+
+  .m-composer__toolbar-start::-webkit-scrollbar {
+    display: none;
+  }
+
+  .m-composer__toolbar-start > * {
+    flex-shrink: 0;
+  }
+
+  .m-composer__toolbar-end {
+    margin-inline-start: auto;
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-composer__send,
+  .m-composer__stop {
+    display: inline-flex;
+  }
+
+  .m-composer__send .ui-button,
+  .m-composer__stop .ui-button {
+    --ui-button-height: 36px;
+    --ui-button-radius: var(--radius-pill);
+    --icon-size: 20px;
+  }
+
+  .m-composer__send[data-mode='stop'] .ui-button,
+  .m-composer__stop .ui-button {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-bg-hovered: var(--border);
+    --ui-button-bg-pressed: var(--border-strong);
+    --ui-button-fg: var(--text-secondary);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+  }
+
+  .m-composer__send-spinner {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .m-composer__send-spinner .ui-spinner {
+    color: currentColor;
+  }
+
+  .m-composer__send-glyph {
+    position: relative;
+    display: inline-block;
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .m-composer__glyph-icon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard),
+      filter var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-composer__glyph-icon:not([data-active]) {
+    opacity: 0;
+    transform: scale(0.95);
+    filter: blur(2px);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-composer__send .ui-button,
+    .m-composer__stop .ui-button {
+      overflow: visible;
+    }
+
+    .m-composer__send .ui-button::after,
+    .m-composer__stop .ui-button::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+
+  :root[data-motion='reduced'] .m-composer__placeholder[data-motion],
+  :root[data-motion='reduced'] .m-composer__glyph-icon {
+    animation: none;
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-composer__placeholder[data-motion],
+    :root:not([data-motion='standard']) .m-composer__glyph-icon {
+      animation: none;
+      transition: none;
+    }
+  }
+}
+
+@keyframes m-composer-label-out {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: translateY(-10px);
+    opacity: 0;
+  }
+}
+
+@keyframes m-composer-label-in {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

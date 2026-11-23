@@ -1,4 +1,38 @@
 @layer components {
+  .m-emoji-picker__trigger {
+    display: inline-flex;
+  }
+
+  .m-emoji-picker__trigger .ui-button {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-bg-hovered: var(--border);
+    --ui-button-bg-pressed: var(--border-strong);
+    --ui-button-fg: var(--text);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+    --ui-button-height: 36px;
+    --ui-button-radius: var(--radius-pill);
+    --icon-size: 20px;
+  }
+
+  .m-emoji-picker__trigger .ui-button[data-disabled]:not([data-pending]) {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-fg: var(--text);
+    opacity: 0.4;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-emoji-picker__trigger .ui-button {
+      overflow: visible;
+    }
+
+    .m-emoji-picker__trigger .ui-button::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+
   .m-emoji-picker__popover {
     --ui-popover-padding: var(--space-2);
   }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { useTranslation } from 'react-i18next'
 import { Dialog, DialogTrigger } from 'react-aria-components'
 import { FaceSmile } from '@keyline-icons/react/two-tone'
-import { PromptInput } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import {
@@ -221,21 +221,24 @@ export function EmojiPicker({
   return (
     <DialogTrigger isOpen={open} onOpenChange={handleOpenChange}>
       {!anchorRef && (
-        <TooltipTrigger>
-          {/* The composer's round control rather than a labelled button: this
-              picker only ever sits in the composer toolbar, beside the `+` and
-              the microphone, and the three are one control family. */}
-          <PromptInput.Control
-            data-slot="emoji-picker-trigger"
-            aria-label={t('chat.emoji')}
-            className="touch-hitbox"
-            onPress={() => {
-              if (!open) setOpen(true)
-            }}
-            leadingIcon={FaceSmile}
-          />
-          <Tooltip>{t('chat.emoji')}</Tooltip>
-        </TooltipTrigger>
+        <span className="m-emoji-picker__trigger">
+          <TooltipTrigger>
+            {/* The composer's round control rather than a labelled button: this
+                picker only ever sits in the composer toolbar, beside the `+` and
+                the microphone, and the three are one control family. */}
+            <Button
+              data-slot="emoji-picker-trigger"
+              variant="secondary"
+              size="md"
+              aria-label={t('chat.emoji')}
+              onPress={() => {
+                if (!open) setOpen(true)
+              }}
+              icon={<FaceSmile />}
+            />
+            <Tooltip>{t('chat.emoji')}</Tooltip>
+          </TooltipTrigger>
+        </span>
       )}
       {popover}
     </DialogTrigger>

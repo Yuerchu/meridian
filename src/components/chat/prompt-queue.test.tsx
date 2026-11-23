@@ -1,7 +1,6 @@
 import type { ReactElement } from 'react'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { PromptInput } from '@/components/base'
 
 import i18n from '@/i18n'
 import { PromptQueue } from './prompt-queue'
@@ -46,7 +45,7 @@ const NOOP = {
 }
 
 function mount(ui: ReactElement) {
-  return render(<PromptInput>{ui}</PromptInput>)
+  return render(ui)
 }
 
 function rowFor(text: string) {

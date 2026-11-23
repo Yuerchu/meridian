@@ -1,0 +1,48 @@
+@layer components {
+  .m-composer-loader {
+    position: relative;
+  }
+
+  .m-composer-loader__surface {
+    position: absolute;
+    inset: 0;
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+  }
+
+  .m-composer-loader__light {
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    transition: opacity 450ms ease;
+  }
+
+  .m-composer-loader__body {
+    position: relative;
+  }
+
+  .m-composer-loader[data-paused] .m-composer-loader__rect {
+    animation-play-state: paused !important;
+  }
+
+  :root[data-motion='reduced'] .m-composer-loader__rect {
+    animation: none !important;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-composer-loader__rect {
+      animation: none !important;
+    }
+  }
+}
+
+@keyframes m-composer-loader-dash {
+  from {
+    stroke-dashoffset: 0;
+  }
+
+  to {
+    stroke-dashoffset: -100;
+  }
+}
