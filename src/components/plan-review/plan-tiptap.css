@@ -1,0 +1,241 @@
+@layer components {
+  .m-plan-review-editor__shell {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: var(--surface);
+  }
+
+  .m-plan-review-editor__toolbar {
+    display: flex;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-plan-review-editor__toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--space-1) / 2);
+  }
+
+  .m-plan-review-editor__toolbar-separator {
+    display: flex;
+    align-items: center;
+    height: var(--space-5);
+    margin-inline: var(--space-1);
+  }
+
+  /* Active formatting toggle buttons inside toolbar and selection bubble menu. */
+  .m-plan-review-editor__toolbar .ui-button[aria-pressed='true']:not([data-disabled]),
+  .m-plan-review-editor__toolbar .ui-button[data-active]:not([data-disabled]),
+  .m-plan-review-editor__bubble-menu .ui-button[aria-pressed='true']:not([data-disabled]),
+  .m-plan-review-editor__bubble-menu .ui-button[data-active]:not([data-disabled]) {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-bg-hovered: var(--border);
+    --ui-button-bg-pressed: var(--border-strong);
+    --ui-button-fg: var(--text);
+  }
+
+  .m-plan-review-editor__link-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: min(20rem, calc(100vw - 4 * var(--space-4)));
+  }
+
+  .m-plan-review-editor__link-input {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-plan-review-editor__link-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-plan-review-editor__content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .m-plan-review-editor__bubble-menu {
+    z-index: var(--z-overlay);
+    display: flex;
+    align-items: center;
+    gap: calc(var(--space-1) / 2);
+    padding: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    box-shadow: var(--shadow-floating);
+  }
+
+  /* Prose typography inside the editable document surface. */
+  .m-plan-review-editor__content .ProseMirror {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 54rem;
+    min-height: 100%;
+    margin-inline: auto;
+    padding: var(--space-8) clamp(1rem, 4cqi, 3rem) 6rem;
+    color: var(--text);
+    font: var(--text-body);
+    line-height: 1.625;
+    outline: none;
+  }
+
+  .m-plan-review-editor__content .ProseMirror > :first-child {
+    margin-block-start: 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror > :last-child {
+    margin-block-end: 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror p {
+    margin-block: var(--space-3);
+    color: var(--text);
+    line-height: 1.625;
+  }
+
+  .m-plan-review-editor__content .ProseMirror h1,
+  .m-plan-review-editor__content .ProseMirror h2,
+  .m-plan-review-editor__content .ProseMirror h3 {
+    margin-block: var(--space-5) var(--space-2);
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .m-plan-review-editor__content .ProseMirror h1 {
+    font: var(--text-title-2);
+  }
+
+  .m-plan-review-editor__content .ProseMirror h2 {
+    font: var(--text-title-3);
+  }
+
+  .m-plan-review-editor__content .ProseMirror h3 {
+    font: var(--text-headline);
+    font-weight: 600;
+  }
+
+  .m-plan-review-editor__content .ProseMirror strong,
+  .m-plan-review-editor__content .ProseMirror b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .m-plan-review-editor__content .ProseMirror s,
+  .m-plan-review-editor__content .ProseMirror del {
+    text-decoration: line-through;
+  }
+
+  .m-plan-review-editor__content .ProseMirror a {
+    color: var(--accent-strong);
+    text-decoration: none;
+  }
+
+  .m-plan-review-editor__content .ProseMirror a:hover {
+    text-decoration: underline;
+  }
+
+  .m-plan-review-editor__content .ProseMirror ul,
+  .m-plan-review-editor__content .ProseMirror ol {
+    list-style-position: outside;
+    margin-block: var(--space-3);
+    padding-inline-start: var(--space-5);
+  }
+
+  .m-plan-review-editor__content .ProseMirror ul {
+    list-style-type: disc;
+  }
+
+  .m-plan-review-editor__content .ProseMirror ol {
+    list-style-type: decimal;
+  }
+
+  .m-plan-review-editor__content .ProseMirror li {
+    margin-block: var(--space-1);
+    color: var(--text);
+  }
+
+  .m-plan-review-editor__content .ProseMirror li > p {
+    margin-block: 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror li > ul,
+  .m-plan-review-editor__content .ProseMirror li > ol {
+    margin-block: var(--space-1) 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror li::marker {
+    color: var(--text-secondary);
+  }
+
+  .m-plan-review-editor__content .ProseMirror :not(pre) > code {
+    padding: 0.125rem 0.375rem;
+    border-radius: calc(var(--radius-item) - var(--space-1));
+    background: var(--surface-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-code-scale);
+  }
+
+  .m-plan-review-editor__content .ProseMirror code::before,
+  .m-plan-review-editor__content .ProseMirror code::after {
+    content: none;
+  }
+
+  .m-plan-review-editor__content .ProseMirror pre {
+    margin-block: var(--space-3);
+    padding: var(--space-3);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface-sunken);
+    font: var(--text-code);
+  }
+
+  .m-plan-review-editor__content .ProseMirror pre code {
+    padding: 0;
+    background: transparent;
+    font: inherit;
+  }
+
+  .m-plan-review-editor__content .ProseMirror blockquote {
+    margin-block: var(--space-3);
+    margin-inline: 0;
+    padding-inline-start: var(--space-3);
+    border-inline-start: 3px solid var(--accent);
+    color: var(--text-secondary);
+  }
+
+  .m-plan-review-editor__content .ProseMirror blockquote > :first-child {
+    margin-block-start: 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror blockquote > :last-child {
+    margin-block-end: 0;
+  }
+
+  .m-plan-review-editor__content .ProseMirror hr {
+    margin-block: var(--space-4);
+    border: 0;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-plan-review-editor__content .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: inline-start;
+    height: 0;
+    color: var(--text-secondary);
+    pointer-events: none;
+  }
+}
