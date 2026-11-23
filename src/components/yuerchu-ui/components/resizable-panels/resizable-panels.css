@@ -1,0 +1,187 @@
+@layer components {
+  /* 两块 + 中间的分隔条；大小由 grid-template-columns / rows（行内样式）决定 */
+  .ui-resizable {
+    /* 拖过头时分隔条最多多走多远。跟 --enter-distance 走：减弱动效时为 0 */
+    --ui-resizable-stretch: calc(var(--enter-distance) * 6);
+
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  /* 拖过头松手：弹回最小 / 最大（只在这一下有过渡，JS 在过渡结束后去掉 data-settling） */
+  .ui-resizable[data-settling] {
+    transition:
+      grid-template-columns var(--dur-spring) var(--ease-spring),
+      grid-template-rows var(--dur-spring) var(--ease-spring);
+  }
+
+  .ui-resizable__panel {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  /* 分隔条：看起来是 1px 的线，能抓的范围更宽（伪元素向两边各扩 4px） */
+  .ui-resizable__handle {
+    position: relative;
+    z-index: var(--z-sticky);
+    background: var(--border);
+    touch-action: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-resizable[data-orientation="horizontal"] > .ui-resizable__handle {
+    width: 1px;
+    cursor: col-resize;
+  }
+
+  .ui-resizable[data-orientation="vertical"] > .ui-resizable__handle {
+    height: 1px;
+    cursor: row-resize;
+  }
+
+  .ui-resizable__handle::before {
+    content: "";
+    position: absolute;
+    inset: calc(-1 * var(--space-1));
+  }
+
+  .ui-resizable__handle[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* ---------- 把手（ResizeGrip，Table 的列宽也用它） ---------- */
+  .ui-resize-grip {
+    --ui-grip-width: 6px;
+    --ui-grip-height: 24px;
+    --ui-grip-arm: 7px;
+    --ui-grip-angle: 40deg;
+
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: var(--z-sticky);
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-grip-width);
+    height: var(--ui-grip-height);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    opacity: 0;
+    pointer-events: none;
+    translate: -50% -50%;
+    scale: 1 0.5;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      scale var(--dur-spring) var(--ease-spring),
+      width var(--dur-spring) var(--ease-spring),
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 上下分栏：整个把手转 90°（箭头也跟着朝上、朝下） */
+  .ui-resize-grip[data-orientation="vertical"] {
+    rotate: 90deg;
+  }
+
+  .ui-resize-grip[data-visible] {
+    opacity: 1;
+    scale: 1;
+  }
+
+  /* 焦点不在把手所在的元素上时（Table 的列宽：焦点在隐藏的输入框里），焦点环画在白条上 */
+  .ui-resize-grip[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* 拖动中：变宽，露出箭头 */
+  .ui-resize-grip[data-active] {
+    --ui-grip-width: 20px;
+
+    box-shadow: var(--shadow-raised);
+  }
+
+  /* 到头了还往外拖：白条不变，里面的箭头合拢成一条竖线（走不动了） */
+  .ui-resize-grip[data-blocked] {
+    --ui-grip-angle: 0deg;
+  }
+
+  /* 箭头：两段短线，交点在中间；夹角为 0 时合成一条竖线。默认朝右（下），朝左（上）时水平翻转 */
+  .ui-resize-grip__arrow {
+    position: relative;
+    width: 0;
+    height: 0;
+    opacity: 0;
+    translate: 2px 0;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      scale var(--dur-spring) var(--ease-spring),
+      translate var(--dur-spring) var(--ease-spring);
+  }
+
+  .ui-resize-grip[data-active] .ui-resize-grip__arrow {
+    opacity: 1;
+  }
+
+  .ui-resize-grip[data-direction="start"] .ui-resize-grip__arrow {
+    scale: -1 1;
+    translate: -2px 0;
+  }
+
+  .ui-resize-grip[data-direction][data-blocked] .ui-resize-grip__arrow {
+    translate: 0 0;
+  }
+
+  .ui-resize-grip__arrow > span {
+    position: absolute;
+    left: -0.75px;
+    width: 1.5px;
+    height: var(--ui-grip-arm);
+    border-radius: var(--radius-pill);
+    background: var(--text);
+    transition: rotate var(--dur-spring) var(--ease-spring);
+  }
+
+  .ui-resize-grip__arrow > span:first-child {
+    bottom: -0.75px;
+    transform-origin: 50% calc(100% - 0.75px);
+    rotate: calc(-1 * var(--ui-grip-angle));
+  }
+
+  .ui-resize-grip__arrow > span:last-child {
+    top: -0.75px;
+    transform-origin: 50% 0.75px;
+    rotate: var(--ui-grip-angle);
+  }
+
+  /* 触屏没有悬停：一直显示白条 */
+  @media (hover: none) {
+    .ui-resize-grip {
+      opacity: 1;
+      scale: 1;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-resizable__handle {
+      background: CanvasText;
+    }
+
+    .ui-resize-grip {
+      border-color: CanvasText;
+    }
+
+    .ui-resize-grip__arrow > span {
+      background: CanvasText;
+    }
+  }
+}

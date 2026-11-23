@@ -32,24 +32,6 @@ vi.mock('@keyline-icons/react/two-tone', () => ({
   Search: () => null,
   X: () => null,
 }))
-vi.mock('@/components/base', () => {
-  const Kbd = Object.assign(({ children }: { children: React.ReactNode }) => <kbd>{children}</kbd>, {
-    Content: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-  })
-  return {
-    Kbd,
-    Sidebar: {
-      Provider: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-      Main: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-      Trigger: (props: React.ButtonHTMLAttributes<HTMLButtonElement>) => <button {...props} />,
-    },
-    Resizable: Object.assign(({ children }: { children: React.ReactNode }) => <div>{children}</div>, {
-      Panel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-      Handle: (props: React.HTMLAttributes<HTMLDivElement>) => <div {...props} />,
-    }),
-  }
-})
-
 vi.mock('./app-sidebar', () => ({
   AppSidebar: (props: SidebarCallbacks) => {
     sidebarCapture.props = props

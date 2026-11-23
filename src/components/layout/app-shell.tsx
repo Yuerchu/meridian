@@ -7,8 +7,8 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToastRegion } from '@/components/yuerchu-ui/components/toast/toast'
+import { ResizablePanels } from '@/components/yuerchu-ui/components/resizable-panels/resizable-panels'
 import { AppShell as LibraryAppShell } from '@/components/yuerchu-ui/templates/app-shell/app-shell'
-import { Resizable } from '@/components/base'
 import { FolderTree, Menu, Search } from '@keyline-icons/react/two-tone'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
@@ -24,7 +24,7 @@ import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { usePlanReviewNavigation } from '@/components/plan-review/navigation'
 import { ApprovalNotifications } from './approval-notifications'
 import { AppSidebar } from './app-sidebar'
-import { CHANGES_HANDLE_TARGET, CHANGES_PANEL_SIZE, CHAT_PANEL_SIZE } from './changes-split'
+import { CHANGES_SPLIT } from './changes-split'
 import { CommandPalette } from './command-palette'
 import { NotificationInbox } from './notification-inbox'
 import { RemoteStatus } from './remote-status'
@@ -94,6 +94,7 @@ export function AppShell(props: ShellProps) {
   // here (nothing reads it back) and one more thing to have an opinion about
   // under a custom protocol. Persisting the state is a store field if we ever
   // want it.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
@@ -248,6 +249,9 @@ export function AppShell(props: ShellProps) {
           variant="inset"
           brand={null}
           sidebarLabel={t('sidebar.label')}
+          isCollapsible
+          isCollapsed={sidebarCollapsed}
+          onCollapsedChange={setSidebarCollapsed}
           showMobileBar={false}
           isDrawerOpen={drawerOpen}
           onDrawerOpenChange={setDrawerOpen}
@@ -280,6 +284,7 @@ export function AppShell(props: ShellProps) {
               onMoveToProject={onMoveToProject}
               onDeleteProject={onDeleteProject}
               onRenameProject={onRenameProject}
+              isCollapsed={sidebarCollapsed}
               isDrawerOpen={drawerOpen}
               onDrawerOpenChange={setDrawerOpen}
             />
@@ -391,14 +396,8 @@ export function AppShell(props: ShellProps) {
                 is the positioned box the settings layer covers, and a group
                 that enclosed both would have the settings page inside a panel
                 it has no business being in. */}
-                <Resizable
-                  orientation="horizontal"
-                  resizeTargetMinimumSize={CHANGES_HANDLE_TARGET}
-                  className="m-app-frame__split"
-                >
-                  <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
-                    {/* `min-w-0` or a flex child refuses to shrink, and the
-                    transcript's container overflows instead of narrowing. */}
+                {(() => {
+                  const chatPane = (
                     <div data-slot="app-chat-pane" className="m-app-frame__chat-pane">
                       {activeId ? (
                         <ChatView
@@ -426,22 +425,23 @@ export function AppShell(props: ShellProps) {
                         />
                       )}
                     </div>
-                  </Resizable.Panel>
-                  {/* Conditional rather than `collapsible`. Collapsed-to-zero and
-                  closed are two states that look identical and can disagree,
-                  and the one that can disagree is the one that produces a panel
-                  nobody can get back. */}
-                  {showChanges && activeId && (
-                    <>
-                      {/* A 1px line; what catches the pointer is the group's
-                      `resizeTargetMinimumSize` (CHANGES_HANDLE_TARGET). */}
-                      <Resizable.Handle aria-label={t('chat.changes.title')} />
-                      <Resizable.Panel id="changes" {...CHANGES_PANEL_SIZE}>
-                        <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
-                      </Resizable.Panel>
-                    </>
-                  )}
-                </Resizable>
+                  )
+                  return showChanges && activeId ? (
+                    <ResizablePanels
+                      orientation="horizontal"
+                      {...CHANGES_SPLIT}
+                      aria-label={t('chat.changes.title')}
+                      className="m-app-frame__split"
+                    >
+                      {[
+                        chatPane,
+                        <ChangesPanel key="changes" conversationId={activeId} onClose={() => setChangesOpen(false)} />,
+                      ]}
+                    </ResizablePanels>
+                  ) : (
+                    chatPane
+                  )
+                })()}
               </div>
 
               {/* Full-bleed `--background` layer over the inset chat frame. */}

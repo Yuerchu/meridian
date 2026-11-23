@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { FloatingToc, Kanban, Resizable } from '@/components/base'
+import { FloatingToc, Kanban } from '@/components/base'
 import { CommandPalette } from '@/components/yuerchu-ui/components/command-palette/command-palette'
 import { MenuItem, MenuSection } from '@/components/yuerchu-ui/components/menu/menu'
+import { ResizablePanels } from '@/components/yuerchu-ui/components/resizable-panels/resizable-panels'
 import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
 import { Tree, TreeItem } from '@/components/yuerchu-ui/components/tree/tree'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -110,21 +111,24 @@ export function DataParts() {
             it up, Tab to a drop position, Enter to drop. */}
         <DraggableKanban />
       </Section>
-      <Section title="Resizable / 可拖拽分栏">
+      <Section title="ResizablePanels / 可拖拽分栏">
         <div className="h-40 max-w-2xl overflow-hidden rounded-2xl ring-1 ring-border-button-default ring-inset">
-          <Resizable orientation="horizontal" className="h-full">
-            <Resizable.Panel id="left" defaultSize="60%" minSize="20%">
-              <div className="flex h-full items-center justify-center text-body-2-regular text-text-secondary">
+          <ResizablePanels orientation="horizontal" defaultSize={60} minSize={20} maxSize={80} className="h-full">
+            {[
+              <div
+                key="left"
+                className="flex h-full items-center justify-center text-body-2-regular text-text-secondary"
+              >
                 对话
-              </div>
-            </Resizable.Panel>
-            <Resizable.Handle />
-            <Resizable.Panel id="right" defaultSize="40%" minSize="20%">
-              <div className="flex h-full items-center justify-center text-body-2-regular text-text-secondary">
+              </div>,
+              <div
+                key="right"
+                className="flex h-full items-center justify-center text-body-2-regular text-text-secondary"
+              >
                 改动
-              </div>
-            </Resizable.Panel>
-          </Resizable>
+              </div>,
+            ]}
+          </ResizablePanels>
         </div>
       </Section>
     </>
