@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock, identifyingArg, toolLabel } from './tool-call-block'
@@ -369,9 +371,12 @@ describe('the interactive cards say what became of them', () => {
   it.each(['enter_plan', 'exit_plan'])('%s only rings while it is waiting', (name) => {
     const args = name === 'enter_plan' ? { reason: 'r' } : { plan: '# p' }
     const slot = name === 'enter_plan' ? 'enter-plan' : 'exit-plan'
+    const css = readFileSync(resolve(process.cwd(), 'src/components/chat/tool-call-block.css'), 'utf8')
+    expect(css).toMatch(/\.m-tool-call-block__card\[data-status='pending'\]\s*\{[^}]*box-shadow:[^}]*var\(--accent\)/s)
     const ringed = (status: ToolCallDisplay['status']) => {
       const { container, unmount } = render(<ToolCallBlock data={toolCall(name, args, status)} />)
-      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-status-info')
+      const card = container.querySelector(`[data-slot="${slot}"]`)!
+      const on = card.classList.contains('m-tool-call-block__card') && card.getAttribute('data-status') === 'pending'
       unmount()
       return on
     }
@@ -1087,6 +1092,10 @@ describe('as bubble blocks', () => {
   /// rests on is the exact path, and a decision made about a truncated one is
   /// a decision about something the reader could not see.
   it('gives a call waiting on a decision the whole column, path and description both on the head', () => {
+    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
+    expect(chatToolCss).toMatch(
+      /\.m-chat-tool\[data-presentation='bubble'\]\[data-expanded\],\s*\.m-chat-tool\[data-presentation='bubble'\]\[data-state='requires-action'\]\s*\{[^}]*width:\s*100%/s,
+    )
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('write_file', {
@@ -1097,7 +1106,10 @@ describe('as bubble blocks', () => {
       />,
     )
     const key = keyOf(container)
-    expect(blockOf(container)).toHaveClass('w-full')
+    const block = blockOf(container)
+    expect(block).toHaveClass('m-chat-tool')
+    expect(block).toHaveAttribute('data-presentation', 'bubble')
+    expect(block).toHaveAttribute('data-state', 'requires-action')
     expect(key.querySelector('[data-slot="tool-arg"]')).toHaveTextContent('/home/me/.ssh/config')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toHaveTextContent('Add the jump host')
     expectExpanded(key)
@@ -1106,13 +1118,19 @@ describe('as bubble blocks', () => {
   })
 
   it('keeps an ordinary block as wide as its label, with the description as a tooltip', async () => {
+    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
+    expect(chatToolCss).toMatch(/\.m-chat-tool\[data-presentation='bubble'\]\s*\{[^}]*width:\s*fit-content/s)
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('Bash', { command: 'git log --oneline', description: 'Recent history' }, 'completed')}
       />,
     )
     const key = keyOf(container)
-    expect(blockOf(container)).not.toHaveClass('w-full')
+    const block = blockOf(container)
+    expect(block).toHaveClass('m-chat-tool')
+    expect(block).toHaveAttribute('data-presentation', 'bubble')
+    expect(block).not.toHaveAttribute('data-expanded')
+    expect(block).not.toHaveAttribute('data-state', 'requires-action')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toBeNull()
     // Tooltip, not the browser's: nothing on the key carries `title`.
     expect(container.querySelector('[title]')).toBeNull()

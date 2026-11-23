@@ -1,6 +1,7 @@
 import './tool-call-block.css'
 import { Checkbox, CheckboxGroup } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { Fragment, useState, useCallback, useContext, useEffect, useMemo, useRef, useId } from 'react'
+import { Button as AriaButton, Disclosure, DisclosurePanel } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
@@ -56,6 +57,7 @@ import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { HoverCard } from '@/components/yuerchu-ui/components/hover-card/hover-card'
 import {
   ChatTool,
   ChatToolApproval,
@@ -76,7 +78,6 @@ import { useEditLocation } from '@/hooks/use-edit-location'
 import { agentFileDiffs } from '@/lib/tool-diffs'
 import { ariaHotkey, formatHotkey } from '@/hooks/use-hotkey'
 import { APPROVE_HOTKEY, DENY_HOTKEY } from '@/hooks/use-transcript-hotkeys'
-import { cx } from '@/utils/cx'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
 import { ToolTextResult, ToolValue } from '@/components/ui/tool-value'
@@ -84,7 +85,6 @@ import { fieldLabel, isInlineValue, parseStructured } from '@/lib/tool-value'
 import { rendererFor } from '@/lib/tool-renderers'
 import { canonicalToolName, toolUi } from '@/lib/tool-catalog'
 import { parsePartialObject } from '@/lib/partial-json'
-import { ChatSource, ChatSources } from '@/components/base'
 
 import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
@@ -94,17 +94,9 @@ import { useConversationStore } from '@/stores/conversation-store'
 import type { ApprovalEscalation, ApprovalRetryKind, AutoReviewVerdictInfoResponse, ToolCallDisplay } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
-/**
- * A field inside a card or a bubble block. A card is `background-primary`,
- * neutral-800 in dark, and the assistant bubble is neutral-200 in light — each
- * the exact value of the field's default tertiary well in that theme, so the
- * field had no edge. The registry's own
- * answer for a field that is not on a settings card is the secondary fill
- * (`data-table.tsx` and `settings-storage.tsx` pass
- * `fieldClassName="… bg-background-secondary-default"`), which stands apart
- * from white, neutral-200, neutral-700 and neutral-800 alike.
- */
-const FIELD_ON_CARD = 'bg-background-secondary-default'
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 interface AskOption {
   label: string
@@ -185,22 +177,19 @@ function AskAnswers({
   }, [result])
   if (answers === null) {
     return (
-      <p
-        data-slot="ask-user-result-text"
-        className={cx('text-caption-1-regular whitespace-pre-wrap text-text-primary', className)}
-      >
+      <p data-slot="ask-user-result-text" className={joinClasses('m-tool-call-block__ask-result-text', className)}>
         {result}
       </p>
     )
   }
   return (
-    <dl data-slot="ask-user-answers" className={cx('flex flex-col gap-2 text-caption-1-regular', className)}>
+    <dl data-slot="ask-user-answers" className={joinClasses('m-tool-call-block__ask-answers', className)}>
       {answers.map(([id, answer]) => (
-        <div key={id} data-slot="ask-user-answer" className="flex min-w-0 flex-col gap-0.5">
-          <dt data-slot="ask-user-answer-question" className="text-text-secondary">
+        <div key={id} data-slot="ask-user-answer" className="m-tool-call-block__ask-answer">
+          <dt data-slot="ask-user-answer-question" className="m-tool-call-block__ask-question">
             {questions.find((q) => q.id === id)?.question ?? id}
           </dt>
-          <dd data-slot="ask-user-answer-value" className="min-w-0 whitespace-pre-wrap text-text-primary">
+          <dd data-slot="ask-user-answer-value" className="m-tool-call-block__ask-value">
             {typeof answer === 'string' ? answer : <ToolValue value={answer} />}
           </dd>
         </div>
@@ -288,16 +277,11 @@ function QuestionBlock({
 
   if (skipped) {
     return (
-      <div data-slot="question-skipped" className="flex items-center justify-between py-1">
-        <span data-slot="question-skipped-text" className="text-body-regular text-text-secondary line-through">
+      <div data-slot="question-skipped" className="m-tool-call-block__question-skipped">
+        <span data-slot="question-skipped-text" className="m-tool-call-block__question-skipped-text">
           {q.question}
         </span>
-        <Button
-          icon={<ArrowUTurnLeft />}
-          variant="secondary"
-          onPress={() => onUnskip(q.id)}
-          className="text-caption-1-regular text-text-secondary shrink-0 ml-2"
-        >
+        <Button icon={<ArrowUTurnLeft />} variant="secondary" size="sm" onPress={() => onUnskip(q.id)}>
           {t('chat.tool.undo')}
         </Button>
       </div>
@@ -305,9 +289,9 @@ function QuestionBlock({
   }
 
   return (
-    <div ref={(element) => registerField(q.id, element)} data-slot="question" className="space-y-2">
-      <div data-slot="question-header" className="flex items-start justify-between gap-2">
-        <div id={questionId} data-slot="question-text" className="text-body-medium text-text-primary">
+    <div ref={(element) => registerField(q.id, element)} data-slot="question" className="m-tool-call-block__question">
+      <div data-slot="question-header" className="m-tool-call-block__question-header">
+        <div id={questionId} data-slot="question-text" className="m-tool-call-block__question-text">
           {q.question}
           {/* The mark and the withheld skip button are one decision: an asker
               that will not take an answer without this one leaves nothing to
@@ -316,19 +300,14 @@ function QuestionBlock({
             <span
               aria-label={t('chat.tool.requiredQuestion')}
               data-slot="question-required"
-              className="ml-1 text-status-danger"
+              className="m-tool-call-block__question-required"
             >
               *
             </span>
           )}
         </div>
         {!q.required && (
-          <Button
-            icon={<SkipForward />}
-            variant="secondary"
-            onPress={() => onSkip(q.id)}
-            className="text-caption-1-regular text-text-secondary shrink-0 mt-0.5"
-          >
+          <Button icon={<SkipForward />} variant="secondary" size="sm" onPress={() => onSkip(q.id)}>
             {t('chat.tool.skipQuestion')}
           </Button>
         )}
@@ -399,13 +378,11 @@ function QuestionBlock({
         // own, which is what `formatAnswer` sends.
         <div
           data-slot="question-notes"
-          className={cx(
-            'rounded-2xl border border-border-button-default bg-background-primary-default px-3 py-2',
-            hasOptions && 'space-y-1',
-          )}
+          data-has-options={hasOptions || undefined}
+          className="m-tool-call-block__question-notes"
         >
           {hasOptions && (
-            <span data-slot="question-notes-label" className="block text-caption-1-medium text-text-secondary">
+            <span data-slot="question-notes-label" className="m-tool-call-block__question-notes-label">
               {t('chat.tool.other')}
             </span>
           )}
@@ -419,21 +396,17 @@ function QuestionBlock({
             value={value.notes}
             onChange={(e) => onChange(q.id, { ...value, notes: e })}
             placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-            className={FIELD_ON_CARD}
           />
         </div>
       )}
       {invalid && (
-        <p id={errorId} role="alert" data-slot="question-error" className="text-caption-1-regular text-status-danger">
+        <p id={errorId} role="alert" data-slot="question-error" className="m-tool-call-block__error-text">
           {t('chat.tool.answerRequired')}
         </p>
       )}
     </div>
   )
 }
-
-/** The inset of a section inside a bubble's panel: ChatToolPanelHeader's and ChatToolPanelFooter's px-3. */
-const BUBBLE_PANEL_SECTION = 'px-3 py-2.5'
 
 export function AskUserBlock({
   data,
@@ -574,13 +547,17 @@ export function AskUserBlock({
   // padding of its own — each section brings its inset, as ChatToolPanelHeader
   // and ChatToolPanelFooter do. Left empty, the form sat flush against the
   // block's edge. Chromeless is inside somebody else's padding already.
-  const section = chromeless ? '' : inCard ? 'px-4 py-3' : BUBBLE_PANEL_SECTION
+  const section = chromeless
+    ? undefined
+    : inCard
+      ? 'm-tool-call-block__card-section'
+      : 'm-tool-call-block__bubble-section'
   const body = (
     <>
       {data.status === 'pending' && (
         <form
           data-slot="ask-user-form"
-          className={cx('space-y-3', section)}
+          className={joinClasses('m-tool-call-block__ask-form', section)}
           aria-busy={sending}
           noValidate
           onSubmit={handleSubmit}
@@ -599,11 +576,11 @@ export function AskUserBlock({
             />
           ))}
           {emptyFormError && (
-            <p role="alert" data-slot="ask-user-form-error" className="text-caption-1-regular text-status-danger">
+            <p role="alert" data-slot="ask-user-form-error" className="m-tool-call-block__error-text">
               {t('chat.tool.answerOrSkip')}
             </p>
           )}
-          <div data-slot="ask-user-actions" className="flex items-center gap-2 pt-1">
+          <div data-slot="ask-user-actions" className="m-tool-call-block__ask-actions">
             <Button icon={<Send />} type="submit" isPending={sending}>
               {t('chat.tool.askUserSubmit')}
             </Button>
@@ -611,11 +588,7 @@ export function AskUserBlock({
                 once something has been filled in, so it is a correction rather
                 than a demand made before anyone has started. */}
             {unanswered.length > 0 && questions.some((q) => hasContent(q, answers[q.id])) && (
-              <span
-                role="status"
-                data-slot="ask-user-required-pending"
-                className="text-caption-1-regular text-text-secondary"
-              >
+              <span role="status" data-slot="ask-user-required-pending" className="m-tool-call-block__muted-caption">
                 {t('chat.tool.askUserRequiredPending', { count: unanswered.length })}
               </span>
             )}
@@ -633,16 +606,13 @@ export function AskUserBlock({
       )}
 
       {data.result && (
-        <div
-          data-slot="ask-user-result"
-          className={
-            inCard
-              ? 'border-t border-separator-border bg-background-secondary-default/40'
-              : 'rounded-lg bg-background-secondary-default/50'
-          }
-        >
-          <div data-slot="ask-user-result-scroll" className="max-h-40 overflow-y-auto ">
-            <AskAnswers result={data.result} questions={questions} className={inCard ? 'px-4 py-3' : 'px-3 py-2'} />
+        <div data-slot="ask-user-result" data-in-card={inCard || undefined} className="m-tool-call-block__ask-result">
+          <div data-slot="ask-user-result-scroll" className="m-tool-call-block__ask-result-scroll">
+            <AskAnswers
+              result={data.result}
+              questions={questions}
+              className={inCard ? 'm-tool-call-block__card-section' : 'm-tool-call-block__bubble-result'}
+            />
           </div>
         </div>
       )}
@@ -651,7 +621,7 @@ export function AskUserBlock({
 
   if (chromeless) {
     return (
-      <div data-slot="ask-user" data-status={data.status} className="flex flex-col gap-3">
+      <div data-slot="ask-user" data-status={data.status} className="m-tool-call-block__ask-chromeless">
         {body}
       </div>
     )
@@ -661,13 +631,11 @@ export function AskUserBlock({
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <CircleQuestion aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="ask-user-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <CircleQuestion aria-hidden className="m-tool-call-block__icon-sm" />
+          <span data-slot="ask-user-title" className="m-tool-call-block__trigger-title">
             {t('chat.tool.askUser')}
           </span>
-          {data.status === 'completed' && (
-            <Check aria-hidden className="size-3.5 shrink-0 text-status-success-soft-foreground" />
-          )}
+          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -675,18 +643,15 @@ export function AskUserBlock({
   }
 
   return (
-    <div
-      data-slot="ask-user-card"
-      className="my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset"
-    >
-      <div data-slot="ask-user-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
-        <CircleQuestion className="w-3.5 h-3.5 text-text-secondary" />
-        <span data-slot="ask-user-title" className="text-body-medium text-text-primary">
+    <div data-slot="ask-user-card" className="m-tool-call-block__card">
+      <div data-slot="ask-user-header" className="m-tool-call-block__card-header">
+        <CircleQuestion className="m-tool-call-block__icon-sm" />
+        <span data-slot="ask-user-title" className="m-tool-call-block__card-title">
           {t('chat.tool.askUser')}
         </span>
         {/* No spinner here for `running`: the body below says so in words, and
             two of them side by side read as two things happening. */}
-        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-status-success-soft-foreground ml-auto" />}
+        {data.status === 'completed' && <Check className="m-tool-call-block__card-check" />}
       </div>
       {body}
     </div>
@@ -770,8 +735,8 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
 function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () => void }) {
   const { t } = useTranslation()
   return (
-    <div data-slot="result-toggle" className="border-t border-border-button-default/50 px-3 py-1.5">
-      <Button variant="secondary" size="sm" className="rounded-lg px-2 text-caption-1-regular" onPress={onToggle}>
+    <div data-slot="result-toggle" className="m-tool-call-block__result-toggle">
+      <Button variant="secondary" size="sm" onPress={onToggle}>
         {t(expanded ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
       </Button>
     </div>
@@ -781,10 +746,7 @@ function ResultToggle({ expanded, onToggle }: { expanded: boolean; onToggle: () 
 /** A line under a listing saying what was left out of it. */
 function Footnote({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      data-slot="tool-footnote"
-      className="border-t border-border-button-default/50 px-3 py-1.5 text-caption-1-regular text-text-secondary"
-    >
+    <div data-slot="tool-footnote" className="m-tool-call-block__footnote">
       {children}
     </div>
   )
@@ -794,7 +756,7 @@ function Footnote({ children }: { children: React.ReactNode }) {
  *  directory — said in the panel's own words rather than the tool's. */
 function EmptyLine({ children }: { children: React.ReactNode }) {
   return (
-    <div data-slot="tool-empty" className="px-3 py-2 text-caption-1-regular text-text-secondary">
+    <div data-slot="tool-empty" className="m-tool-call-block__empty">
       {children}
     </div>
   )
@@ -802,13 +764,7 @@ function EmptyLine({ children }: { children: React.ReactNode }) {
 
 function PlainText({ text, className }: { text: string; className?: string }) {
   return (
-    <pre
-      data-slot="plain-text"
-      className={cx(
-        'max-h-72 overflow-auto px-3 py-2 font-mono text-caption-1-regular leading-relaxed whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]',
-        className,
-      )}
-    >
+    <pre data-slot="plain-text" className={joinClasses('m-tool-call-block__plain-text', className)}>
       {text}
     </pre>
   )
@@ -834,7 +790,7 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   const body = long && !expanded ? headOf(content, 2000) : content
   return (
     <div data-slot="read-file-result">
-      <div data-slot="read-file-scroll" className="max-h-72 overflow-auto">
+      <div data-slot="read-file-scroll" className="m-tool-call-block__scroll-lg">
         <NumberedCode code={body} language={pathExtension(path)} />
       </div>
       {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
@@ -870,36 +826,22 @@ function SearchResult({ result }: { result: string }) {
 
   return (
     <div data-slot="search-result">
-      <div data-slot="search-result-scroll" className="max-h-72 overflow-auto">
+      <div data-slot="search-result-scroll" className="m-tool-call-block__scroll-lg">
         {Array.from(grouped.entries()).map(([file, items]) => (
-          <div
-            key={file}
-            data-slot="search-result-file"
-            className="not-first:border-t not-first:border-border-button-default/50"
-          >
-            <div
-              data-slot="search-result-file-header"
-              className="flex items-center gap-1.5 bg-background-secondary-default/30 px-3 py-1 text-caption-1-regular text-text-secondary"
-            >
+          <div key={file} data-slot="search-result-file" className="m-tool-call-block__search-file">
+            <div data-slot="search-result-file-header" className="m-tool-call-block__search-file-header">
               <FileIcon path={file} />
-              <PathLabel path={file} className="min-w-0 flex-1" />
-              <span data-slot="search-result-count" className="ml-auto shrink-0 tabular-nums">
+              <PathLabel path={file} className="m-tool-call-block__flex-1" />
+              <span data-slot="search-result-count" className="m-tool-call-block__search-count">
                 {items.length}
               </span>
             </div>
             {items.map((item, i) => (
-              <div
-                key={i}
-                data-slot="search-result-match"
-                className="flex w-max min-w-full gap-2 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
-              >
-                <span
-                  data-slot="search-result-line-no"
-                  className="w-8 shrink-0 text-right font-mono text-text-secondary tabular-nums"
-                >
+              <div key={i} data-slot="search-result-match" className="m-tool-call-block__search-match">
+                <span data-slot="search-result-line-no" className="m-tool-call-block__search-line-no">
                   {item.line}
                 </span>
-                <span data-slot="search-result-text" className="font-mono whitespace-pre text-text-primary">
+                <span data-slot="search-result-text" className="m-tool-call-block__search-text">
                   {item.text}
                 </span>
               </div>
@@ -923,15 +865,11 @@ function GlobResult({ result }: { result: string }) {
   if (empty) return <EmptyLine>{t('chat.tool.panel.noGlobMatches')}</EmptyLine>
   return (
     <div data-slot="glob-result">
-      <div data-slot="glob-result-scroll" className="max-h-72 overflow-auto py-1">
+      <div data-slot="glob-result-scroll" className="m-tool-call-block__list-scroll">
         {paths.map((path) => (
-          <div
-            key={path}
-            data-slot="glob-result-path"
-            className="flex items-center gap-1.5 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
-          >
+          <div key={path} data-slot="glob-result-path" className="m-tool-call-block__list-row">
             <FileIcon path={path} />
-            <PathLabel path={path} className="min-w-0 flex-1" />
+            <PathLabel path={path} className="m-tool-call-block__flex-1" />
           </div>
         ))}
       </div>
@@ -948,29 +886,25 @@ function DirectoryResult({ result }: { result: string }) {
   if (entries === null) return <PlainText text={result} />
   if (entries.length === 0) return <EmptyLine>{t('chat.tool.panel.emptyDirectory')}</EmptyLine>
   return (
-    <div data-slot="directory-result" className="max-h-72 overflow-auto py-1">
+    <div data-slot="directory-result" className="m-tool-call-block__list-scroll">
       {entries.map((entry) => (
-        <div
-          key={`${entry.kind}:${entry.name}`}
-          data-slot="directory-entry"
-          className="flex items-center gap-1.5 px-3 py-0.5 text-caption-1-regular hover:bg-background-primary-hover/20"
-        >
+        <div key={`${entry.kind}:${entry.name}`} data-slot="directory-entry" className="m-tool-call-block__list-row">
           {entry.kind === 'dir' ? (
-            <Folder aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
+            <Folder aria-hidden className="m-tool-call-block__icon-sm" />
           ) : entry.kind === 'link' ? (
-            <Link aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
+            <Link aria-hidden className="m-tool-call-block__icon-sm" />
           ) : (
             <FileIcon path={entry.name} />
           )}
           <span
             data-slot="directory-entry-name"
             onPointerEnter={titleIfTruncated}
-            className="min-w-0 flex-1 truncate font-mono text-text-primary"
+            className="m-tool-call-block__dir-name"
           >
             {entry.name}
           </span>
           {entry.size !== null && (
-            <span data-slot="directory-entry-size" className="shrink-0 font-mono text-text-secondary tabular-nums">
+            <span data-slot="directory-entry-size" className="m-tool-call-block__dir-size">
               {entry.size}
             </span>
           )}
@@ -996,14 +930,11 @@ function CommandOutputView({ output }: { output: CommandOutput }) {
       {output.stdout !== '' && <PlainText text={stdout} />}
       {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
       {output.stderr !== '' && (
-        <div data-slot="command-stderr" className="border-t border-border-button-default/50 bg-status-danger-soft">
-          <div
-            data-slot="command-stderr-label"
-            className="px-3 pt-1.5 text-caption-1-medium text-status-danger-soft-foreground"
-          >
+        <div data-slot="command-stderr" className="m-tool-call-block__stderr">
+          <div data-slot="command-stderr-label" className="m-tool-call-block__stderr-label">
             {t('chat.tool.panel.stderr')}
           </div>
-          <PlainText text={output.stderr} className="max-h-48 pt-0.5" />
+          <PlainText text={output.stderr} className="m-tool-call-block__stderr-text" />
         </div>
       )}
     </div>
@@ -1015,17 +946,14 @@ function CommandOutputView({ output }: { output: CommandOutput }) {
  *  agent's `Bash` is bash by name. */
 function CommandCode({ command }: { command: string }) {
   return (
-    <div data-slot="command-code" className="relative">
+    <div data-slot="command-code" className="m-tool-call-block__command-code">
       {/* Wrapped, not scrolled: a command is read whole before it is
           approved, and a long `cd … && …` scrolled off to the right is the
           part that matters least visible. The copy button keeps its corner. */}
-      <div
-        data-slot="command-code-scroll"
-        className="max-h-48 overflow-auto py-0.5 pr-9 pl-1 [&_pre]:break-all [&_pre]:whitespace-pre-wrap"
-      >
+      <div data-slot="command-code-scroll" className="m-tool-call-block__command-scroll">
         <ShikiCode code={command} language="bash" />
       </div>
-      <CopyButton text={command} className="absolute top-1.5 right-1.5" />
+      <CopyButton text={command} className="m-tool-call-block__command-copy" />
     </div>
   )
 }
@@ -1040,29 +968,21 @@ function CollapsibleMarkdown({ content, blockId }: { content: string; blockId: s
   const [open, setOpen] = useState(false)
   const long = content.length > 1500
   return (
-    <div data-slot="collapsible-markdown">
+    <div data-slot="collapsible-markdown" className="m-tool-call-block__collapsible">
       <div
         data-slot="collapsible-markdown-body"
-        className={cx('relative', long && !open && 'max-h-96 overflow-hidden')}
+        data-clamped={(long && !open) || undefined}
+        className="m-tool-call-block__collapsible-body"
       >
         <MarkdownContent content={content} blockId={blockId} />
         {long && !open && (
-          <div
-            aria-hidden
-            data-slot="collapsible-markdown-fade"
-            className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-linear-to-t from-background-primary-default to-transparent"
-          />
+          <div aria-hidden data-slot="collapsible-markdown-fade" className="m-tool-call-block__collapsible-fade" />
         )}
       </div>
       {long && (
         // A button for the same reason `ResultToggle` is one: this opens
         // content in place rather than going anywhere.
-        <Button
-          variant="secondary"
-          size="sm"
-          className="mt-1 self-start rounded-lg px-2 text-caption-1-regular"
-          onPress={() => setOpen((current) => !current)}
-        >
+        <Button variant="secondary" size="sm" onPress={() => setOpen((current) => !current)}>
           {t(open ? 'chat.tool.showLess' : 'chat.tool.showFullResult')}
         </Button>
       )}
@@ -1074,7 +994,7 @@ function ToolErrorResult({ result }: { result: string }) {
   const [expanded, setExpanded] = useState(false)
   const truncated = result.length > 1000
   return (
-    <div data-slot="tool-error-result" className="p-2">
+    <div data-slot="tool-error-result" className="m-tool-call-block__error-result">
       <ChatToolError>{truncated && !expanded ? `${result.slice(0, 1000)}…` : result}</ChatToolError>
       {truncated && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
     </div>
@@ -1107,7 +1027,7 @@ function ToolResult({
     // reader, which reads better drawn as such than as a wall of `#` and `-`.
     case 'markdown':
       return (
-        <div data-slot="markdown-result" className="px-3 py-2">
+        <div data-slot="markdown-result" className="m-tool-call-block__markdown-result">
           <CollapsibleMarkdown content={result} blockId={`${callId}:result`} />
         </div>
       )
@@ -1117,7 +1037,7 @@ function ToolResult({
         const plan = planContentOf(result)
         if (plan !== null) {
           return (
-            <div data-slot="plan-result" className="px-3 py-2">
+            <div data-slot="plan-result" className="m-tool-call-block__markdown-result">
               <CollapsibleMarkdown content={plan} blockId={`${callId}:plan`} />
             </div>
           )
@@ -1160,20 +1080,16 @@ function isLongArg(value: unknown): boolean {
 function ArgsMeta({ entries }: { entries: [string, unknown][] }) {
   const { t } = useTranslation()
   return (
-    <span data-slot="tool-args-meta" className="flex min-w-0 flex-wrap gap-x-3 gap-y-0.5">
+    <span data-slot="tool-args-meta" className="m-tool-call-block__args-meta">
       {entries.map(([key, value]) => (
-        <span
-          key={key}
-          data-slot="tool-args-meta-entry"
-          className="inline-flex min-w-0 max-w-full items-baseline gap-1"
-        >
-          <span data-slot="tool-args-meta-label" className="shrink-0">
+        <span key={key} data-slot="tool-args-meta-entry" className="m-tool-call-block__args-meta-entry">
+          <span data-slot="tool-args-meta-label" className="m-tool-call-block__args-meta-label">
             {fieldLabel(t, key)}
           </span>
           <span
             data-slot="tool-args-meta-value"
             onPointerEnter={titleIfTruncated}
-            className="min-w-0 truncate font-mono text-text-primary/80"
+            className="m-tool-call-block__args-meta-value"
           >
             {typeof value === 'string' ? value : <ToolValue value={value} />}
           </span>
@@ -1191,21 +1107,18 @@ function ArgsList({ entries }: { entries: [string, unknown][] }) {
   const { t } = useTranslation()
   if (entries.length === 0) return null
   return (
-    <dl data-slot="tool-args-list" className="flex flex-col gap-1.5 px-3 py-2 text-caption-1-regular">
+    <dl data-slot="tool-args-list" className="m-tool-call-block__args-list">
       {entries.map(([key, value]) => (
         <Fragment key={key}>
-          <dt data-slot="tool-args-list-label" className="text-text-secondary">
+          <dt data-slot="tool-args-list-label" className="m-tool-call-block__args-list-label">
             {fieldLabel(t, key)}
           </dt>
           {typeof value === 'string' ? (
-            <dd
-              data-slot="tool-args-list-value"
-              className="max-h-48 min-w-0 overflow-auto rounded-md bg-background-secondary-default/40 px-2 py-1 font-mono break-words whitespace-pre-wrap text-text-primary/90"
-            >
+            <dd data-slot="tool-args-list-value" data-kind="string" className="m-tool-call-block__args-list-value">
               {value}
             </dd>
           ) : (
-            <dd data-slot="tool-args-list-value" className="min-w-0">
+            <dd data-slot="tool-args-list-value" className="m-tool-call-block__args-list-value">
               <ToolValue value={value} />
             </dd>
           )}
@@ -1310,11 +1223,11 @@ export function PendingApproval({
 
   if (ui === 'sent') {
     return (
-      <div data-slot="approval-sent" className="flex items-center gap-2 px-0.5 text-text-secondary">
+      <div data-slot="approval-sent" className="m-tool-call-block__approval-sent">
         <span aria-hidden>
           <Spinner size="sm" />
         </span>
-        <span data-slot="approval-sent-text" className="text-caption-1-regular">
+        <span data-slot="approval-sent-text" className="m-tool-call-block__approval-sent-text">
           {t('chat.tool.running')}
         </span>
       </div>
@@ -1325,17 +1238,14 @@ export function PendingApproval({
     return (
       <>
         {isEscalation && (
-          <div
-            data-slot="approval-escalation"
-            className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
-          >
-            <TriangleAlert className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
+          <div data-slot="approval-escalation" className="m-tool-call-block__notice-line">
+            <TriangleAlert data-tone="warning" className="m-tool-call-block__icon-sm" />
             <span data-slot="approval-escalation-text">
               {t(escalationPromptKey(retry.kind))}
               {/* What went wrong, verbatim: the card is asking the user to
                   decide without the setting, and this is why it has to. */}
               {retry.kind === 'settings_unreadable' && (
-                <span data-slot="approval-escalation-error" className="mt-0.5 block break-all font-mono">
+                <span data-slot="approval-escalation-error" className="m-tool-call-block__escalation-error">
                   {retry.reason}
                 </span>
               )}
@@ -1374,7 +1284,7 @@ export function PendingApproval({
   const deny = () => decide(() => api.denyToolCall({ approvalId, reason: feedback || null }))
 
   return (
-    <div data-slot="approval-feedback" className="space-y-2">
+    <div data-slot="approval-feedback" className="m-tool-call-block__approval-feedback">
       <TextField
         name="tool-denial-reason"
         autoComplete="off"
@@ -1386,10 +1296,9 @@ export function PendingApproval({
           if (e.key === 'Enter') deny()
         }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
-        className={FIELD_ON_CARD}
         autoFocus
       />
-      <ChatToolApproval className="pt-0">
+      <ChatToolApproval className="m-tool-call-block__approval-compact">
         <Button variant="secondary" onPress={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
@@ -1424,6 +1333,66 @@ function providerWebToolTitle(t: ReturnType<typeof useTranslation>['t'], toolNam
   if (toolName === 'google_search') return t('chat.tool.name.google_search')
   if (toolName === 'url_context') return t('chat.tool.name.url_context')
   return t('chat.tool.name.web_search')
+}
+
+function SourceFavicon({ url }: { url?: string }) {
+  return url ? (
+    <img data-slot="chat-source-icon" src={url} alt="" className="m-tool-call-block__source-favicon" />
+  ) : (
+    <span data-slot="chat-source-icon" data-fallback="" aria-hidden className="m-tool-call-block__source-favicon" />
+  )
+}
+
+function WebSearchSourceItem({ src }: { src: WebSearchSource }) {
+  const site = src.site_name || src.title
+  return (
+    <div data-slot="chat-source">
+      <HoverCard
+        placement="top"
+        openDelay={400}
+        closeDelay={150}
+        content={
+          <div data-slot="chat-source-preview" className="m-tool-call-block__source-preview">
+            <div className="m-tool-call-block__source-preview-head">
+              <SourceFavicon url={src.favicon ?? undefined} />
+              <span className="m-tool-call-block__source-preview-site" onPointerEnter={titleIfTruncated}>
+                {site}
+              </span>
+            </div>
+            <p data-slot="chat-source-preview-title" className="m-tool-call-block__source-preview-title">
+              {src.title}
+            </p>
+            {src.url && (
+              <span
+                data-slot="chat-source-preview-url"
+                onPointerEnter={titleIfTruncated}
+                className="m-tool-call-block__source-preview-url"
+              >
+                {src.url}
+              </span>
+            )}
+          </div>
+        }
+      >
+        <a
+          data-slot="chat-source-trigger"
+          href="#meridian-external"
+          rel="noreferrer noopener"
+          className="m-tool-call-block__source-link"
+          onAuxClick={(e) => {
+            e.preventDefault()
+            if (e.button === 1) openExternally(src.url, e)
+          }}
+          onClick={(e) => openExternally(src.url, e)}
+        >
+          <SourceFavicon url={src.favicon ?? undefined} />
+          <span data-slot="chat-source-title" className="m-tool-call-block__source-title">
+            {site}
+          </span>
+        </a>
+      </HoverCard>
+    </div>
+  )
 }
 
 function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
@@ -1464,18 +1433,18 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <ChatToolTrigger
           endContent={
             sources && sources.length > 0 ? (
-              <span data-slot="web-search-count" className="tabular-nums">
+              <span data-slot="web-search-count" className="m-tool-call-block__tabular">
                 {t('chat.tool.webSearch.sources', { count: sources.length })}
               </span>
             ) : null
           }
         >
-          <Globe aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <Globe aria-hidden className="m-tool-call-block__icon-sm" />
+          <span data-slot="web-search-title" className="m-tool-call-block__trigger-title">
             {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
-            <span data-slot="tool-arg" className="text-text-secondary">
+            <span data-slot="tool-arg" className="m-tool-call-block__search-query">
               {query}
             </span>
           )}
@@ -1486,7 +1455,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           )}
           {data.status === 'orphaned' && <OrphanedNotice reason={data.answer_error} />}
           {!settled && data.status !== 'pending' && (
-            <div data-slot="web-search-searching" className="flex items-center gap-2 text-text-secondary">
+            <div data-slot="web-search-searching" className="m-tool-call-block__inline-status">
               <span aria-hidden>
                 <Spinner size="sm" />
               </span>
@@ -1496,43 +1465,24 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           {data.status === 'denied' && <CardOutcome status="denied" detail={data.result} />}
           {failed && (
             <>
-              <div data-slot="web-search-failed" className="flex items-center gap-2 text-status-danger">
-                <Globe className="size-3.5 shrink-0" />
+              <div data-slot="web-search-failed" data-tone="danger" className="m-tool-call-block__inline-status">
+                <Globe data-tone="danger" className="m-tool-call-block__icon-sm" />
                 <span data-slot="web-search-failed-text">{t('chat.tool.webSearch.failed')}</span>
               </div>
               {data.result && <ToolErrorResult result={data.result} />}
             </>
           )}
           {sources && sources.length === 0 && (
-            <div data-slot="web-search-empty" className="flex items-center gap-2 text-text-secondary">
-              <Globe className="size-3.5" />
+            <div data-slot="web-search-empty" className="m-tool-call-block__inline-status">
+              <Globe className="m-tool-call-block__icon-sm" />
               <span data-slot="web-search-empty-text">{t('chat.tool.webSearch.noResults')}</span>
             </div>
           )}
           {sources && sources.length > 0 && (
-            <ul data-slot="web-search-sources" className="flex flex-col gap-1">
+            <ul data-slot="web-search-sources" className="m-tool-call-block__sources-bubble">
               {sources.map((src, i) => (
                 <li key={i} data-slot="web-search-source">
-                  <ChatSource
-                    description={src.title}
-                    faviconUrl={src.favicon ?? undefined}
-                    href={src.url}
-                    title={src.site_name || src.title}
-                  >
-                    <ChatSource.Trigger
-                      href="#meridian-external"
-                      rel="noreferrer noopener"
-                      target={undefined}
-                      onAuxClick={(e) => {
-                        e.preventDefault()
-                        if (e.button === 1) openExternally(src.url, e)
-                      }}
-                      onClick={(e) => openExternally(src.url, e)}
-                    >
-                      <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
-                      <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
-                    </ChatSource.Trigger>
-                  </ChatSource>
+                  <WebSearchSourceItem src={src} />
                 </li>
               ))}
             </ul>
@@ -1544,17 +1494,17 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'pending') {
     return (
-      <ChatTool state="requires-action" defaultExpanded className="my-3">
+      <ChatTool state="requires-action" defaultExpanded className="m-tool-call-block__card-disclosure">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
-          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <span data-slot="web-search-title" className="m-tool-call-block__trigger-title">
             {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
             <span
               data-slot="web-search-query"
               onPointerEnter={titleIfTruncated}
-              className="text-text-secondary truncate"
+              className="m-tool-call-block__search-query"
             >
               {query}
             </span>
@@ -1583,17 +1533,17 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   // is still searching.
   if (data.status === 'orphaned') {
     return (
-      <ChatTool state="output-error" defaultExpanded={false} className="my-3">
+      <ChatTool state="output-error" defaultExpanded={false} className="m-tool-call-block__card-disclosure">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
-          <span data-slot="web-search-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <span data-slot="web-search-title" className="m-tool-call-block__trigger-title">
             {providerWebToolTitle(t, data.tool_name)}
           </span>
           {query && (
             <span
               data-slot="web-search-query"
               onPointerEnter={titleIfTruncated}
-              className="text-text-secondary truncate"
+              className="m-tool-call-block__search-query"
             >
               {query}
             </span>
@@ -1608,10 +1558,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status !== 'completed' && data.status !== 'denied' && data.status !== 'error') {
     return (
-      <div
-        data-slot="web-search-searching"
-        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
-      >
+      <div data-slot="web-search-searching" className="m-tool-call-block__card-status-row">
         <span aria-hidden>
           <Spinner size="sm" />
         </span>
@@ -1620,7 +1567,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           <span
             data-slot="web-search-query"
             onPointerEnter={titleIfTruncated}
-            className="text-text-primary truncate max-w-60"
+            className="m-tool-call-block__card-query"
           >
             {query}
           </span>
@@ -1631,22 +1578,19 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'denied') {
     return (
-      <div
-        data-slot="web-search-denied"
-        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
-      >
-        <Globe className="w-3.5 h-3.5" />
-        <X className="w-3.5 h-3.5 text-status-danger" />
+      <div data-slot="web-search-denied" className="m-tool-call-block__card-status-row">
+        <Globe className="m-tool-call-block__icon-sm" />
+        <X data-tone="danger" className="m-tool-call-block__icon-sm" />
       </div>
     )
   }
 
   if (data.status === 'error' || sources === null) {
     return (
-      <div data-slot="web-search-failed" className="my-2 space-y-2 text-caption-1-regular">
-        <div data-slot="web-search-failed-line" className="flex items-center gap-2">
-          <Globe className="w-3.5 h-3.5 text-status-danger shrink-0" />
-          <span data-slot="web-search-failed-text" className="text-status-danger">
+      <div data-slot="web-search-failed" className="m-tool-call-block__card-status-block">
+        <div data-slot="web-search-failed-line" className="m-tool-call-block__card-status-line">
+          <Globe data-tone="danger" className="m-tool-call-block__icon-sm" />
+          <span data-slot="web-search-failed-text" className="m-tool-call-block__card-failed-text">
             {t('chat.tool.webSearch.failed')}
           </span>
         </div>
@@ -1657,14 +1601,15 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (sources.length === 0) {
     return (
-      <div
-        data-slot="web-search-empty"
-        className="my-2 flex items-center gap-2 text-caption-1-regular text-text-secondary"
-      >
-        <Globe className="w-3.5 h-3.5" />
+      <div data-slot="web-search-empty" className="m-tool-call-block__card-status-row">
+        <Globe className="m-tool-call-block__icon-sm" />
         <span data-slot="web-search-empty-text">{t('chat.tool.webSearch.noResults')}</span>
         {query && (
-          <span data-slot="web-search-query" onPointerEnter={titleIfTruncated} className="truncate max-w-60">
+          <span
+            data-slot="web-search-query"
+            onPointerEnter={titleIfTruncated}
+            className="m-tool-call-block__card-query"
+          >
             {query}
           </span>
         )}
@@ -1673,39 +1618,18 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   }
 
   return (
-    <ChatSources className="my-2" defaultExpanded={false}>
-      <ChatSources.Trigger>{t('chat.tool.webSearch.sources', { count: sources.length })}</ChatSources.Trigger>
-      <ChatSources.Content>
-        <ChatSources.List>
+    <Disclosure data-slot="chat-sources" defaultExpanded={false} className="m-tool-call-block__sources-card">
+      <AriaButton slot="trigger" data-slot="chat-sources-trigger" className="m-tool-call-block__sources-trigger">
+        {t('chat.tool.webSearch.sources', { count: sources.length })}
+      </AriaButton>
+      <DisclosurePanel data-slot="chat-sources-content" className="m-tool-call-block__sources-content">
+        <div data-slot="chat-sources-list" className="m-tool-call-block__sources-list">
           {sources.map((src, i) => (
-            // `description` is what mounts the hover preview, so the page title
-            // moves out of a native `title` tooltip and into something that can
-            // hold more than one line.
-            <ChatSource
-              key={i}
-              description={src.title}
-              faviconUrl={src.favicon ?? undefined}
-              href={src.url}
-              title={src.site_name || src.title}
-            >
-              <ChatSource.Trigger
-                href="#meridian-external"
-                rel="noreferrer noopener"
-                target={undefined}
-                onAuxClick={(e) => {
-                  e.preventDefault()
-                  if (e.button === 1) openExternally(src.url, e)
-                }}
-                onClick={(e) => openExternally(src.url, e)}
-              >
-                <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
-                <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
-              </ChatSource.Trigger>
-            </ChatSource>
+            <WebSearchSourceItem key={i} src={src} />
           ))}
-        </ChatSources.List>
-      </ChatSources.Content>
-    </ChatSources>
+        </div>
+      </DisclosurePanel>
+    </Disclosure>
   )
 }
 
@@ -1744,17 +1668,17 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     data.status === 'pending' || data.answer_error !== undefined,
   )
   const inCard = presentation === 'card'
-  const section = inCard ? 'px-4 py-3' : BUBBLE_PANEL_SECTION
-  const divider = inCard ? 'border-t border-separator-border' : ''
+  const section = inCard ? 'm-tool-call-block__card-section' : 'm-tool-call-block__bubble-section'
+  const divider = inCard ? 'm-tool-call-block__card-divider' : undefined
 
   const body = (
     <>
-      <div data-slot="enter-plan-reason" className={cx('text-text-primary', section)}>
+      <div data-slot="enter-plan-reason" className={joinClasses('m-tool-call-block__enter-plan-reason', section)}>
         {reason}
       </div>
 
       {data.status === 'pending' && approvalId && !sent && (
-        <div data-slot="enter-plan-actions" className={cx(divider, section)}>
+        <div data-slot="enter-plan-actions" className={joinClasses(divider, section)}>
           <ChatToolApproval>
             <Button
               icon={<X />}
@@ -1773,7 +1697,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && sent && (
         <div
           data-slot="enter-plan-waiting"
-          className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
+          className={joinClasses('m-tool-call-block__waiting-inline', divider, section)}
         >
           <span aria-hidden>
             <Spinner size="sm" />
@@ -1783,7 +1707,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       )}
 
       {data.status !== 'pending' && data.status !== 'completed' && (
-        <div data-slot="enter-plan-outcome" className={cx(divider, section)}>
+        <div data-slot="enter-plan-outcome" className={joinClasses(divider, section)}>
           <CardOutcome status={data.status} detail={data.result} reason={data.answer_error} />
         </div>
       )}
@@ -1794,41 +1718,27 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <Compass aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="enter-plan-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <Compass aria-hidden className="m-tool-call-block__icon-sm" />
+          <span data-slot="enter-plan-title" className="m-tool-call-block__trigger-title">
             {t('chat.plan.enterTitle')}
           </span>
-          {data.status === 'completed' && (
-            <Check aria-hidden className="size-3.5 shrink-0 text-status-success-soft-foreground" />
-          )}
-          {declined && <X aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
+          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
+          {declined && <X aria-hidden className="m-tool-call-block__icon-sm" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
     )
   }
 
-  // Same status ring as `ChatTool`: the card's own edge is recoloured to mean
-  // "this one is waiting on you". Which is `pending` and only `pending` — keyed
-  // off "not denied" it was drawn around every other state too, so a call that
-  // had errored, been abandoned or already been approved all sat there asking
-  // for a decision that had been made or could not be.
   return (
-    <div
-      data-slot="enter-plan"
-      data-status={data.status}
-      className={cx(
-        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset',
-        data.status === 'pending' && 'ring-status-info/40',
-      )}
-    >
-      <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
-        <Compass aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="enter-plan-title" className="text-body-medium text-text-primary">
+    <div data-slot="enter-plan" data-status={data.status} className="m-tool-call-block__card">
+      <div data-slot="enter-plan-header" className="m-tool-call-block__card-header">
+        <Compass aria-hidden className="m-tool-call-block__icon-sm" />
+        <span data-slot="enter-plan-title" className="m-tool-call-block__card-title">
           {t('chat.plan.enterTitle')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
-        {declined && <X className="ml-auto size-3.5 text-text-secondary" />}
+        {data.status === 'completed' && <Check className="m-tool-call-block__card-check" />}
+        {declined && <X className="m-tool-call-block__card-dismissed-icon" />}
       </div>
       {body}
     </div>
@@ -1872,19 +1782,19 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     data.status === 'pending' || data.answer_error !== undefined,
   )
   const inCard = presentation === 'card'
-  const section = inCard ? 'px-4 py-3' : ''
-  const divider = inCard ? 'border-t border-separator-border' : ''
+  const section = inCard ? 'm-tool-call-block__card-section' : undefined
+  const divider = inCard ? 'm-tool-call-block__card-divider' : undefined
 
   const body = (
     <>
-      <div data-slot="exit-plan-body" className={cx('max-h-96 overflow-y-auto', section)}>
+      <div data-slot="exit-plan-body" className={joinClasses('m-tool-call-block__exit-plan-body', section)}>
         <MarkdownContent content={plan} />
       </div>
 
       {data.status === 'pending' && approvalId && ui !== 'sent' && (
-        <div data-slot="exit-plan-actions" className={cx(divider, section)}>
+        <div data-slot="exit-plan-actions" className={joinClasses(divider, section)}>
           {ui === 'feedback' ? (
-            <div data-slot="exit-plan-feedback" className="space-y-2">
+            <div data-slot="exit-plan-feedback" className="m-tool-call-block__feedback-box">
               <TextField
                 name="plan-feedback"
                 autoComplete="off"
@@ -1896,10 +1806,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                   if (e.key === 'Enter') sendBack()
                 }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
-                className={FIELD_ON_CARD}
                 autoFocus
               />
-              <ChatToolApproval className="pt-0">
+              <ChatToolApproval className="m-tool-call-block__approval-compact">
                 <Button variant="secondary" onPress={() => setUi('idle')}>
                   {t('chat.tool.cancel')}
                 </Button>
@@ -1924,7 +1833,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       {data.status === 'pending' && ui === 'sent' && (
         <div
           data-slot="exit-plan-waiting"
-          className={cx('flex items-center gap-2 text-text-secondary', divider, section)}
+          className={joinClasses('m-tool-call-block__waiting-inline', divider, section)}
         >
           <span aria-hidden>
             <Spinner size="sm" />
@@ -1934,7 +1843,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       )}
 
       {data.status !== 'pending' && data.status !== 'completed' && (
-        <div data-slot="exit-plan-outcome" className={cx(divider, section)}>
+        <div data-slot="exit-plan-outcome" className={joinClasses(divider, section)}>
           <CardOutcome status={data.status} detail={data.result} reason={data.answer_error} />
         </div>
       )}
@@ -1945,14 +1854,12 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <List aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="exit-plan-title" className="text-caption-1-medium text-text-primary shrink-0">
+          <List aria-hidden className="m-tool-call-block__icon-sm" />
+          <span data-slot="exit-plan-title" className="m-tool-call-block__trigger-title">
             {t('chat.plan.title')}
           </span>
-          {data.status === 'completed' && (
-            <Check aria-hidden className="size-3.5 shrink-0 text-status-success-soft-foreground" />
-          )}
-          {wasRejected && <X aria-hidden className="size-3.5 shrink-0 text-text-secondary" />}
+          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
+          {wasRejected && <X aria-hidden className="m-tool-call-block__icon-sm" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -1960,22 +1867,14 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   }
 
   return (
-    <div
-      data-slot="exit-plan"
-      data-status={data.status}
-      className={cx(
-        'my-3 overflow-hidden rounded-2xl bg-background-primary-default text-body-regular shadow-card ring-1 ring-border-button-default ring-inset',
-        // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
-        data.status === 'pending' && 'ring-status-info/40',
-      )}
-    >
-      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-background-secondary-default px-4 py-3">
-        <List aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span data-slot="exit-plan-title" className="text-body-medium text-text-primary">
+    <div data-slot="exit-plan" data-status={data.status} className="m-tool-call-block__card">
+      <div data-slot="exit-plan-header" className="m-tool-call-block__card-header">
+        <List aria-hidden className="m-tool-call-block__icon-sm" />
+        <span data-slot="exit-plan-title" className="m-tool-call-block__card-title">
           {t('chat.plan.title')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-status-success-soft-foreground" />}
-        {wasRejected && <X className="ml-auto size-3.5 text-text-secondary" />}
+        {data.status === 'completed' && <Check className="m-tool-call-block__card-check" />}
+        {wasRejected && <X className="m-tool-call-block__card-dismissed-icon" />}
       </div>
       {body}
     </div>
@@ -2000,23 +1899,19 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
     <ChatTool state={mapChatToolState(data.status)} {...expansion}>
       <ChatToolTrigger
         endContent={
-          <span data-slot="todo-progress" className="shrink-0 text-text-secondary tabular-nums">
+          <span data-slot="todo-progress" className="m-tool-call-block__todo-progress">
             {t('chat.todo.progress', { done, total })}
           </span>
         }
       >
-        <ListCheck aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-        <span
-          data-slot="todo-title"
-          onPointerEnter={titleIfTruncated}
-          className="truncate text-caption-1-medium text-text-primary"
-        >
+        <ListCheck aria-hidden className="m-tool-call-block__icon-sm" />
+        <span data-slot="todo-title" onPointerEnter={titleIfTruncated} className="m-tool-call-block__todo-title">
           {title}
         </span>
       </ChatToolTrigger>
       <ChatToolContent>
         <ChatToolPanelBody>
-          <TodoItemList todos={todos} className="px-3 py-2" />
+          <TodoItemList todos={todos} className="m-tool-call-block__todo-list" />
         </ChatToolPanelBody>
         {data.status === 'error' && data.result && (
           <ChatToolPanelFooter>
@@ -2163,10 +2058,9 @@ export function ToolArgsSummary({
 }) {
   const arg = identifyingArg(toolName, args)
   if (arg === null) return null
-  const base = 'min-w-0 font-mono text-caption-1-regular text-text-primary'
   if (arg.kind === 'path') {
     return (
-      <span data-slot="tool-arg" className={cx(base, 'flex', className)}>
+      <span data-slot="tool-arg" data-layout="flex" className={joinClasses('m-tool-call-block__arg', className)}>
         <PathLabel path={arg.value} wrap={!compact} />
       </span>
     )
@@ -2174,12 +2068,12 @@ export function ToolArgsSummary({
   if (arg.kind === 'command' && compact) {
     const { head, more } = commandHeadline(arg.value)
     return (
-      <span data-slot="tool-arg" className={cx(base, 'flex whitespace-nowrap', className)}>
-        <span data-slot="tool-arg-head" className="min-w-0 truncate">
+      <span data-slot="tool-arg" data-layout="command" className={joinClasses('m-tool-call-block__arg', className)}>
+        <span data-slot="tool-arg-head" className="m-tool-call-block__arg-head">
           {head}
         </span>
         {more > 0 && (
-          <span aria-hidden data-slot="tool-arg-more" className="ml-1 shrink-0 text-text-secondary">
+          <span aria-hidden data-slot="tool-arg-more" className="m-tool-call-block__arg-more">
             ⏎ +{more}
           </span>
         )}
@@ -2189,7 +2083,8 @@ export function ToolArgsSummary({
   return (
     <span
       data-slot="tool-arg"
-      className={cx(base, compact ? 'truncate' : 'break-words whitespace-pre-wrap [overflow-wrap:anywhere]', className)}
+      data-layout={compact ? 'compact' : 'wrap'}
+      className={joinClasses('m-tool-call-block__arg', className)}
     >
       {arg.value}
     </span>
@@ -2245,11 +2140,8 @@ function OrphanedNotice({ reason }: { reason?: string }) {
     return <ErrorAlert data-slot="orphaned-notice" title={t('chat.tool.answerFailed')} message={reason} />
   }
   return (
-    <div
-      data-slot="orphaned-notice"
-      className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
-    >
-      <TriangleAlert className="w-3.5 h-3.5 text-status-warning-soft-foreground shrink-0" />
+    <div data-slot="orphaned-notice" className="m-tool-call-block__notice-line">
+      <TriangleAlert data-tone="warning" className="m-tool-call-block__icon-sm" />
       <span data-slot="orphaned-notice-text">{t('chat.tool.orphaned')}</span>
     </div>
   )
@@ -2280,49 +2172,38 @@ function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdictInfoResponse 
       : t('chat.tool.autoReview.allowed')
 
   return (
-    <div
-      data-slot="auto-review"
-      className={cx(
-        'space-y-1 rounded-lg px-2 py-1.5 text-caption-1-regular',
-        denied
-          ? 'bg-status-danger-soft text-status-danger-soft-foreground'
-          : 'bg-background-secondary-default text-text-secondary',
-      )}
-    >
-      <div data-slot="auto-review-header" className="flex items-center gap-1.5">
+    <div data-slot="auto-review" data-outcome={verdict.outcome} className="m-tool-call-block__auto-review">
+      <div data-slot="auto-review-header" className="m-tool-call-block__auto-review-header">
         {denied ? (
-          <Ban className="w-3.5 h-3.5 shrink-0" />
+          <Ban className="m-tool-call-block__auto-review-icon" />
         ) : unreadable ? (
-          <TriangleAlert className="w-3.5 h-3.5 shrink-0 text-status-warning-soft-foreground" />
+          <TriangleAlert data-tone="warning" className="m-tool-call-block__auto-review-icon" />
         ) : (
-          <CircleCheck className="w-3.5 h-3.5 shrink-0" />
+          <CircleCheck className="m-tool-call-block__auto-review-icon" />
         )}
-        <span data-slot="auto-review-label" className="text-caption-1-medium">
+        <span data-slot="auto-review-label" className="m-tool-call-block__auto-review-label">
           {label}
         </span>
         {verdict.risk && (
-          <span data-slot="auto-review-risk" className="shrink-0">
+          <span data-slot="auto-review-risk" className="m-tool-call-block__shrink-0">
             {t(`chat.tool.autoReview.risk.${verdict.risk}`)}
           </span>
         )}
         {verdict.authorization && (
-          <span data-slot="auto-review-auth" className="shrink-0">
+          <span data-slot="auto-review-auth" className="m-tool-call-block__shrink-0">
             {t(`chat.tool.autoReview.auth.${verdict.authorization}`)}
           </span>
         )}
         {/* Only worth saying when it went and looked: the cheap pass is the
             default and naming it on every card would be noise. */}
         {verdict.stage === 'investigate' && (
-          <span data-slot="auto-review-stage" className="ml-auto shrink-0">
+          <span data-slot="auto-review-stage" className="m-tool-call-block__auto-review-stage">
             {t('chat.tool.autoReview.investigated')}
           </span>
         )}
       </div>
       {verdict.rationale?.trim() && (
-        <p
-          data-slot="auto-review-rationale"
-          className={cx('whitespace-pre-wrap', denied ? undefined : 'text-text-secondary')}
-        >
+        <p data-slot="auto-review-rationale" className="m-tool-call-block__auto-review-rationale">
           {verdict.rationale}
         </p>
       )}
@@ -2369,19 +2250,13 @@ function CardOutcome({
 }) {
   const { t } = useTranslation()
   const notice = (icon: React.ReactNode, text: string, withDetail = false) => (
-    <div data-slot="card-outcome" className="space-y-1.5">
-      <div
-        data-slot="card-outcome-line"
-        className="flex items-start gap-1.5 px-0.5 text-caption-1-regular text-text-secondary"
-      >
+    <div data-slot="card-outcome" className="m-tool-call-block__card-outcome">
+      <div data-slot="card-outcome-line" className="m-tool-call-block__card-outcome-line">
         {icon}
         <span data-slot="card-outcome-text">{text}</span>
       </div>
       {withDetail && detail?.trim() && (
-        <pre
-          data-slot="card-outcome-detail"
-          className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-caption-1-regular text-text-primary"
-        >
+        <pre data-slot="card-outcome-detail" className="m-tool-call-block__card-outcome-detail">
           {detail}
         </pre>
       )}
@@ -2392,16 +2267,14 @@ function CardOutcome({
     case 'pending':
       return null
     case 'completed':
-      return sentence
-        ? notice(<CircleCheck className="w-3.5 h-3.5 shrink-0 text-status-success-soft-foreground" />, sentence)
-        : null
+      return sentence ? notice(<CircleCheck className="m-tool-call-block__check-icon" />, sentence) : null
     case 'orphaned':
       return <OrphanedNotice reason={reason} />
     case 'denied':
-      return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
+      return notice(<Ban className="m-tool-call-block__icon-sm" />, t('chat.tool.wasDenied'), true)
     case 'error':
       return notice(
-        <TriangleAlert className="w-3.5 h-3.5 text-status-danger shrink-0" />,
+        <TriangleAlert data-tone="danger" className="m-tool-call-block__icon-sm" />,
         t('chat.tool.wasError'),
         true,
       )
@@ -2418,12 +2291,12 @@ function CardOutcome({
     // Still, because it is still. The spinner above is what claims work is
     // happening, and for this one nothing is.
     case 'queued':
-      return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.queued'))
+      return notice(<Clock className="m-tool-call-block__icon-sm" />, t('chat.tool.queued'))
     // Waiting on a person, but not on whoever is reading this. The question was
     // put on the card that spawned the run, and saying so is the point — a card
     // that simply sat there would read as hung.
     case 'awaiting_parent':
-      return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.awaitingParent'))
+      return notice(<Clock className="m-tool-call-block__icon-sm" />, t('chat.tool.awaitingParent'))
     default: {
       const unhandled: never = status
       throw new Error(`unhandled tool call status: ${String(unhandled)}`)
@@ -2649,7 +2522,7 @@ export function ToolCallBlock({
     ) : titleArg.kind === 'command' ? (
       (description ?? commandHeadline(titleArg.value).head)
     ) : (
-      <span data-slot="tool-panel-title-text" className="font-mono">
+      <span data-slot="tool-panel-title-text" className="m-tool-call-block__panel-title-mono">
         {titleArg.value}
       </span>
     )
@@ -2678,7 +2551,7 @@ export function ToolCallBlock({
           displaces the other — see `toolDescription`. */}
       <ChatToolTrigger subtitle={description}>
         <ChatToolStatusIcon />
-        <span data-slot="tool-label" className="text-caption-1-medium text-text-primary shrink-0">
+        <span data-slot="tool-label" className="m-tool-call-block__trigger-title">
           {label}
         </span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} compact={compact} />
@@ -2687,7 +2560,7 @@ export function ToolCallBlock({
             rest the whole answer on. The summary stays — with three commands
             queued, which one this is matters as much as that it is waiting. */}
         {data.status === 'queued' && (
-          <span data-slot="tool-queued" className="ml-auto shrink-0 text-caption-1-regular text-text-secondary">
+          <span data-slot="tool-queued" className="m-tool-call-block__queued-label">
             {t('chat.tool.queued')}
           </span>
         )}
@@ -2700,7 +2573,7 @@ export function ToolCallBlock({
               headerDescription !== null || metaArgs.length > 0 ? (
                 <>
                   {headerDescription !== null && (
-                    <span data-slot="tool-panel-description" className="block">
+                    <span data-slot="tool-panel-description" className="m-tool-call-block__panel-description-line">
                       {headerDescription}
                     </span>
                   )}
@@ -2725,12 +2598,12 @@ export function ToolCallBlock({
           )}
 
           {data.status === 'error' && data.result !== undefined && (
-            <div data-slot="tool-error" className="border-t border-border-button-default/50">
+            <div data-slot="tool-error" className="m-tool-call-block__panel-divider">
               <ToolErrorResult result={data.result} />
             </div>
           )}
           {data.status !== 'error' && output !== null && sentence === null && (
-            <div data-slot="tool-result" className="border-t border-border-button-default/50">
+            <div data-slot="tool-result" className="m-tool-call-block__panel-divider">
               {command ? (
                 <CommandOutputView output={command} />
               ) : (
@@ -2741,7 +2614,7 @@ export function ToolCallBlock({
           {/* Beside the text, whatever view drew it: media never travels
               inside `result`, so no result view could have drawn it. */}
           {media.length > 0 && (
-            <div data-slot="tool-media" className="border-t border-border-button-default/50">
+            <div data-slot="tool-media" className="m-tool-call-block__panel-divider">
               <MediaResult media={media} />
             </div>
           )}

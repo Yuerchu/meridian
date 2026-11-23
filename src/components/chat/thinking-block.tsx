@@ -1,9 +1,8 @@
+import './thinking-block.css'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Message } from '@keyline-icons/react/two-tone'
-import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
-import { cx } from '@/utils/cx'
 import { MarkdownContent } from './markdown-content'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -84,37 +83,23 @@ export function ThinkingRow({
 
 function ThinkingTitles({ titles, isStreaming }: { titles: string[]; isStreaming: boolean }) {
   return (
-    <div
-      data-slot="bubble-thinking"
-      data-shape="titles"
-      className="mb-1.5 flex min-w-0 flex-col gap-0.5 text-caption-1-regular text-text-secondary"
-    >
+    <div data-slot="bubble-thinking" data-shape="titles" className="m-thinking-block">
       {titles.map((title, i) => {
         const live = isStreaming && i === titles.length - 1
         return (
-          <div key={`${i}:${title}`} data-slot="bubble-thinking-title" className="flex min-w-0 items-center gap-1">
+          <div key={`${i}:${title}`} data-slot="bubble-thinking-title" className="m-thinking-block__title">
             {i === 0 ? (
-              <Message aria-hidden className="size-3 shrink-0" />
+              <Message aria-hidden className="m-thinking-block__icon" />
             ) : (
-              <span data-slot="bubble-thinking-title-indent" aria-hidden className="size-3 shrink-0" />
+              <span data-slot="bubble-thinking-title-indent" aria-hidden className="m-thinking-block__icon" />
             )}
-            {live ? (
-              <span
-                data-slot="bubble-thinking-title-text"
-                onPointerEnter={titleIfTruncated}
-                className="min-w-0 truncate"
-              >
-                <ShimmerText>{title}</ShimmerText>
-              </span>
-            ) : (
-              <span
-                data-slot="bubble-thinking-title-text"
-                onPointerEnter={titleIfTruncated}
-                className="min-w-0 truncate"
-              >
-                {title}
-              </span>
-            )}
+            <span
+              data-slot="bubble-thinking-title-text"
+              onPointerEnter={titleIfTruncated}
+              className="m-thinking-block__title-text"
+            >
+              {live ? <span className="m-shimmer-text">{title}</span> : title}
+            </span>
           </div>
         )
       })}
@@ -127,22 +112,22 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
   const { isExpanded, onExpandedChange } = usePanelExpansion(panelKey, isStreaming, false)
   const panelId = `thinking-${panelKey.replace(/[^\w-]/g, '_')}`
   return (
-    <div data-slot="bubble-thinking" data-shape="fold" className="mb-1.5 flex min-w-0 flex-col gap-1.5">
-      <div data-slot="bubble-thinking-row" className="flex min-w-0 items-center">
+    <div data-slot="bubble-thinking" data-shape="fold" className="m-thinking-block">
+      <div data-slot="bubble-thinking-row" className="m-thinking-block__row">
         <BubbleFoldBadge
           expanded={isExpanded}
           aria-controls={isExpanded ? panelId : undefined}
           onClick={() => onExpandedChange(!isExpanded)}
         >
-          <Message aria-hidden className="size-3" />
+          <Message aria-hidden className="m-thinking-block__icon" />
           {isStreaming ? (
             <span data-slot="thinking-label">
-              <ShimmerText>{t('chat.thinking')}</ShimmerText>
+              <span className="m-shimmer-text">{t('chat.thinking')}</span>
             </span>
           ) : (
             <span data-slot="thinking-label">{t('chat.thinking')}</span>
           )}
-          <ChevronDown aria-hidden className={cx('size-3 transition-transform', isExpanded && 'rotate-180')} />
+          <ChevronDown aria-hidden data-expanded={isExpanded || undefined} className="m-thinking-block__chevron" />
         </BubbleFoldBadge>
       </div>
       {isExpanded && (
@@ -155,7 +140,7 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
             // Smaller and quieter than the answer under it, so the two read
             // as different things; a part's title is a heading of the thought,
             // not of the reply.
-            className="text-caption-1-regular text-text-secondary [&_strong]:font-medium"
+            className="m-thinking-block__markdown"
           />
         </div>
       )}

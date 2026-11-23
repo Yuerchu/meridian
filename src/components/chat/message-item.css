@@ -1,0 +1,197 @@
+@layer components {
+  .m-message-item__avatar {
+    width: 32px;
+    height: 32px;
+  }
+
+  .m-message-item__quoted {
+    margin-bottom: var(--space-2);
+    border-inline-start: 2px solid
+      color-mix(in oklch, var(--bubble-fill, var(--bubble-user)), var(--bubble-ink, var(--bubble-user-foreground)) 30%);
+    padding-inline-start: var(--space-3);
+    font: var(--text-caption);
+    color: color-mix(
+      in oklch,
+      var(--bubble-fill, var(--bubble-user)),
+      var(--bubble-ink, var(--bubble-user-foreground)) 70%
+    );
+  }
+
+  .m-message-item__quoted-sender {
+    font: var(--text-caption);
+    font-weight: 500;
+  }
+
+  .m-message-item__quoted-content {
+    margin-top: 2px;
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    white-space: pre-wrap;
+  }
+
+  .m-message-item__footer-actions {
+    gap: var(--space-1);
+  }
+
+  .m-message-item__delete-btn[data-hovered]:not([data-disabled]) {
+    color: var(--danger-fg);
+  }
+
+  @media (pointer: fine) {
+    .m-message-item__user-group [data-slot='bubble-content'],
+    .m-message-item__assistant-group [data-slot='bubble-content'] {
+      user-select: text;
+    }
+  }
+
+  .m-message-item__edit-bubble {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .m-message-item__edit-field {
+    width: 100%;
+    min-width: 200px;
+  }
+
+  .m-message-item__edit-actions {
+    margin-top: 6px;
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--space-1);
+  }
+
+  .m-message-item__user-speaker {
+    color: color-mix(in oklch, var(--bubble-user-foreground) 80%, transparent);
+  }
+
+  .m-message-item__refs {
+    margin-bottom: 6px;
+  }
+
+  .m-message-item__attachments {
+    margin-bottom: 6px;
+  }
+
+  .m-message-item__user-body {
+    display: flow-root;
+    white-space: pre-wrap;
+  }
+
+  .m-message-item__voice-icon {
+    display: inline-block;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    margin-inline-end: var(--space-1);
+    margin-top: -2px;
+    opacity: 0.6;
+    vertical-align: middle;
+  }
+
+  .m-message-item__user-time {
+    float: right;
+    margin-inline-start: var(--space-2);
+    margin-top: 6px;
+    opacity: 0.7;
+  }
+
+  .m-message-item__user-foot {
+    display: flex;
+    justify-content: flex-end;
+    opacity: 0.7;
+  }
+
+  .m-message-item__sticker {
+    display: flex;
+    padding-block: var(--space-1);
+  }
+
+  .m-message-item__sticker[data-align='end'] {
+    justify-content: flex-end;
+  }
+
+  .m-message-item__sticker[data-align='start'] {
+    justify-content: flex-start;
+  }
+
+  .m-message-item__fold-badges {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-message-item__fold-icon {
+    width: 12px;
+    height: 12px;
+  }
+
+  .m-message-item__fold-row {
+    margin-top: 6px;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-message-item__working {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-message-item__working-note {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-message-item__full-bubble {
+    width: 100%;
+  }
+
+  .m-message-item__tools-only {
+    display: flex;
+    width: 100%;
+    max-width: 85%;
+    flex-direction: column;
+  }
+
+  .m-message-item__assistant-wrap {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .m-message-item__render-error {
+    padding-block: var(--space-2);
+    font: var(--text-caption);
+    color: var(--danger-fg);
+  }
+
+  .m-message-item__rated-up {
+    color: var(--success-fg);
+  }
+
+  .m-message-item__rated-down {
+    color: var(--danger-fg);
+  }
+
+  .m-message-item__assistant-footer {
+    padding-inline-start: var(--space-10);
+  }
+
+  .m-message-item__assistant-footer:has([aria-expanded='true']) {
+    opacity: 1;
+  }
+
+  .m-message-item__assistant-actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+}

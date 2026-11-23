@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -106,10 +108,15 @@ describe('tool panels', () => {
   })
 
   it('keeps an ordinary key to one line with the file name intact', async () => {
+    const pathLabelCss = readFileSync(resolve(process.cwd(), 'src/components/ui/path-label.css'), 'utf8')
+    expect(pathLabelCss).toMatch(
+      /\.m-path-label:not\(\[data-wrap\]\)\s+\.m-path-label__dir\s*\{[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/s,
+    )
     const path = '/home/me/very/deep/directory/structure/for/this/test/turn.rs'
     const { container } = inBubble(<ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />)
     const arg = container.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
-    expect(arg.querySelector('[data-slot="path-dir"]')!.className).toMatch(/truncate/)
+    expect(arg.querySelector('[data-slot="path-label"]')).not.toHaveAttribute('data-wrap')
+    expect(arg.querySelector('[data-slot="path-dir"]')).toHaveClass('m-path-label__dir')
     expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('turn.rs')
     // The panel is where the whole path is, since the key could not hold it.
     await userEvent.click(screen.getByRole('button', { name: /Read File/ }))
@@ -321,9 +328,18 @@ describe('every panel opens the same way', () => {
     ['ask_user', { questions: [{ id: 'q', question: 'Which one?' }] }],
     ['enter_plan', { reason: 'a big change' }],
   ])('insets every section %s draws inside a bubble', (name, args) => {
+    const toolCallBlockCss = readFileSync(resolve(process.cwd(), 'src/components/chat/tool-call-block.css'), 'utf8')
+    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
+    expect(toolCallBlockCss).toMatch(/\.m-tool-call-block__bubble-section\s*\{[^}]*padding:\s*10px var\(--space-3\)/s)
+    expect(chatToolCss).toMatch(/\.m-chat-tool__panel-footer\s*\{[^}]*padding:\s*10px var\(--space-3\)/s)
     const { container } = inBubble(<ToolCallBlock data={call(name, args, 'pending')} />)
     const sections = [...panel(container).children] as HTMLElement[]
     expect(sections.length).toBeGreaterThan(0)
-    for (const section of sections) expect(section.className).toMatch(/(^|\s)px-\d/)
+    for (const section of sections) {
+      expect(
+        section.classList.contains('m-tool-call-block__bubble-section') ||
+          section.classList.contains('m-chat-tool__panel-footer'),
+      ).toBe(true)
+    }
   })
 })

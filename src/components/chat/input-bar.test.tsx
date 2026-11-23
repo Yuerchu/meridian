@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -253,6 +255,8 @@ describe('composer attachments', () => {
  * and scroll 1588px of content inside 326px — and without the wrapper's
  * `w-full min-w-0` the wrapper grows to the row's full 1174px and spills out.
  */
+const ATTACHMENT_TILES_CSS = readFileSync(resolve(__dirname, './attachment-tiles.css'), 'utf8')
+
 describe('composer attachment row', () => {
   it('keeps the attachments in one row that scrolls sideways', () => {
     const files = Array.from({ length: 10 }, (_, i) => ({ name: `file-${i}.png` }))
@@ -261,8 +265,10 @@ describe('composer attachment row', () => {
     const wrapper = container.querySelector('[data-slot="composer-attachments"]')
     const group = container.querySelector('[data-slot="attachment-tiles"]')
     expect(wrapper).toHaveClass('m-input-bar__attachments')
-    expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
-    expect(group?.className.split(' ')).not.toContain('flex-wrap')
+    expect(group).toHaveClass('m-attachment-tiles')
+    expect(ATTACHMENT_TILES_CSS).toMatch(/\.m-attachment-tiles\s*\{[^}]*flex-wrap:\s*nowrap/s)
+    expect(ATTACHMENT_TILES_CSS).toMatch(/\.m-attachment-tiles\s*\{[^}]*overflow-x:\s*auto/s)
+    expect(ATTACHMENT_TILES_CSS).toMatch(/\.m-attachment-tiles\s*\{[^}]*min-width:\s*0/s)
   })
 })
 

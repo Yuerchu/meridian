@@ -144,18 +144,26 @@ describe('spacing inside a run', () => {
   })
 
   it('closes a run of questions up to the same gap', () => {
-    // `space-y-6` (24px) between the parts of a turn, `-mt-5.5` (22px) taken
+    // `--space-6` (24px) between the parts of a turn, `-22px` taken
     // back for a continuing question: 2px, matching `.m-bubble-run-gap`.
     const turn = buildTurns([msg('user', { content: 'again' })])[0]
     const { container } = render(<TurnItem turn={turn} conversationId="c" questionPosition="last" />)
     const question = container.querySelector('[data-slot="turn-question"]')
     const turnRoot = container.querySelector('[data-slot="turn"]')
-    const px = (cls: string) => Number(/(\d+(?:\.\d+)?)$/.exec(cls)?.[1]) * 4
-    const spacing = classes(turnRoot!).find((c) => c.startsWith('space-y-'))!
-    const pull = classes(question!).find((c) => c.startsWith('-mt-'))!
-    const css = readFileSync(resolve(__dirname, 'bubble.css'), 'utf8')
-    const runGapMatch = new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*(\\d+)px`).exec(css)
+    expect(turnRoot).toHaveClass('m-turn')
+    expect(question).toHaveClass('m-turn__question')
+    expect(question).toHaveAttribute('data-continues-run', 'true')
+
+    const tokensCss = readFileSync(resolve(__dirname, '../yuerchu-ui/styles/tokens.css'), 'utf8')
+    const space6Match = /--space-6:\s*(\d+)px/.exec(tokensCss)
+    expect(space6Match).not.toBeNull()
+    const turnCss = readFileSync(resolve(__dirname, '../chat/turn-item.css'), 'utf8')
+    expect(turnCss).toMatch(/\.m-turn\s*\{[^}]*gap:\s*var\(--space-6\)/)
+    const pullMatch = /\.m-turn__question\[data-continues-run='true'\]\s*\{[^}]*margin-top:\s*-(\d+)px/.exec(turnCss)
+    expect(pullMatch).not.toBeNull()
+    const bubbleCss = readFileSync(resolve(__dirname, 'bubble.css'), 'utf8')
+    const runGapMatch = new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*(\\d+)px`).exec(bubbleCss)
     expect(runGapMatch).not.toBeNull()
-    expect(px(spacing) - px(pull)).toBe(Number(runGapMatch![1]))
+    expect(Number(space6Match![1]) - Number(pullMatch![1])).toBe(Number(runGapMatch![1]))
   })
 })

@@ -6,9 +6,9 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { ContextMenuTrigger } from '@/components/yuerchu-ui/components/context-menu/context-menu'
 import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Menu, MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -174,14 +174,57 @@ function ComposerContextMenu({
   items: React.ReactNode
   children: React.ReactNode
 }) {
+  const anchorRef = useRef<HTMLSpanElement>(null)
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null)
+
+  const handleOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) setAnchor(null)
+      onOpenChange(open)
+    },
+    [onOpenChange],
+  )
+
+  const handleContextMenu = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) return
+      event.preventDefault()
+      setAnchor({ x: event.clientX, y: event.clientY })
+      onOpenChange(true)
+    },
+    [onOpenChange],
+  )
+
   if (!enabled) return children
   return (
-    <ContextMenuTrigger onOpenChange={onOpenChange}>
-      <div data-slot="context-menu-trigger" className="m-input-bar__menu-target">
+    <>
+      <div data-slot="context-menu-trigger" className="m-input-bar__menu-target" onContextMenu={handleContextMenu}>
         {children}
       </div>
-      <Menu aria-label={label}>{items}</Menu>
-    </ContextMenuTrigger>
+      <span
+        ref={anchorRef}
+        aria-hidden
+        style={{
+          position: 'fixed',
+          width: 0,
+          height: 0,
+          pointerEvents: 'none',
+          left: anchor?.x ?? 0,
+          top: anchor?.y ?? 0,
+        }}
+      />
+      <Popover
+        triggerRef={anchorRef}
+        isOpen={anchor !== null}
+        onOpenChange={handleOpenChange}
+        placement="bottom start"
+        offset={0}
+      >
+        <Menu variant="inline" aria-label={label} onAction={() => handleOpenChange(false)}>
+          {items}
+        </Menu>
+      </Popover>
+    </>
   )
 }
 
