@@ -1,4 +1,68 @@
 @layer components {
+  .m-board-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-board-composer:has(.m-board-composer__input[data-hovered]:not([data-disabled])) {
+    border-color: var(--border-control-hover);
+  }
+
+  .m-board-composer:focus-within {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .m-board-composer__input {
+    display: block;
+    flex: 1;
+    min-width: 0;
+    padding: var(--space-1) 0;
+    margin: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: var(--text-small);
+    resize: none;
+    outline: none;
+    overflow-wrap: break-word;
+  }
+
+  .m-board-composer__input::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
+  }
+
+  .m-board-composer__input[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  @media (pointer: coarse) {
+    .m-board-composer__input {
+      font: var(--text-body-lg);
+    }
+  }
+
+  .m-board-composer__action {
+    flex: none;
+  }
+
+  .m-board-start {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
   .m-board-start__agent {
     width: fit-content;
   }

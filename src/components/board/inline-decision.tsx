@@ -8,6 +8,7 @@
 // `attentionActionLabel`, `ACTION_VARIANT`, `useAttentionActions`); "later"
 // has no place on a board and "view" opens the card in place instead of
 // navigating away.
+import './inline-decision.css'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -33,14 +34,11 @@ export function InlineDecision({ item, onOpen }: { item: AttentionItem; onOpen: 
   const decisions = attentionActionIds(shape).filter((id) => id === 'deny' || id === 'allow')
 
   return (
-    <div
-      data-slot="board-inline-decision"
-      className="flex flex-col gap-2 rounded-xl bg-background-secondary-default p-2.5 text-caption-1-regular"
-    >
-      <span className="flex min-w-0 flex-col">
+    <div data-slot="board-inline-decision" className="m-board-inline-decision">
+      <span className="m-board-inline-decision__summary">
         <AttentionSummary item={item} shape={shape} />
       </span>
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="m-board-inline-decision__actions">
         <Button size="sm" variant="secondary" onPress={onOpen}>
           {t('board.card.details')}
         </Button>

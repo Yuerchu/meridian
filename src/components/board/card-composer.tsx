@@ -12,10 +12,14 @@
 // A failed or stopped turn holds its queue; sending a new turn does not
 // release it — what was queued behind a failure is the transcript's to decide.
 import './card-composer.css'
+import { useLayoutEffect, useRef, type KeyboardEvent } from 'react'
 import { useTranslation } from 'react-i18next'
+import { TextArea as AriaTextArea } from 'react-aria-components'
+import { ArrowUp } from '@keyline-icons/react/two-tone'
+import { Stop } from '@keyline-icons/react/fill'
 
 import { api } from '@/api'
-import { PromptInput } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
@@ -24,44 +28,108 @@ import { useConversationStore } from '@/stores/conversation-store'
 import type { BoardTaskInfoResponse } from '@/types'
 import type { AgentState } from './agent-state'
 
-function ComposerField({
+const STOP_AFTER_SEND_MS = 500
+
+function linesToPixels(style: CSSStyleDeclaration, lines: number): number {
+  const lineHeight = Number.parseFloat(style.lineHeight)
+  const padding = [style.paddingTop, style.paddingBottom]
+    .map((side) => Number.parseFloat(side))
+    .filter(Number.isFinite)
+    .reduce((sum, side) => sum + side, 0)
+  return lines * (Number.isNaN(lineHeight) ? 20 : lineHeight) + padding
+}
+
+export function ComposerField({
   value,
   setValue,
   placeholder,
+  ariaLabel,
   running,
+  maxLines,
   onSend,
   onStop,
+  onEscapeEmpty,
 }: {
   value: string
   setValue: (value: string) => void
   placeholder: string
+  ariaLabel?: string
   running: boolean
+  maxLines: number
   onSend: (text: string) => void
   onStop?: () => void
+  onEscapeEmpty?: () => void
 }) {
   const { t } = useTranslation()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const sentAt = useRef(Number.NEGATIVE_INFINITY)
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const fit = () => {
+      el.style.height = 'auto'
+      const ceiling = linesToPixels(getComputedStyle(el), maxLines)
+      const next = Math.min(el.scrollHeight, ceiling)
+      el.style.height = `${next}px`
+      el.style.overflowY = el.scrollHeight > ceiling ? 'auto' : 'hidden'
+    }
+    fit()
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fit)
+    })
+    observer.observe(el)
+    return () => {
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [value, maxLines])
+
+  const mode: 'send' | 'stop' = running && value.trim() === '' && onStop ? 'stop' : 'send'
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Escape' && value === '' && onEscapeEmpty) {
+      e.preventDefault()
+      onEscapeEmpty()
+      return
+    }
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault()
+      onSend(value.trim())
+    }
+  }
+
   return (
-    <PromptInput
-      value={value}
-      onValueChange={setValue}
-      onSubmit={() => onSend(value.trim())}
-      onStop={running ? onStop : undefined}
-      status={running ? 'streaming' : 'ready'}
-      lockInputOnRun={false}
-      allowSubmitWhileRunning
-      maxLines={4}
-    >
-      {/* The chat composer's shell goes transparent while a turn runs, because
-          the loader draws the surface there. A card has no loader, so it keeps
-          its edge. */}
-      <PromptInput.Shell className="flex items-end gap-1 rounded-2xl border-border-button-default bg-background-primary-default pr-1 shadow-xs">
-        {/* The field's own padding and type, untouched: its placeholder is drawn over it at those offsets. */}
-        <div className="min-w-0 flex-1">
-          <PromptInput.TextArea aria-label={t('board.composer.label')} placeholder={placeholder} />
-        </div>
-        <PromptInput.Send sendLabel={t('board.composer.send')} stopLabel={t('board.composer.stop')} className="mb-1" />
-      </PromptInput.Shell>
-    </PromptInput>
+    <div data-slot="board-composer" className="m-board-composer">
+      <AriaTextArea
+        ref={textareaRef}
+        rows={1}
+        aria-label={ariaLabel ?? t('board.composer.label')}
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        className="m-board-composer__input"
+      />
+      <span className="m-board-composer__action">
+        <Button
+          size="sm"
+          variant={mode === 'stop' ? 'secondary' : 'primary'}
+          icon={mode === 'stop' ? <Stop /> : <ArrowUp />}
+          aria-label={mode === 'stop' ? t('board.composer.stop') : t('board.composer.send')}
+          onPress={() => {
+            if (mode === 'send') {
+              sentAt.current = performance.now()
+              onSend(value.trim())
+            } else if (performance.now() - sentAt.current >= STOP_AFTER_SEND_MS) {
+              onStop?.()
+            }
+          }}
+        />
+      </span>
+    </div>
   )
 }
 
@@ -94,7 +162,7 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
   }
 
   return (
-    <div data-slot="board-start" className="flex flex-col gap-2">
+    <div data-slot="board-start" className="m-board-start">
       <div className="m-board-start__agent">
         <SegmentedControl
           aria-label={t('board.agent.label')}
@@ -113,6 +181,7 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
         setValue={(next) => setComposerText(task.id, next)}
         placeholder={t('board.composer.idle')}
         running={false}
+        maxLines={4}
         onSend={(text) => void start(text)}
       />
     </div>
@@ -203,6 +272,7 @@ export function ConversationComposer({
       setValue={(next) => setComposerText(task.id, next)}
       placeholder={placeholderFor(t, state)}
       running={running}
+      maxLines={4}
       onSend={(text) => void send(text)}
       onStop={stop}
     />

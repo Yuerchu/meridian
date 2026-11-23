@@ -1,18 +1,19 @@
-import { Select } from '@/components/yuerchu-ui/components/select/select'
-import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 // A card being written: which project its worktree comes from, and what it is
 // for. Appended at the end of the column, so every card already there stays
 // where it was. Enter puts it on the board, Escape in an empty box takes it
 // back.
+import './draft-card.css'
 import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { Kanban, PromptInput } from '@/components/base'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { useBoardStore } from '@/stores/board-store'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { BoardStage } from '@/types'
+import { ComposerField } from './card-composer'
 
 const PROJECT_KEY = 'meridian.board.projectId'
 
@@ -39,7 +40,7 @@ export function DraftCard({
   onError: (error: string) => void
 }) {
   const { t } = useTranslation()
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLElement>(null)
   const draftId = `draft:${stage}`
   const value = useBoardStore((s) => s.composerText[draftId] ?? '')
   const setComposerText = useBoardStore((s) => s.setComposerText)
@@ -76,24 +77,19 @@ export function DraftCard({
   }
 
   return (
-    <Kanban.Card
-      ref={ref}
-      id="draft"
-      textValue={t('board.draft.title')}
-      data-draft
-      className="flex flex-col gap-2 border-dashed border-border-button-active p-2.5"
-    >
-      <span className="flex items-center gap-1.5">
-        <span className="text-body-2-medium text-text-primary">{t('board.draft.title')}</span>
+    <article ref={ref} role="listitem" data-slot="board-card" data-draft="" className="m-board-draft">
+      <span className="m-board-draft__header">
+        <span className="m-board-draft__title">{t('board.draft.title')}</span>
         <Badge size="sm" tone="accent">
           {t(`board.columns.${stage}`)}
         </Badge>
       </span>
       {projects.length === 0 ? (
-        <span className="text-caption-1-regular text-text-secondary">{t('board.draft.noProject')}</span>
+        <span className="m-board-draft__empty">{t('board.draft.noProject')}</span>
       ) : (
         <>
           <Select
+            size="sm"
             aria-label={t('board.draft.project')}
             selectedKey={projectId}
             onSelectionChange={(key) => {
@@ -106,31 +102,18 @@ export function DraftCard({
               </ListBoxItem>
             ))}
           </Select>
-          <PromptInput
+          <ComposerField
             value={value}
-            onValueChange={(next) => setComposerText(draftId, next)}
-            onSubmit={() => void create()}
+            setValue={(next) => setComposerText(draftId, next)}
+            ariaLabel={t('board.draft.title')}
+            placeholder={t('board.draft.placeholder')}
+            running={false}
             maxLines={6}
-          >
-            <PromptInput.Shell className="flex items-end gap-1 rounded-2xl pr-1">
-              <div className="min-w-0 flex-1">
-                <PromptInput.TextArea
-                  aria-label={t('board.draft.title')}
-                  placeholder={t('board.draft.placeholder')}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Escape' && value === '') onDone()
-                  }}
-                />
-              </div>
-              <PromptInput.Send
-                sendLabel={t('board.composer.send')}
-                stopLabel={t('board.composer.stop')}
-                className="mb-1"
-              />
-            </PromptInput.Shell>
-          </PromptInput>
+            onSend={() => void create()}
+            onEscapeEmpty={onDone}
+          />
         </>
       )}
-    </Kanban.Card>
+    </article>
   )
 }

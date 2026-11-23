@@ -1,91 +1,78 @@
+import './todo-board.css'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Kanban } from '@/components/base'
+import {
+  Kanban,
+  KanbanCard,
+  KanbanColumn,
+  type KanbanColumnData,
+  type KanbanItem,
+} from '@/components/yuerchu-ui/components/kanban/kanban'
 
 import type { TodoItemStatus } from '@/types'
-import { cx } from '@/utils/cx'
-import { TodoStatusIcon, type TodoDraft } from './todo-list'
+import type { TodoDraft } from './todo-list'
 
 const COLUMNS: readonly TodoItemStatus[] = ['pending', 'in_progress', 'completed']
 
+interface TodoBoardCard extends KanbanItem {
+  status: TodoItemStatus
+  todo: TodoDraft
+}
+
 /**
- * The same checklist as three columns.
+ * The same checklist as three read-only columns.
  *
- * Read-only, and not by suppressing anything: a column's list only moves cards
- * when it is given `dragAndDropHooks`, so a board without a way to drag is what
- * you get by passing none. There is nothing to write back to
- * anyway — the list belongs to the model, and a status the user changed by hand
- * would be overwritten by the next `update_todos` without a trace.
- *
- * Imported statically, having checked. `kanban.js` does load `LazyMotion` with
- * `domMax` where the project otherwise asks for `domAnimation` alone
- * (`chat-transcript.tsx`) — but `domMax` is already in the main bundle by two
- * other routes: `prompt-input`, which the composer uses, and
- * `utils/tree-motion.js`, which every `Sidebar.Menu` pulls in. So the drag and
- * projection features are paid for whether this file exists or not, and what is
- * left to defer is five kilobytes.
+ * The list belongs to the model, and a status the user changed by hand would be
+ * overwritten by the next `update_todos` without a trace, so the board renders
+ * with `isReadOnly`.
  */
 export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; className?: string }) {
   const { t } = useTranslation()
 
+  const columns: KanbanColumnData<TodoBoardCard>[] = useMemo(
+    () =>
+      COLUMNS.map((status) => ({
+        id: status,
+        heading: t(`chat.todo.status.${status}`),
+        cards: todos
+          .filter((todo) => todo.status === status)
+          .map((todo, i) => ({
+            // Index as id, scoped by status because React Aria wants ids
+            // unique across the collection and a `TodoDraft` carries no id.
+            id: `${status}:${i}`,
+            textValue: todo.content.trim() ? todo.content : `${status}:${i}`,
+            status,
+            todo,
+          })),
+      })),
+    [todos, t],
+  )
+
   return (
-    // 200px rather than the 240 that `size="sm"` sets: three columns have to
-    // fit inside the composer's own width, and the grid is `auto-flow: column`
-    // — too wide and it silently becomes a horizontal scroller with two
-    // columns showing. Below that width it still scrolls, one column at a
-    // snap, which is the right answer on a phone.
-    <Kanban
-      size="sm"
-      aria-label={t('chat.todo.board')}
-      className={cx('[--kanban-column-min-width:200px] [--kanban-column-height:auto]', className)}
-    >
-      {COLUMNS.map((status) => {
-        const items = todos.filter((todo) => todo.status === status)
-        return (
-          <Kanban.Column key={status} data-status={status}>
-            <Kanban.ColumnHeader>
-              <Kanban.ColumnIndicator>
-                <TodoStatusIcon status={status} />
-              </Kanban.ColumnIndicator>
-              <Kanban.ColumnTitle className="text-caption-1-regular">
-                {t(`chat.todo.status.${status}`)}
-              </Kanban.ColumnTitle>
-              <Kanban.ColumnCount>{items.length}</Kanban.ColumnCount>
-            </Kanban.ColumnHeader>
-            <Kanban.ColumnBody>
-              <Kanban.CardList
-                aria-label={t(`chat.todo.status.${status}`)}
-                renderEmptyState={() => (
-                  <span data-slot="todo-board-empty" className="text-caption-1-regular text-text-secondary">
-                    {t('chat.todo.emptyColumn')}
+    <div data-slot="todo-board" className={['m-todo-board', className].filter(Boolean).join(' ')}>
+      <Kanban columns={columns} isReadOnly aria-label={t('chat.todo.board')}>
+        {(column) => (
+          <KanbanColumn
+            key={column.id}
+            column={column}
+            emptyState={
+              <span data-slot="todo-board-empty" className="m-todo-board__empty">
+                {t('chat.todo.emptyColumn')}
+              </span>
+            }
+          >
+            {(card) => (
+              <KanbanCard key={card.id} card={card}>
+                <div data-slot="todo-board-card-body" className="m-todo-board__card-body">
+                  <span data-slot="todo-board-card-text" data-status={card.status} className="m-todo-board__card-text">
+                    {card.todo.content}
                   </span>
-                )}
-              >
-                {/* Index as key and as id, for the reason `TodoItemList`
-                    gives: a `TodoDraft` carries no id, and the list is
-                    replaced wholesale rather than reordered. Scoped by status
-                    because React Aria wants ids unique across the collection,
-                    and three columns of `0` are not. */}
-                {items.map((todo, i) => (
-                  <Kanban.Card key={i} id={`${status}:${i}`} textValue={todo.content}>
-                    <div data-slot="todo-board-card-body" className="p-2.5 text-caption-1-regular">
-                      <span
-                        data-slot="todo-board-card-text"
-                        className={cx(
-                          status === 'completed' && 'text-text-secondary line-through',
-                          status === 'in_progress' && 'text-caption-1-medium text-text-primary',
-                          status === 'pending' && 'text-text-secondary',
-                        )}
-                      >
-                        {todo.content}
-                      </span>
-                    </div>
-                  </Kanban.Card>
-                ))}
-              </Kanban.CardList>
-            </Kanban.ColumnBody>
-          </Kanban.Column>
-        )
-      })}
-    </Kanban>
+                </div>
+              </KanbanCard>
+            )}
+          </KanbanColumn>
+        )}
+      </Kanban>
+    </div>
   )
 }

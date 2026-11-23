@@ -1,13 +1,13 @@
 // One card: collapsed to a status line, or open in place with everything
 // needed to answer it. Nothing here opens an overlay — the point of the board
 // is that every agent stays in view while you answer one.
+import './agent-card.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as RacButton } from 'react-aria-components'
 import { ArrowRight, ChevronDown, GitBranch, Message } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
-import { Kanban } from '@/components/base'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
@@ -18,7 +18,6 @@ import { useConversationStore, type AttentionItem } from '@/stores/conversation-
 import { useBoardStore } from '@/stores/board-store'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { BoardTaskInfoResponse, ToolCallDisplay } from '@/types'
-import { cx } from '@/utils/cx'
 import type { AgentState } from './agent-state'
 import { ConversationComposer, StartComposer } from './card-composer'
 import { InlineDecision } from './inline-decision'
@@ -73,42 +72,41 @@ function StatusLine({ state }: { state: AgentState }) {
   const { t } = useTranslation()
   let label: string
   let detail: string | null = null
-  let tone = 'text-text-secondary'
   switch (state.kind) {
     case 'idle':
       return null
     case 'working':
       label = t('board.state.working')
       detail = state.step
-      tone = 'text-status-info-soft-foreground'
       break
     case 'approval':
       label = t('board.state.approval')
-      tone = 'text-status-warning-soft-foreground'
       break
     case 'question':
       label = t('board.state.question')
-      tone = 'text-status-warning-soft-foreground'
       break
     case 'failed':
       label = t('board.state.failed')
       detail = state.reason
-      tone = 'text-status-danger-soft-foreground'
       break
     case 'finished':
       label = state.stopped ? t('board.state.stopped') : t('board.state.finished')
       detail = state.summary
-      tone = state.stopped ? 'text-text-secondary' : 'text-status-success-soft-foreground'
       break
   }
   return (
-    <div data-slot="board-card-status" className="flex min-w-0 flex-col gap-0.5">
-      <span className={cx('flex items-center gap-1.5 text-caption-1-medium', tone)}>
+    <div
+      data-slot="board-card-status"
+      data-state={state.kind}
+      data-stopped={state.kind === 'finished' && state.stopped ? true : undefined}
+      className="m-board-card__status"
+    >
+      <span className="m-board-card__status-label">
         <StateIcon state={state} />
         {label}
       </span>
       {detail && (
-        <span onPointerEnter={titleIfTruncated} className="truncate pl-5.5 text-caption-1-regular text-text-secondary">
+        <span onPointerEnter={titleIfTruncated} className="m-board-card__status-detail">
           {detail}
         </span>
       )}
@@ -208,17 +206,14 @@ export function AgentCard({
   }
 
   return (
-    <Kanban.Card
-      id={task.id}
-      textValue={task.title}
+    <article
+      role="listitem"
+      data-slot="board-card"
       data-card-id={task.id}
       data-state={state.kind}
-      className={cx(
-        'flex flex-col gap-2.5 p-0 transition-shadow duration-150',
-        asking && 'border-status-warning',
-        state.kind === 'failed' && 'border-status-danger',
-        focused && 'ring-2 ring-border-focus-ring',
-      )}
+      data-asking={asking || undefined}
+      data-focused={focused || undefined}
+      className="m-board-card"
     >
       <RacButton
         aria-expanded={expanded}
@@ -226,32 +221,26 @@ export function AgentCard({
           expanded ? t('board.card.collapse', { title: task.title }) : t('board.card.expand', { title: task.title })
         }
         onPress={onToggle}
-        className="flex w-full flex-col gap-1.5 rounded-xl p-2.5 pb-0 text-left outline-none data-focus-visible:ring-2 data-focus-visible:ring-border-focus-ring"
+        className="m-board-card__header"
       >
-        <span className="flex w-full items-start gap-1.5">
-          <span className="min-w-0 flex-1 text-body-2-medium text-text-primary">{task.title}</span>
-          <ChevronDown
-            aria-hidden
-            className={cx(
-              'mt-0.5 size-4 shrink-0 text-text-secondary transition-transform duration-150',
-              expanded && 'rotate-180',
-            )}
-          />
+        <span className="m-board-card__title-row">
+          <span className="m-board-card__title">{task.title}</span>
+          <ChevronDown aria-hidden className="m-board-card__chevron" />
         </span>
         {(task.agent_kind !== null || branch.kind === 'read') && (
-          <span className="flex min-w-0 items-center gap-1.5 text-caption-1-regular text-text-secondary">
+          <span className="m-board-card__meta">
             {task.agent_kind !== null && (
               <Badge size="sm">
                 {task.agent_kind === 'claude_code' ? t('board.agent.claudeCode') : t('board.agent.native')}
               </Badge>
             )}
             {branch.kind === 'read' && (
-              <span className="flex min-w-0 items-center gap-1">
-                <GitBranch aria-hidden className="size-3.5 shrink-0" />
+              <span className="m-board-card__branch">
+                <GitBranch aria-hidden className="m-board-card__branch-icon" />
                 {branch.name !== null ? (
-                  <span className="truncate font-mono">{branch.name}</span>
+                  <span className="m-board-card__branch-name">{branch.name}</span>
                 ) : (
-                  <span className="text-status-warning-soft-foreground">{t('board.branch.detached')}</span>
+                  <span className="m-board-card__branch-detached">{t('board.branch.detached')}</span>
                 )}
               </span>
             )}
@@ -259,16 +248,16 @@ export function AgentCard({
         )}
       </RacButton>
 
-      <div className="flex flex-col gap-2.5 px-2.5 pb-2.5">
+      <div className="m-board-card__body">
         <StatusLine state={state} />
         {task.worktree_removed_at !== null && (
-          <span className="text-caption-1-regular text-text-secondary">{t('board.card.worktreeRemoved')}</span>
+          <span className="m-board-card__note">{t('board.card.worktreeRemoved')}</span>
         )}
 
         {waiting && !expanded && <InlineDecision item={waiting} onOpen={onToggle} />}
 
         {expanded && (
-          <div data-slot="board-card-detail" className="flex flex-col gap-2.5">
+          <div data-slot="board-card-detail" className="m-board-card__detail">
             {waiting?.kind === 'plan_review' && (
               <Button size="sm" onPress={() => openReview(waiting.reviewId)}>
                 {t('chat.plan.reviewReady')}
@@ -279,26 +268,27 @@ export function AgentCard({
                 {call ? (
                   <ToolCallBlock data={call} />
                 ) : (
-                  <span className="text-caption-1-regular text-text-secondary">{t('board.card.notLoaded')}</span>
+                  <span className="m-board-card__note">{t('board.card.notLoaded')}</span>
                 )}
               </TranscriptConversationProvider>
             )}
             {conversationId !== null && (
-              <Button
-                size="sm"
-                variant="secondary"
-                icon={<Message />}
-                className="w-fit"
-                onPress={() => onOpenConversation(conversationId)}
-              >
-                {t('board.card.openConversation')}
-              </Button>
+              <div className="m-board-card__open-conversation">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Message />}
+                  onPress={() => onOpenConversation(conversationId)}
+                >
+                  {t('board.card.openConversation')}
+                </Button>
+              </div>
             )}
           </div>
         )}
 
         {(showToReview || showToDone || showRemoveWorktree || showDelete) && (
-          <div className="flex flex-wrap justify-end gap-1.5">
+          <div className="m-board-card__actions">
             {showToReview && (
               <Button size="sm" variant="secondary" iconRight={<ArrowRight />} onPress={() => void move('review')}>
                 {t('board.card.toReview')}
@@ -330,6 +320,6 @@ export function AgentCard({
             <ConversationComposer task={task} conversationId={conversationId} state={state} onError={onError} />
           ))}
       </div>
-    </Kanban.Card>
+    </article>
   )
 }
