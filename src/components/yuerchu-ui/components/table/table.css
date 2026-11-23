@@ -1,0 +1,274 @@
+@layer components {
+  .ui-table__container {
+    --ui-table-row: var(--control-lg);
+
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+  }
+
+  .ui-table__container[data-size="sm"] {
+    --ui-table-row: var(--control-md);
+  }
+
+  .ui-table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text);
+    font: var(--text-body);
+    outline: 1px solid transparent;
+  }
+
+  .ui-table__container[data-size="sm"] .ui-table {
+    font: var(--text-small);
+  }
+
+  /* ---------- 表头 ---------- */
+  .ui-table__column {
+    box-sizing: border-box;
+    height: var(--ui-table-row);
+    padding: 0 var(--space-3);
+    border-block-end: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  .ui-table__column[data-allows-sorting] {
+    cursor: pointer;
+  }
+
+  .ui-table__column[data-allows-sorting][data-hovered]:not([data-disabled]),
+  .ui-table__column[data-sort-direction] {
+    color: var(--text);
+  }
+
+  .ui-table__column-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .ui-table__column-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .ui-table__sort {
+    display: inline-flex;
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-table__sort svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  /* 可排序的列悬停时露出箭头，已排序的一直显示 */
+  .ui-table__column[data-allows-sorting][data-hovered]:not([data-disabled]) .ui-table__sort,
+  .ui-table__sort[data-direction] {
+    opacity: 1;
+  }
+
+  /* ---------- 行和单元格 ---------- */
+  .ui-table__cell {
+    box-sizing: border-box;
+    height: var(--ui-table-row);
+    padding: var(--space-1) var(--space-3);
+    border-block-end: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  /* 悬停、选中的底色过渡（DataTable 的文档写了，之前没做） */
+  .ui-table__row {
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-table__row[data-href] {
+    cursor: pointer;
+  }
+
+  /* 行的底色也写进 --ui-table-row-bg：固定的第一列自己有底色（要盖住滚过去的内容），跟着它变 */
+  .ui-table__row[data-hovered]:not([data-disabled]) {
+    --ui-table-row-bg: var(--surface-sunken);
+
+    background: var(--surface-sunken);
+  }
+
+  /* 选中的行：底色比悬停深一档，勾选框（DataTable）也是选中态，不只靠底色 */
+  .ui-table__row[data-selected] {
+    --ui-table-row-bg: var(--surface-muted);
+
+    background: var(--surface-muted);
+  }
+
+  .ui-table__row[data-disabled] {
+    color: var(--text-muted);
+  }
+
+  /* 键盘焦点：焦点环画在单元格 / 行 / 表头内侧，不被滚动容器裁掉 */
+  .ui-table__cell[data-focus-visible],
+  .ui-table__row[data-focus-visible],
+  .ui-table__column[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  /* ---------- 固定表头（maxHeight）：容器纵向滚动，表头贴在顶部 ---------- */
+  .ui-table__container[data-sticky-header] {
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-table__container[data-sticky-header] .ui-table__column {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--z-sticky);
+    /* 表头要不透明才能盖住滚过去的行；放在卡片里时设 --ui-table-bg: var(--surface) */
+    background: var(--ui-table-bg, var(--background));
+    /* border-collapse 的边框不跟着 sticky 走：改用内阴影画底边 */
+    border-block-end-color: transparent;
+    box-shadow: inset 0 -1px 0 var(--border-strong);
+  }
+
+  /* 固定第一列是给横向滚动的表格用的：表格按内容的自然宽度排（不挤得换行），至少占满容器，放不下就横向滚动 */
+  .ui-table__container[data-sticky-column] .ui-table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  /* ---------- 固定第一列（stickyFirstColumn）：容器放得下时（data-sticky-column-active）贴在左边 ----------
+     要不透明才能盖住滚过去的内容：底色跟着行（悬停、选中），没有时用表格的底色 */
+  .ui-table__container[data-sticky-column-active] :is(.ui-table__column, .ui-table__cell):first-child {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 1;
+    background: var(--ui-table-row-bg, var(--ui-table-bg, var(--background)));
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 表头的第一格同时固定在顶部和左边：别的表头横着滚过来时要从它下面过去（降到 2，仍然盖住内容里固定的格子） */
+  .ui-table__container[data-sticky-column-active] .ui-table__column:first-child {
+    z-index: var(--z-sticky);
+  }
+
+  .ui-table__container[data-sticky-column-active] .ui-table__column:not(:first-child) {
+    z-index: 2;
+  }
+
+  /* 往后滚了：固定列的边上一条线，表示后面的内容滚到了它下面 */
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__cell:first-child {
+    box-shadow: inset -1px 0 0 var(--border-strong);
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__column:first-child {
+    box-shadow:
+      inset -1px 0 0 var(--border-strong),
+      inset 0 -1px 0 var(--border-strong);
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start]:dir(rtl) .ui-table__cell:first-child {
+    box-shadow: inset 1px 0 0 var(--border-strong);
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start]:dir(rtl) .ui-table__column:first-child {
+    box-shadow:
+      inset 1px 0 0 var(--border-strong),
+      inset 0 -1px 0 var(--border-strong);
+  }
+
+  /* ---------- 可调列宽：表头右边缘是拖动手柄 ---------- */
+  .ui-table__column[data-resizable] {
+    position: relative;
+  }
+
+  /* 列宽固定（table-layout: fixed），列窄时标题截断、单元格内容换行 */
+  .ui-table__column[data-resizable] .ui-table__column-label {
+    max-width: 100%;
+  }
+
+  .ui-table__container[data-resizable] .ui-table__cell {
+    overflow-wrap: anywhere;
+  }
+
+  /* 手柄比看到的线宽：8px 的命中区，中间画 1px 的线 */
+  .ui-table__resizer {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: var(--space-2);
+    cursor: col-resize;
+  }
+
+  .ui-table__resizer::after {
+    position: absolute;
+    inset-block: var(--space-2);
+    inset-inline-end: 0;
+    width: 1px;
+    background: var(--border);
+    content: "";
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 到最小 / 最大宽度时光标只显示还能拖的方向 */
+  .ui-table__resizer[data-resizable-direction="left"] {
+    cursor: w-resize;
+  }
+
+  .ui-table__resizer[data-resizable-direction="right"] {
+    cursor: e-resize;
+  }
+
+  .ui-table__resizer[data-hovered]:not([data-disabled])::after,
+  .ui-table__resizer[data-resizing]::after {
+    background: var(--border-strong);
+  }
+
+  /* 把手（ResizeGrip）在列的分界线上，不在手柄中间 */
+  .ui-table__resizer .ui-resize-grip {
+    left: 100%;
+  }
+
+  .ui-table__resizer:dir(rtl) .ui-resize-grip {
+    left: 0;
+  }
+
+  /* 最后一列的分界线就是表格的边：把手整个放在表格里面，不伸出去（否则容器会多出几像素的横向滚动） */
+  .ui-table__column:last-child > .ui-table__resizer .ui-resize-grip {
+    translate: -100% -50%;
+  }
+
+  .ui-table__column:last-child > .ui-table__resizer:dir(rtl) .ui-resize-grip {
+    translate: 0 -50%;
+  }
+
+  .ui-table__empty {
+    padding: var(--space-6) var(--space-3);
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  /* 加载中的占位行（表体还没有行时）。等待阶段占住位置但看不见 */
+  .ui-table__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-3);
+  }
+
+  .ui-table__skeleton[data-waiting] {
+    visibility: hidden;
+  }
+
+  @media (forced-colors: active) {
+    .ui-table__column {
+      border-block-end-color: CanvasText;
+    }
+
+    .ui-table__resizer::after {
+      background: CanvasText;
+    }
+  }
+}

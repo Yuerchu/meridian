@@ -1,0 +1,60 @@
+@layer components {
+  .ui-toc__list {
+    margin: 0;
+    padding: 0;
+    border-inline-start: 1px solid var(--border);
+    list-style: none;
+  }
+
+  .ui-toc__link {
+    position: relative;
+    display: block;
+    padding: var(--space-1) var(--space-3);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-toc__item[data-level="3"] .ui-toc__link {
+    padding-inline-start: var(--space-6);
+  }
+
+  .ui-toc__link[data-hovered]:not([data-disabled]) {
+    color: var(--text);
+  }
+
+  /* 当前所在的节：左侧的标记 + 正文色 */
+  .ui-toc__link[aria-current="location"] {
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .ui-toc__link::before {
+    position: absolute;
+    inset-block: var(--space-1);
+    inset-inline-start: -1px;
+    width: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--control-on);
+    content: "";
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-toc__link[aria-current="location"]::before {
+    opacity: 1;
+  }
+
+  .ui-toc__link[data-focus-visible] {
+    border-radius: var(--radius-item);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  @media (forced-colors: active) {
+    .ui-toc__link::before {
+      background: Highlight;
+    }
+  }
+}
