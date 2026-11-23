@@ -1,3 +1,4 @@
+import './plan-review-editor.css'
 import { useEffect, useMemo, useRef, type ComponentProps } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -118,7 +119,7 @@ export function PlanReviewEditor({
 
   return (
     <RichTextEditor
-      className="plan-review-rich-editor h-full min-h-0"
+      className="plan-review-rich-editor m-plan-review-editor"
       defaultValue={defaultValue}
       extensions={extensions}
       editorOptions={editorOptions}
@@ -126,7 +127,7 @@ export function PlanReviewEditor({
       placeholder={t('planReview.editor.placeholder')}
       onValueChange={(document, details) => onChange(document, mappedPlanCommentAnchors(details.editor, comments))}
     >
-      <RichTextEditor.Shell className="flex h-full min-h-0 flex-col">
+      <RichTextEditor.Shell className="m-plan-review-editor__shell">
         {!isReadOnly && (
           <RichTextEditor.Toolbar aria-label={t('planReview.editor.toolbar')}>
             <RichTextEditor.ToolbarGroup>
@@ -181,7 +182,7 @@ export function PlanReviewEditor({
           </RichTextEditor.Toolbar>
         )}
 
-        <RichTextEditor.Content className="min-h-0 flex-1 overflow-y-auto" />
+        <RichTextEditor.Content className="m-plan-review-editor__content" />
 
         {!isReadOnly && (
           <RichTextEditor.BubbleMenu aria-label={t('planReview.editor.selectionToolbar')}>

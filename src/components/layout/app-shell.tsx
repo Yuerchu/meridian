@@ -238,7 +238,7 @@ export function AppShell(props: ShellProps) {
           event.preventDefault()
           document.getElementById('main-content')?.focus({ preventScroll: true })
         }}
-        className="sr-only focus:not-sr-only focus:fixed focus:start-2 focus:top-2 focus:z-100 focus:rounded-md focus:bg-background-primary-default focus:px-3 focus:py-2 focus:text-body-regular focus:text-text-primary focus:shadow-dropdown focus:outline-none focus:ring-2 focus:ring-border-focus-ring"
+        className="m-app-frame__skip-link"
       >
         {t('app.skipToContent')}
       </a>
@@ -364,7 +364,7 @@ export function AppShell(props: ShellProps) {
               </div>
             </header>
             {actionError && (
-              <div data-slot="app-action-error" className="shrink-0 border-b border-border-button-default px-4 py-2">
+              <div data-slot="app-action-error" className="m-app-frame__action-error">
                 <Alert tone="danger" shouldAnnounce onDismiss={() => setActionError(null)}>
                   {actionError}
                 </Alert>
@@ -381,15 +381,10 @@ export function AppShell(props: ShellProps) {
             collapses all of that to zero, so restoring it jumps back to the
             top. Inert keeps the layout exactly where it was while taking the
             subtree out of reach of focus and pointers. */}
-            <main
-              data-slot="app-main"
-              id="main-content"
-              tabIndex={-1}
-              className="relative flex-1 min-h-0 overflow-hidden"
-            >
+            <main data-slot="app-main" id="main-content" tabIndex={-1} className="m-app-frame__main">
               <div
                 data-slot="app-chat-layer"
-                className="flex h-full flex-col"
+                className="m-app-frame__chat-layer"
                 inert={page !== 'chat' || activeReviewId !== null || undefined}
               >
                 {/* The split lives inside the chat branch, not around it: `<main>`
@@ -399,13 +394,12 @@ export function AppShell(props: ShellProps) {
                 <Resizable
                   orientation="horizontal"
                   resizeTargetMinimumSize={CHANGES_HANDLE_TARGET}
-                  className="h-full min-h-0"
+                  className="m-app-frame__split"
                 >
                   <Resizable.Panel id="chat" {...CHAT_PANEL_SIZE}>
                     {/* `min-w-0` or a flex child refuses to shrink, and the
-                    transcript's `max-w-4xl mx-auto` overflows instead of
-                    narrowing. */}
-                    <div data-slot="app-chat-pane" className="flex h-full min-w-0 flex-col">
+                    transcript's container overflows instead of narrowing. */}
+                    <div data-slot="app-chat-pane" className="m-app-frame__chat-pane">
                       {activeId ? (
                         <ChatView
                           key={activeId}
@@ -450,16 +444,7 @@ export function AppShell(props: ShellProps) {
                 </Resizable>
               </div>
 
-              {/* `bg-background-full` over `Sidebar.Main`'s secondary chat surface:
-              settings is boardui's settings grammar, and the registry's settings
-              modal lays it out as three steps — the page on `background-full`,
-              `SettingsCard`s on `background-secondary`, fields on
-              `background-tertiary` — which stay apart in both themes. On
-              `background-primary` the dark theme loses a step: primary and
-              tertiary are both neutral-800 there, so a field placed on the page
-              had no edge at all. The header's `border-b` is where the two
-              surfaces meet, the way the registry modal's rail meets its page at
-              a `border-r`. */}
+              {/* Full-bleed `--background` layer over the inset chat frame. */}
               {page === 'settings' && (
                 <div data-slot="settings-layer" className="m-app-layer">
                   {/* No spinner: the chunk is on local disk and resolves within a

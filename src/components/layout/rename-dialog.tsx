@@ -1,3 +1,4 @@
+import './rename-dialog.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
@@ -66,7 +67,7 @@ export function RenameDialog({
       heading={heading}
       size="sm"
       // The keyboard has to be padded for by hand (see above).
-      className="pb-[var(--ime-bottom,0px)]"
+      className="m-rename-dialog"
     >
       <TextField
         aria-label={heading}

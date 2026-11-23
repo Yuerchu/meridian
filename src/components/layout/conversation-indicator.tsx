@@ -43,7 +43,7 @@ export function ConversationIndicator({
           className="m-conv-indicator__dot"
           data-tone="waiting"
         />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.waiting')}
         </span>
       </span>
@@ -58,7 +58,7 @@ export function ConversationIndicator({
           className="m-conv-indicator__dot"
           data-tone="streaming"
         />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.streaming')}
         </span>
       </span>
@@ -68,7 +68,7 @@ export function ConversationIndicator({
     return (
       <span data-slot="conversation-indicator" className="m-conv-indicator">
         <span data-slot="conversation-indicator-ring" aria-hidden className="m-conv-indicator__ring" />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.background', { count: running })}
         </span>
       </span>
@@ -78,7 +78,7 @@ export function ConversationIndicator({
     return (
       <span data-slot="conversation-indicator" className="m-conv-indicator">
         <span data-slot="conversation-indicator-dot" aria-hidden className="m-conv-indicator__dot" data-tone="unseen" />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.unseen')}
         </span>
       </span>

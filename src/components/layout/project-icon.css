@@ -1,0 +1,7 @@
+@layer components {
+  .m-project-icon {
+    flex-shrink: 0;
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+}

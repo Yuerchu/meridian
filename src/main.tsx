@@ -11,6 +11,7 @@ import { isDemo } from './lib/transport'
 import i18n from './i18n'
 import { AriaLocaleProvider } from './i18n/aria-locale'
 import './index.css'
+import './main.css'
 
 const root = createRoot(document.getElementById('root')!)
 
@@ -35,17 +36,14 @@ const isBrowserDev = isDev && !('__TAURI_INTERNALS__' in window)
 
 function renderAppCrashFallback(error: Error) {
   return (
-    <main
-      data-slot="app-crash-fallback"
-      className="flex h-screen flex-col items-center justify-center gap-3 p-8 text-center"
-    >
-      <h1 data-slot="app-crash-title" className="text-body-medium">
+    <main data-slot="app-crash-fallback" className="m-app-crash">
+      <h1 data-slot="app-crash-title" className="m-app-crash__title">
         {i18n.t('errorBoundary.title')}
       </h1>
-      <p data-slot="app-crash-description" className="max-w-md text-caption-1-regular text-text-secondary">
+      <p data-slot="app-crash-description" className="m-app-crash__description">
         {i18n.t('errorBoundary.description')}
       </p>
-      <p data-slot="app-crash-error" className="max-w-md break-all text-caption-1-regular text-text-secondary">
+      <p data-slot="app-crash-error" className="m-app-crash__error">
         {String(error)}
       </p>
       <Button variant="secondary" onPress={() => window.location.reload()}>

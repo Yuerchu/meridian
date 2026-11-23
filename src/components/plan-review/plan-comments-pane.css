@@ -1,13 +1,77 @@
 @layer components {
+  .m-plan-comments-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+
+  .m-plan-comments-pane__header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 3rem;
+    padding-inline: var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-plan-comments-pane__icon {
+    flex-shrink: 0;
+    width: var(--icon-md);
+    height: var(--icon-md);
+    color: var(--text-secondary);
+  }
+
+  .m-plan-comments-pane__title {
+    margin: 0;
+    font: var(--text-body-medium);
+  }
+
   .m-plan-comments-pane__count {
     margin-inline-start: auto;
     font-variant-numeric: tabular-nums;
+  }
+
+  .m-plan-comments-pane__list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-height: 0;
+    padding: var(--space-3);
+    overflow-y: auto;
+  }
+
+  .m-plan-comments-pane__empty {
+    margin: 0;
+    padding: var(--space-8) var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-body);
+    text-align: center;
+  }
+
+  .m-plan-comments-pane__card {
+    padding: var(--space-3);
+    border-radius: var(--radius-item);
+    background: var(--surface-muted);
+  }
+
+  .m-plan-comments-pane__card-header {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    margin-block-end: var(--space-2);
   }
 
   .m-plan-comments-pane__quote {
     flex: 1;
     min-width: 0;
     font: var(--text-caption);
+  }
+
+  .m-plan-comments-pane__quote[data-orphaned] {
+    color: var(--text-secondary);
   }
 
   .m-plan-comments-pane__quote-text {
@@ -17,5 +81,37 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
     line-clamp: 3;
+  }
+
+  .m-plan-comments-pane__delete {
+    flex-shrink: 0;
+    margin-block-start: calc(-1 * var(--space-1));
+    margin-inline-end: calc(-1 * var(--space-1));
+  }
+
+  .m-plan-comments-pane__body {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-body);
+    white-space: pre-wrap;
+  }
+
+  .m-plan-comments-pane__orphaned-note {
+    margin: var(--space-2) 0 0;
+    color: var(--warning-fg);
+    font: var(--text-caption);
+  }
+
+  .m-plan-comments-pane__footer {
+    flex-shrink: 0;
+    padding: var(--space-3);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-plan-comments-pane__note-label {
+    margin: 0 0 var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-weight: 500;
   }
 }

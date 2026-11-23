@@ -1,3 +1,4 @@
+import './claude-session-picker.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
@@ -228,31 +229,33 @@ export function ClaudeSessionPicker({
       onOpenChange={onOpenChange}
       size="lg"
       heading={
-        <span className="flex items-center gap-2">
+        <span className="m-session-picker__heading">
           <HostedAgentGlyph size={18} />
           {t(mode === 'attach' ? 'sessionPicker.attachHeading' : 'sessionPicker.importHeading')}
         </span>
       }
       description={t(mode === 'attach' ? 'sessionPicker.attachHint' : 'sessionPicker.importHint')}
     >
-      {/* `min-h-0` is what lets the list below shrink and scroll inside
+      {/* `min-height: 0` is what lets the list below shrink and scroll inside
               the dialog rather than pushing it taller. */}
-      <div data-slot="claude-session-picker" className="flex min-h-0 flex-col gap-3">
-        <div data-slot="session-picker-toolbar" className="flex items-center gap-2">
+      <div data-slot="claude-session-picker" className="m-session-picker">
+        <div data-slot="session-picker-toolbar" className="m-session-picker__toolbar">
           {/* SearchField, rather than an Input with an icon stuck on the
                   front: it brings the magnifier, the clear button and Escape
                   clearing the field with it. */}
-          <SearchField
-            aria-label={t('sessionPicker.search')}
-            value={query}
-            onChange={setQuery}
-            placeholder={t('sessionPicker.search')}
-          />
+          <div className="m-session-picker__search">
+            <SearchField
+              aria-label={t('sessionPicker.search')}
+              value={query}
+              onChange={setQuery}
+              placeholder={t('sessionPicker.search')}
+            />
+          </div>
           {/* The adapter runs on the machine the backend is on, so a picker
                   showing this device's folders points at the wrong filesystem —
                   the same split a project's path has. */}
           {can.browseForDirectory && (
-            <Button icon={<FolderOpen />} variant="secondary" onPress={() => void browse()} className="shrink-0">
+            <Button icon={<FolderOpen />} variant="secondary" onPress={() => void browse()}>
               {t('sessionPicker.folder')}
             </Button>
           )}
@@ -264,18 +267,13 @@ export function ClaudeSessionPicker({
                 variant="ghost"
                 aria-label={t('sessionPicker.allProjects')}
                 onPress={() => scopeTo('')}
-                className="shrink-0"
               />
               <Tooltip>{t('sessionPicker.allProjects')}</Tooltip>
             </TooltipTrigger>
           )}
         </div>
         {folder && (
-          <p
-            data-slot="session-picker-folder"
-            onPointerEnter={titleIfTruncated}
-            className="truncate text-caption-1-regular text-text-secondary"
-          >
+          <p data-slot="session-picker-folder" onPointerEnter={titleIfTruncated} className="m-session-picker__folder">
             {folder}
           </p>
         )}
@@ -290,7 +288,7 @@ export function ClaudeSessionPicker({
           role="status"
           aria-live="polite"
           aria-busy={sessions === null}
-          className="min-h-40 flex-1 overflow-y-auto rounded-lg border"
+          className="m-session-picker__list"
         >
           {/* The failure is asked about *first*, and that ordering is the
                   whole of whether this state is reachable: a load clears
@@ -303,12 +301,8 @@ export function ClaudeSessionPicker({
                   with neither a folder button nor a clear button there is
                   otherwise nothing on screen that can ask again. */}
           {error ? (
-            <div data-slot="session-picker-error" className="flex flex-col items-start gap-2 p-4">
-              <p
-                data-slot="session-picker-error-message"
-                role="alert"
-                className="text-caption-1-regular text-status-danger"
-              >
+            <div data-slot="session-picker-error" className="m-session-picker__error">
+              <p data-slot="session-picker-error-message" role="alert" className="m-session-picker__error-message">
                 {error}
               </p>
               <Button size="sm" variant="secondary" onPress={() => void load(folder)}>
@@ -318,18 +312,22 @@ export function ClaudeSessionPicker({
           ) : sessions === null ? (
             // Starting an adapter takes seconds — on a machine that has
             // never run it, long enough to download the package first.
-            <div data-slot="session-picker-loading" className="flex h-40 flex-col items-center justify-center gap-2">
+            <div data-slot="session-picker-loading" className="m-session-picker__loading">
               <Spinner />
-              <span data-slot="session-picker-loading-label" className="text-caption-1-regular text-text-secondary">
+              <span data-slot="session-picker-loading-label" className="m-session-picker__muted">
                 {t('sessionPicker.loading')}
               </span>
             </div>
           ) : rows.length === 0 ? (
-            <p data-slot="session-picker-empty" className="p-4 text-caption-1-regular text-text-secondary">
+            <p data-slot="session-picker-empty" className="m-session-picker__empty">
               {t('sessionPicker.empty')}
             </p>
           ) : (
-            <ul data-slot="session-picker-rows" aria-label={t('sessionPicker.listLabel')} className="divide-y">
+            <ul
+              data-slot="session-picker-rows"
+              aria-label={t('sessionPicker.listLabel')}
+              className="m-session-picker__rows"
+            >
               {rows.map((session) => (
                 <SessionRow
                   key={session.sessionId}
@@ -353,7 +351,7 @@ export function ClaudeSessionPicker({
                 />
               ))}
               {hidden > 0 && (
-                <li data-slot="session-picker-more" className="px-3 py-2 text-caption-1-regular text-text-secondary">
+                <li data-slot="session-picker-more" className="m-session-picker__more">
                   {t('sessionPicker.more', { count: hidden })}
                 </li>
               )}
@@ -403,61 +401,52 @@ function SessionRow({
     // `aria-busy` on the row, not on the button: React Aria filters everything
     // but the labelable aria props off a Button, so it would be dropped there —
     // and the row is what is working anyway.
-    <li data-slot="session-row" aria-busy={busy} className="flex items-center gap-3 px-3 py-2">
-      <div data-slot="session-row-body" className="min-w-0 flex-1">
-        {/* `text-text-primary` because `.modal__body` sets `text-text-secondary` on
-            everything inside it: inherited, the title came out the same grey as
-            the path under it and the two rows of a row read as one.
+    <li data-slot="session-row" aria-busy={busy} className="m-session-picker__row">
+      <div data-slot="session-row-body" className="m-session-picker__row-body">
+        {/* `--text` explicitly so any inherited secondary colour from a
+            container leaves the title distinct from the path beneath it.
 
             An empty title is the same as none: the adapter sanitises whatever
             the SDK summarised, and a row with a blank first line is one nobody
             can tell from its neighbour. */}
-        <p
-          data-slot="session-title"
-          onPointerEnter={titleIfTruncated}
-          className="truncate text-body-regular text-text-primary"
-        >
+        <p data-slot="session-title" onPointerEnter={titleIfTruncated} className="m-session-picker__row-title">
           {session.title?.trim() || leafOf(session.cwd)}
         </p>
-        <p
-          data-slot="session-row-path"
-          onPointerEnter={titleIfTruncated}
-          className="truncate text-caption-1-regular text-text-secondary"
-        >
+        <p data-slot="session-row-path" onPointerEnter={titleIfTruncated} className="m-session-picker__row-path">
           {session.cwd}
           {when && ` · ${when}`}
         </p>
         {error && (
-          <p data-slot="session-row-error" role="alert" className="mt-1 text-caption-1-regular text-status-danger">
+          <p data-slot="session-row-error" role="alert" className="m-session-picker__row-note" data-tone="danger">
             {error}
           </p>
         )}
         {truncated && (
-          <p data-slot="session-row-truncated" className="mt-1 text-caption-1-regular text-status-warning">
+          <p data-slot="session-row-truncated" className="m-session-picker__row-note" data-tone="warning">
             {t('sessionPicker.truncated')}
           </p>
         )}
       </div>
       {mine ? (
-        <span data-slot="session-row-current" className="shrink-0 text-caption-1-regular text-text-secondary">
+        <span data-slot="session-row-current" className="m-session-picker__row-status">
           {t('sessionPicker.current')}
         </span>
       ) : taken && mode === 'attach' ? (
         // Two conversations pointing at one session would be two transcripts
         // written from the same place, so the row says why rather than failing
         // when it is pressed.
-        <span data-slot="session-row-taken" className="shrink-0 text-caption-1-regular text-text-secondary">
+        <span data-slot="session-row-taken" className="m-session-picker__row-status">
           {t('sessionPicker.taken')}
         </span>
       ) : taken ? (
-        <Button size="sm" variant="secondary" onPress={onOpen} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onOpen}>
           {t('sessionPicker.alreadyImported')}
         </Button>
       ) : (
         // The label stays while the spinner is up. Swapped for it, the button
         // is both disabled and nameless for the length of an adapter start,
         // which to a screen reader is a control that has stopped existing.
-        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled} className="shrink-0">
+        <Button size="sm" variant="secondary" onPress={onAct} isDisabled={disabled}>
           {/* Hidden from the accessibility tree: Spinner carries
               `aria-label="Loading"`, which would rename the button to "Loading
               Import" for the length of an adapter start. The row's `aria-busy`

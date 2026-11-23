@@ -1,4 +1,37 @@
 @layer components {
+  .m-app-frame__skip-link {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .m-app-frame__skip-link:focus {
+    position: fixed;
+    inset-block-start: var(--space-2);
+    inset-inline-start: var(--space-2);
+    z-index: var(--z-overlay);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    overflow: visible;
+    clip-path: none;
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+    white-space: normal;
+    text-decoration: none;
+    box-shadow: var(--shadow-floating);
+    outline: var(--focus-ring);
+  }
+
   .m-app-frame {
     display: flex;
     flex-direction: column;
@@ -80,6 +113,37 @@
 
   .m-app-shell__shortcut {
     margin-inline-start: var(--space-2);
+  }
+
+  .m-app-frame__action-error {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-app-frame__main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .m-app-frame__chat-layer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .m-app-frame__split {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .m-app-frame__chat-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
   }
 
   .m-app-layer {

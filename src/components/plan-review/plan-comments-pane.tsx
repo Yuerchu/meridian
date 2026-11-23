@@ -54,13 +54,10 @@ export function PlanCommentsPane({
   }, [focusRequest])
 
   return (
-    <section data-slot="plan-comments" aria-labelledby={headingId} className="flex h-full min-h-0 flex-col">
-      <header
-        data-slot="plan-comments-header"
-        className="flex min-h-12 shrink-0 items-center gap-2 border-b border-border-button-default px-4"
-      >
-        <Message className="size-4 text-text-secondary" />
-        <h2 data-slot="plan-comments-title" id={headingId} className="text-body-medium">
+    <section data-slot="plan-comments" aria-labelledby={headingId} className="m-plan-comments-pane">
+      <header data-slot="plan-comments-header" className="m-plan-comments-pane__header">
+        <Message className="m-plan-comments-pane__icon" />
+        <h2 data-slot="plan-comments-title" id={headingId} className="m-plan-comments-pane__title">
           {t('planReview.comments.title')}
         </h2>
         <span className="m-plan-comments-pane__count">
@@ -68,9 +65,9 @@ export function PlanCommentsPane({
         </span>
       </header>
 
-      <div data-slot="plan-comments-list" className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      <div data-slot="plan-comments-list" className="m-plan-comments-pane__list">
         {visible.length === 0 && (
-          <p data-slot="plan-comments-empty" className="px-2 py-8 text-center text-body-regular text-text-secondary">
+          <p data-slot="plan-comments-empty" className="m-plan-comments-pane__empty">
             {t('planReview.comments.empty')}
           </p>
         )}
@@ -79,19 +76,20 @@ export function PlanCommentsPane({
           <article
             data-slot="plan-comment"
             key={comment.id}
-            className="rounded-lg bg-background-secondary-default p-3"
+            className="m-plan-comments-pane__card"
             data-state={comment.state}
             data-comment-id={comment.id}
           >
-            <div data-slot="plan-comment-header" className="mb-2 flex items-start gap-2">
+            <div data-slot="plan-comment-header" className="m-plan-comments-pane__card-header">
               {/* An orphaned comment's quote is what the words *were*; there is
                   nothing left in the plan to take the reader to, and its stored
                   range now covers other text. So it is not offered as a link. */}
               {comment.state === 'orphaned' ? (
                 <q
                   data-slot="plan-comment-quote"
+                  data-orphaned=""
                   onPointerEnter={titleIfTruncated}
-                  className="line-clamp-3 min-w-0 flex-1 break-words text-caption-1-regular text-text-secondary"
+                  className="m-plan-comments-pane__quote m-plan-comments-pane__quote-text"
                 >
                   {comment.anchor.quote || t('planReview.comments.emptyQuote')}
                 </q>
@@ -105,21 +103,22 @@ export function PlanCommentsPane({
                 </span>
               )}
               {!isReadOnly && (
-                <TooltipTrigger>
-                  <Button
-                    icon={<Bin />}
-                    size="sm"
-                    variant="ghost"
-                    aria-label={t('planReview.comments.delete')}
-                    className="-me-1 -mt-1 shrink-0"
-                    onPress={() => onDeleteComment(comment.id)}
-                  />
-                  <Tooltip>{t('planReview.comments.delete')}</Tooltip>
-                </TooltipTrigger>
+                <span className="m-plan-comments-pane__delete">
+                  <TooltipTrigger>
+                    <Button
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('planReview.comments.delete')}
+                      onPress={() => onDeleteComment(comment.id)}
+                    />
+                    <Tooltip>{t('planReview.comments.delete')}</Tooltip>
+                  </TooltipTrigger>
+                </span>
               )}
             </div>
             {isReadOnly ? (
-              <p data-slot="plan-comment-body" className="whitespace-pre-wrap text-body-regular text-text-primary">
+              <p data-slot="plan-comment-body" className="m-plan-comments-pane__body">
                 {comment.body}
               </p>
             ) : (
@@ -136,7 +135,7 @@ export function PlanCommentsPane({
               />
             )}
             {comment.state === 'orphaned' && (
-              <p data-slot="plan-comment-orphaned" className="mt-2 text-caption-1-regular text-status-warning">
+              <p data-slot="plan-comment-orphaned" className="m-plan-comments-pane__orphaned-note">
                 {t('planReview.comments.orphaned')}
               </p>
             )}
@@ -144,14 +143,14 @@ export function PlanCommentsPane({
         ))}
       </div>
 
-      <div data-slot="plan-comments-footer" className="shrink-0 border-t border-border-button-default p-3">
+      <div data-slot="plan-comments-footer" className="m-plan-comments-pane__footer">
         {isReadOnly ? (
           globalNote && (
             <div data-slot="plan-global-note-readonly">
-              <p data-slot="plan-global-note-label" className="mb-1 text-caption-1-medium text-text-secondary">
+              <p data-slot="plan-global-note-label" className="m-plan-comments-pane__note-label">
                 {t('planReview.comments.globalNote')}
               </p>
-              <p data-slot="plan-global-note-body" className="whitespace-pre-wrap text-body-regular">
+              <p data-slot="plan-global-note-body" className="m-plan-comments-pane__body">
                 {globalNote}
               </p>
             </div>
@@ -159,7 +158,6 @@ export function PlanCommentsPane({
         ) : (
           <TextArea
             data-slot="plan-global-note-field"
-            className="space-y-1.5"
             label={t('planReview.comments.globalNote')}
             placeholder={t('planReview.comments.globalPlaceholder')}
             value={globalNote}
