@@ -1,31 +1,6 @@
 {
   "registry": "https://www.boardui.com/r",
   "items": {
-    "theme": {
-      "files": ["src/styles/theme.css"],
-      "upstream": {
-        "src/styles/theme.css": "3c7fcc7710b0f44be0d86bc8e822e88f737d0269d207e9e2f4d2e73fd6da8f34"
-      },
-      "patches": [
-        "button-press-motion: the scale(0.98) :active transform (and its transition/disabled/reduced-motion resets) is removed, color transitions kept. references/motion.md: \"Press feedback is a color step, not a scale … BoardUI buttons never shrink on press\" — where the doc and the code disagree the doc wins."
-      ]
-    },
-    "typography": {
-      "files": ["src/styles/typography.css"],
-      "upstream": {
-        "src/styles/typography.css": "dfd4e9b446998d063efe96a47fc31fd2492639bf641d0da1b60645fe4dcc32a1"
-      },
-      "patches": []
-    },
-    "globals": {
-      "files": ["src/styles/globals.css"],
-      "upstream": {
-        "src/styles/globals.css": "f3c44bfce35316ce4c6d74f9f1706e127ad16aa1db079013b5002ec6cfec773e"
-      },
-      "patches": [
-        "Readable text: .bui-table th (table header labels) text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
-      ]
-    },
     "cx": {
       "files": ["src/utils/cx.ts"],
       "upstream": {
@@ -37,13 +12,6 @@
       "files": ["src/utils/use-dismiss-on-outside-press.ts"],
       "upstream": {
         "src/utils/use-dismiss-on-outside-press.ts": "01c70c3b25018e9c8d1d6d84ca67facb9392b5d4baf1c7207bbcfe13d4b33699"
-      },
-      "patches": []
-    },
-    "chevrons": {
-      "files": ["src/components/foundations/icons/chevrons.tsx"],
-      "upstream": {
-        "src/components/foundations/icons/chevrons.tsx": "daa432c30cf80fbfef15f929a2b7ca459c007f5611785286937528d4b7565b97"
       },
       "patches": []
     },
@@ -69,32 +37,6 @@
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): react-aria-components Button (Dialog slot=\"close\", TooltipTrigger child); hover:/focus-visible: → data-[hovered]/data-[focus-visible]; props are AriaButtonProps."
       ]
     },
-    "input": {
-      "files": [
-        "src/components/base/input/hint-text.tsx",
-        "src/components/base/input/input.tsx",
-        "src/components/base/input/label.tsx"
-      ],
-      "upstream": {
-        "src/components/base/input/hint-text.tsx": "0426d70de74274486166cf3fd2279b8c70ce184012d613f87c44dbaa484ba8c3",
-        "src/components/base/input/input.tsx": "7f42e9bbd54ef8db46b280d6fa2f0936ba064f222b7e4c9084a5cfd6cf219920",
-        "src/components/base/input/label.tsx": "a053bec8ad9f79f15ad8d7f031eac740588781d4e1b34d1cb1b3c5d44a4b2199"
-      },
-      "patches": [
-        "input/label.tsx: the registry drops isInvalid (`isInvalid: _isInvalid`); an eslint-disable for meridian-ui/no-silent-prop-drop documents that, code unchanged.",
-        "Icons: keyline two-tone replaces @remixicon/react (project icon decision 2026-09-23)",
-        "Readable text: input.tsx placeholder text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
-      ]
-    },
-    "textarea": {
-      "files": ["src/components/base/textarea/textarea.tsx"],
-      "upstream": {
-        "src/components/base/textarea/textarea.tsx": "a4896f7460fbb0b6d5b65299ad9ace8d664c2771cc44cb77b0bd96c8ab871c33"
-      },
-      "patches": [
-        "Readable text: placeholder and the character count text-tertiary → text-secondary (dark text-tertiary is neutral-600, ~1.9–2.3:1 on the primary/secondary surfaces; owner decision 2026-09-24, CLAUDE.md UI Conventions). Disabled states keep tertiary."
-      ]
-    },
     "dropdown": {
       "files": ["src/components/base/dropdown/dropdown.tsx", "src/components/base/dropdown/menu-styles.ts"],
       "upstream": {
@@ -105,15 +47,6 @@
         "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): the registry panel is DialogTrigger + native <button> rows (no role=menu, arrow keys, typeahead or selection). Here: Dropdown = MenuTrigger, DropdownPopover = Popover + Menu (menu props pass through: selectionMode, selectedKeys, onAction…), DropdownGroup = MenuSection + Header, DropdownItem = MenuItem (onAction instead of onSelect, selection from the menu instead of `selected`), DropdownDivider = Separator. MenuTrigger owns dismissal, so the isNonModal + useDismissOnOutsidePress bridge is not used. Surface and row classes unchanged.",
         "menu-styles MENU_ITEM_INTERACTIVE: hover:/focus-visible: → data-[hovered]/data-[focus-visible].",
         "DropdownItem variant=\"danger\" (row-actions-menu destructive actions): text-text-error-primary; isDisabled rows: cursor-not-allowed text-text-disabled."
-      ]
-    },
-    "tabs": {
-      "files": ["src/components/base/tabs/tabs.tsx"],
-      "upstream": {
-        "src/components/base/tabs/tabs.tsx": "b456f9fafa5434b379b97958fc61e27d342ff475421d6bc0a52bb5236659245d"
-      },
-      "patches": [
-        "React Aria interaction contract (CLAUDE.md, \"The base layer's interaction contract\"): Tab/TabPanel focus-visible: → data-[focus-visible]."
       ]
     },
     "tooltip": {
@@ -161,13 +94,6 @@
       "files": ["src/components/application/agent-log/agent-log.tsx"],
       "upstream": {
         "src/components/application/agent-log/agent-log.tsx": "481bc2c9fe76c598b9a6f07bddbd1706904f5c187893814396540016f346684c"
-      },
-      "patches": []
-    },
-    "direction": {
-      "files": ["src/components/foundations/direction/direction.tsx"],
-      "upstream": {
-        "src/components/foundations/direction/direction.tsx": "7bfab075a6d5fe3a2b3f3b810ba2ab4e870f50029a41d8c4b0bee9bfd4a43756"
       },
       "patches": []
     },

@@ -12,20 +12,13 @@ import {
   Avatar,
   ContextMenu,
   DataGrid,
-  Description,
   Disclosure,
   Dropdown,
   DropdownItem,
   DropdownPopover,
-  Input,
   Kanban,
-  Label,
-  SearchField,
   Sheet,
-  Sidebar,
   Spinner,
-  TextField,
-  ToggleButton,
 } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -161,86 +154,7 @@ describe('Disclosure', () => {
   })
 })
 
-describe('Text controls are React Aria inputs', () => {
-  it('TextField labels and describes its Input', () => {
-    render(
-      <TextField>
-        <Label>Name</Label>
-        <Input placeholder="…" />
-        <Description>Your display name</Description>
-      </TextField>,
-    )
-    const input = screen.getByRole('textbox', { name: 'Name' })
-    expect(input).toHaveAccessibleDescription('Your display name')
-  })
-
-  /**
-   * The field shell draws its own invalid and disabled fills. A wrapper that
-   * appended a fill of its own after them (the old `surface` well) painted over
-   * both, so an invalid field looked exactly like a valid one.
-   */
-  it('Input shows the invalid and disabled fills of its field shell', () => {
-    render(
-      <>
-        <TextField isInvalid aria-label="Bad">
-          <Input />
-        </TextField>
-        <TextField isDisabled aria-label="Off">
-          <Input />
-        </TextField>
-      </>,
-    )
-    // The shell is the RAC Group around the input (role=presentation inside a TextField).
-    const shellOf = (name: string) => screen.getByRole('textbox', { name }).closest('div[data-rac]')
-    expect(shellOf('Bad')?.className).toMatch(/\bbg-background-tertiary-error\b/)
-    expect(shellOf('Off')?.className).toMatch(/\bbg-input-disabled-background\b/)
-  })
-
-  it('SearchField is controlled through its root', async () => {
-    const onChange = vi.fn()
-    render(
-      <SearchField aria-label="Search" value="ab" onChange={onChange}>
-        <SearchField.Group>
-          <SearchField.Input />
-          <SearchField.ClearButton aria-label="Clear" />
-        </SearchField.Group>
-      </SearchField>,
-    )
-    const input = screen.getByRole('searchbox', { name: 'Search' })
-    expect(input).toHaveValue('ab')
-    await userEvent.type(input, 'c')
-    expect(onChange).toHaveBeenLastCalledWith('abc')
-    await userEvent.click(screen.getByRole('button', { name: 'Clear' }))
-    expect(onChange).toHaveBeenLastCalledWith('')
-  })
-
-  it('SearchField draws its own magnifier and clear glyph, which a child still replaces', () => {
-    const { container } = render(
-      <SearchField aria-label="Search" defaultValue="ab">
-        <SearchField.Group>
-          <SearchField.SearchIcon />
-          <SearchField.Input />
-          <SearchField.ClearButton />
-        </SearchField.Group>
-      </SearchField>,
-    )
-    expect(container.querySelector('[data-slot="search-field-search-icon"] svg')).not.toBeNull()
-    expect(container.querySelector('[data-slot="search-field-clear"] svg')).not.toBeNull()
-
-    const { container: custom } = render(
-      <SearchField aria-label="Find">
-        <SearchField.Group>
-          <SearchField.SearchIcon>
-            <span data-testid="own-glyph" />
-          </SearchField.SearchIcon>
-          <SearchField.Input />
-        </SearchField.Group>
-      </SearchField>,
-    )
-    expect(custom.querySelector('[data-slot="search-field-search-icon"] svg')).toBeNull()
-    expect(screen.getByTestId('own-glyph')).toBeInTheDocument()
-  })
-
+describe('Select is named by its label slot', () => {
   it('Select is named by its label slot', () => {
     render(
       <Select label="Model" selectedKey="a">
@@ -307,29 +221,6 @@ describe('Menus open from their trigger', () => {
     expect(trigger).toHaveFocus()
     await userEvent.keyboard('{Enter}')
     expect(await screen.findByRole('dialog', { name: 'details' })).toBeInTheDocument()
-  })
-})
-
-describe('Sidebar.Menu is a tree', () => {
-  it('walks rows with the arrow keys and acts on Enter', async () => {
-    const onAction = vi.fn()
-    render(
-      <Sidebar.Provider>
-        <Sidebar.Menu aria-label="Conversations">
-          <Sidebar.MenuItem id="a" textValue="Alpha" onAction={() => onAction('a')}>
-            <Sidebar.MenuLabel>Alpha</Sidebar.MenuLabel>
-          </Sidebar.MenuItem>
-          <Sidebar.MenuItem id="b" textValue="Beta" onAction={() => onAction('b')}>
-            <Sidebar.MenuLabel>Beta</Sidebar.MenuLabel>
-          </Sidebar.MenuItem>
-        </Sidebar.Menu>
-      </Sidebar.Provider>,
-    )
-    await userEvent.tab()
-    await userEvent.keyboard('{ArrowDown}')
-    expect(screen.getByRole('row', { name: 'Beta' })).toHaveFocus()
-    await userEvent.keyboard('{Enter}')
-    expect(onAction).toHaveBeenCalledWith('b')
   })
 })
 
@@ -433,28 +324,6 @@ describe('Presentation parts honour their props', () => {
     expect(within(grid).queryByRole('rowheader', { name: 'Child' })).toBeNull()
     await userEvent.click(within(grid).getByRole('button', { name: /Expand row/ }))
     expect(within(grid).getByRole('rowheader', { name: 'Child' })).toBeInTheDocument()
-  })
-})
-
-describe('ToggleButton selection', () => {
-  it('is neutral when off and the blue pill when on', () => {
-    render(
-      <>
-        <ToggleButton aria-label="Off">Off</ToggleButton>
-        <ToggleButton aria-label="On" isSelected>
-          On
-        </ToggleButton>
-      </>,
-    )
-    const off = screen.getByRole('button', { name: 'Off' })
-    const on = screen.getByRole('button', { name: 'On' })
-    expect(off).not.toHaveAttribute('data-selected')
-    expect(on).toHaveAttribute('data-selected')
-    const classes = off.className.split(/\s+/)
-    // Unselected carries no fill of its own.
-    expect(classes.filter((c) => c.startsWith('bg-'))).toEqual([])
-    expect(classes).toContain('data-[selected]:bg-pill-tab-blue-selected-background')
-    expect(classes).toContain('data-[selected]:text-accent-500')
   })
 })
 

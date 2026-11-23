@@ -25,8 +25,9 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 
-import { ListBox, ToggleButton } from '@/components/base'
+import { ListBox } from '@/components/base'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -644,9 +645,9 @@ function Lab() {
             if (found) jump(found.name)
           }}
         />
-        <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
+        <Switch size="sm" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用
-        </ToggleButton>
+        </Switch>
         <Button variant="secondary" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>

@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@keyline-icons/react/two-tone'
+import { Archive, Gauge, Messages, Plug } from '@keyline-icons/react/two-tone'
 
-import { Sidebar } from '@/components/base'
 import { NavGroup, NavItem, NavList, NavSection } from '@/components/yuerchu-ui/components/nav-list/nav-list'
 import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
@@ -39,79 +38,6 @@ function PaginationCase() {
   )
 }
 
-/**
- * The panel by itself, at a fixed height: the shell's real sidebar has the
- * whole app behind it, and what is worth seeing here is the row vocabulary —
- * the navigation row's accent, the thread row's neutral fill, the pill.
- */
-function SidebarCase() {
-  const [open, setOpen] = useState(true)
-  return (
-    <div className="h-[26rem] overflow-hidden rounded-3xl ring-1 ring-border-button-default">
-      <Sidebar.Provider open={open} onOpenChange={setOpen}>
-        <Sidebar className="flex">
-          <Sidebar.Header className="flex items-center justify-between">
-            <Sidebar.Trigger aria-label="收起侧栏" />
-          </Sidebar.Header>
-          <Sidebar.Content>
-            <Sidebar.Menu aria-label="导航">
-              <Sidebar.MenuItem id="search" textValue="搜索" appearance="pill">
-                <Sidebar.MenuIcon>
-                  <Search />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>搜索</Sidebar.MenuLabel>
-              </Sidebar.MenuItem>
-              <Sidebar.MenuItem id="chats" textValue="对话" isCurrent>
-                <Sidebar.MenuIcon>
-                  <Messages />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>对话</Sidebar.MenuLabel>
-                <Sidebar.MenuChip>3</Sidebar.MenuChip>
-              </Sidebar.MenuItem>
-              <Sidebar.MenuItem id="project" textValue="新建项目">
-                <Sidebar.MenuIcon>
-                  <FolderPlus />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>新建项目</Sidebar.MenuLabel>
-              </Sidebar.MenuItem>
-              <Sidebar.MenuItem id="archive" textValue="已归档">
-                <Sidebar.MenuIcon>
-                  <Archive />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>已归档</Sidebar.MenuLabel>
-              </Sidebar.MenuItem>
-            </Sidebar.Menu>
-            <Sidebar.Group>
-              <Sidebar.GroupLabel>今天</Sidebar.GroupLabel>
-              <Sidebar.Menu aria-label="对话">
-                <Sidebar.MenuItem id="t1" textValue="流式输出时回答写在屏幕外" appearance="thread" isCurrent>
-                  <Sidebar.MenuLabel>流式输出时回答写在屏幕外</Sidebar.MenuLabel>
-                </Sidebar.MenuItem>
-                <Sidebar.MenuItem id="t2" textValue="设置页导出入口" appearance="thread">
-                  <Sidebar.MenuLabel>设置页导出入口</Sidebar.MenuLabel>
-                </Sidebar.MenuItem>
-              </Sidebar.Menu>
-            </Sidebar.Group>
-          </Sidebar.Content>
-          <Sidebar.Footer>
-            <Sidebar.Menu aria-label="底部">
-              <Sidebar.MenuItem id="settings" textValue="设置">
-                <Sidebar.MenuIcon>
-                  <Settings />
-                </Sidebar.MenuIcon>
-                <Sidebar.MenuLabel>设置</Sidebar.MenuLabel>
-              </Sidebar.MenuItem>
-            </Sidebar.Menu>
-          </Sidebar.Footer>
-        </Sidebar>
-        <Sidebar.Main className="items-center justify-center text-body-2-regular text-text-secondary">
-          Sidebar.Main
-        </Sidebar.Main>
-      </Sidebar.Provider>
-    </div>
-  )
-}
-
 export default function Navigation() {
   return (
     <>
@@ -120,9 +46,6 @@ export default function Navigation() {
       </Section>
       <Section title="Pagination">
         <PaginationCase />
-      </Section>
-      <Section title="Sidebar · 导航行 / 线程行 / 胶囊 / 图标栏">
-        <SidebarCase />
       </Section>
       <Section title="NavList">
         <Stage>

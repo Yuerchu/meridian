@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { ListBox, ToggleButton, ToggleButtonGroup } from '@/components/base'
+import { ToggleButton, ToggleButtonGroup } from 'react-aria-components'
+
+import { ListBox } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -353,6 +355,8 @@ function Choices<T extends string | number>({
   value: T
   onChange: (value: T) => void
 }) {
+  const pillClass =
+    'inline-flex h-7 items-center rounded-full px-2.5 text-caption-1-regular tabular-nums text-[var(--text-secondary)] outline-none data-[hovered]:bg-[var(--surface-hover)] data-[selected]:bg-[var(--ink)] data-[selected]:text-[var(--ink-fg)] data-[focus-visible]:ring-2 data-[focus-visible]:ring-[var(--accent)]'
   return (
     <ToggleButtonGroup
       aria-label={label}
@@ -363,20 +367,20 @@ function Choices<T extends string | number>({
         const next = options.find((o) => keys.has(String(o.value)))
         if (next) onChange(next.value)
       }}
-      className="flex-wrap gap-1"
+      className="inline-flex flex-wrap items-center gap-1"
     >
       {options.map((o) => {
         const key = String(o.value)
         if (!o.hint) {
           return (
-            <ToggleButton key={key} id={key} className="text-caption-1-regular tabular-nums">
+            <ToggleButton key={key} id={key} className={pillClass}>
               {o.label ?? o.value}
             </ToggleButton>
           )
         }
         return (
           <TooltipTrigger key={key}>
-            <ToggleButton id={key} className="text-caption-1-regular tabular-nums">
+            <ToggleButton id={key} className={pillClass}>
               {o.label ?? o.value}
             </ToggleButton>
             <Tooltip placement="bottom">{o.hint}</Tooltip>

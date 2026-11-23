@@ -15,7 +15,7 @@ import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
 import { useMasterDetail } from '@/components/settings/use-master-detail'
 import { Label } from '@/components/base'
-import { ListView } from '@/components/base'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 
 /**
  * The things worth putting in front of the detectors, and nothing else.
@@ -116,14 +116,12 @@ function SettingsCase() {
         nav={nav}
         title="Providers"
         list={
-          <ListView
+          <ListBox
             aria-label="Providers"
-            className="flex flex-col gap-1"
             selectedKeys={nav.selectedId ? new Set([nav.selectedId]) : new Set<string>()}
             selectionBehavior="replace"
             selectionMode="single"
             shouldSelectOnPressUp
-            variant="secondary"
             onSelectionChange={(keys) => {
               if (keys === 'all') return
               const id = keys.values().next().value
@@ -134,18 +132,11 @@ function SettingsCase() {
               ['openai', 'OpenAI'],
               ['anthropic', 'Anthropic'],
             ].map(([id, label]) => (
-              <ListView.Item
-                key={id}
-                id={id}
-                textValue={label}
-                className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
-              >
-                <ListView.ItemContent>
-                  <ListView.Title className="text-body-regular">{label}</ListView.Title>
-                </ListView.ItemContent>
-              </ListView.Item>
+              <ListBoxItem key={id} id={id} textValue={label}>
+                {label}
+              </ListBoxItem>
             ))}
-          </ListView>
+          </ListBox>
         }
         detailTitle="Anthropic"
         emptyDetail="Pick a provider"

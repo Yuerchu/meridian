@@ -26,11 +26,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
-import { ContextMenu, Disclosure, Kbd, Label, Markdown, Sidebar, TextField as BoardTextField } from '@/components/base'
+import { ContextMenu, Disclosure, Kbd, Label, Markdown } from '@/components/base'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
-import { TextArea as AriaTextArea } from 'react-aria-components'
+import { TextArea as AriaTextArea, TextField as AriaTextField } from 'react-aria-components'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 
@@ -172,113 +172,6 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       </h2>
       {children}
     </section>
-  )
-}
-
-/**
- * The two assumptions the sidebar rewrite rests on, made visible.
- *
- * `Sidebar.Menu` is a React Aria `Tree`, and a `TreeItem` passes only a fixed
- * set of props down to the DOM. The rewrite needs two things to survive that
- * filter: `onAction`, which is how a row is chosen now that no row is a button,
- * and `data-row-id`, which is how a right-click anywhere in the list is traced
- * back to the row it landed on. Neither is documented as passed through; both
- * read as working right up until they silently are not.
- */
-function SidebarProbe() {
-  const [acted, setActed] = useState<string | null>(null)
-  const [attrs, setAttrs] = useState<string[] | null>(null)
-  const rootRef = useRef<HTMLDivElement>(null)
-  // The same shape `app-sidebar` uses: the id is written to a ref during the
-  // event so that `onOpenChange` — which runs before any state from the same
-  // event is visible — can refuse a click that landed between rows.
-  const hitRef = useRef<string | null>(null)
-  const [hit, setHit] = useState<string | null>(null)
-
-  const rows = ['alpha', 'beta', 'gamma']
-
-  return (
-    <div data-slot="sidebar-probe" className="space-y-2">
-      <div
-        data-slot="sidebar-probe-frame"
-        ref={rootRef}
-        className="h-64 overflow-hidden rounded-lg border [&_.sidebar]:h-full [&_.sidebar\_\_provider]:h-full"
-      >
-        <Sidebar.Provider open collapsible="none" onOpenChange={() => {}}>
-          <Sidebar>
-            <Sidebar.Content>
-              <Sidebar.Group>
-                <Sidebar.GroupLabel>行</Sidebar.GroupLabel>
-                {/* Root 必须包住自己的 Trigger：Trigger 从 Root 的 context 里拿
-                    handleOpen，而 context 的默认值是空函数——Root 挪到别处去，
-                    菜单安静地永远打不开，tsc 和 build 都看不见。
-
-                    命中行记在 onPointerDown / onContextMenuCapture 上，而不是
-                    等 onOpenChange 里再读 state：同一个事件里状态还没更新，
-                    等着读只会拿到上一次的值。 */}
-                <ContextMenu open={hit !== null} onOpenChange={(open) => setHit(open ? hitRef.current : null)}>
-                  <ContextMenu.Trigger
-                    className="block"
-                    data-slot="probe-trigger"
-                    onPointerDown={(e: React.PointerEvent) => {
-                      hitRef.current =
-                        (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
-                    }}
-                    onContextMenuCapture={(e: React.MouseEvent) => {
-                      hitRef.current =
-                        (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
-                    }}
-                  >
-                    <Sidebar.Menu aria-label="行">
-                      {rows.map((id) => (
-                        <Sidebar.MenuItem
-                          key={id}
-                          id={id}
-                          data-row-id={id}
-                          textValue={id}
-                          onAction={() => setActed(id)}
-                        >
-                          <Sidebar.MenuLabel>{id}</Sidebar.MenuLabel>
-                        </Sidebar.MenuItem>
-                      ))}
-                    </Sidebar.Menu>
-                  </ContextMenu.Trigger>
-                  <ContextMenu.Popover>
-                    <ContextMenu.Menu aria-label="行操作">
-                      <ContextMenu.Item id="act" textValue={`对 ${hit} 做点什么`} onAction={() => {}}>
-                        <Label>对 {hit} 做点什么</Label>
-                      </ContextMenu.Item>
-                    </ContextMenu.Menu>
-                  </ContextMenu.Popover>
-                </ContextMenu>
-              </Sidebar.Group>
-            </Sidebar.Content>
-          </Sidebar>
-          <Sidebar.Main>
-            <span data-slot="sidebar-probe-main" />
-          </Sidebar.Main>
-        </Sidebar.Provider>
-      </div>
-      <div data-slot="sidebar-probe-actions" className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          variant="secondary"
-          onPress={() =>
-            setAttrs(
-              Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? []).map(
-                (el) => el.getAttribute('data-row-id') ?? '?',
-              ),
-            )
-          }
-        >
-          读 data-row-id
-        </Button>
-      </div>
-      <p className="font-mono text-caption-1-regular" data-slot="probe-readout">
-        onAction: {acted ?? '(未点)'} ／ 菜单开在: {hit ?? '(关着)'} ／ DOM 上的 row id:{' '}
-        {attrs ? (attrs.length ? attrs.join(',') : '一个都没有') : '(未读)'}
-      </p>
-    </div>
   )
 }
 
@@ -691,13 +584,6 @@ export default function WebViewLab() {
 
             Keep this around: it is what says whether either has changed
             upstream. */}
-        <Section title="Sidebar 的 Tree 能不能带私货" hint="点一行、右键一行，再按「读 data-row-id」">
-          <SidebarProbe />
-          <p data-slot="webview-lab-sidebar-note" className="text-caption-1-regular text-text-secondary">
-            三个读数都要有值。任何一个空，侧栏的选中或右键菜单就是坏的——而坏法是安静的，不报错也不掉类型。
-          </p>
-        </Section>
-
         <Section title="Composer 同构复现" hint="右键输入框；滚动一下看菜单是否消失">
           <div data-slot="webview-lab-composer" ref={proRef} className="rounded-lg border">
             <div data-slot="webview-lab-composer-padding" className="px-4 pb-4 pt-2">
@@ -707,7 +593,7 @@ export default function WebViewLab() {
                       默认就是 block；`w-full` 是为了让它撑满输入框的宽度。 */}
                   <ContextMenu.Trigger className="block w-full">
                     {/* The boardui composer probe, rewritten with the composer itself (Yuerchu/ui#547). */}
-                    <BoardTextField aria-label="发送消息">
+                    <AriaTextField aria-label="发送消息">
                       <div className="flex flex-col gap-2 rounded-2xl py-2">
                         <div data-slot="webview-lab-composer-textarea" className="relative w-full">
                           <AriaTextArea
@@ -728,7 +614,7 @@ export default function WebViewLab() {
                           </TooltipTrigger>
                         </div>
                       </div>
-                    </BoardTextField>
+                    </AriaTextField>
                   </ContextMenu.Trigger>
                   <ContextMenu.Popover>
                     <ContextMenu.Menu aria-label="发送消息">
