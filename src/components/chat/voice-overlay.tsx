@@ -1,7 +1,7 @@
+import './voice-overlay.css'
 import { useTranslation } from 'react-i18next'
 import { Bin, Mic } from '@keyline-icons/react/two-tone'
 
-import { cx } from '@/utils/cx'
 import type { AndroidVoiceState } from '@/hooks/use-android-voice-recorder'
 
 interface VoiceOverlayProps {
@@ -48,6 +48,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
   return (
     <div
       data-slot="voice-overlay"
+      data-cancelling={cancelling || undefined}
       // Covers the lower half rather than floating a small card: the thumb is
       // down there, and the feedback has to be readable around it.
       //
@@ -67,23 +68,20 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       // and someone then held the button. The variable is set on `<html>`
       // (`use-android-insets`), so anything portalled can still read it, and it
       // is undefined everywhere but Android — hence the fallback.
-      className={cx(
-        'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6',
-        'pb-[calc(6rem+var(--ime-bottom,0px))]',
-        'bg-gradient-to-t',
-        cancelling
-          ? 'from-status-danger via-status-danger/80 to-transparent text-status-danger-foreground'
-          : 'from-background-primary-default via-background-primary-default/85 to-transparent text-text-primary',
-      )}
+      className="m-voice-overlay"
     >
       {/* Only state transitions are announced. The timer and level meter update
           continuously and would otherwise restart polite announcements. */}
-      <span data-slot="voice-overlay-status" className="sr-only" role="status" aria-live="polite">
+      <span data-slot="voice-overlay-status" className="m-voice-overlay__status" role="status" aria-live="polite">
         {statusText}
       </span>
-      <div data-slot="voice-overlay-state" className="flex flex-col items-center gap-3">
-        {cancelling ? <Bin className="size-8" /> : <Mic className="size-8" />}
-        <span data-slot="voice-overlay-label" aria-hidden="true" className="text-headline-medium">
+      <div data-slot="voice-overlay-state" className="m-voice-overlay__state">
+        {cancelling ? (
+          <Bin className="m-voice-overlay__icon" aria-hidden />
+        ) : (
+          <Mic className="m-voice-overlay__icon" aria-hidden />
+        )}
+        <span data-slot="voice-overlay-label" aria-hidden="true" className="m-voice-overlay__label">
           {statusText}
         </span>
       </div>
@@ -92,7 +90,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
           way to tell a dead microphone from a bad recogniser. */}
       {(state === 'recording-hold' || cancelling) && (
         <>
-          <div data-slot="voice-overlay-meter" aria-hidden="true" className="flex h-10 items-center gap-1">
+          <div data-slot="voice-overlay-meter" aria-hidden="true" className="m-voice-overlay__meter">
             {Array.from({ length: 21 }, (_, i) => {
               const distance = Math.abs(i - 10) / 10
               const height = Math.max(0.1, Math.min(1, peak * 2.4 * (1 - distance * 0.6)))
@@ -100,17 +98,13 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
                 <span
                   key={i}
                   data-slot="voice-overlay-meter-bar"
-                  className="h-full w-1 origin-center rounded-full bg-current transition-transform duration-75 motion-reduce:transition-none"
+                  className="m-voice-overlay__meter-bar"
                   style={{ transform: `scaleY(${height})`, opacity: cancelling ? 0.5 : 0.9 }}
                 />
               )
             })}
           </div>
-          <span
-            data-slot="voice-overlay-timer"
-            aria-hidden="true"
-            className="text-body-regular tabular-nums opacity-80"
-          >
+          <span data-slot="voice-overlay-timer" aria-hidden="true" className="m-voice-overlay__timer">
             {remaining <= 10
               ? t('chat.voice.secondsLeft', { count: remaining })
               : `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}

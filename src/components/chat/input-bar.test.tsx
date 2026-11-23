@@ -260,7 +260,7 @@ describe('composer attachment row', () => {
 
     const wrapper = container.querySelector('[data-slot="composer-attachments"]')
     const group = container.querySelector('[data-slot="attachment-tiles"]')
-    expect(wrapper?.className.split(' ')).toEqual(expect.arrayContaining(['w-full', 'min-w-0']))
+    expect(wrapper).toHaveClass('m-input-bar__attachments')
     expect(group?.className.split(' ')).toEqual(expect.arrayContaining(['flex-nowrap', 'overflow-x-auto', 'min-w-0']))
     expect(group?.className.split(' ')).not.toContain('flex-wrap')
   })

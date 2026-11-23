@@ -13,7 +13,7 @@ import {
 } from 'react-aria-components'
 import { Bot, Check, ChevronDown } from '@keyline-icons/react/two-tone'
 
-import { Dropdown, DropdownItem, DropdownPopover, DropdownTrigger } from '@/components/base'
+import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
@@ -488,8 +488,8 @@ export function ModelPanel(props: ModelPanelProps) {
               />
               <div data-slot="model-panel-footer" className="m-model-panel__footer">
                 {props.assistants.length > 0 ? (
-                  <Dropdown>
-                    <DropdownTrigger
+                  <MenuTrigger>
+                    <AriaButton
                       data-slot="model-panel-assistant"
                       aria-label={`${t('toolbar.assistant')}: ${currentAssistant?.name ?? t('toolbar.noAssistant')}`}
                       className="m-model-panel__assistant"
@@ -498,8 +498,8 @@ export function ModelPanel(props: ModelPanelProps) {
                       <span className="m-model-panel__assistant-name">
                         {currentAssistant?.name ?? t('toolbar.noAssistant')}
                       </span>
-                    </DropdownTrigger>
-                    <DropdownPopover
+                    </AriaButton>
+                    <Menu
                       aria-label={t('toolbar.assistant')}
                       placement="top start"
                       selectionMode="single"
@@ -508,12 +508,12 @@ export function ModelPanel(props: ModelPanelProps) {
                       onAction={(key: Key) => props.onSelectAssistant(String(key))}
                     >
                       {props.assistants.map((a) => (
-                        <DropdownItem key={a.id} id={a.id} textValue={a.name}>
+                        <MenuItem key={a.id} id={a.id} textValue={a.name}>
                           <span className="m-model-panel__assistant-option">{a.name}</span>
-                        </DropdownItem>
+                        </MenuItem>
                       ))}
-                    </DropdownPopover>
-                  </Dropdown>
+                    </Menu>
+                  </MenuTrigger>
                 ) : (
                   <span />
                 )}

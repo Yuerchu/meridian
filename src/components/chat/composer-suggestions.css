@@ -1,0 +1,97 @@
+@layer components {
+  .m-composer-suggestions {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 100%;
+    z-index: var(--z-sticky);
+    margin-bottom: var(--space-2);
+    max-height: 18rem;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    padding: calc(var(--space-1) * 1.5);
+    color: var(--text);
+    box-shadow: var(--shadow-floating);
+  }
+
+  .m-composer-suggestions__list {
+    max-height: 17rem;
+    overflow-y: auto;
+    outline: none;
+  }
+
+  .m-composer-suggestions__item {
+    display: flex;
+    min-height: var(--control-lg);
+    align-items: center;
+    border-radius: var(--radius-item);
+    padding: var(--space-2) calc(var(--space-2) + 2px);
+    outline: none;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-composer-suggestions__item:hover,
+  .m-composer-suggestions__item[data-highlighted] {
+    background: var(--surface-muted);
+  }
+
+  .m-composer-suggestions__row {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: calc(var(--space-2) + 2px);
+    text-align: left;
+  }
+
+  .m-composer-suggestions__row[data-kind='command'] {
+    display: grid;
+  }
+
+  .m-composer-suggestions__icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-composer-suggestions__bullet {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+    text-align: center;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-composer-suggestions__label {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font: var(--text-body-medium);
+  }
+
+  .m-composer-suggestions__row[data-kind='command'] .m-composer-suggestions__label {
+    flex: initial;
+  }
+
+  .m-composer-suggestions__detail {
+    min-width: 0;
+    max-width: 50%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-composer-suggestions__row[data-kind='command'] .m-composer-suggestions__detail {
+    max-width: none;
+  }
+}

@@ -42,7 +42,7 @@ describe('ProjectBranchChip', () => {
   it('names the branch, announced as one', () => {
     render(<ProjectBranchChip branch={{ status: 'branch', name: 'feat/design-parity' }} />)
     expect(screen.getByText('feat/design-parity')).toBeInTheDocument()
-    expect(screen.getByText(i18n.t('composer.branch'))).toHaveClass('sr-only')
+    expect(screen.getByText(i18n.t('composer.branch'))).toHaveClass('m-composer-status-tab__sr')
   })
 
   it('says a detached HEAD in words rather than as a branch name', () => {

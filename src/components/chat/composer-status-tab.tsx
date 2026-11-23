@@ -1,3 +1,4 @@
+import './composer-status-tab.css'
 import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { GitBranch } from '@keyline-icons/react/two-tone'
@@ -43,14 +44,14 @@ export function ComposerStatusTab({
       role="group"
       aria-label={t('composer.status')}
       data-slot="composer-status-tab"
-      className="mx-7 flex h-[34px] min-w-0 items-center justify-between gap-3 rounded-t-2xl bg-composer-panel-tab-background px-2 py-1"
+      className="m-composer-status-tab"
     >
-      <div data-slot="composer-status-start" className="flex min-w-0 items-center gap-3">
+      <div data-slot="composer-status-start" className="m-composer-status-tab__start">
         {branch}
         {progress}
         {tasks}
       </div>
-      <div data-slot="composer-status-end" className="flex shrink-0 items-center">
+      <div data-slot="composer-status-end" className="m-composer-status-tab__end">
         {usage}
       </div>
     </div>
@@ -71,15 +72,13 @@ export function ProjectBranchChip({ branch }: { branch: ProjectBranch }) {
   if (branch.status !== 'branch' && branch.status !== 'detached') return null
   const name = branch.status === 'branch' ? branch.name : t('composer.branchDetached')
   return (
-    <span
-      data-slot="project-branch-chip"
-      className="flex h-7 min-w-0 items-center gap-1.5 px-1.5 text-body-2-medium text-text-secondary"
-    >
-      <GitBranch className="size-4 shrink-0" aria-hidden />
-      <span className="sr-only">{t('composer.branch')}</span>
+    <span data-slot="project-branch-chip" className="m-composer-status-tab__branch">
+      <GitBranch className="m-composer-status-tab__branch-icon" aria-hidden />
+      <span className="m-composer-status-tab__sr">{t('composer.branch')}</span>
       <span
         data-slot="project-branch-chip-name"
-        className={branch.status === 'branch' ? 'min-w-0 max-w-48 truncate font-mono' : 'min-w-0 max-w-48 truncate'}
+        data-mono={branch.status === 'branch' || undefined}
+        className="m-composer-status-tab__branch-name"
       >
         {name}
       </span>

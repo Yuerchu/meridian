@@ -1,3 +1,4 @@
+import './input-bar.css'
 import { useState, useRef, useCallback, useEffect, useId, useLayoutEffect, useMemo } from 'react'
 import { mergeRefs } from '@react-aria/utils'
 import { useTranslation } from 'react-i18next'
@@ -5,10 +6,11 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Kbd, Label } from '@/components/base'
+import { ContextMenuTrigger } from '@/components/yuerchu-ui/components/context-menu/context-menu'
+import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
+import { Menu, MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { ContextMenu } from '@/components/base'
 
 import { can } from '@/lib/capabilities'
 import { readsAnyImage } from '@/lib/model-media'
@@ -174,19 +176,13 @@ function ComposerContextMenu({
 }) {
   if (!enabled) return children
   return (
-    <ContextMenu onOpenChange={onOpenChange}>
-      {/* ContextMenu.Trigger renders a plain div when given no `render` prop;
-          `w-full` is what makes it span a full-width field. */}
-      <ContextMenu.Trigger className="block w-full">{children}</ContextMenu.Trigger>
-      <ContextMenu.Popover>
-        <ContextMenu.Menu aria-label={label}>{items}</ContextMenu.Menu>
-      </ContextMenu.Popover>
-    </ContextMenu>
+    <ContextMenuTrigger onOpenChange={onOpenChange}>
+      <div data-slot="context-menu-trigger" className="m-input-bar__menu-target">
+        {children}
+      </div>
+      <Menu aria-label={label}>{items}</Menu>
+    </ContextMenuTrigger>
   )
-}
-
-function Shortcut({ keys }: { keys: string }) {
-  return <Kbd className="ms-auto">{keys}</Kbd>
 }
 
 export function InputBar({
@@ -719,44 +715,53 @@ export function InputBar({
     <>
       {selectedText && (
         <>
-          <ContextMenu.Item id="cut" textValue={t('contextMenu.cut')} onAction={() => void handleCut()}>
-            <Scissors className="size-4 text-text-secondary" />
-            <Label>{t('contextMenu.cut')}</Label>
-            <Shortcut keys="Ctrl+X" />
-          </ContextMenu.Item>
-          <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={handleCopy}>
-            <Copy className="size-4 text-text-secondary" />
-            <Label>{t('chat.copy')}</Label>
-            <Shortcut keys="Ctrl+C" />
-          </ContextMenu.Item>
+          <MenuItem
+            id="cut"
+            icon={<Scissors aria-hidden />}
+            trailing={<Kbd>Ctrl+X</Kbd>}
+            textValue={t('contextMenu.cut')}
+            onAction={() => void handleCut()}
+          >
+            {t('contextMenu.cut')}
+          </MenuItem>
+          <MenuItem
+            id="copy"
+            icon={<Copy aria-hidden />}
+            trailing={<Kbd>Ctrl+C</Kbd>}
+            textValue={t('chat.copy')}
+            onAction={handleCopy}
+          >
+            {t('chat.copy')}
+          </MenuItem>
         </>
       )}
-      <ContextMenu.Item id="paste" textValue={t('contextMenu.paste')} onAction={() => void handlePaste()}>
-        <ArrowInDownDashedPanel className="size-4 text-text-secondary" />
-        <Label>{t('contextMenu.paste')}</Label>
-        <Shortcut keys="Ctrl+V" />
-      </ContextMenu.Item>
-      <ContextMenu.Separator />
-      <ContextMenu.Item id="select-all" textValue={t('contextMenu.selectAll')} onAction={handleSelectAll}>
-        <CursorText className="size-4 text-text-secondary" />
-        <Label>{t('contextMenu.selectAll')}</Label>
-        <Shortcut keys="Ctrl+A" />
-      </ContextMenu.Item>
+      <MenuItem
+        id="paste"
+        icon={<ArrowInDownDashedPanel aria-hidden />}
+        trailing={<Kbd>Ctrl+V</Kbd>}
+        textValue={t('contextMenu.paste')}
+        onAction={() => void handlePaste()}
+      >
+        {t('contextMenu.paste')}
+      </MenuItem>
+      <MenuSeparator />
+      <MenuItem
+        id="select-all"
+        icon={<CursorText aria-hidden />}
+        trailing={<Kbd>Ctrl+A</Kbd>}
+        textValue={t('contextMenu.selectAll')}
+        onAction={handleSelectAll}
+      >
+        {t('contextMenu.selectAll')}
+      </MenuItem>
     </>
   )
 
   return (
     // Sides as well as bottom: turned sideways the 3-button bar moves to one
     // edge, and the send button is in the corner it lands on.
-    <div
-      data-slot="input-bar"
-      className={
-        embedded
-          ? 'w-full'
-          : 'px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]'
-      }
-    >
-      <div data-slot="input-bar-inner" className="max-w-2xl mx-auto">
+    <div data-slot="input-bar" data-embedded={embedded || undefined} className="m-input-bar">
+      <div data-slot="input-bar-inner" className="m-input-bar__inner">
         {isAndroid && (
           <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
         )}
@@ -835,45 +840,40 @@ export function InputBar({
               offline || composerError || clipboardError || acp.error || voiceNotice ? (
                 <>
                   {offline && (
-                    <p
-                      data-slot="composer-notice"
-                      role="status"
-                      className="px-2 pb-1.5 text-caption-1-regular text-status-danger"
-                    >
+                    <p data-slot="composer-notice" role="status" data-tone="danger" className="m-input-bar__notice">
                       {t('settings.client.composerOffline')}
                     </p>
                   )}
                   {composerError && (
-                    <ErrorAlert
-                      data-slot="composer-error"
-                      className="mx-1 mb-1.5"
-                      message={composerError}
-                      onDismiss={() => setComposerError(null)}
-                    />
+                    <div className="m-input-bar__alert">
+                      <ErrorAlert
+                        data-slot="composer-error"
+                        message={composerError}
+                        onDismiss={() => setComposerError(null)}
+                      />
+                    </div>
                   )}
                   {clipboardError && (
-                    <ErrorAlert
-                      data-slot="composer-clipboard-error"
-                      className="mx-1 mb-1.5"
-                      message={clipboardError}
-                      onDismiss={() => setClipboardError(null)}
-                    />
+                    <div className="m-input-bar__alert">
+                      <ErrorAlert
+                        data-slot="composer-clipboard-error"
+                        message={clipboardError}
+                        onDismiss={() => setClipboardError(null)}
+                      />
+                    </div>
                   )}
                   {acp.error && (
-                    <ErrorAlert
-                      data-slot="composer-agent-error"
-                      className="mx-1 mb-1.5"
-                      title={t('chat.agentOptionsFailed')}
-                      message={acp.error}
-                      onDismiss={acp.dismissError}
-                    />
+                    <div className="m-input-bar__alert">
+                      <ErrorAlert
+                        data-slot="composer-agent-error"
+                        title={t('chat.agentOptionsFailed')}
+                        message={acp.error}
+                        onDismiss={acp.dismissError}
+                      />
+                    </div>
                   )}
                   {!offline && voiceNotice && (
-                    <p
-                      data-slot="composer-notice"
-                      role="status"
-                      className="px-2 pb-1.5 text-caption-1-regular text-text-secondary"
-                    >
+                    <p data-slot="composer-notice" role="status" className="m-input-bar__notice">
                       {voiceNotice}
                     </p>
                   )}
@@ -882,7 +882,7 @@ export function InputBar({
             }
             attachments={
               (attachedFiles.length > 0 || pendingSticker) && (
-                <div data-slot="composer-attachments" className="flex w-full min-w-0 items-end gap-2 px-1 pb-1">
+                <div data-slot="composer-attachments" className="m-input-bar__attachments">
                   {attachedFiles.length > 0 && (
                     <AttachmentTiles
                       ref={attachmentRow}
@@ -892,17 +892,14 @@ export function InputBar({
                     />
                   )}
                   {pendingSticker && (
-                    <div
-                      className="relative shrink-0 rounded-xl bg-background-secondary-default/40 p-1"
-                      data-slot="pending-sticker"
-                    >
+                    <div className="m-input-bar__sticker" data-slot="pending-sticker">
                       <img
                         data-slot="pending-sticker-image"
                         src={pendingSticker.url}
                         alt={pendingSticker.emoji.name}
                         // The tiles' 56px with this box's padding, so the row
                         // is one height whatever it holds.
-                        className="size-12 object-contain"
+                        className="m-input-bar__sticker-image"
                       />
                       {onRemoveSticker && (
                         // The corner placement is on a wrapper, not the button.
@@ -915,14 +912,13 @@ export function InputBar({
                         // wrapper is positioned — and, later in the DOM than the
                         // image, painted over it — and the button is the hitbox's
                         // containing block with nothing to contest it.
-                        <span data-slot="pending-sticker-remove" className="absolute -right-2 -top-2 flex">
+                        <span data-slot="pending-sticker-remove" className="m-input-bar__sticker-remove">
                           <TooltipTrigger>
                             <Button
                               icon={<X />}
                               size="sm"
-                              variant="ghost"
+                              variant="secondary"
                               aria-label={t('chat.removeSticker')}
-                              className="touch-hitbox min-w-0 size-6 rounded-full shadow-card"
                               onPress={onRemoveSticker}
                             />
                             <Tooltip>{t('chat.removeSticker')}</Tooltip>

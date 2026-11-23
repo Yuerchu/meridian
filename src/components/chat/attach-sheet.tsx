@@ -1,12 +1,12 @@
+import './attach-sheet.css'
 import { useState, useCallback, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Menu as AriaMenu } from 'react-aria-components'
 import { Camera, FaceSmile, Image, Paperclip, Plus } from '@keyline-icons/react/two-tone'
-import { DropdownItem, Sheet } from '@/components/base'
-import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { MENU_ITEMS_CONTAINER } from '@/components/base/dropdown/menu-styles'
-import { cx } from '@/utils/cx'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { Menu, MenuItem } from '@/components/yuerchu-ui/components/menu/menu'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 export interface AttachSheetProps {
   onTakePhoto: () => void
@@ -42,6 +42,7 @@ export function AttachSheet({
 }: AttachSheetProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  useHistoryLevel(open, () => setOpen(false))
 
   const handleAction = useCallback((action: () => void) => {
     setOpen(false)
@@ -51,7 +52,7 @@ export function AttachSheet({
   if (!supportsImages && !onPickFile && !onOpenStickers) return null
 
   return (
-    <Sheet isOpen={open} placement="bottom" onOpenChange={setOpen}>
+    <>
       <TooltipTrigger>
         <Button
           ref={triggerRef}
@@ -60,64 +61,61 @@ export function AttachSheet({
           size="sm"
           aria-label={t('composer.menu')}
           onPress={() => setOpen(true)}
-          className="touch-hitbox"
+          className="m-attach-sheet__trigger"
         />
         <Tooltip>{t('composer.menu')}</Tooltip>
       </TooltipTrigger>
-      <Sheet.Backdrop>
-        <Sheet.Content>
-          <Sheet.Dialog
-            aria-label={t('composer.menu')}
-            // `--safe-bottom`, not bare `env()`: Android WebView reports zero
-            // for the latter (crbug 40699457, only fixed in M144), which is the
-            // whole reason the native bridge writes these variables. With
-            // 3-button navigation that bar is 48dp of opaque buttons, so the
-            // last row here was landing under it and could not be tapped.
-            // No top padding of its own: `Sheet.Handle` is a 24px hit target
-            // now rather than a 4px pill, and supplies the breathing room.
-            className="max-h-[70vh] px-0 pb-[max(1rem,var(--safe-bottom))]"
-          >
-            <Sheet.Handle />
-            <Sheet.Body className="text-text-primary">
-              {/* A React Aria `Menu` of the registry's dropdown rows. */}
-              <AriaMenu
-                data-slot="attach-sheet-menu"
-                aria-label={t('composer.menu')}
-                className={cx(MENU_ITEMS_CONTAINER, 'px-2.5')}
+      <Drawer isOpen={open} onOpenChange={setOpen} side="bottom" size="lg" heading={t('composer.menu')}>
+        {/* `--safe-bottom`, not bare `env()`: Android WebView reports zero
+            for the latter (crbug 40699457, only fixed in M144), which is the
+            whole reason the native bridge writes these variables. With
+            3-button navigation that bar is 48dp of opaque buttons, so the
+            last row here was landing under it and could not be tapped. */}
+        <div className="m-attach-sheet__body">
+          <Menu variant="inline" data-slot="attach-sheet-menu" aria-label={t('composer.menu')}>
+            {supportsImages ? (
+              <MenuItem
+                id="photo"
+                icon={<Camera aria-hidden />}
+                textValue={t('chat.takePhoto')}
+                onAction={() => handleAction(onTakePhoto)}
               >
-                {supportsImages ? (
-                  <DropdownItem id="photo" textValue={t('chat.takePhoto')} onAction={() => handleAction(onTakePhoto)}>
-                    <Camera aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                    <span data-slot="attach-sheet-label">{t('chat.takePhoto')}</span>
-                  </DropdownItem>
-                ) : null}
-                {supportsImages ? (
-                  <DropdownItem
-                    id="gallery"
-                    textValue={t('chat.pickFromGallery')}
-                    onAction={() => handleAction(onPickGallery)}
-                  >
-                    <Image aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                    <span data-slot="attach-sheet-label">{t('chat.pickFromGallery')}</span>
-                  </DropdownItem>
-                ) : null}
-                {onPickFile ? (
-                  <DropdownItem id="file" textValue={t('chat.attachFile')} onAction={() => handleAction(onPickFile)}>
-                    <Paperclip aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                    <span data-slot="attach-sheet-label">{t('chat.attachFile')}</span>
-                  </DropdownItem>
-                ) : null}
-                {onOpenStickers ? (
-                  <DropdownItem id="stickers" textValue={t('chat.emoji')} onAction={() => handleAction(onOpenStickers)}>
-                    <FaceSmile aria-hidden className="size-4 shrink-0 text-text-secondary" />
-                    <span data-slot="attach-sheet-label">{t('chat.emoji')}</span>
-                  </DropdownItem>
-                ) : null}
-              </AriaMenu>
-            </Sheet.Body>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+                <span data-slot="attach-sheet-label">{t('chat.takePhoto')}</span>
+              </MenuItem>
+            ) : null}
+            {supportsImages ? (
+              <MenuItem
+                id="gallery"
+                icon={<Image aria-hidden />}
+                textValue={t('chat.pickFromGallery')}
+                onAction={() => handleAction(onPickGallery)}
+              >
+                <span data-slot="attach-sheet-label">{t('chat.pickFromGallery')}</span>
+              </MenuItem>
+            ) : null}
+            {onPickFile ? (
+              <MenuItem
+                id="file"
+                icon={<Paperclip aria-hidden />}
+                textValue={t('chat.attachFile')}
+                onAction={() => handleAction(onPickFile)}
+              >
+                <span data-slot="attach-sheet-label">{t('chat.attachFile')}</span>
+              </MenuItem>
+            ) : null}
+            {onOpenStickers ? (
+              <MenuItem
+                id="stickers"
+                icon={<FaceSmile aria-hidden />}
+                textValue={t('chat.emoji')}
+                onAction={() => handleAction(onOpenStickers)}
+              >
+                <span data-slot="attach-sheet-label">{t('chat.emoji')}</span>
+              </MenuItem>
+            ) : null}
+          </Menu>
+        </div>
+      </Drawer>
+    </>
   )
 }
