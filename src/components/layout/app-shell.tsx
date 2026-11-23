@@ -7,9 +7,9 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToastRegion } from '@/components/yuerchu-ui/components/toast/toast'
-import { SidebarLayout } from '@/components/yuerchu-ui/components/sidebar/sidebar'
+import { AppShell as LibraryAppShell } from '@/components/yuerchu-ui/templates/app-shell/app-shell'
 import { Resizable } from '@/components/base'
-import { FolderTree, Search } from '@keyline-icons/react/two-tone'
+import { FolderTree, Menu, Search } from '@keyline-icons/react/two-tone'
 import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
@@ -94,7 +94,6 @@ export function AppShell(props: ShellProps) {
   // here (nothing reads it back) and one more thing to have an opinion about
   // under a custom protocol. Persisting the state is a store field if we ever
   // want it.
-  const [sidebarOpen, setSidebarOpen] = useState(true)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [inboxOpen, setInboxOpen] = useState(false)
@@ -243,16 +242,16 @@ export function AppShell(props: ShellProps) {
       >
         {t('app.skipToContent')}
       </a>
-      <div
-        // The keyboard inset is *added* to the frame's own 12px, not passed as
-        // `pb-[var(--ime-bottom)]` on its own: under `cx()` a `pb-*` utility
-        // replaces the bottom of the provider's `p-3`, and on a desktop the
-        // inset is 0px — which is how the frame lost its bottom edge once.
-        className="h-svh overflow-hidden pb-[calc(0.75rem+var(--ime-bottom,0px))]"
-      >
-        <SidebarLayout
+      <div className="m-app-frame">
+        <LibraryAppShell
           embedded
-          sidebar={
+          variant="inset"
+          brand={null}
+          sidebarLabel={t('sidebar.label')}
+          showMobileBar={false}
+          isDrawerOpen={drawerOpen}
+          onDrawerOpenChange={setDrawerOpen}
+          navigation={
             <AppSidebar
               conversations={conversations}
               activeId={activeId}
@@ -281,35 +280,26 @@ export function AppShell(props: ShellProps) {
               onMoveToProject={onMoveToProject}
               onDeleteProject={onDeleteProject}
               onRenameProject={onRenameProject}
-              isCollapsed={!sidebarOpen}
-              onCollapsedChange={(collapsed) => setSidebarOpen(!collapsed)}
               isDrawerOpen={drawerOpen}
               onDrawerOpenChange={setDrawerOpen}
             />
           }
         >
-          {/* `min-h-0` keeps this pane from insisting on its content's height,
-          which is what lets the keyboard inset above shrink it. Nothing in the
-          base sidebar sets a viewport height today (HeroUI Pro's did, with
-          `min-height: 100svh`); the floor stays so that one never comes back
-          unnoticed — on a desktop it costs nothing. */}
-          <div className="min-h-0 overflow-hidden">
+          <div className="m-app-frame__stage">
             <header
               data-slot="app-header"
-              className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border-button-default select-none shrink-0"
+              className="m-app-frame__header"
               data-tauri-drag-region={canDragWindow ? '' : undefined}
             >
-              {/* Below 768px this is the only way to the conversation list, so it
-              is sized for a thumb rather than for a pointer. */}
               <TooltipTrigger>
                 <Button
                   variant="ghost"
                   size="sm"
-                  icon={<FolderTree />}
+                  icon={<Menu />}
                   aria-label={t('sidebar.toggle')}
                   aria-expanded={drawerOpen}
                   onPress={() => setDrawerOpen(!drawerOpen)}
-                  className="-ml-1 size-11 md:size-8"
+                  className="m-app-frame__drawer-toggle"
                 />
                 <Tooltip placement="bottom">{t('sidebar.toggle')}</Tooltip>
               </TooltipTrigger>
@@ -318,20 +308,12 @@ export function AppShell(props: ShellProps) {
                 onPointerEnter={titleIfTruncated}
                 ref={pageHeadingRef}
                 tabIndex={-1}
-                className="truncate rounded-sm text-body-medium outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
+                className="m-app-frame__title"
               >
                 {headerTitle}
               </h1>
-              {/* Beside the title rather than in the group of buttons on the right:
-              it is not something to press, and it renders nothing at all while
-              the connection is healthy — which on a desktop is always. */}
               <RemoteStatus />
-              {/* The palette's other door. A phone has no `mod` key to press, and
-              on a desktop a shortcut nobody has written down is a shortcut
-              nobody uses — the tooltip is where it gets written down. */}
-              {/* One `ml-auto`, on the group. Two auto margins split the free space
-              between them and leave a gap in the middle of the pair. */}
-              <div data-slot="app-header-actions" className="ml-auto flex shrink-0 items-center gap-1">
+              <div data-slot="app-header-actions" className="m-app-frame__actions">
                 {/* Only where the panel it toggles can open. */}
                 {activeId && !isMobile && page === 'chat' && !activeReviewId && (
                   <TooltipTrigger>
@@ -356,7 +338,6 @@ export function AppShell(props: ShellProps) {
                     aria-label={t('palette.title')}
                     aria-keyshortcuts="Meta+K Control+K"
                     onPress={() => setPaletteOpen(true)}
-                    className="size-11 md:size-8"
                   />
                   <Tooltip placement="bottom">
                     {t('palette.title')}
@@ -382,7 +363,6 @@ export function AppShell(props: ShellProps) {
                 />
               </div>
             </header>
-
             {actionError && (
               <div data-slot="app-action-error" className="shrink-0 border-b border-border-button-default px-4 py-2">
                 <Alert tone="danger" shouldAnnounce onDismiss={() => setActionError(null)}>
@@ -545,7 +525,7 @@ export function AppShell(props: ShellProps) {
             onCreate={createConversation}
           />
           {confirmDialog}
-        </SidebarLayout>
+        </LibraryAppShell>
       </div>
     </>
   )

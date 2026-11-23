@@ -1,8 +1,8 @@
 import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useState } from 'react'
-import { Bin, Bookmark, Plus, Sparkles } from '@keyline-icons/react/two-tone'
+import { Bin, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Kbd, Spinner, ToggleButton } from '@/components/base'
+import { Avatar, Kbd, Spinner } from '@/components/base'
 import { Kbd as NativeKbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Link } from '@/components/yuerchu-ui/components/link/link'
 import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
@@ -40,21 +40,6 @@ function Buttons() {
         <Button variant="destructive" isDisabled>
           不可用
         </Button>
-      </Row>
-    </Stage>
-  )
-}
-
-function Toggles() {
-  const [on, setOn] = useState(true)
-  return (
-    <Stage>
-      <Row label="ToggleButton">
-        <ToggleButton isSelected={on} onChange={setOn}>
-          <Bookmark className="size-5" aria-hidden />
-          {on ? '已收藏' : '收藏'}
-        </ToggleButton>
-        <ToggleButton size="small">small</ToggleButton>
       </Row>
     </Stage>
   )
@@ -166,9 +151,6 @@ export default function Core() {
     <>
       <Section title="Button · 变体 × 尺寸">
         <Buttons />
-      </Section>
-      <Section title="ToggleButton">
-        <Toggles />
       </Section>
       <Section title="Badge / Kbd / Link">
         <Chips />

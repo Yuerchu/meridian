@@ -13,6 +13,64 @@
     min-width: 0;
   }
 
+  /* inset：宽屏时画布下沉，主区收成一张圆角卡片，侧栏贴在同一块下沉底上、不再画分隔线。
+     窄屏仍是顶栏加抽屉，这些样式只写在断点之上。embedded 填外层高度，不成页时不锁 100dvh。 */
+  @media (width >= 768px) {
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) {
+      box-sizing: border-box;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      background: var(--surface-sunken);
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]):not([data-embedded]) {
+      height: 100dvh;
+      min-height: 0;
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) > .ui-sidebar > .ui-sidebar__panel {
+      height: 100%;
+      border-inline-end: none;
+      background: transparent;
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) > .ui-sidebar-layout__main {
+      min-height: 0;
+      overflow: auto;
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: var(--shadow-resting);
+    }
+  }
+
+  @media (width >= 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] {
+      box-sizing: border-box;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      background: var(--surface-sunken);
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"]:not([data-embedded]) {
+      height: 100dvh;
+      min-height: 0;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] > .ui-sidebar > .ui-sidebar__panel {
+      height: 100%;
+      border-inline-end: none;
+      background: transparent;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] > .ui-sidebar-layout__main {
+      min-height: 0;
+      overflow: auto;
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: var(--shadow-resting);
+    }
+  }
+
   /* embedded：填满外层容器，主体在里面滚动（不是整页） */
   .ui-sidebar-layout[data-embedded] {
     height: 100%;
@@ -85,7 +143,7 @@
   }
 
   .ui-sidebar__header {
-    padding: var(--space-4) var(--space-4) var(--space-2);
+    padding: var(--ui-sidebar-header-padding, var(--space-4) var(--space-4) var(--space-2));
   }
 
   .ui-sidebar__body {
@@ -97,7 +155,7 @@
   }
 
   .ui-sidebar__footer {
-    padding: var(--space-2) var(--space-4) var(--space-4);
+    padding: var(--ui-sidebar-footer-padding, var(--space-2) var(--space-4) var(--space-4));
     border-block-start: 1px solid var(--border);
   }
 
@@ -129,21 +187,31 @@
     text-align: center;
   }
 
-  .ui-sidebar__panel[data-collapsed] .ui-nav-item {
-    gap: 0;
+  .ui-sidebar__panel[data-collapsed] .ui-sidebar__footer {
+    padding: var(--space-2);
   }
 
-  .ui-sidebar__panel[data-collapsed] :is(.ui-nav-item__label, .ui-nav-item__trailing) {
+  .ui-sidebar__panel[data-collapsed] :is(.ui-nav-item, .ui-nav-group__trigger) {
+    gap: 0;
+    padding-inline: var(--space-3);
+  }
+
+  .ui-sidebar__panel[data-collapsed]
+    :is(.ui-nav-item__label, .ui-nav-item__trailing, .ui-nav-group__label, .ui-nav-group__trailing, .ui-nav-group__chevron) {
     flex: 0 0 0;
     width: 0;
+    overflow: hidden;
     opacity: 0;
   }
 
   /* 分组标题看不见（仍然给分组当名称），分组之间留一点空 */
-  .ui-sidebar__panel[data-collapsed] .ui-nav-list__header {
+  .ui-sidebar__panel[data-collapsed]
+    :is(.ui-nav-list__header, .ui-nav-list__section-header, .ui-nav-list__actions, .ui-nav-group__items) {
     visibility: hidden;
     height: 0;
+    margin: 0;
     padding: 0;
+    overflow: hidden;
   }
 
   /* 收起 / 展开按钮：在最下面；收起时居中 */
@@ -214,23 +282,24 @@
   }
 
   /* 应用自己有顶栏、不渲染库的手机顶栏时，窄屏不要留出空的第一行。
-     抽屉是 portal，藏掉这个根元素不会把已经打开的 Modal 一起藏掉。 */
+     抽屉是 portal，藏掉这个根元素不会把已经打开的 Modal 一起藏掉。
+     用 data 属性而不是嵌套 :has()：:has() 里不能再套 :has()，嵌套会让整条规则被丢弃。 */
   @media (width < 768px) {
-    .ui-sidebar-layout:has(> .ui-sidebar:not(:has(.ui-sidebar__bar))) {
+    .ui-sidebar-layout:has(> .ui-sidebar:not([data-mobile-bar])) {
       grid-template-rows: minmax(0, 1fr);
     }
 
-    .ui-sidebar:not(:has(.ui-sidebar__bar)) {
+    .ui-sidebar:not([data-mobile-bar]) {
       display: none;
     }
   }
 
   @media (width < 1024px) {
-    .ui-sidebar-layout[data-drawer-below="lg"]:has(> .ui-sidebar:not(:has(.ui-sidebar__bar))) {
+    .ui-sidebar-layout[data-drawer-below="lg"]:has(> .ui-sidebar:not([data-mobile-bar])) {
       grid-template-rows: minmax(0, 1fr);
     }
 
-    .ui-sidebar-layout[data-drawer-below="lg"] > .ui-sidebar:not(:has(.ui-sidebar__bar)) {
+    .ui-sidebar-layout[data-drawer-below="lg"] > .ui-sidebar:not([data-mobile-bar]) {
       display: none;
     }
   }

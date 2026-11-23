@@ -28,6 +28,7 @@ vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
 
 vi.mock('@keyline-icons/react/two-tone', () => ({
   FolderTree: () => null,
+  Menu: () => null,
   Search: () => null,
   X: () => null,
 }))

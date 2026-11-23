@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "c5d564830e091b5316ec0e7c8b8e128d0073e3ac"
+    "commit": "38dca5b594e2b5f654a4fa3d04130be98ceefc93"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -22,6 +22,7 @@
     "components/listbox/listbox.tsx",
     "components/menu/menu.tsx",
     "components/meter/meter.tsx",
+    "components/nav-list/nav-list.tsx",
     "components/notification-stack/notification-stack.tsx",
     "components/number-field/number-field.tsx",
     "components/pagination/pagination.tsx",
@@ -47,7 +48,8 @@
     "components/toast/toast.tsx",
     "components/tooltip/tooltip.tsx",
     "components/tree/tree.tsx",
-    "styles/index.css"
+    "styles/index.css",
+    "templates/app-shell/app-shell.tsx"
   ],
   "dependencies": {
     "@number-flow/react": "0.6.2",
@@ -112,8 +114,9 @@
     "components/menu/menu.tsx": "c0e4ea8766a93951f38f48a79b19dfb77c3bd51dbc6aaa3c628c7f285eed3891",
     "components/meter/meter.css": "981809d5b48e5c7537abffdd033e0ab593e488b2d4178cf08819b82f2f05a9f6",
     "components/meter/meter.tsx": "efb14ef49e930a806c7afd1abea97fb19b7d63c49d61386139eb70b9a861fd6d",
-    "components/nav-list/nav-list.css": "8f7e12107683ed5dbc10773de8c4513abde58fad67424d3009b33b586ce921e6",
-    "components/nav-list/nav-list.tsx": "a570fb9ba8e390eeb08f994b2ab57f6494fb17902b004b19c5e93f7d924690f9",
+    "components/nav-list/nav-list.css": "2c93cce4aec60a4c6919dc1e87a5913bf16bd09931fe7c8d59d7809222a09f77",
+    "components/nav-list/nav-list.strings.ts": "529a74517bac08150e0deb6941cfc3e9f9e00e56706e49b6f88bc044167559af",
+    "components/nav-list/nav-list.tsx": "31c30d2cd17f655ca9d2735275a859ddee4d8b759ef00d506aea2c8a50fc4c74",
     "components/notification-stack/notification-dock.ts": "67f624020b8ad8af90e11fd1ef88b989c77a382cc01722dcf50d7dba43830329",
     "components/notification-stack/notification-focus.tsx": "dc5056167ba929eef74f49dda47dbf2b50d95871f9cc1665b93954f5d5e6d35f",
     "components/notification-stack/notification-stack.css": "eada4626d5509145675e74ee9249a57c760069fd749c0b89b40b6bc3429f089f",
@@ -153,9 +156,9 @@
     "components/separator/separator.tsx": "c9761ea045f0062bbdc2fdb38831437fcfda526d2dca02e393786725e6cf1d33",
     "components/settings-list/settings-list.css": "109baebae3edbcbf745778814173b087f5cbce28eb787f348244cd920ed2472a",
     "components/settings-list/settings-list.tsx": "97017576de07c19333b735cc7d0b80f96aaccdb1ea39534ad42293dd7c1cd76d",
-    "components/sidebar/sidebar.css": "510922d153f97acbe5556ecbd259ea4a6fbe46a4c84573614bf39a92fabc630c",
+    "components/sidebar/sidebar.css": "36980cd28d2bf943beb6de0e17c3996e6b5daa156cd729f2eef83dba8a9b5dd8",
     "components/sidebar/sidebar.strings.ts": "c74a2b6d99d7f9a2d0cd534dc376fb37f4542ddf0db75eed79f59f32791e81b4",
-    "components/sidebar/sidebar.tsx": "cfc30a1c6f46e87e7920127b834336a329ea39e16dc4fc862c2146f7d1f4b7cf",
+    "components/sidebar/sidebar.tsx": "e93f777f955a937299b1c71b7068a6d0b47d8a80d3d1ed376279cc65f11476e6",
     "components/skeleton/skeleton.css": "1c8e4ad71e51e102dd61e7e850c7136611df5c14ef85cf374c5385a143dbc2d3",
     "components/skeleton/skeleton.tsx": "6c398485d4b125ddd4c241d635f23cc910dc1fe4c4c497147e4ed5a9f1493a62",
     "components/slider/slider.css": "2bd85aadd28d7236cb7599f1d7aa24942dc6f9dd0b6ddc0840dfbc3caaeb7db6",
@@ -201,6 +204,8 @@
     "lib/words.ts": "dd7bb4ce226465e79cfb8a45c8520c4144e6bc5a7555a10c04d8b9ce0190e0de",
     "styles/base.css": "7c8c7de7d7507cbfafd4768b607be5a02591ff1c5918d79c05be75151520e24d",
     "styles/index.css": "72fb8b5da4ac4047ae14f181298ecf69f802b430972e9d1c40ebcdb0eba5d9d1",
-    "styles/tokens.css": "1d266b9181a446946ae0c4334b68b001c66e2ad2f1af0d487b308b99f11017e6"
+    "styles/tokens.css": "1d266b9181a446946ae0c4334b68b001c66e2ad2f1af0d487b308b99f11017e6",
+    "templates/app-shell/app-shell.css": "be73afb7d9255a38fbfa63366b5685304018f9cf26e9ed9f711a81a8d334c599",
+    "templates/app-shell/app-shell.tsx": "3153a7752a7617d227327ec7c8dfbc3cbedb8a4b2c6056935715676e20958092"
   }
 }

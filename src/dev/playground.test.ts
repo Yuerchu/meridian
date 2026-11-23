@@ -192,6 +192,10 @@ const ALLOWED_UNPREVIEWED = new Map<string, string>([
     'on show at #playground/scroll inside ChatTranscript, the harness that drives it; a bare copy in the gallery ' +
       'reads the platform through Tauri and only logs invoke errors in a browser',
   ],
+  [
+    'NavigateContext',
+    'a React Context from Yuerchu UI nav-list used to opt an inline form trigger out of auto-dismissing the mobile drawer; renders nothing visual',
+  ],
 ])
 
 /**

@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { Archive, FolderPlus, Gauge, Messages, Plug, Search, Settings } from '@keyline-icons/react/two-tone'
 
 import { Sidebar } from '@/components/base'
+import { NavGroup, NavItem, NavList, NavSection } from '@/components/yuerchu-ui/components/nav-list/nav-list'
 import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
+import { AppShell } from '@/components/yuerchu-ui/templates/app-shell/app-shell'
 import { Section, Stage } from './shell'
 import { NavigationParts } from './parts'
 
@@ -121,6 +123,34 @@ export default function Navigation() {
       </Section>
       <Section title="Sidebar · 导航行 / 线程行 / 胶囊 / 图标栏">
         <SidebarCase />
+      </Section>
+      <Section title="NavList">
+        <Stage>
+          <NavList size="sm" showGuides aria-label="示例导航">
+            <NavSection header="工作区">
+              <NavGroup label="Meridian" defaultExpanded>
+                <NavItem icon={<Messages />} isCurrent trailing="2分钟前">
+                  侧边栏迁移
+                </NavItem>
+                <NavItem icon={<Archive />} trailing="1小时前">
+                  历史归档
+                </NavItem>
+              </NavGroup>
+            </NavSection>
+          </NavList>
+        </Stage>
+      </Section>
+      <Section title="AppShell">
+        <AppShell
+          embedded
+          variant="inset"
+          brand={null}
+          showMobileBar={false}
+          sidebarLabel="侧边栏"
+          navigation={<p>导航</p>}
+        >
+          <p>主内容</p>
+        </AppShell>
       </Section>
       <NavigationParts />
     </>

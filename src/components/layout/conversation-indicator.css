@@ -1,0 +1,49 @@
+@layer components {
+  .m-conv-indicator {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .m-conv-indicator__dot {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-pill);
+  }
+
+  .m-conv-indicator__dot[data-tone='waiting'] {
+    background: var(--warning-fg);
+    animation: m-conv-indicator-pulse var(--dur-shimmer) var(--ease-standard) infinite;
+  }
+
+  .m-conv-indicator__dot[data-tone='streaming'] {
+    background: var(--accent);
+    animation: m-conv-indicator-pulse var(--dur-shimmer) var(--ease-standard) infinite;
+  }
+
+  .m-conv-indicator__dot[data-tone='unseen'] {
+    background: var(--success-fg);
+  }
+
+  .m-conv-indicator__ring {
+    display: block;
+    box-sizing: border-box;
+    width: 7px;
+    height: 7px;
+    border: 1.5px solid var(--accent);
+    border-radius: var(--radius-pill);
+  }
+
+  @keyframes m-conv-indicator-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.35;
+    }
+  }
+}

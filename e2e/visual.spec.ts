@@ -104,7 +104,7 @@ const scenes: Scene[] = [
     name: 'board',
     quiet: false,
     arrange: async (page) => {
-      await page.getByRole('row', { name: '看板' }).first().click()
+      await page.getByRole('button', { name: '看板', exact: true }).click()
       await expect(page.getByRole('region', { name: '待你处理' })).toBeVisible()
       await expect(page.locator('[data-card-id="demo-card-approval"]')).toBeVisible()
     },
@@ -114,7 +114,7 @@ const scenes: Scene[] = [
     name: 'board-expanded',
     quiet: false,
     arrange: async (page) => {
-      await page.getByRole('row', { name: '看板' }).first().click()
+      await page.getByRole('button', { name: '看板', exact: true }).click()
       await page.getByRole('button', { name: '展开「release 构建体积」' }).click()
       await expect(page.locator('[data-card-id="demo-card-approval"] [data-slot="board-card-detail"]')).toBeVisible()
     },
@@ -171,6 +171,11 @@ const scenes: Scene[] = [
   {
     name: 'rename-dialog',
     arrange: async (page) => {
+      await page
+        .locator('.ui-nav-item', {
+          has: page.locator('.m-sidebar__conv-title').getByText('配色和贴纸', { exact: true }),
+        })
+        .hover()
       await page.getByRole('button', { name: '配色和贴纸 的操作' }).click()
       await page.getByRole('menuitem', { name: '重命名' }).click()
       await expect(page.getByRole('dialog')).toBeVisible()
@@ -246,7 +251,7 @@ const scenes: Scene[] = [
     arrange: async (page) => {
       await openSettings(page, 'MCP 服务器')
       await page.getByRole('button', { name: /^filesystem/ }).click()
-      await expect(page.getByRole('button', { name: '返回' })).toBeVisible()
+      await expect(page.getByRole('button', { name: '返回', exact: true })).toBeVisible()
     },
   },
   {

@@ -21,7 +21,7 @@ import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/component
 import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
-import { Menu, MenuItem, MenuSection, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import {
   NotificationCard,
   NotificationStack,
@@ -110,6 +110,7 @@ function Menus() {
               <MenuItem id="rename" shortcut="F2">
                 重命名
               </MenuItem>
+              <MenuSeparator />
               <MenuItem id="delete" tone="danger">
                 删除
               </MenuItem>

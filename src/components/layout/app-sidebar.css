@@ -1,0 +1,199 @@
+@layer components {
+  .m-sidebar {
+    --ui-sidebar-header-padding: var(--space-2);
+    --ui-sidebar-footer-padding: var(--space-2);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    height: 100%;
+    min-height: 0;
+  }
+
+  .m-sidebar__header,
+  .m-sidebar__footer {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  /* On narrow viewports AppShell mounts the sidebar inside a drawer whose close
+     button sits in the top-right corner; without a library brand header, reserve
+     room so the first row's actions never collide with that close button. */
+  @media (width < 768px) {
+    .m-sidebar__header {
+      padding-block-start: calc(var(--control-sm) + var(--space-1) + var(--safe-top, 0px));
+    }
+  }
+
+  .m-sidebar__footer {
+    padding-block-start: var(--space-2);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-sidebar__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-height: 0;
+    min-width: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .m-sidebar__section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-1) 0 var(--space-2);
+  }
+
+  .m-sidebar__section-title {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-sidebar__groups {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .m-sidebar__drop-zone {
+    min-width: 0;
+    border-radius: var(--radius-item);
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-sidebar__drop-zone[data-drop-target] {
+    background: var(--accent-subtle);
+    box-shadow: inset 0 0 0 1px var(--accent);
+  }
+
+  .m-sidebar__project-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .m-sidebar__project-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-sidebar__project-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+  }
+
+  .m-sidebar__conv-title {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-sidebar__conv-title[data-dragging] {
+    opacity: 0.45;
+  }
+
+  .m-sidebar__conv-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-sidebar__pin {
+    flex: none;
+    width: 12px;
+    height: 12px;
+    color: var(--text-secondary);
+  }
+
+  .m-sidebar__archived {
+    opacity: 0.6;
+  }
+
+  .m-sidebar__row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+  }
+
+  /* 侧栏行内的微型图标按钮：贴合 28px 紧凑行高，不撑开列表 */
+  .m-sidebar__icon-btn {
+    --ui-button-height: 24px;
+    --ui-button-padding: 0;
+    --ui-button-radius: calc(var(--radius-item) - 2px);
+    --icon-size: var(--icon-sm);
+  }
+
+  .m-sidebar__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+  }
+
+  .m-sidebar__form-browse {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .m-sidebar__form-path {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font: var(--text-caption);
+  }
+
+  .m-sidebar__form-path[data-empty] {
+    color: var(--text-secondary);
+  }
+
+  .m-sidebar__form-error {
+    margin: 0;
+    color: var(--danger-fg);
+    font: var(--text-caption);
+  }
+
+  .m-sidebar__form-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-sidebar__form-submit {
+    flex: 1;
+  }
+
+  .m-sidebar__context-anchor {
+    position: fixed;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+}

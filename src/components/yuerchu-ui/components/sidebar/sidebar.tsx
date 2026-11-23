@@ -42,6 +42,8 @@ export interface SidebarProps {
   onCollapsedChange?: (isCollapsed: boolean) => void;
   /** 侧边栏折叠为图标条时顶部显示的内容（例如紧凑图标标志），未传入时折叠后顶部留空。 */
   collapsedHeader?: ReactNode;
+  /** 侧边栏折叠为图标条时底部显示的内容（例如设置或账户图标入口），未传入时折叠后隐藏底栏。 */
+  collapsedFooter?: ReactNode;
   /**
    * 是否允许在宽屏展开状态下拖拽右边缘或通过键盘方向键调整宽度；收起为图标条时不可调整。
    */
@@ -125,6 +127,7 @@ export function Sidebar({
   defaultCollapsed = false,
   onCollapsedChange,
   collapsedHeader,
+  collapsedFooter,
   isResizable = false,
   width: widthProp,
   defaultWidth = 248,
@@ -185,16 +188,25 @@ export function Sidebar({
 
   return (
     // 可拖宽度时把宽度写在自己身上；布局的那一栏跟着它（见 CSS 的 :has）
-    <div className="ui-sidebar" data-resizable={resizable || undefined}
+    <div className="ui-sidebar" data-resizable={resizable || undefined} data-mobile-bar={showMobileBar || undefined}
       style={resizable ? ({ "--ui-sidebar-width": `${width}px` } as CSSProperties) : undefined}>
       {/* 宽屏：固定在左边；可以收起成图标条 */}
       <aside id={panelId} className="ui-sidebar__panel" aria-label={ariaLabel} data-collapsed={collapsed || undefined}>
         {collapsed ? (
           <>
-            {collapsedHeader ? <div className="ui-sidebar__header">{collapsedHeader}</div> : null}
+            {collapsedHeader ? (
+              <div className="ui-sidebar__header">
+                <NavCollapsedContext.Provider value={true}>{collapsedHeader}</NavCollapsedContext.Provider>
+              </div>
+            ) : null}
             <div className="ui-sidebar__body">
               <NavCollapsedContext.Provider value={true}>{children}</NavCollapsedContext.Provider>
             </div>
+            {collapsedFooter ? (
+              <div className="ui-sidebar__footer">
+                <NavCollapsedContext.Provider value={true}>{collapsedFooter}</NavCollapsedContext.Provider>
+              </div>
+            ) : null}
           </>
         ) : (
           content
@@ -253,16 +265,20 @@ export interface SidebarLayoutProps {
    * @default false
    */
   embedded?: boolean;
+  /**
+   * `inset` 时画布用下沉底，主区收成一张圆角卡片，侧栏不再画分隔线。窄屏仍是顶栏加抽屉，不留这圈边距。
+   */
+  variant?: "inset";
 }
 
 /**
  * 侧边栏布局容器，宽屏下呈侧栏与主区双栏排布，窄屏下切换为顶栏加主区单栏排布。
  */
-export function SidebarLayout({ sidebar, children, drawerBelow = "md", embedded = false }: SidebarLayoutProps) {
+export function SidebarLayout({ sidebar, children, drawerBelow = "md", embedded = false, variant }: SidebarLayoutProps) {
   const Main = embedded ? "div" : "main";
   return (
     <DrawerBelowContext.Provider value={drawerBelow}>
-      <div className="ui-sidebar-layout" data-drawer-below={drawerBelow} data-embedded={embedded || undefined}>
+      <div className="ui-sidebar-layout" data-drawer-below={drawerBelow} data-embedded={embedded || undefined} data-variant={variant}>
         {sidebar}
         <Main className="ui-sidebar-layout__main">{children}</Main>
       </div>

@@ -80,9 +80,16 @@ async function revealSidebar(page: Page): Promise<void> {
   await expect(page.getByRole('dialog')).toBeVisible()
 }
 
+/** The active sidebar container: the open drawer on narrow viewports, or the panel on desktop. */
+function sidebarScope(page: Page) {
+  return isNarrow(page) ? page.getByRole('dialog') : page.locator('.ui-sidebar__panel')
+}
+
 export async function openConversation(page: Page, title: string): Promise<void> {
   await revealSidebar(page)
-  await page.getByRole('row', { name: title, exact: true }).click()
+  await sidebarScope(page)
+    .locator('.ui-nav-item', { has: page.locator('.m-sidebar__conv-title').getByText(title, { exact: true }) })
+    .click()
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
   // The transcript is a log, but it is no longer the only one: the library's
   // notification stack and React Aria each mount a live region with the same
@@ -93,11 +100,14 @@ export async function openConversation(page: Page, title: string): Promise<void>
 
 export async function openSettings(page: Page, section?: string, heading = section): Promise<void> {
   await revealSidebar(page)
-  await page.getByRole('row', { name: '设置', exact: true }).click()
+  await sidebarScope(page).getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: '设置' })).toBeVisible()
   if (section) {
     await revealSidebar(page)
-    await page.getByRole('row', { name: section, exact: true }).click()
+    await sidebarScope(page)
+      .getByRole('navigation', { name: '设置' })
+      .getByRole('button', { name: section, exact: true })
+      .click()
     // The settings pages are a lazily loaded chunk behind a Suspense with no
     // placeholder, so an empty pane is a stable frame too: wait for the page.
     await expect(page.getByRole('heading', { level: 2, name: heading, exact: true })).toBeVisible()

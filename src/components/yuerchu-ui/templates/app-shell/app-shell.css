@@ -1,0 +1,51 @@
+@layer components {
+  .ui-template-app-shell {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 嵌进别的页面：填满外层容器 */
+  .ui-template-app-shell[data-embedded] {
+    height: 100%;
+  }
+
+  /* 只有主区内容时，它占满整行；有顶栏时才留两行。否则内容会落在 auto 行，下面空出整个 1fr */
+  .ui-template-app-shell__frame {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    min-height: 100%;
+    min-width: 0;
+  }
+
+  .ui-template-app-shell__frame[data-topbar] {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  /* 顶栏：搜索在左边尽量宽，操作和用户菜单在右边；窄时换行 */
+  .ui-template-app-shell__top {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--page-gutter);
+  }
+
+  .ui-template-app-shell__search {
+    flex: 1 1 16rem;
+    min-width: 0;
+    max-width: 36rem;
+  }
+
+  .ui-template-app-shell__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    margin-inline-start: auto;
+  }
+
+  .ui-template-app-shell__content {
+    min-width: 0;
+    padding: 0 var(--page-gutter) var(--space-6);
+  }
+}
