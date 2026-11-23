@@ -1,3 +1,4 @@
+import './file-diff-card.css'
 import { useTranslation } from 'react-i18next'
 import { ArrowRight, FileText } from '@keyline-icons/react/two-tone'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
@@ -7,7 +8,6 @@ import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { fileIconUrl } from '@/lib/file-icon'
 import { pathExtension } from '@/lib/paths'
-import { cx } from '@/utils/cx'
 import { PathLabel } from '@/components/ui/path-label'
 
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
@@ -15,33 +15,6 @@ import { PathLabel } from '@/components/ui/path-label'
 export { fileNameOf, pathExtension } from '@/lib/paths'
 
 const MAX_DIFF_LINES = 300
-
-/** Highlighted lines keep the tint and give up the tinted foreground: syntax
- *  colours are the point of turning it on, and a green identifier on a green
- *  wash reads worse than either alone. The sign in the gutter stays coloured,
- *  so added and removed are still one glance apart. */
-function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
-  switch (kind) {
-    case 'add':
-      return highlighted
-        ? 'bg-status-success-soft text-text-primary/80'
-        : 'bg-status-success-soft text-status-success-soft-foreground'
-    case 'remove':
-      return highlighted
-        ? 'bg-status-danger-soft text-text-primary/80'
-        : 'bg-status-danger-soft text-status-danger-soft-foreground'
-    case 'hunk':
-      return 'text-text-secondary'
-    default:
-      return 'text-text-primary/80'
-  }
-}
-
-function diffSignClass(kind: DiffLineKind): string | undefined {
-  if (kind === 'add') return 'text-status-success-soft-foreground'
-  if (kind === 'remove') return 'text-status-danger'
-  return undefined
-}
 
 function diffLinePrefix(kind: DiffLineKind): string {
   switch (kind) {
@@ -58,9 +31,9 @@ function diffLinePrefix(kind: DiffLineKind): string {
 
 export function FileIcon({ path }: { path: string }) {
   const src = fileIconUrl(path)
-  if (!src) return <FileText className="w-3.5 h-3.5 shrink-0" />
+  if (!src) return <FileText className="m-file-diff__icon" aria-hidden />
   // Decorative: the file name it sits beside already names the file.
-  return <img data-slot="file-icon" src={src} alt="" aria-hidden className="size-3.5 shrink-0" />
+  return <img data-slot="file-icon" src={src} alt="" aria-hidden className="m-file-diff__icon" />
 }
 
 /** `+N -M`, coloured. Drawn in the diff's own header, or handed up to a
@@ -70,15 +43,15 @@ export function DiffStats({ diff }: { diff: FileDiff }) {
   const removed = diff.lines.filter((l) => l.kind === 'remove').length
   if (added === 0 && removed === 0) return null
   return (
-    <span data-slot="file-diff-stats" className="shrink-0 font-mono tabular-nums">
+    <span data-slot="file-diff-stats" className="m-file-diff__stats">
       {added > 0 && (
-        <span data-slot="file-diff-added" className="text-status-success-soft-foreground">
+        <span data-slot="file-diff-added" className="m-file-diff__added">
           +{added}
         </span>
       )}
       {added > 0 && removed > 0 && ' '}
       {removed > 0 && (
-        <span data-slot="file-diff-removed" className="text-status-danger">
+        <span data-slot="file-diff-removed" className="m-file-diff__removed">
           -{removed}
         </span>
       )}
@@ -115,80 +88,67 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
   const { language, ready } = useShikiLanguage(pathExtension(diff.path))
 
   return (
-    <div data-slot="file-diff" data-numbered={numbered || undefined} className="min-w-0 overflow-hidden">
+    <div data-slot="file-diff" data-numbered={numbered || undefined} className="m-file-diff">
       {header && diff.path !== '' && (
-        <div
-          data-slot="file-diff-header"
-          className="flex items-center gap-2 border-b border-border-button-default/50 bg-background-secondary-default/30 px-3 py-1.5 text-caption-1-regular text-text-secondary"
-        >
+        <div data-slot="file-diff-header" className="m-file-diff__header">
           <FileIcon path={diff.path} />
           {/* A move used to arrive as one string with an arrow in the middle,
               which read correctly and could not be used as a path. The parser
               keeps the two apart; the header puts them side by side. */}
           {diff.movedFrom && (
             <>
-              <PathLabel
-                path={diff.movedFrom}
-                wrap
-                className="text-text-secondary [&_[data-slot=path-name]]:text-text-secondary"
-              />
-              <ArrowRight aria-hidden className="size-3 shrink-0" />
+              <PathLabel path={diff.movedFrom} wrap className="m-file-diff__moved-from" />
+              <ArrowRight aria-hidden className="m-file-diff__move-arrow" />
             </>
           )}
           <PathLabel path={diff.path} wrap />
           {diff.op === 'create' && (
-            <span data-slot="file-diff-new-file" className="text-status-success-soft-foreground shrink-0">
+            <span data-slot="file-diff-new-file" className="m-file-diff__new-file">
               {t('chat.tool.diff.newFile')}
             </span>
           )}
           {diff.op === 'delete' && (
-            <span data-slot="file-diff-deleted-file" className="text-status-danger shrink-0">
+            <span data-slot="file-diff-deleted-file" className="m-file-diff__deleted-file">
               {t('chat.tool.diff.deletedFile')}
             </span>
           )}
           {diff.replaceAll && (
-            <span data-slot="file-diff-replace-all" className="shrink-0">
+            <span data-slot="file-diff-replace-all" className="m-file-diff__replace-all">
               {t('chat.tool.diff.replaceAll')}
             </span>
           )}
-          <span data-slot="file-diff-header-end" className="ml-auto">
+          <span data-slot="file-diff-header-end" className="m-file-diff__header-end">
             <DiffStats diff={diff} />
           </span>
         </div>
       )}
-      <div data-slot="file-diff-content" className="max-h-72 overflow-auto">
-        <div
-          data-slot="file-diff-lines"
-          className="w-max min-w-full py-1 font-mono text-caption-1-regular leading-relaxed"
-        >
+      <div data-slot="file-diff-content" className="m-file-diff__content">
+        <div data-slot="file-diff-lines" className="m-file-diff__lines">
           {shown.map((line, i) => (
             <div
               key={i}
               data-slot="file-diff-line"
               data-kind={line.kind}
-              className={cx('flex whitespace-pre', diffLineClass(line.kind, ready))}
+              data-highlighted={ready || undefined}
+              className="m-file-diff__line"
             >
               {numbered && (
                 // Two columns, old and new, the way a side-by-side gutter reads
                 // in a unified view. Digits only: the sign has its own column,
                 // and a reader copying the diff should not get numbers with it.
-                <span
-                  aria-hidden
-                  data-slot="file-diff-gutter"
-                  className="sticky left-0 flex shrink-0 bg-background-primary-default text-text-secondary/70 select-none tabular-nums"
-                >
-                  <span data-slot="file-diff-old-no" className="w-10 pr-1 text-right">
+                <span aria-hidden data-slot="file-diff-gutter" className="m-file-diff__gutter">
+                  <span data-slot="file-diff-old-no" className="m-file-diff__old-no">
                     {line.oldNo ?? ''}
                   </span>
-                  <span data-slot="file-diff-new-no" className="w-10 pr-1 text-right">
+                  <span data-slot="file-diff-new-no" className="m-file-diff__new-no">
                     {line.newNo ?? ''}
                   </span>
                 </span>
               )}
-              <span data-slot="file-diff-sign" className={cx('shrink-0 pl-2', diffSignClass(line.kind))}>
+              <span data-slot="file-diff-sign" className="m-file-diff__sign">
                 {diffLinePrefix(line.kind)}
               </span>
-              <span data-slot="file-diff-text" className="pr-3">
+              <span data-slot="file-diff-text" className="m-file-diff__text">
                 {ready && line.kind !== 'hunk' && line.text ? (
                   // Shiki escapes what it emits, and the sign beside it is ours.
                   <span
@@ -202,10 +162,7 @@ export function FileDiffCard({ diff, header = true }: { diff: FileDiff; header?:
             </div>
           ))}
           {diff.lines.length > MAX_DIFF_LINES && (
-            <div
-              data-slot="file-diff-more"
-              className="sticky left-0 flex items-center gap-2 px-3 py-1 text-text-secondary"
-            >
+            <div data-slot="file-diff-more" className="m-file-diff__more">
               {!expanded && (
                 <span data-slot="file-diff-hidden-count">{t('chat.tool.diff.moreLines', { count: hidden })}</span>
               )}

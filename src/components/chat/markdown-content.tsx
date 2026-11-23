@@ -12,8 +12,6 @@ import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import type { Components } from 'react-markdown'
 
-import { markdownVariants } from '@/components/base'
-
 import { CopyButton } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { fileIconUrl, languageIconUrl } from '@/lib/file-icon'
@@ -26,13 +24,16 @@ import {
   remarkFileReferences,
   type MarkdownFileReference,
 } from '@/lib/markdown-target'
-import { cx } from '@/utils/cx'
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
 import { MermaidFence } from './mermaid-fence'
 import { InlineSticker, type EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 function reactNodeText(node: React.ReactNode): string {
   if (typeof node === 'string' || typeof node === 'number') return String(node)
@@ -82,11 +83,6 @@ function referenceLabel(reference: MarkdownFileReference): string {
 /**
  * A file named in an answer: a quiet button with the file's own icon, so it
  * reads as part of the sentence rather than a blue web link.
- *
- * `not-prose` on the wrapper is load-bearing: Tailwind Typography gives every
- * `img` under `.prose` a block margin of ~1.7em, and the file glyph is an
- * `img`. Inside the button's inline flex box that margin became the box's
- * height — a 59px line in a 22.75px paragraph.
  */
 function FileReferenceButton({ reference }: { reference: MarkdownFileReference }) {
   const preview = useFilePreview()
@@ -94,7 +90,7 @@ function FileReferenceButton({ reference }: { reference: MarkdownFileReference }
   const label = referenceLabel(reference)
 
   return (
-    <span className="not-prose m-markdown-content__file-reference">
+    <span className="m-markdown-content__file-reference">
       <TooltipTrigger>
         <Button
           data-slot="markdown-file-reference"
@@ -183,9 +179,6 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
     const value = String(children ?? '').trim()
     const reference = !isStreaming ? parseMarkdownFileCandidate(value) : null
     const fallback = (
-      // No classes of its own: the prose recipe's `prose-code:` variants
-      // (`markdown-variants.tsx`) outrank anything written here, so a fill or
-      // a size on this element was dead the whole time.
       <code data-slot="markdown-inline-code" className={className} {...props}>
         {children}
       </code>
@@ -200,30 +193,19 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   if (language === 'mermaid' && !isStreaming) return <MermaidFence code={code} icon={icon} />
 
   return (
-    // The old library's classes without its components: importing `CodeBlock`
-    // for its header would drag in `CodeBlock.Code`, and with it Shiki's full
-    // entry point — the whole reason `lib/shiki` exists. The stylesheet is
-    // already loaded, so the markup below looks the same either way.
-    //
-    // The radius is ours: the old library's own was 16px, the composer's rung,
-    // one above what a card inside the transcript may take.
-    //
-    // `not-prose`, because the prose recipe reaches the `pre` inside otherwise
-    // (`prose-pre:` fill and radius, typography's own padding and margin) and
-    // draws a second box inside the block. The block styles itself, in
-    // `meridian.css`.
-    <div data-slot="markdown-code-block" className="code-block not-prose my-3 rounded-xl">
+    <div data-slot="markdown-code-block" className="code-block m-markdown-content__code-block">
       <div data-slot="markdown-code-header" className="code-block__header">
-        {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span data-slot="markdown-code-language" className="text-caption-1-regular text-text-secondary">
+        {icon && (
+          <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="m-markdown-content__code-icon" />
+        )}
+        <span data-slot="markdown-code-language" className="m-markdown-content__code-language">
           {language}
         </span>
         {/* The only way to copy a single block — the long-press menu copies the
-            whole message. The action recipe is already 28px (`size-7`), which
-            matters here: `.code-block` is `overflow: clip` for its corners,
-            which cuts the expanded hit area back, and 28 drawn pixels are what
-            close that gap without moving the button off its corner. */}
-        <CopyButton text={code} className="touch-hitbox ms-auto" />
+            whole message. The action recipe is already 28px, which matters
+            here: `.code-block` is `overflow: clip` for its corners, which cuts
+            the expanded hit area back, and 28 drawn pixels close that gap. */}
+        <CopyButton text={code} className="m-markdown-content__copy" />
       </div>
       <ShikiCode code={code} language={language} defer={isStreaming} />
     </div>
@@ -233,36 +215,17 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
 /**
  * A table, with somewhere for it to go when it does not fit.
  *
- * The old `.markdown table` style stopped at `width: 100%`, which is an
- * answer only for a table narrower than its column. Past that the cells stop at
- * their minimum content width and the table runs over the edge — and the bubble
- * around it is `overflow-hidden`, so the columns on the end were not clipped
- * with a scrollbar, they were gone. On a phone that is most tables of more than
- * about three columns.
- *
  * The wrapper scrolls rather than the table wrapping, because a rate card
- * squeezed to one word per cell is unreadable in a different way. `max-w-full`
- * is what makes the scroller narrower than its content: a grid or flex child
- * refuses to shrink past min-content without it, and the overflow simply moves
- * up one level.
+ * squeezed to one word per cell is unreadable in a different way. `max-width:
+ * 100%` makes the scroller narrower than its content inside a grid or flex
+ * child.
  */
 const TableBlock: Components['table'] = ({ children, ...props }) => (
-  <div data-slot="markdown-table" className="my-3 max-w-full overflow-x-auto">
+  <div data-slot="markdown-table" className="m-markdown-content__table">
     <table data-slot="markdown-table-element" {...props}>
       {children}
     </table>
   </div>
-)
-
-/**
- * The old defaults set `list-inside`, which tucks a wrapped list item under
- * its own marker, and sized `h3` at the body size. Both are fine for a short
- * answer and wrong for a long one, which is most of what lands here.
- */
-const markdownClasses = cx(
-  'text-body-regular leading-relaxed',
-  '[&_ul]:list-outside [&_ul]:ps-5 [&_ol]:list-outside [&_ol]:ps-5',
-  '[&_h3]:text-headline-regular',
 )
 
 /**
@@ -375,8 +338,8 @@ const MarkdownAnchor: Components['a'] = ({ href, children, node: _node, ...props
           {children}
         </a>
       </Focusable>
-      <Tooltip placement="top" className="max-w-xs break-all">
-        {target.url}
+      <Tooltip placement="top">
+        <span className="m-markdown-content__url">{target.url}</span>
       </Tooltip>
     </TooltipTrigger>
   )
@@ -396,9 +359,8 @@ const MemoizedMarkdownBlock = React.memo(function MemoizedMarkdownBlock({
   autoFileReferences: boolean
   trailer: React.ReactNode
 }) {
-  const slots = useMemo(() => markdownVariants(), [])
   return (
-    <div data-slot="markdown-block" className={slots.block()}>
+    <div data-slot="markdown-block" className="m-markdown__block">
       <ParagraphTrailerContext value={trailer}>
         <ReactMarkdown
           components={components}
@@ -434,12 +396,13 @@ function MarkdownParagraph({
   return (
     <p
       data-slot={trailed ? 'markdown-trailed-paragraph' : 'markdown-paragraph'}
+      data-trailed={trailed || undefined}
       {...props}
-      className={cx(trailed && 'flow-root', props.className)}
+      className={joinClasses('m-markdown-content__paragraph', props.className)}
     >
       {children}
       {trailed && (
-        <span data-slot="markdown-trailer" className="float-right ml-2 mt-1.5">
+        <span data-slot="markdown-trailer" className="m-markdown-content__trailer-inline">
           {trailer}
         </span>
       )}
@@ -463,7 +426,6 @@ function LocalMarkdown({
 }) {
   const generatedId = useId()
   const rendererId = id ?? generatedId
-  const slots = useMemo(() => markdownVariants(), [])
   const tokens = useMemo(
     () => marked.lexer(children).map((token) => ({ raw: token.raw, type: token.type })),
     [children],
@@ -487,7 +449,7 @@ function LocalMarkdown({
 
   // Where the trailer goes is decided by the *last* block, and only a
   // paragraph can take it inline: a float placed after a whole block can only
-  // ever land on the line after it, never at the end of its last line, so the
+  // ever land on the line below it, never at the end of its last line, so the
   // trailer has to be rendered inside the paragraph's own `<p>`. After a code
   // block, a table or a list it goes on a line of its own — floated into those
   // it would sit inside the box, next to the last row of a table.
@@ -503,7 +465,7 @@ function LocalMarkdown({
 
   return (
     <>
-      <div data-slot="markdown" className={slots.base()}>
+      <div data-slot="markdown" className="m-markdown">
         {blocks.map((block, i) => (
           <MemoizedMarkdownBlock
             key={block.key}
@@ -515,7 +477,7 @@ function LocalMarkdown({
         ))}
       </div>
       {trailer != null && !inline && (
-        <div data-slot="markdown-trailer" className="mt-1 flex justify-end">
+        <div data-slot="markdown-trailer" className="m-markdown-content__trailer-block">
           {trailer}
         </div>
       )}
@@ -534,10 +496,7 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
       role={loaded ? undefined : 'status'}
       aria-busy={loaded ? undefined : true}
       aria-label={loaded ? undefined : t('common.loading')}
-      className={cx(
-        'relative my-3 block w-fit max-w-full overflow-hidden rounded-lg bg-background-secondary-default/20',
-        !loaded && 'min-h-24 min-w-24',
-      )}
+      className="m-markdown-content__image-frame"
     >
       <img
         data-slot="markdown-image"
@@ -545,11 +504,7 @@ function MarkdownImage({ alt = '', className, onError, onLoad, ...props }: React
         alt={alt}
         loading="lazy"
         decoding="async"
-        className={cx(
-          'block h-auto max-h-[70svh] max-w-full object-contain transition-opacity motion-reduce:transition-none',
-          !loaded && 'opacity-0',
-          className,
-        )}
+        className={joinClasses('m-markdown-content__image', className)}
         onLoad={(event) => {
           setLoaded(true)
           onLoad?.(event)
@@ -616,11 +571,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
       img: ({ alt, src, ...props }) => {
         if (!allowRemoteImages && isRemoteImageSource(src)) {
           return (
-            <Hint
-              data-slot="markdown-blocked-image"
-              label={src}
-              className="my-3 block max-w-full truncate rounded-lg bg-background-secondary-default/30 px-3 py-2 text-caption-1-regular text-text-secondary"
-            >
+            <Hint data-slot="markdown-blocked-image" label={src} className="m-markdown-content__blocked-image">
               {alt}
             </Hint>
           )
@@ -632,7 +583,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
               stickerId={stickerId}
               name={alt!.slice(STICKER_ALT.length)}
               slot="markdown-sticker"
-              className="size-30"
+              className="m-markdown-content__sticker"
             />
           )
         }
@@ -644,7 +595,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   )
 
   return (
-    <div data-slot="markdown-content" className={cx(markdownClasses, className)}>
+    <div data-slot="markdown-content" className={joinClasses('m-markdown', className)}>
       {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
           between renderers on screen — the key itself already hashes the block's
           own content. Falls back to a generated one. */}
@@ -658,13 +609,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
           {processed}
         </LocalMarkdown>
       </MarkdownStreamingContext>
-      {isStreaming && (
-        <span
-          data-slot="markdown-cursor"
-          // eslint-disable-next-line no-restricted-syntax -- the streaming caret blinks; it is a cursor, not a placeholder for content
-          className="ml-0.5 inline-block h-4 w-2 animate-pulse bg-current text-text-secondary motion-reduce:animate-none"
-        />
-      )}
+      {isStreaming && <span data-slot="markdown-cursor" className="m-markdown-content__cursor" />}
     </div>
   )
 })

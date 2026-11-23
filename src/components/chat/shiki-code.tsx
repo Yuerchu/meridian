@@ -1,7 +1,6 @@
 import { useMemo } from 'react'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlight } from '@/lib/shiki'
-import { cx } from '@/utils/cx'
 
 const highlightCache = new Map<string, string>()
 const MAX_CACHE_ENTRIES = 64
@@ -50,10 +49,11 @@ export function ShikiCode({
 }) {
   const { language: lang, ready } = useShikiLanguage(language)
   const html = useMemo(() => (ready && !defer ? cachedHighlight(code, lang) : ''), [code, defer, lang, ready])
+  const resolvedClass = className ? `code-block__code ${className}` : 'code-block__code'
 
   if (!ready || defer) {
     return (
-      <div data-slot="shiki-code-plain" className={cx('code-block__code', className)}>
+      <div data-slot="shiki-code-plain" className={resolvedClass}>
         <pre data-slot="shiki-code-pre">
           <code data-slot="shiki-code-source">{code}</code>
         </pre>
@@ -64,7 +64,7 @@ export function ShikiCode({
   return (
     <div
       data-slot="shiki-code"
-      className={cx('code-block__code', className)}
+      className={resolvedClass}
       // Shiki escapes the code it is given; what comes back is its own markup
       // around that escaped text.
       dangerouslySetInnerHTML={{ __html: html }}

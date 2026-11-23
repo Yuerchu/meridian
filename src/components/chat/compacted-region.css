@@ -1,9 +1,30 @@
 @layer components {
+  .m-compacted-region {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
   .m-compacted-region__fold {
     display: grid;
   }
 
   .m-compacted-region__turn {
     opacity: 0.4;
+  }
+
+  .m-compacted-region__marker {
+    padding: var(--space-3) var(--space-2);
+  }
+
+  .m-compacted-region__summary {
+    margin-block-end: var(--space-2);
+    max-width: 100%;
+  }
+
+  .m-compacted-region__summary-content {
+    font: var(--text-caption);
+    white-space: pre-wrap;
+    color: var(--text-secondary);
   }
 }

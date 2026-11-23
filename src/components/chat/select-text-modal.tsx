@@ -1,3 +1,4 @@
+import './select-text-modal.css'
 import { useTranslation } from 'react-i18next'
 import { Check } from '@keyline-icons/react/two-tone'
 import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
@@ -36,10 +37,7 @@ export function SelectTextModal({
       heading={t('contextMenu.selectText')}
       description={t('contextMenu.selectTextHint')}
       size="full"
-      // Portalled to the body, so no ancestor's inset reaches it: the dialog's
-      // own padding is all that stands between the footer buttons and the
-      // navigation bar, and under 3-button navigation that is not enough.
-      className="pb-[max(1.5rem,var(--safe-bottom))] pl-[max(1.5rem,var(--safe-left))] pr-[max(1.5rem,var(--safe-right))]"
+      className="m-select-text-modal"
     >
       {/* Keyed by the text: one dialog serves every bubble of a group, and
           without it a "Copied" — or a refusal — from the last bubble was
@@ -55,21 +53,11 @@ function SelectTextBody({ text }: { text: string }) {
 
   return (
     <>
-      {/* `select-text` explicitly: the dialog is portalled out of the
-          message, but the transcript is not the only ancestor that turns
-          selection off, and this is the one place that must have it. */}
-      <p
-        data-slot="select-text-body"
-        className="text-body-regular leading-relaxed whitespace-pre-wrap wrap-break-word select-text"
-      >
+      <p data-slot="select-text-body" className="m-select-text-modal__text">
         {text}
       </p>
       {failure !== null && (
-        <p
-          data-slot="select-text-copy-error"
-          role="alert"
-          className="mt-3 text-body-regular text-status-danger wrap-break-word"
-        >
+        <p data-slot="select-text-copy-error" role="alert" className="m-select-text-modal__error">
           {t('common.copyFailed', { error: failure })}
         </p>
       )}

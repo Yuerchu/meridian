@@ -1,3 +1,4 @@
+import './shell-command-bubble.css'
 import * as React from 'react'
 import { ChevronDown, CircleAlert, CircleCheck, CircleX, Clock, Terminal } from '@keyline-icons/react/two-tone'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
@@ -5,7 +6,6 @@ import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { cx } from '@/utils/cx'
 import { Hint } from '@/components/ui/hint'
 import { Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK } from '@/components/ui/bubble'
 import { BubbleFoldBadge } from '@/components/ui/bubble-block'
@@ -35,12 +35,16 @@ function commandSucceeded(result: UserCommandResultResponse): boolean {
 }
 
 function StatusIcon({ result }: { result: UserCommandResultResponse }) {
-  if (commandSucceeded(result)) return <CircleCheck className="size-3.5 text-status-success" />
-  if (result.status === 'timed_out' || result.status === 'cancelled') {
-    return <Clock className="size-3.5 text-status-warning" />
+  if (commandSucceeded(result)) {
+    return <CircleCheck className="m-shell-command-bubble__status-icon" data-tone="success" />
   }
-  if (result.status === 'in_doubt') return <CircleAlert className="size-3.5 text-status-warning" />
-  return <CircleX className="size-3.5 text-status-danger" />
+  if (result.status === 'timed_out' || result.status === 'cancelled') {
+    return <Clock className="m-shell-command-bubble__status-icon" data-tone="warning" />
+  }
+  if (result.status === 'in_doubt') {
+    return <CircleAlert className="m-shell-command-bubble__status-icon" data-tone="warning" />
+  }
+  return <CircleX className="m-shell-command-bubble__status-icon" data-tone="danger" />
 }
 
 /**
@@ -106,44 +110,45 @@ export function ShellCommandBubble({
   const failed = state.status === 'loaded' && !commandSucceeded(state.result)
 
   return (
-    <Bubble align="end" variant="user" position={position} className="w-full max-w-[85%]">
-      <BubbleContent className="w-full">
-        <div data-slot="shell-command-head" className="flex min-w-0 items-center gap-2">
-          <Terminal className="size-3.5 shrink-0 opacity-70" aria-hidden />
-          <Hint as="code" className="min-w-0 flex-1 truncate font-mono text-caption-1-regular" label={command}>
+    <Bubble align="end" variant="user" position={position} className="m-shell-command-bubble">
+      <BubbleContent className="m-shell-command-bubble__content">
+        <div data-slot="shell-command-head" className="m-shell-command-bubble__head">
+          <Terminal className="m-shell-command-bubble__terminal" aria-hidden />
+          <Hint as="code" className="m-shell-command-bubble__command" label={command}>
             {command}
           </Hint>
           {state.status === 'loading' && <Spinner size="sm" aria-label={t('chat.shell.loading')} />}
           {state.status === 'loaded' && (
             <span
               data-slot="shell-command-outcome"
-              className={cx(
-                'flex shrink-0 items-center gap-1 text-caption-1-regular',
-                commandSucceeded(state.result) ? 'opacity-70' : 'text-status-danger',
-              )}
+              className="m-shell-command-bubble__outcome"
               data-command-outcome={commandSucceeded(state.result) ? 'success' : 'failure'}
             >
               <StatusIcon result={state.result} />
               {t(`chat.shell.status.${state.result.status}`)}
               {state.result.exit_code != null && (
-                <span data-slot="shell-command-exit-code" className="tabular-nums">
+                <span data-slot="shell-command-exit-code" className="m-shell-command-bubble__exit-code">
                   · {t('chat.shell.exitCode', { code: state.result.exit_code })}
                 </span>
               )}
             </span>
           )}
         </div>
-        <div data-slot="shell-command-foot" className="mt-1.5 flex min-w-0 items-center justify-between gap-3">
+        <div data-slot="shell-command-foot" className="m-shell-command-bubble__foot">
           <BubbleFoldBadge
             expanded={isExpanded}
             aria-controls={isExpanded ? panelId : undefined}
             onClick={() => onExpandedChange(!isExpanded)}
           >
             {t('chat.shell.output')}
-            <ChevronDown aria-hidden className={cx('size-3 transition-transform', isExpanded && 'rotate-180')} />
+            <ChevronDown
+              aria-hidden
+              data-expanded={isExpanded || undefined}
+              className="m-shell-command-bubble__chevron"
+            />
           </BubbleFoldBadge>
           {message.created_at > 0 && (
-            <BubbleTime dateTime={new Date(message.created_at).toISOString()} className="opacity-70">
+            <BubbleTime dateTime={new Date(message.created_at).toISOString()} className="m-shell-command-bubble__time">
               {clock.format(message.created_at)}
             </BubbleTime>
           )}
@@ -159,42 +164,34 @@ export function ShellCommandBubble({
           id={panelId}
           data-slot="shell-command-panel"
           data-bubble-block=""
-          className={cx(
-            BUBBLE_BLOCK,
-            'w-full text-caption-1-regular',
-            failed && 'ring-1 ring-status-danger/40 ring-inset',
-          )}
+          data-failed={failed || undefined}
+          className={BUBBLE_BLOCK + ' m-shell-command-bubble__panel'}
         >
           {state.status === 'loaded' && (
             <>
-              <div
-                data-slot="shell-command-meta"
-                className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 pt-2 font-mono text-caption-1-regular text-text-secondary"
-              >
-                <Hint className="truncate" label={state.result.cwd}>
+              <div data-slot="shell-command-meta" className="m-shell-command-bubble__meta">
+                <Hint className="m-shell-command-bubble__cwd" label={state.result.cwd}>
                   {state.result.cwd}
                 </Hint>
                 {state.result.host && (
-                  <span data-slot="shell-command-host" className="shrink-0">
+                  <span data-slot="shell-command-host" className="m-shell-command-bubble__host">
                     {state.result.host}
                   </span>
                 )}
-                <span data-slot="shell-command-duration" className="shrink-0 tabular-nums">
+                <span data-slot="shell-command-duration" className="m-shell-command-bubble__duration">
                   {state.result.duration_ms} ms
                 </span>
                 {state.result.truncated && (
-                  <span data-slot="shell-command-truncated" className="shrink-0 text-status-warning-soft-foreground">
+                  <span data-slot="shell-command-truncated" className="m-shell-command-bubble__truncated">
                     {t('chat.shell.truncated')}
                   </span>
                 )}
-                {output && <CopyButton text={output} className="ms-auto size-6 rounded-md" />}
+                {output && <CopyButton text={output} className="m-shell-command-bubble__copy" />}
               </div>
               <pre
                 data-slot="shell-command-output"
-                className={cx(
-                  'max-h-80 min-h-10 overflow-auto px-3 py-2.5 font-mono text-caption-1-regular leading-5 whitespace-pre-wrap wrap-break-word',
-                  output ? 'text-text-primary' : 'text-text-secondary italic',
-                )}
+                data-empty={!output || undefined}
+                className="m-shell-command-bubble__output"
               >
                 {output || t('chat.shell.noOutput')}
               </pre>
@@ -206,20 +203,12 @@ export function ShellCommandBubble({
             </div>
           )}
           {state.status === 'unavailable' && (
-            <p
-              data-slot="shell-command-unavailable"
-              role="status"
-              className="px-3 py-3 text-caption-1-regular text-text-secondary"
-            >
+            <p data-slot="shell-command-unavailable" role="status" className="m-shell-command-bubble__unavailable">
               {t('chat.shell.resultUnavailable')}
             </p>
           )}
           {state.status === 'error' && (
-            <p
-              data-slot="shell-command-error"
-              role="alert"
-              className="px-3 py-3 text-caption-1-regular wrap-break-word text-status-danger-soft-foreground"
-            >
+            <p data-slot="shell-command-error" role="alert" className="m-shell-command-bubble__error">
               {t('chat.shell.resultError', { error: state.message })}
             </p>
           )}

@@ -51,7 +51,7 @@ export function CompactedRegion({
   if (turns.length === 0) return null
 
   return (
-    <MessageScrollerItem messageId="__compact-region" className="space-y-6">
+    <MessageScrollerItem messageId="__compact-region" className="m-compacted-region">
       {showCompactedMessages ? (
         <>
           <div className="m-compacted-region__fold">
@@ -81,7 +81,7 @@ export function CompactedRegion({
           </Button>
         </div>
       )}
-      <Marker variant="separator" className="py-3 px-2">
+      <Marker variant="separator" className="m-compacted-region__marker">
         <MarkerContent>
           {/* The only way to open the summary of what was compacted away. */}
           <Button
@@ -96,10 +96,8 @@ export function CompactedRegion({
         </MarkerContent>
       </Marker>
       {compactSummary && showCompactSummary && (
-        <Bubble variant="muted" data-slot="compact-summary" className="mb-2 max-w-full">
-          <BubbleContent className="text-caption-1-regular whitespace-pre-wrap text-text-secondary">
-            {compactSummary.content}
-          </BubbleContent>
+        <Bubble variant="muted" data-slot="compact-summary" className="m-compacted-region__summary">
+          <BubbleContent className="m-compacted-region__summary-content">{compactSummary.content}</BubbleContent>
         </Bubble>
       )}
     </MessageScrollerItem>

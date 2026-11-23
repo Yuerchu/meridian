@@ -1,6 +1,7 @@
+import './turn-outline.css'
 import { useMemo } from 'react'
+import { Button as AriaButton } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
-import { FloatingToc } from '@/components/base'
 import { markArrival } from '@/lib/arrival-flash'
 
 import { useMessageScroller, useMessageScrollerVisibility } from '@/components/ui/message-scroller'
@@ -88,6 +89,10 @@ function label(content: string): string {
  * Only turns with a question of their own are listed, which is also exactly the
  * set the scroller anchors — a turn that is not an anchor can never be
  * `currentAnchorId`, so listing it would give a row that never lights up.
+ *
+ * Note: Yuerchu UI's `TableOfContents` listens to `window` scroll and renders
+ * hash `<Link>`s without `activeId`/`onSelect` props, so this scroller-bound
+ * minimap keeps its own `.m-turn-outline` rail + popover using RAC `Button`.
  */
 export function TurnOutline({ turns }: { turns: Turn[] }) {
   const { t } = useTranslation()
@@ -110,41 +115,38 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
   return (
     // Hidden where the transcript already fills the width: below `md` this
     // would sit on top of the text rather than beside it.
-    <div
-      data-slot="turn-outline"
-      className="pointer-events-none absolute inset-y-0 end-0 z-10 hidden items-center pe-1 md:flex"
-    >
-      <FloatingToc placement="right">
-        {/* The strip scrolls rather than growing without bound — a hundred-turn
-            conversation is taller than the window. The old library's `Bar`
-            called `scrollIntoView({ block: 'nearest' })` when it became active,
-            which only does anything if something here can scroll, so this is
-            the shape that component was written for. */}
-        <FloatingToc.Trigger
-          aria-label={t('chat.outline.title')}
-          className="pointer-events-auto max-h-[60vh] overflow-y-auto no-scrollbar"
-        >
+    <div data-slot="turn-outline" className="m-turn-outline">
+      <div className="m-turn-outline__group">
+        <div aria-hidden="true" className="m-turn-outline__rail">
           {entries.map((entry) => (
-            <FloatingToc.Bar key={entry.id} active={entry.id === currentAnchorId} />
-          ))}
-        </FloatingToc.Trigger>
-        <FloatingToc.Content>
-          {entries.map((entry) => (
-            <FloatingToc.Item
+            <div
               key={entry.id}
-              active={entry.id === currentAnchorId}
-              // `nowrap` with no width of its own: without a bound, one long
-              // question stretches the popover across the transcript.
-              className="max-w-72 overflow-hidden text-ellipsis"
-              onPress={() => {
-                if (scrollToMessage(entry.id, { align: 'start' })) markArrival(entry.id)
-              }}
-            >
-              {entry.text || t('chat.outline.untitled')}
-            </FloatingToc.Item>
+              data-slot="turn-outline-bar"
+              data-active={entry.id === currentAnchorId || undefined}
+              className="m-turn-outline__bar"
+            />
           ))}
-        </FloatingToc.Content>
-      </FloatingToc>
+        </div>
+        <nav aria-label={t('chat.outline.title')} className="m-turn-outline__popover">
+          {entries.map((entry) => {
+            const active = entry.id === currentAnchorId
+            return (
+              <AriaButton
+                key={entry.id}
+                data-slot="turn-outline-item"
+                data-active={active || undefined}
+                aria-current={active ? 'location' : undefined}
+                className="m-turn-outline__item"
+                onPress={() => {
+                  if (scrollToMessage(entry.id, { align: 'start' })) markArrival(entry.id)
+                }}
+              >
+                {entry.text || t('chat.outline.untitled')}
+              </AriaButton>
+            )
+          })}
+        </nav>
+      </div>
     </div>
   )
 }

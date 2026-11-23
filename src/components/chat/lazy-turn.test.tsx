@@ -9,6 +9,7 @@ vi.mock('@/hooks/use-android-insets', () => ({ useImeBottom: () => 0 }))
 vi.mock('motion/react', () => ({
   LazyMotion: ({ children }: { children: React.ReactNode }) => children,
   domAnimation: {},
+  motion: { create: (Component: React.ComponentType) => Component },
 }))
 vi.mock('motion/react-m', () => ({ create: (Component: React.ComponentType) => Component }))
 vi.mock('./turn-outline', () => ({ TurnOutline: () => null }))

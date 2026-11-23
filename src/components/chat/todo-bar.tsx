@@ -24,7 +24,7 @@ export function TodoRing({ todos }: { todos: TodoArgs }) {
   const { t } = useTranslation()
   const { done, total } = todoProgress(todos.todos)
   return (
-    <span data-slot="todo-ring" aria-hidden="true" className="shrink-0">
+    <span data-slot="todo-ring" aria-hidden="true" className="m-todo-bar__ring">
       <ProgressCircle aria-label={t('chat.todo.progress', { done, total })} value={done} maxValue={total} size="sm" />
     </span>
   )
@@ -41,15 +41,15 @@ export function TodoCurrentRow({ todos }: { todos: TodoArgs }) {
   const { t } = useTranslation()
   const { done, total, current } = todoProgress(todos.todos)
   return (
-    <div data-slot="todo-current" className="flex w-full min-w-0 items-center gap-2 px-3 py-2 text-body-2-regular">
+    <div data-slot="todo-current" className="m-todo-bar__current">
       <TodoRing todos={todos} />
-      <span data-slot="todo-current-title" className="max-w-40 shrink-0 truncate text-body-2-medium text-text-primary">
+      <span data-slot="todo-current-title" className="m-todo-bar__current-title">
         {todos.title}
       </span>
-      <span data-slot="todo-current-step" className="min-w-0 flex-1 truncate text-text-secondary">
+      <span data-slot="todo-current-step" className="m-todo-bar__current-step">
         {current ? current.active_form : t('chat.todo.idle')}
       </span>
-      <span data-slot="todo-current-progress" className="shrink-0 tabular-nums text-text-secondary">
+      <span data-slot="todo-current-progress" className="m-todo-bar__current-progress">
         {t('chat.todo.progress', { done, total })}
       </span>
     </div>

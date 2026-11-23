@@ -24,10 +24,6 @@ import { PlanDecisionAttempt, PlanDecisionInDoubtError } from '@/lib/plan-review
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { PlanReviewStatus, ToolCallDisplay } from '@/types'
-import { cx } from '@/utils/cx'
-
-/** See `FIELD_ON_CARD` in `tool-call-block.tsx`. */
-const FIELD_ON_CARD = 'bg-background-secondary-default'
 
 /**
  * Which revision this is and how it starts, read from the review itself.
@@ -198,7 +194,7 @@ export function PlanReviewEntryView({
   const pending = status === 'pending'
 
   const revision = preview ? (
-    <span data-slot="plan-review-entry-revision" className="shrink-0 text-text-secondary tabular-nums">
+    <span data-slot="plan-review-entry-revision" className="m-plan-review-entry__revision">
       {t('chat.plan.revision', { n: preview.revisionNo })}
     </span>
   ) : null
@@ -213,25 +209,14 @@ export function PlanReviewEntryView({
     preview && (preview.excerpt.title || preview.excerpt.lines.length > 0) ? (
       // The plan's opening, and the way into the page: the part that says
       // which plan is the part that opens it.
-      <AriaButton
-        data-slot="plan-review-entry-excerpt"
-        onPress={onOpen}
-        className="block w-full min-w-0 cursor-pointer rounded-xl bg-background-primary-default px-3 py-2.5 text-left outline-none transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
-      >
+      <AriaButton data-slot="plan-review-entry-excerpt" onPress={onOpen} className="m-plan-review-entry__excerpt">
         {preview.excerpt.title && (
-          <span
-            data-slot="plan-review-entry-excerpt-title"
-            className="block truncate text-body-semibold text-text-primary"
-          >
+          <span data-slot="plan-review-entry-excerpt-title" className="m-plan-review-entry__excerpt-title">
             {preview.excerpt.title}
           </span>
         )}
         {keyedLines(preview.excerpt.lines).map(({ line, key }) => (
-          <span
-            key={key}
-            data-slot="plan-review-entry-excerpt-line"
-            className="block truncate text-body-2-regular text-text-secondary"
-          >
+          <span key={key} data-slot="plan-review-entry-excerpt-line" className="m-plan-review-entry__excerpt-line">
             {line}
           </span>
         ))}
@@ -239,9 +224,9 @@ export function PlanReviewEntryView({
     ) : null
 
   const actions = pending ? (
-    <div data-slot="plan-review-entry-actions" className="flex flex-col gap-2">
+    <div data-slot="plan-review-entry-actions" className="m-plan-review-entry__actions">
       {ui.step === 'feedback' ? (
-        <div data-slot="plan-review-entry-feedback" className="flex flex-col gap-2">
+        <div data-slot="plan-review-entry-feedback" className="m-plan-review-entry__feedback">
           <TextField
             name="plan-feedback"
             autoComplete="off"
@@ -253,10 +238,9 @@ export function PlanReviewEntryView({
               if (e.key === 'Enter') onSendBack()
             }}
             placeholder={t('chat.plan.feedbackPlaceholder')}
-            className={FIELD_ON_CARD}
             autoFocus
           />
-          <div className="flex flex-wrap justify-end gap-2">
+          <div className="m-plan-review-entry__feedback-actions">
             <Button size="sm" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
@@ -266,23 +250,23 @@ export function PlanReviewEntryView({
           </div>
         </div>
       ) : ui.step === 'deciding' ? (
-        <div data-slot="plan-review-entry-deciding" className="flex items-center gap-2 text-text-secondary">
+        <div data-slot="plan-review-entry-deciding" className="m-plan-review-entry__deciding">
           <span aria-hidden>
             <Spinner size="sm" />
           </span>
-          <span className="text-body-2-regular">{t('chat.tool.running')}</span>
+          <span>{t('chat.tool.running')}</span>
         </div>
       ) : (
         <>
-          <p data-slot="plan-review-entry-description" className="text-body-2-regular">
+          <p data-slot="plan-review-entry-description" className="m-plan-review-entry__description">
             {ui.step === 'draft' ? t('chat.plan.draftInProgress') : t('chat.plan.reviewReady')}
           </p>
           {ui.step === 'error' && (
-            <p data-slot="plan-review-entry-error" role="alert" className="text-body-2-regular text-text-destructive">
+            <p data-slot="plan-review-entry-error" role="alert" className="m-plan-review-entry__error">
               {ui.message}
             </p>
           )}
-          <div className="flex flex-wrap gap-2">
+          <div className="m-plan-review-entry__action-row">
             <Button size="sm" onPress={onOpen}>
               {t('chat.plan.review')}
             </Button>
@@ -312,11 +296,11 @@ export function PlanReviewEntryView({
   if (presentation === 'bubble' && !pending) {
     return (
       <BubbleBlockButton data-slot="plan-review-entry" data-status={status} state="output-available" onClick={onOpen}>
-        <List aria-hidden className="size-3.5 shrink-0" />
-        <span data-slot="plan-review-entry-title" className="text-caption-1-medium shrink-0">
+        <List aria-hidden className="m-plan-review-entry__key-icon" />
+        <span data-slot="plan-review-entry-title" className="m-plan-review-entry__key-title">
           {t('chat.plan.title')}
         </span>
-        {revision && <span className="text-caption-1-regular">{revision}</span>}
+        {revision && <span className="m-plan-review-entry__key-revision">{revision}</span>}
         {statusChip}
       </BubbleBlockButton>
     )
@@ -331,11 +315,11 @@ export function PlanReviewEntryView({
         // The column and the info ring of a block still waiting on the reader
         // (`BubbleBlockButton`'s `navigate`), as a block rather than a button:
         // it holds buttons of its own now.
-        className={cx(BUBBLE_BLOCK, 'flex w-full flex-col gap-2 px-3 py-2.5 ring-1 ring-status-info/40 ring-inset')}
+        className={BUBBLE_BLOCK + ' m-plan-review-entry__bubble'}
       >
-        <div data-slot="plan-review-entry-heading" className="flex min-w-0 items-center gap-2 text-caption-1-medium">
-          <List aria-hidden className="size-3.5 shrink-0 text-text-secondary" />
-          <span data-slot="plan-review-entry-title" className="shrink-0">
+        <div data-slot="plan-review-entry-heading" className="m-plan-review-entry__bubble-heading">
+          <List aria-hidden className="m-plan-review-entry__bubble-icon" />
+          <span data-slot="plan-review-entry-title" className="m-plan-review-entry__bubble-title">
             {t('chat.plan.title')}
           </span>
           {revision}
@@ -348,33 +332,21 @@ export function PlanReviewEntryView({
   }
 
   return (
-    <div
-      data-slot="plan-review-entry"
-      data-status={status}
-      className={cx(
-        // Same edge rule as CHAT_TOOL_CARD: a card in the transcript sits on
-        // `--surface` and is invisible in the dark theme without a ring.
-        'my-3 flex flex-col gap-3 rounded-xl bg-background-primary-default p-4 text-body-regular shadow-card ring-1 ring-inset',
-        pending ? 'ring-status-info/40' : 'ring-border-button-default',
-      )}
-    >
-      <div data-slot="plan-review-entry-heading" className="flex min-w-0 items-center gap-2">
-        <List aria-hidden className="size-4 shrink-0 text-text-secondary" />
-        <span data-slot="plan-review-entry-title" className="shrink-0 text-body-medium text-text-primary">
+    <div data-slot="plan-review-entry" data-status={status} className="m-plan-review-entry__card">
+      <div data-slot="plan-review-entry-heading" className="m-plan-review-entry__card-heading">
+        <List aria-hidden className="m-plan-review-entry__card-icon" />
+        <span data-slot="plan-review-entry-title" className="m-plan-review-entry__card-title">
           {t('chat.plan.title')}
         </span>
-        {revision && <span className="text-body-2-regular">{revision}</span>}
+        {revision && <span className="m-plan-review-entry__card-revision">{revision}</span>}
         {statusChip}
       </div>
       {excerpt}
       {pending ? (
         actions
       ) : (
-        <div className="flex items-center gap-3">
-          <p
-            data-slot="plan-review-entry-description"
-            className="min-w-0 flex-1 text-caption-1-regular text-text-secondary"
-          >
+        <div className="m-plan-review-entry__history">
+          <p data-slot="plan-review-entry-description" className="m-plan-review-entry__history-description">
             {t('chat.plan.reviewHistory')}
           </p>
           <Button size="sm" variant="secondary" onPress={onOpen}>

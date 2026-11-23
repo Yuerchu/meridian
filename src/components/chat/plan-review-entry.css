@@ -3,4 +3,208 @@
     flex-shrink: 0;
     margin-inline-start: auto;
   }
+
+  .m-plan-review-entry__revision {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-plan-review-entry__excerpt {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    cursor: pointer;
+    border: 0;
+    border-radius: var(--radius-item);
+    background-color: var(--surface);
+    padding: 0.625rem var(--space-3);
+    text-align: start;
+    outline: none;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-plan-review-entry__excerpt[data-hovered]:not([data-disabled]) {
+    background-color: var(--surface-muted);
+  }
+
+  .m-plan-review-entry__excerpt[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-plan-review-entry__excerpt-title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-body-medium);
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .m-plan-review-entry__excerpt-line {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-small);
+    color: var(--text-secondary);
+  }
+
+  .m-plan-review-entry__actions,
+  .m-plan-review-entry__feedback {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review-entry__feedback-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review-entry__deciding {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-plan-review-entry__description {
+    margin: 0;
+    font: var(--text-small);
+  }
+
+  .m-plan-review-entry__error {
+    margin: 0;
+    font: var(--text-small);
+    color: var(--danger-fg);
+  }
+
+  .m-plan-review-entry__action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review-entry__key-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .m-plan-review-entry__key-title {
+    flex-shrink: 0;
+    font: var(--text-caption);
+    font-weight: 500;
+  }
+
+  .m-plan-review-entry__key-revision {
+    font: var(--text-caption);
+  }
+
+  .m-plan-review-entry__bubble {
+    display: flex;
+    width: 100%;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: 0.625rem var(--space-3);
+    box-shadow:
+      var(--bubble-shadow, none),
+      inset 0 0 0 1px color-mix(in oklch, var(--accent) 40%, transparent);
+  }
+
+  .m-plan-review-entry__bubble-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+    font: var(--text-caption);
+    font-weight: 500;
+  }
+
+  .m-plan-review-entry__bubble-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-plan-review-entry__bubble-title {
+    flex-shrink: 0;
+  }
+
+  /* Same edge rule as CHAT_TOOL_CARD: a card in the transcript sits on
+     --surface and is invisible in the dark theme without a ring. */
+  .m-plan-review-entry__card {
+    margin-block: var(--space-3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border-radius: var(--radius-item);
+    background-color: var(--surface);
+    padding: var(--space-4);
+    font: var(--text-body);
+    box-shadow:
+      var(--shadow-raised),
+      inset 0 0 0 1px var(--border-strong);
+  }
+
+  .m-plan-review-entry__card[data-status='pending'] {
+    box-shadow:
+      var(--shadow-raised),
+      inset 0 0 0 1px color-mix(in oklch, var(--accent) 40%, transparent);
+  }
+
+  .m-plan-review-entry__card-heading {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review-entry__card-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-plan-review-entry__card-title {
+    flex-shrink: 0;
+    font: var(--text-body-medium);
+    color: var(--text);
+  }
+
+  .m-plan-review-entry__card-revision {
+    font: var(--text-small);
+  }
+
+  .m-plan-review-entry__history {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .m-plan-review-entry__history-description {
+    margin: 0;
+    min-width: 0;
+    flex: 1;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  :root[data-motion='reduced'] .m-plan-review-entry__excerpt {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-plan-review-entry__excerpt {
+      transition: none;
+    }
+  }
 }

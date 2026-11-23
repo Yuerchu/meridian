@@ -1,4 +1,158 @@
 @layer components {
+  .m-markdown {
+    max-width: none;
+    color: var(--bubble-ink, var(--text));
+    font: var(--text-body);
+    line-height: 1.625;
+  }
+
+  .m-markdown__block > :first-child {
+    margin-block-start: 0;
+  }
+
+  .m-markdown__block > :last-child {
+    margin-block-end: 0;
+  }
+
+  .m-markdown__block:not(:empty) ~ .m-markdown__block:not(:empty) {
+    margin-block-start: var(--space-3);
+  }
+
+  .m-markdown h1,
+  .m-markdown h2,
+  .m-markdown h3,
+  .m-markdown h4,
+  .m-markdown h5,
+  .m-markdown h6 {
+    color: var(--text);
+    font-weight: 600;
+    margin-block: 0;
+  }
+
+  .m-markdown h1 {
+    font: var(--text-title-2);
+  }
+
+  .m-markdown h2 {
+    font: var(--text-title-3);
+  }
+
+  .m-markdown h3 {
+    font: var(--text-headline);
+  }
+
+  .m-markdown h4,
+  .m-markdown h5,
+  .m-markdown h6 {
+    font: var(--text-body-medium);
+    font-weight: 600;
+  }
+
+  .m-markdown p {
+    color: var(--bubble-ink, var(--text));
+    line-height: 1.625;
+  }
+
+  .m-markdown strong,
+  .m-markdown b {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .m-markdown a {
+    color: var(--accent-strong);
+    text-decoration: none;
+  }
+
+  .m-markdown a:hover {
+    text-decoration: underline;
+  }
+
+  .m-markdown ul,
+  .m-markdown ol {
+    list-style-position: outside;
+    padding-inline-start: var(--space-5);
+    margin-block: 0;
+  }
+
+  .m-markdown ul {
+    list-style-type: disc;
+  }
+
+  .m-markdown ol {
+    list-style-type: decimal;
+  }
+
+  .m-markdown li {
+    color: var(--bubble-ink, var(--text));
+    margin-block: var(--space-1);
+  }
+
+  .m-markdown li > ul,
+  .m-markdown li > ol {
+    margin-block-start: var(--space-1);
+  }
+
+  .m-markdown li::marker {
+    color: var(--text-secondary);
+  }
+
+  /* Inline code is filled with a wash of the bubble's ink over its fill, the
+     way BubbleFoldBadge is: prose is drawn inside bubbles of either speaker,
+     and a surface token cannot know which. Scoped to [data-slot='markdown-inline-code']
+     so it never touches fenced code blocks. */
+  .m-markdown [data-slot='markdown-inline-code'] {
+    border-radius: calc(var(--radius-item) - var(--space-1));
+    background-color: color-mix(
+      in oklch,
+      var(--bubble-fill, var(--bubble-assistant)),
+      var(--bubble-ink, var(--text)) 8%
+    );
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-mono);
+    font-size: var(--text-code-scale);
+  }
+
+  .m-markdown blockquote {
+    margin-block: 0;
+    margin-inline: 0;
+    padding-inline-start: var(--space-3);
+    border-inline-start: 3px solid var(--accent);
+    color: var(--text-secondary);
+  }
+
+  .m-markdown blockquote > p + p {
+    margin-block-start: var(--space-2);
+  }
+
+  .m-markdown hr {
+    margin-block: var(--space-4);
+    border: 0;
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-markdown table {
+    width: 100%;
+    border-collapse: collapse;
+    color: var(--text);
+    font: var(--text-small);
+  }
+
+  .m-markdown th {
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border-strong);
+    color: var(--text);
+    font: var(--text-small-medium);
+    font-weight: 600;
+    text-align: start;
+  }
+
+  .m-markdown td {
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border);
+    color: var(--text);
+  }
+
   .m-markdown-content__placeholder {
     position: absolute;
     inset: 0;
@@ -15,5 +169,152 @@
   .m-markdown-content__file-icon {
     width: var(--icon-sm);
     height: var(--icon-sm);
+  }
+
+  .m-markdown-content__code-block {
+    margin-block: var(--space-3);
+    border-radius: var(--radius-item);
+  }
+
+  .m-markdown-content__code-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+  }
+
+  .m-markdown-content__code-language {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-markdown-content__copy {
+    margin-inline-start: auto;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-markdown-content__copy {
+      position: relative;
+      overflow: visible;
+    }
+
+    .m-markdown-content__copy::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+
+  .m-markdown-content__table {
+    margin-block: var(--space-3);
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .m-markdown-content__url {
+    word-break: break-all;
+  }
+
+  .m-markdown-content__paragraph[data-trailed] {
+    display: flow-root;
+  }
+
+  .m-markdown-content__trailer-inline {
+    float: right;
+    margin-inline-start: var(--space-2);
+    margin-block-start: 0.375rem;
+  }
+
+  .m-markdown-content__trailer-block {
+    display: flex;
+    justify-content: flex-end;
+    margin-block-start: var(--space-1);
+  }
+
+  .m-markdown-content__image-frame {
+    position: relative;
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    margin-block: var(--space-3);
+    overflow: hidden;
+    border-radius: var(--radius-item);
+    background-color: color-mix(in oklch, var(--surface-muted) 20%, transparent);
+  }
+
+  .m-markdown-content__image-frame:not([data-loaded]) {
+    min-width: 6rem;
+    min-height: 6rem;
+  }
+
+  .m-markdown-content__image {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 70svh;
+    object-fit: contain;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-markdown-content__image-frame:not([data-loaded]) .m-markdown-content__image {
+    opacity: 0;
+  }
+
+  .m-markdown-content__blocked-image {
+    display: block;
+    max-width: 100%;
+    margin-block: var(--space-3);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-radius: var(--radius-item);
+    background-color: color-mix(in oklch, var(--surface-muted) 30%, transparent);
+    padding: var(--space-2) var(--space-3);
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-markdown-content__sticker {
+    width: 7.5rem;
+    height: 7.5rem;
+  }
+
+  .m-markdown-content__cursor {
+    display: inline-block;
+    width: var(--space-2);
+    height: var(--space-4);
+    margin-inline-start: 2px;
+    background-color: currentColor;
+    color: var(--text-secondary);
+    animation: m-markdown-cursor-blink var(--dur-shimmer) var(--ease-standard) infinite;
+  }
+
+  @keyframes m-markdown-cursor-blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  :root[data-motion='reduced'] .m-markdown-content__image {
+    transition: none;
+  }
+
+  :root[data-motion='reduced'] .m-markdown-content__cursor {
+    animation: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-markdown-content__image {
+      transition: none;
+    }
+
+    :root:not([data-motion='standard']) .m-markdown-content__cursor {
+      animation: none;
+    }
   }
 }

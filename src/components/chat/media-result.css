@@ -1,6 +1,99 @@
 @layer components {
+  .m-media-result {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .m-media-result .ui-attachment-list {
+    align-items: flex-start;
+  }
+
+  .m-media-result__image-frame {
+    position: relative;
+    display: block;
+    width: fit-content;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: var(--radius-item);
+    background-color: color-mix(in oklch, var(--surface-muted) 20%, transparent);
+  }
+
+  .m-media-result__image-frame:not([data-loaded]) {
+    min-width: 6rem;
+    min-height: 6rem;
+  }
+
+  .m-media-result__image {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 16rem;
+    object-fit: contain;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-media-result__image-frame:not([data-loaded]) .m-media-result__image {
+    opacity: 0;
+  }
+
+  :root[data-motion='reduced'] .m-media-result__image {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-media-result__image {
+      transition: none;
+    }
+  }
+
   .m-media-result__placeholder {
     position: absolute;
     inset: 0;
+  }
+
+  .m-media-result__image-button {
+    display: block;
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-item);
+    background: transparent;
+    cursor: zoom-in;
+    outline: none;
+  }
+
+  .m-media-result__image-button[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-media-result__video {
+    display: block;
+    max-width: 100%;
+    max-height: 20rem;
+    border-radius: var(--radius-item);
+    background-color: var(--surface-muted);
+  }
+
+  .m-media-result__audio {
+    display: block;
+    max-width: 100%;
+  }
+
+  .m-media-result__file-button {
+    display: block;
+    max-width: 16rem;
+    padding: 0;
+    border: 0;
+    border-radius: var(--radius-item);
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+    outline: none;
+  }
+
+  .m-media-result__file-button[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
   }
 }

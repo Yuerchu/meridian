@@ -1,0 +1,56 @@
+@layer components {
+  .m-todo-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+
+  .m-todo-list__item {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    font: var(--text-caption);
+  }
+
+  .m-todo-list__icon {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+  }
+
+  .m-todo-list__icon[data-status='completed'] {
+    color: var(--success-fg);
+  }
+
+  .m-todo-list__icon[data-status='in_progress'] {
+    color: var(--info-fg);
+  }
+
+  .m-todo-list__icon[data-status='pending'] {
+    color: var(--text-secondary);
+  }
+
+  .m-todo-list__item-icon {
+    margin-block-start: 1px;
+  }
+
+  .m-todo-list__content {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-todo-list__content[data-status='completed'] {
+    color: var(--text-secondary);
+    text-decoration: line-through;
+  }
+
+  .m-todo-list__content[data-status='in_progress'] {
+    font: var(--text-caption);
+    font-weight: 500;
+    color: var(--text);
+  }
+
+  .m-todo-list__content[data-status='pending'] {
+    color: var(--text-secondary);
+  }
+}

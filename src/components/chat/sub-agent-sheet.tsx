@@ -1,9 +1,10 @@
 import './sub-agent-sheet.css'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { ErrorAlert } from '@/components/ui/error-alert'
-import { Sheet } from '@/components/base'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTurns } from '@/hooks/use-turns'
 import { ChatTranscript } from './chat-transcript'
@@ -37,6 +38,9 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
   const session = useConversationStore((s) => s.sessions[conversationId])
   const [load, setLoad] = React.useState<'loading' | 'loaded' | 'failed'>('loading')
   const [attempt, setAttempt] = React.useState(0)
+
+  // The library's Drawer does not know about the back gesture.
+  useHistoryLevel(true, onClose)
 
   React.useEffect(() => {
     let cancelled = false
@@ -73,79 +77,75 @@ function SubAgentSheet({ request, onClose }: { request: SubAgentSheetRequest; on
   const failed = load === 'failed'
 
   return (
-    <Sheet isOpen placement="right" onOpenChange={(open) => !open && onClose()} isDismissable>
-      <Sheet.Backdrop>
-        <Sheet.Content className="w-full sm:max-w-2xl">
-          <Sheet.Dialog className="flex h-full min-h-0 flex-col">
-            <Sheet.Header className="pe-14">
-              <Sheet.Heading className="truncate" onPointerEnter={titleIfTruncated}>
-                {request.title}
-              </Sheet.Heading>
-              <p data-slot="sub-agent-sheet-kind" className="mt-1 text-caption-1-regular text-text-secondary">
-                {t(`chat.subAgent.${request.kind}`)}
+    <Drawer
+      isOpen
+      side="right"
+      size="lg"
+      onOpenChange={(open) => !open && onClose()}
+      isDismissable
+      heading={
+        <span className="m-sub-agent-sheet__title" onPointerEnter={titleIfTruncated}>
+          {request.title}
+        </span>
+      }
+      description={
+        <span data-slot="sub-agent-sheet-kind" className="m-sub-agent-sheet__kind">
+          {t(`chat.subAgent.${request.kind}`)}
+        </span>
+      }
+    >
+      <div className="m-sub-agent-sheet__body">
+        {failed && (
+          // The read's own failure, not the session's last action error:
+          // that one belongs to whatever the run was doing, and a stale
+          // one standing in for "why could this not be loaded" is the
+          // wrong reason given confidently.
+          <ErrorAlert
+            data-slot="sub-agent-sheet-error"
+            className="m-sub-agent-sheet__error"
+            title={t('chat.subAgent.loadFailed')}
+            message={session?.loadError ?? t('chat.subAgent.loadFailed')}
+            onRetry={() => setAttempt((n) => n + 1)}
+          />
+        )}
+        {ready ? (
+          <ChatTranscript
+            turns={turns}
+            conversationId={conversationId}
+            streaming={streaming}
+            scrollToBottomLabel={t('chat.scrollToBottom')}
+            emptyState={
+              <p data-slot="sub-agent-sheet-empty" className="m-sub-agent-sheet__empty">
+                {t('chat.tool.panel.processEmpty')}
               </p>
-              <Sheet.CloseTrigger aria-label={t('common.close')} />
-            </Sheet.Header>
-            <Sheet.Body data-sheet-no-drag className="flex min-h-0 flex-1 flex-col overflow-hidden p-0">
-              {failed && (
-                // The read's own failure, not the session's last action error:
-                // that one belongs to whatever the run was doing, and a stale
-                // one standing in for "why could this not be loaded" is the
-                // wrong reason given confidently.
-                <ErrorAlert
-                  data-slot="sub-agent-sheet-error"
-                  className="m-4 mb-0"
-                  title={t('chat.subAgent.loadFailed')}
-                  message={session?.loadError ?? t('chat.subAgent.loadFailed')}
-                  onRetry={() => setAttempt((n) => n + 1)}
-                />
-              )}
-              {ready ? (
-                <ChatTranscript
-                  turns={turns}
-                  conversationId={conversationId}
-                  streaming={streaming}
-                  scrollToBottomLabel={t('chat.scrollToBottom')}
-                  emptyState={
-                    <p
-                      data-slot="sub-agent-sheet-empty"
-                      className="px-6 py-8 text-center text-body-regular text-text-secondary"
-                    >
-                      {t('chat.tool.panel.processEmpty')}
-                    </p>
-                  }
-                />
-              ) : failed ? null : (
-                // Not while it is failing: a skeleton is a promise that
-                // something is on its way, and the notice above has just said
-                // it is not.
-                <div
-                  data-slot="sub-agent-sheet-loading"
-                  role="status"
-                  aria-busy="true"
-                  aria-label={t('chat.tool.panel.processLoading')}
-                  className="m-sub-agent-sheet__loading"
-                >
-                  <div className="m-sub-agent-sheet__outgoing-placeholder">
-                    <Skeleton shape="rect" width="100%" height="2.5rem" />
-                  </div>
-                  <Skeleton shape="rect" width="100%" height="6rem" />
-                  <Skeleton shape="rect" width="83.33%" height="4rem" />
-                </div>
-              )}
-            </Sheet.Body>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+            }
+          />
+        ) : failed ? null : (
+          // Not while it is failing: a skeleton is a promise that
+          // something is on its way, and the notice above has just said
+          // it is not.
+          <div
+            data-slot="sub-agent-sheet-loading"
+            role="status"
+            aria-busy="true"
+            aria-label={t('chat.tool.panel.processLoading')}
+            className="m-sub-agent-sheet__loading"
+          >
+            <div className="m-sub-agent-sheet__outgoing-placeholder">
+              <Skeleton shape="rect" width="100%" height="2.5rem" />
+            </div>
+            <Skeleton shape="rect" width="100%" height="6rem" />
+            <Skeleton shape="rect" width="83.33%" height="4rem" />
+          </div>
+        )}
+      </div>
+    </Drawer>
   )
 }
 
 export function SubAgentSheetProvider({ children }: { children: React.ReactNode }) {
   const [request, setRequest] = React.useState<SubAgentSheetRequest | null>(null)
   const close = React.useCallback(() => setRequest(null), [])
-  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`. It
-  // closes through `onOpenChange`, which is `close`.
   const value = React.useMemo(() => ({ open: setRequest }), [])
   return (
     <SubAgentSheetContext value={value}>
