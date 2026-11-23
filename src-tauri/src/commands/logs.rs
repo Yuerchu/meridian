@@ -222,13 +222,7 @@ pub async fn set_log_level(app: tauri::AppHandle, request: LogLevelUpdateRequest
     services
         .db
         .write(async |tx| {
-            db::sea::ops::preference::set_preference(
-                tx,
-                logging::LEVEL_PREFERENCE_KEY,
-                request.level.as_str(),
-                now_ms(),
-            )
-            .await
+            db::sea::ops::preference::set(tx, logging::LEVEL_PREFERENCE_KEY, request.level.as_str(), now_ms()).await
         })
         .await
         .map_err(|e| e.to_string())

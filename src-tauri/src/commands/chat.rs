@@ -690,7 +690,7 @@ pub struct ChatStartRequest {
     pub fast: RequiredNullable<bool>,
     pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
     pub voice: RequiredNullable<bool>,
-    pub context_refs: RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>,
+    pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
     /// Conversations the user dragged into the composer, as bare ids. Not part
     /// of `context_refs`: a dragged thread has no `@` marker in the visible
     /// text, so the reconcile-against-the-message contract cannot apply — the
@@ -747,7 +747,6 @@ pub async fn start_chat(app: tauri::AppHandle, request: ChatStartRequest) -> Res
         context_refs: RequiredNullable(context_refs),
         conversation_refs: RequiredNullable(conversation_refs),
     } = request;
-    let context_refs = context_refs.map(|refs| refs.into_iter().map(Into::into).collect());
     // Decided here rather than inside, so the failure path below can name the
     // turn it is closing without depending on how far the run got.
     //
@@ -942,7 +941,7 @@ pub(crate) async fn verify_plan_review_workspace(
     // card's worktree rather than its project's path.
     let (current_project_id, current_project_path) = db
         .read(async |tx| {
-            let conversation = db::sea::ops::conversation::get_conversation(tx, conversation_id)
+            let conversation = db::sea::ops::conversation::get(tx, conversation_id)
                 .await?
                 .ok_or_else(|| db::sea::DbErr::RecordNotFound(format!("conversation {conversation_id}")))?;
             let path = match meridian_core::workspace::configured_dir_in(tx, conversation_id).await {
@@ -1083,7 +1082,7 @@ async fn chat_inner(
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = services
         .db
         .read(async |tx| {
-            let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = db::sea::ops::conversation::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             let effective_aid = select_turn_setting(origin, assistant_id.as_deref(), conv.assistant_id.as_deref());
@@ -1095,13 +1094,13 @@ async fn chat_inner(
             // wins; this is the fallback, not a lock. An assistant or project
             // that cannot be read is none, as before.
             let assistant = match effective_aid {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
             let assistant = conv.pin_model(assistant);
-            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let history = db::sea::ops::message::list(tx, &conversation_id).await?;
             let project = match conv.project_id.as_deref() {
-                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                Some(pid) => db::sea::ops::project::get(tx, pid).await.ok().flatten(),
                 None => None,
             };
             // Where the turn works: the resolver's answer, not the project's
@@ -1655,10 +1654,10 @@ async fn chat_inner(
         services
             .db
             .read(async |tx| {
-                let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                let Some(conv) = db::sea::ops::conversation::get(tx, &conversation_id).await? else {
                     return Ok(Err(format!("conversation {conversation_id} not found")));
                 };
-                let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+                let history = db::sea::ops::message::list(tx, &conversation_id).await?;
                 Ok::<_, db::sea::DbErr>(Ok(db::sea::ops::message::active_context(
                     &history,
                     conv.head_message_id.as_deref(),
@@ -1780,8 +1779,8 @@ async fn chat_inner(
         services
             .db
             .write(async |tx| {
-                db::sea::ops::message::append_message(tx, row, parent_cursor.as_deref()).await?;
-                db::sea::ops::emoji::link_stickers_in_content(tx, &user_msg_id, text).await?;
+                db::sea::ops::message::append(tx, row, parent_cursor.as_deref()).await?;
+                db::sea::ops::emoji::link_emojis_in_content(tx, &user_msg_id, text).await?;
                 db::sea::ops::message_context_item::insert_prepared(tx, &user_msg_id, &prepared_context, now).await?;
                 if let Some(queued) = &queued {
                     // Refuses an item somebody else already took, or that has
@@ -1812,10 +1811,10 @@ async fn chat_inner(
     let sleep_enabled = {
         // pool-read-before-write: whether to keep the machine awake guards none
         // of the writes that follow it in this turn.
-        let stored = db::sea::ops::preference::get_preference(&services.db, "sleep_inhibitor.enabled")
+        let stored = db::sea::ops::preference::get(&services.db, "sleep_inhibitor.enabled")
             .await
             .map_err(|error| error.to_string())?;
-        db::sea::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
+        db::sea::ops::preference::parse_bool("sleep_inhibitor.enabled", stored.as_deref(), true)?
     };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of

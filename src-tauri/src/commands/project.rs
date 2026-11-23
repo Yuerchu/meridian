@@ -84,7 +84,7 @@ async fn update_project_unless_plan_barrier(
     expected_conversation_ids: &[String],
     changeset: ProjectChangeset,
 ) -> Result<GuardedProjectMutation<project::Model>, DbErr> {
-    let current = project_ops::get_project(tx, project_id)
+    let current = project_ops::get(tx, project_id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound(format!("project `{project_id}`")))?;
     if path_changes(&current, &changeset) != expected_path_change {
@@ -93,7 +93,7 @@ async fn update_project_unless_plan_barrier(
     if expected_path_change && let Some(refused) = project_barrier(tx, project_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
-    project_ops::update_project(tx, project_id, changeset)
+    project_ops::update(tx, project_id, changeset)
         .await
         .map(GuardedProjectMutation::Applied)
 }
@@ -121,7 +121,7 @@ async fn delete_project_unless_plan_barrier(
     if live > 0 {
         return Ok(GuardedProjectMutation::LiveWorktrees(live));
     }
-    project_ops::delete_project(tx, project_id)
+    project_ops::delete(tx, project_id)
         .await
         .map(|_| GuardedProjectMutation::Applied(()))
 }
@@ -142,9 +142,7 @@ fn finish_guarded_project_mutation<T>(result: GuardedProjectMutation<T>) -> Resu
 
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<ProjectListResponse, String> {
-    let rows = project_ops::list_projects(&app.services().db)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = project_ops::list(&app.services().db).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
@@ -167,7 +165,7 @@ pub async fn create_project(
     };
     app.services()
         .db
-        .write(async |tx| project_ops::create_project(tx, row).await)
+        .write(async |tx| project_ops::create(tx, row).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
@@ -188,7 +186,7 @@ pub async fn update_project(
     };
     // pool-read-before-write: decides only whether to take leases; the write
     // decides again on the row it locks and refuses on any difference.
-    let current = project_ops::get_project(&services.db, &request.id)
+    let current = project_ops::get(&services.db, &request.id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("project `{}` was not found", request.id))?;
@@ -270,7 +268,7 @@ mod tests {
     }
 
     async fn stored_path(sea: &db::sea::cap::Db) -> Option<String> {
-        project_ops::get_project(sea, "project-1").await.unwrap().unwrap().path
+        project_ops::get(sea, "project-1").await.unwrap().unwrap().path
     }
 
     /// Deleting a project deletes its board cards, and a card's worktree is on
@@ -284,8 +282,8 @@ mod tests {
 
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
-            project_ops::create_project(tx, project_row()).await?;
-            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-1"), 1).await?;
+            project_ops::create(tx, project_row()).await?;
+            db::sea::ops::conversation::create(tx, "c1", None, None, Some("project-1"), 1).await?;
             board_task::insert(
                 tx,
                 &board_task::BoardTaskInsert {
@@ -321,7 +319,7 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(refused, GuardedProjectMutation::LiveWorktrees(1)));
-        assert!(project_ops::get_project(&sea, "project-1").await.unwrap().is_some());
+        assert!(project_ops::get(&sea, "project-1").await.unwrap().is_some());
 
         sea.write(async |tx| board_task::clear_worktree(tx, "t1", 3).await)
             .await
@@ -337,9 +335,8 @@ mod tests {
     async fn project_path_update_and_delete_are_blocked_by_a_referenced_plan_review() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
-            project_ops::create_project(tx, project_row()).await?;
-            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, Some("project-1"), 1)
-                .await?;
+            project_ops::create(tx, project_row()).await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, Some("project-1"), 1).await?;
             db::sea::ops::plan_review::seed_pending_native_review(
                 tx,
                 "conversation-1",
@@ -365,7 +362,7 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(deleted, GuardedProjectMutation::PlanReviewBarrier));
-        assert!(project_ops::get_project(&sea, "project-1").await.unwrap().is_some());
+        assert!(project_ops::get(&sea, "project-1").await.unwrap().is_some());
 
         let stale = sea
             .write(async |tx| delete_project_unless_plan_barrier(tx, "project-1", &[]).await)
@@ -395,11 +392,11 @@ mod tests {
     #[tokio::test]
     async fn a_path_that_moved_after_the_caller_looked_is_not_written_back_unguarded() {
         let sea = db::sea::sea_test_db().await;
-        sea.write(async |tx| project_ops::create_project(tx, project_row()).await)
+        sea.write(async |tx| project_ops::create(tx, project_row()).await)
             .await
             .unwrap();
         // The caller read "A" and asked for "A"; someone has since moved it.
-        sea.write(async |tx| project_ops::update_project(tx, "project-1", move_to("B")).await)
+        sea.write(async |tx| project_ops::update(tx, "project-1", move_to("B")).await)
             .await
             .unwrap();
 

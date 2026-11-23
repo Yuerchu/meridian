@@ -188,17 +188,16 @@ pub async fn update_memory(app: tauri::AppHandle, request: MemoryUpdateRequest) 
         .write(async |tx| {
             // The length check reads the row it guards in the same write.
             if let Some(content) = &changeset.content {
-                let Some(existing) = mem_ops::get_memory(tx, &id).await? else {
+                let Some(existing) = mem_ops::get(tx, &id).await? else {
                     return Ok(Err(format!("memory `{id}` not found")));
                 };
                 let checked =
-                    mem_ops::validate_memory(tx, existing.scope_type, &existing.scope_id, &existing.key, content)
-                        .await?;
+                    mem_ops::validate(tx, existing.scope_type, &existing.scope_id, &existing.key, content).await?;
                 if let Err(refused) = checked {
                     return Ok(Err(refused));
                 }
             }
-            mem_ops::update_memory(tx, &id, changeset).await.map(Ok)
+            mem_ops::update(tx, &id, changeset).await.map(Ok)
         })
         .await
         .map_err(|e| e.to_string())?
@@ -212,14 +211,14 @@ pub async fn delete_memories(app: tauri::AppHandle, request: MemoryDeleteRequest
     if permanent {
         app.services()
             .db
-            .write(async |tx| mem_ops::purge_memories(tx, &ids).await)
+            .write(async |tx| mem_ops::purge(tx, &ids).await)
             .await
             .map(|n| n as usize)
             .map_err(|e| e.to_string())
     } else {
         app.services()
             .db
-            .write(async |tx| mem_ops::soft_delete_memories(tx, &ids, DeletedBy::Admin, now_ms()).await)
+            .write(async |tx| mem_ops::soft_delete(tx, &ids, DeletedBy::Admin, now_ms()).await)
             .await
             .map(|n| n as usize)
             .map_err(|e| e.to_string())
@@ -270,7 +269,7 @@ pub async fn update_memory_subject(app: tauri::AppHandle, request: MemorySubject
 pub async fn restore_memories(app: tauri::AppHandle, request: MemoryRestoreRequest) -> Result<usize, String> {
     app.services()
         .db
-        .write(async |tx| mem_ops::restore_memories(tx, &request.ids, now_ms()).await)
+        .write(async |tx| mem_ops::restore(tx, &request.ids, now_ms()).await)
         .await
         .map(|n| n as usize)
         .map_err(|e| e.to_string())

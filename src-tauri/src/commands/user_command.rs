@@ -630,7 +630,7 @@ async fn prepare(
     services
         .db
         .write(async |tx| {
-            let Some(conversation) = sea_ops::conversation::get_conversation(tx, conversation_id).await? else {
+            let Some(conversation) = sea_ops::conversation::get(tx, conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             let existing = sea_ops::message::find_by_turn_and_source(tx, conversation_id, turn_id, SOURCE).await?;
@@ -649,7 +649,7 @@ async fn prepare(
                         turn_id: Some(turn_id.to_string()),
                         ..sea_ops::message::new_row(&id, conversation_id, "user", &visible, now_ms())
                     };
-                    sea_ops::message::append_message(tx, row, conversation.head_message_id.as_deref())
+                    sea_ops::message::append(tx, row, conversation.head_message_id.as_deref())
                         .await?
                         .id
                 }

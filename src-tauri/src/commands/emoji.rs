@@ -104,8 +104,8 @@ pub async fn list_emoji_packs(
 ) -> Result<EmojiPackListResponse, String> {
     let services = app.services();
     let rows = match request.assistant_id.0.as_deref() {
-        Some(assistant_id) => pack_ops::list_packs_for_assistant(&services.db, assistant_id).await,
-        None => pack_ops::list_packs(&services.db).await,
+        Some(assistant_id) => pack_ops::list_for_assistant(&services.db, assistant_id).await,
+        None => pack_ops::list(&services.db).await,
     }
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -133,7 +133,7 @@ pub async fn create_emoji_pack(
     emoji::ensure_pack_dir(&services.paths.data_dir, &row.id)?;
     services
         .db
-        .write(async |tx| pack_ops::create_pack(tx, row).await)
+        .write(async |tx| pack_ops::create(tx, row).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
@@ -146,10 +146,10 @@ pub async fn delete_emoji_pack(app: tauri::AppHandle, request: EmojiPackDeleteRe
     // The built-in check and the delete share one write lock.
     let refused = services
         .db
-        .write(async |tx| match pack_ops::get_pack(tx, &id).await? {
+        .write(async |tx| match pack_ops::get(tx, &id).await? {
             None => Ok(Some(format!("emoji pack `{id}` not found"))),
             Some(pack) if pack.is_builtin.get() => Ok(Some("Cannot delete built-in emoji pack".to_owned())),
-            Some(_) => pack_ops::delete_pack(tx, &id).await.map(|_| None),
+            Some(_) => pack_ops::delete(tx, &id).await.map(|_| None),
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -165,7 +165,7 @@ pub async fn list_emojis(app: tauri::AppHandle, request: EmojiListRequest) -> Re
     let services = app.services();
     let rows = match request.filter {
         EmojiListFilter::Pack { pack_id } => emoji_ops::list_by_pack(&services.db, &pack_id).await,
-        EmojiListFilter::Search { query } => emoji_ops::search_emojis(&services.db, &query).await,
+        EmojiListFilter::Search { query } => emoji_ops::search(&services.db, &query).await,
     }
     .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -218,7 +218,7 @@ pub async fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -
             .write(async |tx| {
                 let mut row = row;
                 row.sort_order = i32::try_from(emoji_ops::count_by_pack(tx, &row.pack_id).await?).unwrap_or(i32::MAX);
-                emoji_ops::create_emoji(tx, row).await
+                emoji_ops::create(tx, row).await
             })
             .await
             .map_err(|e| e.to_string())?;
@@ -234,10 +234,10 @@ pub async fn delete_emoji(app: tauri::AppHandle, request: EmojiDeleteRequest) ->
     let gone = services
         .db
         .write(async |tx| {
-            let Some(sticker) = emoji_ops::get_emoji(tx, &id).await? else {
+            let Some(sticker) = emoji_ops::get(tx, &id).await? else {
                 return Ok(None);
             };
-            emoji_ops::delete_emoji(tx, &id).await.map(|_| Some(sticker))
+            emoji_ops::delete(tx, &id).await.map(|_| Some(sticker))
         })
         .await
         .map_err(|e| e.to_string())?
@@ -252,7 +252,7 @@ pub async fn update_emoji(app: tauri::AppHandle, request: EmojiUpdateRequest) ->
     match request.action {
         EmojiUpdateAction::Rename { name } => services
             .db
-            .write(async |tx| emoji_ops::rename_emoji(tx, &request.id, &name).await)
+            .write(async |tx| emoji_ops::rename(tx, &request.id, &name).await)
             .await
             .map(Into::into)
             .map_err(|e| e.to_string()),
@@ -281,7 +281,7 @@ async fn resolve_suggest_model(
     secrets: &std::sync::Arc<meridian_core::secrets::SecretsManager>,
     db: &meridian_core::db::sea::cap::Db,
 ) -> Result<agent::ResolvedProvider, String> {
-    let raw = db::sea::ops::preference::get_preference(db, emoji::SUGGEST_MODEL_PREFERENCE)
+    let raw = db::sea::ops::preference::get(db, emoji::SUGGEST_MODEL_PREFERENCE)
         .await
         .map_err(|e| e.to_string())?;
     match emoji::parse_suggest_model(raw)? {
@@ -293,7 +293,7 @@ async fn resolve_suggest_model(
                 })
         }
         None => {
-            let assistant = db::sea::ops::assistant::get_default_assistant(db)
+            let assistant = db::sea::ops::assistant::get_default(db)
                 .await
                 .map_err(|e| e.to_string())?;
             agent::resolve_provider_config(secrets, db, assistant.as_ref()).await
@@ -313,7 +313,7 @@ pub async fn invoke_emoji_semantics_suggestion(
     // pool-read-before-write: a model call sits between the read and the write,
     // which must not hold the write lock; the write only fills the suggestion
     // fields and leaves what a person confirmed alone.
-    let sticker = emoji_ops::get_emoji(&services.db, &id)
+    let sticker = emoji_ops::get(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{id}` not found"))?;
@@ -392,13 +392,13 @@ pub async fn set_emoji_pack_assignment(
     if request.assigned {
         services
             .db
-            .write(async |tx| pack_ops::assign_pack(tx, &request.assistant_id, &request.pack_id, now_ms()).await)
+            .write(async |tx| pack_ops::assign(tx, &request.assistant_id, &request.pack_id, now_ms()).await)
             .await
             .map_err(|e| e.to_string())
     } else {
         services
             .db
-            .write(async |tx| pack_ops::unassign_pack(tx, &request.assistant_id, &request.pack_id).await)
+            .write(async |tx| pack_ops::unassign(tx, &request.assistant_id, &request.pack_id).await)
             .await
             .map_err(|e| e.to_string())
     }
@@ -408,7 +408,7 @@ pub async fn set_emoji_pack_assignment(
 pub async fn get_emoji_file_url(app: tauri::AppHandle, request: EmojiFileUrlReadRequest) -> Result<String, String> {
     let emoji_id = request.emoji_id;
     let services = app.services();
-    let e = emoji_ops::get_emoji(&services.db, &emoji_id)
+    let e = emoji_ops::get(&services.db, &emoji_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{emoji_id}` not found"))?;

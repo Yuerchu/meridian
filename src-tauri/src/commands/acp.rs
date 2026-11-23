@@ -22,7 +22,7 @@ pub struct AcpPromptSendRequest {
     pub conversation_id: String,
     pub message: String,
     pub turn_id: RequiredNullable<String>,
-    pub context_refs: RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>,
+    pub context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
     /// Conversations dragged into the composer, as ids — validated on their
     /// own terms, since a drag leaves no `@` marker for reconcile to hold.
     pub conversation_refs: RequiredNullable<Vec<String>>,
@@ -282,9 +282,8 @@ pub async fn send_acp_prompt(app: tauri::AppHandle, request: AcpPromptSendReques
         );
     }
     let parsed = meridian_core::workspace::reference::parse_message_references(&message);
-    let provided_refs: Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest> =
-        context_refs.0.unwrap_or_default().into_iter().map(Into::into).collect();
-    let references = meridian_core::workspace::reference::reconcile_references(provided_refs, parsed)?;
+    let references =
+        meridian_core::workspace::reference::reconcile_references(context_refs.0.unwrap_or_default(), parsed)?;
     let context = if references.is_empty() {
         Vec::new()
     } else {

@@ -164,9 +164,7 @@ pub struct McpToolListRequest {
 #[tauri::command]
 pub async fn list_mcp_servers(app: tauri::AppHandle) -> Result<McpServerListResponse, String> {
     let services = app.services();
-    let rows = mcp_server_ops::list_mcp_servers(&services.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = mcp_server_ops::list(&services.db).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
@@ -197,7 +195,7 @@ pub async fn create_mcp_server(
     };
     let row = services
         .db
-        .write(async |tx| mcp_server_ops::create_mcp_server(tx, row).await)
+        .write(async |tx| mcp_server_ops::create(tx, row).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.into())
@@ -223,7 +221,7 @@ pub async fn update_mcp_server(
     };
     let row = services
         .db
-        .write(async |tx| mcp_server_ops::update_mcp_server(tx, &request.id, changeset).await)
+        .write(async |tx| mcp_server_ops::update(tx, &request.id, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.into())
@@ -236,7 +234,7 @@ pub async fn delete_mcp_server(app: tauri::AppHandle, request: McpServerDeleteRe
     services.mcp.disconnect(&id).await;
     services
         .db
-        .write(async |tx| mcp_server_ops::delete_mcp_server(tx, &id).await)
+        .write(async |tx| mcp_server_ops::delete(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -246,7 +244,7 @@ pub async fn delete_mcp_server(app: tauri::AppHandle, request: McpServerDeleteRe
 pub async fn connect_mcp_server(app: tauri::AppHandle, request: McpServerConnectRequest) -> Result<(), String> {
     let id = request.id;
     let services = app.services();
-    let server = mcp_server_ops::get_mcp_server(&services.db, &id)
+    let server = mcp_server_ops::get(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("MCP server `{id}` not found"))?;
@@ -307,7 +305,7 @@ pub async fn set_mcp_tool_enabled(
     let row = services
         .db
         .write(async |tx| {
-            let server = mcp_server_ops::get_mcp_server(tx, &request.server_id)
+            let server = mcp_server_ops::get(tx, &request.server_id)
                 .await?
                 .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
             let mut names = server.disabled_tools.0.clone();
@@ -316,7 +314,7 @@ pub async fn set_mcp_tool_enabled(
             } else if !names.iter().any(|name| name == &request.tool_name) {
                 names.push(request.tool_name.clone());
             }
-            mcp_server_ops::update_mcp_server(
+            mcp_server_ops::update(
                 tx,
                 &request.server_id,
                 McpServerChangeset {

@@ -610,7 +610,7 @@ mod tests {
 
     async fn seed_pending_model_review(sea: &meridian_core::db::sea::cap::Db) {
         sea.write(async |tx| {
-            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
             db::sea::ops::plan_review::seed_pending_native_review(
                 tx,
                 "conversation-1",

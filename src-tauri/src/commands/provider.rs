@@ -66,7 +66,7 @@ async fn update_provider_unless_plan_barrier(
     if clear_cached_models {
         cached_ops::delete_by_provider(tx, provider_id).await?;
     }
-    provider_ops::update_provider(tx, provider_id, changeset)
+    provider_ops::update(tx, provider_id, changeset)
         .await
         .map(GuardedProviderMutation::Applied)
 }
@@ -79,7 +79,7 @@ async fn delete_provider_unless_plan_barrier(
     if let Some(refused) = provider_barrier(tx, provider_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
-    provider_ops::delete_provider(tx, provider_id)
+    provider_ops::delete(tx, provider_id)
         .await
         .map(|_| GuardedProviderMutation::Applied(()))
 }
@@ -497,7 +497,7 @@ pub async fn get_codex_auth_status(_app: tauri::AppHandle) -> Result<CodexAuthSt
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<ProviderListResponse, String> {
-    let rows = provider_ops::list_providers(&app.services().db)
+    let rows = provider_ops::list(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()
@@ -612,7 +612,7 @@ pub async fn create_provider(
     };
     services
         .db
-        .write(async |tx| provider_ops::create_provider(tx, row).await)
+        .write(async |tx| provider_ops::create(tx, row).await)
         .await
         .map_err(|e| e.to_string())?
         .try_into()
@@ -669,7 +669,7 @@ pub async fn update_provider(
     let guarded = services
         .db
         .write(async |tx| {
-            let Some(current) = provider_ops::get_provider(tx, &request.id).await? else {
+            let Some(current) = provider_ops::get(tx, &request.id).await? else {
                 return Ok(Err(format!("provider `{}` does not exist", request.id)));
             };
             let checked = meridian_core::provider::registry::validate_stored_contract(
@@ -903,7 +903,7 @@ pub async fn list_provider_models(
     // pool-read-before-write: the address is read for the network call; the write
     // after it replaces the cached list whole and depends on nothing read here.
     let (provider_type, base_url, api_format, transport_profile, credential_kind) = {
-        let p = provider_ops::get_provider(&services.db, &provider_id)
+        let p = provider_ops::get(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
@@ -984,7 +984,7 @@ pub async fn get_provider_balance(
     let secrets = services.secrets.clone();
 
     let (catalog_id, provider_type, base_url) = {
-        let p = provider_ops::get_provider(&services.db, &provider_id)
+        let p = provider_ops::get(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?
             .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
@@ -1025,7 +1025,7 @@ pub async fn get_provider_capabilities(
     let (provider_type, api_format, transport_profile, codex_request_shape, overrides) = services
         .db
         .read(async |tx| {
-            let Some(p) = db::sea::ops::provider::get_provider(tx, &provider_id).await? else {
+            let Some(p) = db::sea::ops::provider::get(tx, &provider_id).await? else {
                 return Ok(Err(format!("provider {provider_id} not found")));
             };
             // The patch is the model's, not this provider's door to it: the
@@ -1084,7 +1084,7 @@ mod response_contract_tests {
 
     async fn seed_provider_with_pending_review(db: &meridian_core::db::sea::cap::Db) {
         db.write(async |tx| {
-            db::sea::ops::provider::create_provider(
+            db::sea::ops::provider::create(
                 tx,
                 db::entity::provider::Model {
                     id: "provider-1".into(),
@@ -1105,7 +1105,7 @@ mod response_contract_tests {
                 },
             )
             .await?;
-            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
             db::sea::ops::plan_review::seed_pending_native_review(
                 tx,
                 "conversation-1",
@@ -1181,7 +1181,7 @@ mod response_contract_tests {
         let sea = db::sea::sea_test_db().await;
         seed_provider_with_pending_review(&sea).await;
         sea.write(async |tx| {
-            provider_ops::update_provider(
+            provider_ops::update(
                 tx,
                 "provider-1",
                 ProviderChangeset {
@@ -1216,7 +1216,7 @@ mod response_contract_tests {
             .unwrap();
         assert!(matches!(result, GuardedProviderMutation::PlanReviewBarrier));
         assert_eq!(
-            provider_ops::get_provider(&sea, "provider-1")
+            provider_ops::get(&sea, "provider-1")
                 .await
                 .unwrap()
                 .unwrap()
@@ -1249,7 +1249,7 @@ mod response_contract_tests {
             .await
             .unwrap();
         assert!(matches!(updated, GuardedProviderMutation::PlanReviewBarrier));
-        let stored = provider_ops::get_provider(&sea, "provider-1").await.unwrap().unwrap();
+        let stored = provider_ops::get(&sea, "provider-1").await.unwrap().unwrap();
         assert_eq!(stored.base_url, "https://old.invalid");
 
         let deleted = sea
@@ -1257,7 +1257,7 @@ mod response_contract_tests {
             .await
             .unwrap();
         assert!(matches!(deleted, GuardedProviderMutation::PlanReviewBarrier));
-        assert!(provider_ops::get_provider(&sea, "provider-1").await.unwrap().is_some());
+        assert!(provider_ops::get(&sea, "provider-1").await.unwrap().is_some());
 
         // A conversation set that moved since the leases were taken stops the
         // write too, ahead of the review check.
@@ -1292,7 +1292,7 @@ mod response_contract_tests {
                 codex_request_shape: SqlBool::FALSE,
                 local_backend: None,
             };
-            provider_ops::create_provider(tx, row).await?;
+            provider_ops::create(tx, row).await?;
             cached_ops::replace_models(tx, "provider-1", &[("m".into(), "M".into())], 1).await
         })
         .await

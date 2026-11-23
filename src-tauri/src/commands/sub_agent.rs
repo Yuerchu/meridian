@@ -288,7 +288,7 @@ impl DesktopSubAgents {
             .ok_or("This conversation has no assistant, so there is nothing to run a sub-agent on.")?;
 
         let key = default_model_preference(spec.kind);
-        let configured = db::sea::ops::preference::get_preference(&self.services.db, &key)
+        let configured = db::sea::ops::preference::get(&self.services.db, &key)
             .await
             .ok()
             .flatten();
@@ -381,7 +381,7 @@ impl DesktopSubAgents {
             .db
             .write(async |tx| {
                 db::sea::ops::conversation::insert(tx, conversation).await?;
-                db::sea::ops::message::append_message(tx, prompt, None).await?;
+                db::sea::ops::message::append(tx, prompt, None).await?;
                 db::sea::ops::turn::begin(tx, turn_id, sub_conversation_id, TurnOrigin::SubAgent, None, now).await
             })
             .await
@@ -849,11 +849,9 @@ mod tests {
 
     async fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
         let db = meridian_core::db::sea::sea_test_db().await;
-        db.write(async |tx| {
-            meridian_core::db::sea::ops::conversation::create_conversation(tx, "sub-1", None, None, None, 1).await
-        })
-        .await
-        .unwrap();
+        db.write(async |tx| meridian_core::db::sea::ops::conversation::create(tx, "sub-1", None, None, None, 1).await)
+            .await
+            .unwrap();
         meridian_core::agent::turn_config::resolve_on(
             &db,
             &registry(),

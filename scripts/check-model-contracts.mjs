@@ -1073,7 +1073,7 @@ requireRustFields(acpCommandFile, 'AcpPromptSendRequest', {
   conversation_id: /^String$/,
   message: /^String$/,
   turn_id: /^RequiredNullable<String>$/,
-  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
 })
 requireRustFields(acpCommandFile, 'AcpSessionAttachRequest', {
   conversation_id: /^String$/,
@@ -1289,9 +1289,7 @@ requireRustFields(workspaceReferenceFile, 'WorkspaceReferenceRequest', {
   line_end: /^Option<u32>$/,
 })
 if (
-  !/#\[serde\(rename_all\s*=\s*"camelCase",\s*deny_unknown_fields\)\]\s*pub struct WorkspaceReferenceRequest\b/.test(
-    workspaceReference ?? '',
-  ) ||
+  !/#\[serde\(deny_unknown_fields\)\]\s*pub struct WorkspaceReferenceRequest\b/.test(workspaceReference ?? '') ||
   !/deserialize_with\s*=\s*"crate::events::deserialize_required_nullable"\)\]\s*pub line_start: Option<u32>/.test(
     workspaceReference ?? '',
   ) ||
@@ -1299,7 +1297,10 @@ if (
     workspaceReference ?? '',
   )
 ) {
-  add(workspaceReferenceFile, 'WorkspaceReferenceRequest 必须使用 camelCase 且要求显式 lineStart/lineEnd nullable keys')
+  add(
+    workspaceReferenceFile,
+    'WorkspaceReferenceRequest 必须使用 snake_case（无 camelCase 重命名）且要求显式 line_start/line_end nullable keys',
+  )
 }
 if (
   /pub fn reconcile_references\(\s*supplied:\s*Option</.test(workspaceReference ?? '') ||
@@ -1474,7 +1475,7 @@ requireRustFields('src-tauri/src/commands/chat.rs', 'ChatStartRequest', {
   fast: /^RequiredNullable<bool>$/,
   mode: /^RequiredNullable<meridian_core::agent::modes::ChatMode>$/,
   voice: /^RequiredNullable<bool>$/,
-  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
 })
 requireRustFields('src-tauri/src/commands/chat.rs', 'ChatStopRequest', {
   conversation_id: /^String$/,
@@ -2199,7 +2200,7 @@ requireTypescriptFields(typesFile, 'QueuedPromptInfoResponse', {
 })
 requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptCreateRequest', {
   delivery: /^Delivery$/,
-  context_refs: /^RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>$/,
+  context_refs: /^RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>$/,
 })
 requireRustFields('src-tauri/src/commands/queue.rs', 'QueuedPromptUpdateRequest', {
   delivery: /^Delivery$/,

@@ -931,7 +931,7 @@ async fn append_native_review_result(
         tool_outcome: Some(outcome.to_owned()),
         ..db::sea::ops::message::new_row(&message_id, conversation_id, "tool", payload, now)
     };
-    db::sea::ops::message::append_message(tx, row, Some(assistant_message_id)).await?;
+    db::sea::ops::message::append(tx, row, Some(assistant_message_id)).await?;
     let changed = db::sea::ops::turn::finish_waiting_review(tx, turn_id, TurnStatus::Done, None, now).await?;
     if changed != 1 {
         return Err(ops::PlanReviewStoreError::InvalidState(
@@ -1507,7 +1507,7 @@ mod tests {
     async fn direct_native_send_is_refused_by_a_durable_pending_review() {
         let db = db::sea::sea_test_db().await;
         db.write(async |tx| {
-            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await?;
+            db::sea::ops::conversation::create(tx, "c1", None, None, None, 1).await?;
             let appended = first_revision(tx, "c1").await;
             submit_native(tx, &appended, None, "m1", "exit-1", 5).await;
             Ok::<_, db::sea::DbErr>(())
@@ -1525,7 +1525,7 @@ mod tests {
         let runtime = db
             .write(async |tx| {
                 for (id, path) in [("project-a", "A"), ("project-b", "B")] {
-                    db::sea::ops::project::create_project(
+                    db::sea::ops::project::create(
                         tx,
                         db::entity::project::Model {
                             id: id.into(),
@@ -1541,7 +1541,7 @@ mod tests {
                     )
                     .await?;
                 }
-                db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-a"), 1).await?;
+                db::sea::ops::conversation::create(tx, "c1", None, None, Some("project-a"), 1).await?;
                 first_revision(tx, "c1").await;
                 // Bypass command guards to simulate external/old-code corruption;
                 // the continuation endpoint is the final defensive check.
@@ -1578,7 +1578,7 @@ mod tests {
 
         let db = db::sea::sea_test_db().await;
         db.write(async |tx| {
-            db::sea::ops::project::create_project(
+            db::sea::ops::project::create(
                 tx,
                 db::entity::project::Model {
                     id: "project-a".into(),
@@ -1593,7 +1593,7 @@ mod tests {
                 },
             )
             .await?;
-            db::sea::ops::conversation::create_conversation(tx, "c1", None, None, Some("project-a"), 1).await?;
+            db::sea::ops::conversation::create(tx, "c1", None, None, Some("project-a"), 1).await?;
             board_task::insert(
                 tx,
                 &board_task::BoardTaskInsert {
@@ -1655,7 +1655,7 @@ mod tests {
         };
         let (first, delivery) = sea
             .write(async |tx| {
-                db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await?;
+                db::sea::ops::conversation::create(tx, "c1", None, None, None, 1).await?;
                 let first = first_revision(tx, "c1").await;
                 db::sea::ops::turn::begin(tx, "t1", "c1", meridian_core::turn::TurnOrigin::Desktop, None, 4).await?;
                 let first_review = submit_native(tx, &first, Some("t1"), "m1", "exit-1", 5).await;

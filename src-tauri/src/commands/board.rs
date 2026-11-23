@@ -137,7 +137,7 @@ pub(crate) async fn create(
         .db
         .write(async |tx| {
             // The project read under the write that files the card under it.
-            if project_ops::get_project(tx, &request.project_id).await?.is_none() {
+            if project_ops::get(tx, &request.project_id).await?.is_none() {
                 return Ok(Err(format!("project `{}` not found", request.project_id)));
             }
             let row = board_task::insert(
@@ -249,8 +249,8 @@ async fn claim_native(
     conversation_id: &str,
     dir: &str,
 ) -> Result<(), DbErr> {
-    let default_assistant = assistant_ops::get_default_assistant(tx).await?;
-    conversation_ops::create_conversation(
+    let default_assistant = assistant_ops::get_default(tx).await?;
+    conversation_ops::create(
         tx,
         conversation_id,
         Some(&task.title),
@@ -276,7 +276,7 @@ pub(crate) async fn start(
     // write that claims the card admits only one that still has no
     // conversation (`set_started`), so a card started in between is refused
     // there and this start undoes its worktree.
-    let project = project_ops::get_project(&services.db, &task.project_id)
+    let project = project_ops::get(&services.db, &task.project_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("project `{}` not found", task.project_id))?;
@@ -341,7 +341,7 @@ pub(crate) async fn start(
                 services.acp.close(&id).await;
                 let _ = services
                     .db
-                    .write(async |tx| conversation_ops::delete_conversation(tx, &id).await)
+                    .write(async |tx| conversation_ops::delete(tx, &id).await)
                     .await;
                 undo_worktree().await;
                 return Err(e.to_string());
@@ -352,7 +352,7 @@ pub(crate) async fn start(
 
     announce(services, Some(&task.id));
     let _ = services.events.emit_conversation_updated(&conversation_id);
-    let conversation = conversation_ops::get_conversation(&services.db, &conversation_id)
+    let conversation = conversation_ops::get(&services.db, &conversation_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("conversation `{conversation_id}` not found"))?;
@@ -450,7 +450,7 @@ mod tests {
         let db = sea_test_db().await;
         let card = db
             .write(async |tx| {
-                project_ops::create_project(
+                project_ops::create(
                     tx,
                     meridian_core::db::entity::project::Model {
                         id: "p".into(),
@@ -504,7 +504,7 @@ mod tests {
             (card.stage, card.conversation_id.as_deref(), card.agent_kind),
             (BoardStage::Running, Some("c1"), Some(BoardAgentKind::Native))
         );
-        let conversation = conversation_ops::get_conversation(&db, "c1").await.unwrap().unwrap();
+        let conversation = conversation_ops::get(&db, "c1").await.unwrap().unwrap();
         assert_eq!(
             (conversation.title.as_deref(), conversation.project_id.as_deref()),
             (Some("fix the login loop"), Some("p"))
@@ -528,6 +528,6 @@ mod tests {
             .unwrap();
         let second = db.write(async |tx| claim_native(tx, &card, "c2", "/r.worktrees/t1").await);
         assert!(second.await.is_err());
-        assert_eq!(conversation_ops::get_conversation(&db, "c2").await.unwrap(), None);
+        assert_eq!(conversation_ops::get(&db, "c2").await.unwrap(), None);
     }
 }

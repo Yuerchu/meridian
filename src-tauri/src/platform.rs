@@ -186,7 +186,7 @@ mod saf_root_response_tests {
 
 #[cfg(target_os = "android")]
 async fn load_saf_roots(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<SafRootEntry>, String> {
-    let json = meridian_core::db::sea::ops::preference::get_preference(db, "android.saf_roots")
+    let json = meridian_core::db::sea::ops::preference::get(db, "android.saf_roots")
         .await
         .map_err(|e| e.to_string())?;
     match json {
@@ -199,13 +199,8 @@ async fn load_saf_roots(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<SafR
 async fn save_saf_roots(db: &meridian_core::db::sea::cap::Db, roots: &[SafRootEntry]) -> Result<(), String> {
     let json = serde_json::to_string(roots).map_err(|e| e.to_string())?;
     db.write(async |tx| {
-        meridian_core::db::sea::ops::preference::set_preference(
-            tx,
-            "android.saf_roots",
-            &json,
-            meridian_core::util::now_ms(),
-        )
-        .await
+        meridian_core::db::sea::ops::preference::set(tx, "android.saf_roots", &json, meridian_core::util::now_ms())
+            .await
     })
     .await
     .map_err(|e| e.to_string())

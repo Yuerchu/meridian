@@ -9,26 +9,6 @@ use crate::ServicesExt;
 use meridian_core::db;
 use meridian_core::workspace::{self, WorkspaceRoot};
 
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WorkspaceReferenceRequest {
-    pub path: String,
-    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
-    pub line_start: Option<u32>,
-    #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
-    pub line_end: Option<u32>,
-}
-
-impl From<WorkspaceReferenceRequest> for workspace::reference::WorkspaceReferenceRequest {
-    fn from(request: WorkspaceReferenceRequest) -> Self {
-        Self {
-            path: request.path,
-            line_start: request.line_start,
-            line_end: request.line_end,
-        }
-    }
-}
-
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkspaceRootRequest {
@@ -479,7 +459,7 @@ pub async fn open_workspace_editor(app: tauri::AppHandle, request: WorkspaceEdit
         WorkspaceRoot::Ok { root, .. } => PathBuf::from(root),
         _ => return Err("workspace unavailable".into()),
     };
-    let template = db::sea::ops::preference::get_preference(&services.db, "files.editor_command")
+    let template = db::sea::ops::preference::get(&services.db, "files.editor_command")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -575,7 +555,7 @@ async fn require_reference_directory(
             .await?
             .ok_or_else(|| "no_path".to_string()),
         (None, Some(project_id)) => {
-            let project = db::sea::ops::project::get_project(&app.services().db, &project_id)
+            let project = db::sea::ops::project::get(&app.services().db, &project_id)
                 .await
                 .map_err(|e| e.to_string())?
                 .ok_or_else(|| format!("project {project_id} not found"))?;

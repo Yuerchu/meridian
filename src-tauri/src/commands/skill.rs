@@ -42,7 +42,7 @@ pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let services = app.services();
-    skill_ops::list_skills(&services.db)
+    skill_ops::list(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -90,7 +90,7 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
     let row = services
         .db
         .write(async |tx| match display_name {
-            Some(name) => skill_ops::update_skill(
+            Some(name) => skill_ops::update(
                 tx,
                 &dir_name,
                 SkillChangeset {
@@ -101,7 +101,7 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
             )
             .await
             .map(Some),
-            None => skill_ops::get_skill(tx, &dir_name).await,
+            None => skill_ops::get(tx, &dir_name).await,
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -123,7 +123,7 @@ async fn existing_skill(
     services: &meridian_core::services::Services,
     dir_name: &str,
 ) -> Result<meridian_core::db::entity::skill::Model, String> {
-    skill_ops::get_skill(&services.db, dir_name)
+    skill_ops::get(&services.db, dir_name)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("skill '{dir_name}' is not in the index"))
@@ -165,7 +165,7 @@ pub async fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) ->
     };
     services
         .db
-        .write(async |tx| skill_ops::update_skill(tx, &dir_name, changeset).await)
+        .write(async |tx| skill_ops::update(tx, &dir_name, changeset).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
@@ -186,7 +186,7 @@ pub async fn delete_skill(app: tauri::AppHandle, request: SkillDeleteRequest) ->
     skills::delete_skill_dir(&root, &dir_name)?;
     services
         .db
-        .write(async |tx| skill_ops::delete_skill(tx, &dir_name).await)
+        .write(async |tx| skill_ops::delete(tx, &dir_name).await)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())

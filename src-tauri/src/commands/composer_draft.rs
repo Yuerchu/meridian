@@ -162,7 +162,7 @@ async fn read_stored(db: &impl Snapshot, slot: &DraftSlot) -> Result<Option<Stor
 
     let mut conversation_refs = Vec::with_capacity(content.conversation_refs.len());
     for id in &content.conversation_refs {
-        let found = conversation::get_conversation(db, id).await?;
+        let found = conversation::get(db, id).await?;
         conversation_refs.push(ComposerDraftConversationRefInfoResponse {
             id: id.clone(),
             exists: found.is_some(),
@@ -174,7 +174,7 @@ async fn read_stored(db: &impl Snapshot, slot: &DraftSlot) -> Result<Option<Stor
         // The foreign key clears this when the sticker goes, so a dangling id
         // is not a state to tolerate.
         Some(id) => Some(
-            emoji::get_emoji(db, id)
+            emoji::get(db, id)
                 .await?
                 .ok_or_else(|| DbErr::RecordNotFound(format!("sticker `{id}` on a composer draft")))?
                 .into(),

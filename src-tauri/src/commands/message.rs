@@ -813,10 +813,10 @@ pub async fn read_message_context_item(
         .db
         .read(async |tx| {
             const OFF_BRANCH: &str = "context item is not on the active conversation branch";
-            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+            let conv = conversation_ops::get(tx, &conversation_id)
                 .await?
                 .ok_or_else(|| ReadError::Contract(OFF_BRANCH.into()))?;
-            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            let history = message_ops::list(tx, &conversation_id).await?;
             let active = message_ops::active_context(&history, conv.head_message_id.as_deref());
             let active_ids = active.path.into_iter().map(|row| row.id).collect::<Vec<_>>();
             let item = db::sea::ops::message_context_item::list_for_messages(tx, &active_ids)
@@ -869,10 +869,10 @@ async fn read_tree_with_conversation(
     db: &impl Snapshot,
     conversation_id: &str,
 ) -> Result<(db::entity::conversation::Model, MessageTreeResponse), ReadError> {
-    let conv = conversation_ops::get_conversation(db, conversation_id)
+    let conv = conversation_ops::get(db, conversation_id)
         .await?
         .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
-    let history = message_ops::list_messages(db, conversation_id).await?;
+    let history = message_ops::list(db, conversation_id).await?;
     let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
     let branches = message_ops::branch_points(&history, &ctx.path)
         .into_iter()
@@ -1674,10 +1674,10 @@ pub async fn export_conversation(
     let (path, system_prompt) = services
         .db
         .read(async |tx| {
-            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+            let conv = conversation_ops::get(tx, &conversation_id)
                 .await?
                 .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
-            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            let history = message_ops::list(tx, &conversation_id).await?;
             // The active path only. Exporting every branch would interleave rival
             // answers to the same question into one transcript, and the DPO pairing
             // below walks backwards for a prompt — across a fork it would pick up a
@@ -1689,7 +1689,7 @@ pub async fn export_conversation(
             let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
             let system_prompt = match conv.assistant_id.as_deref() {
                 Some(assistant_id) => {
-                    db::sea::ops::assistant::get_assistant(tx, assistant_id)
+                    db::sea::ops::assistant::get(tx, assistant_id)
                         .await?
                         .ok_or_else(|| format!("cannot read export assistant {assistant_id}: it no longer exists"))?
                         .system_prompt
@@ -2141,7 +2141,7 @@ mod tests {
     use meridian_core::turn::TurnOrigin;
 
     async fn seed(db: &Db) {
-        db.write(async |tx| conversation_ops::create_conversation(tx, "c1", Some("t"), None, None, 1).await)
+        db.write(async |tx| conversation_ops::create(tx, "c1", Some("t"), None, None, 1).await)
             .await
             .unwrap();
     }
@@ -2838,7 +2838,7 @@ mod tests {
                 turn_id: Some("t1".into()),
                 ..message_ops::new_row("m1", "c1", "user", "hi", 1)
             };
-            message_ops::append_message(tx, row, None).await
+            message_ops::append(tx, row, None).await
         })
         .await
         .unwrap();

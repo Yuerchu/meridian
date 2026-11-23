@@ -28,7 +28,7 @@ pub struct QueuedPromptCreateRequest {
     conversation_id: String,
     content: String,
     delivery: Delivery,
-    context_refs: RequiredNullable<Vec<crate::commands::workspace::WorkspaceReferenceRequest>>,
+    context_refs: RequiredNullable<Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest>>,
     /// Conversations dragged into the composer, frozen at enqueue time like
     /// the workspace references above.
     conversation_refs: RequiredNullable<Vec<String>>,
@@ -138,9 +138,8 @@ pub async fn create_queued_prompt(
     let services = app.services();
     let id = uuid::Uuid::new_v4().to_string();
     let parsed = meridian_core::workspace::reference::parse_message_references(&content);
-    let provided_refs: Vec<meridian_core::workspace::reference::WorkspaceReferenceRequest> =
-        context_refs.unwrap_or_default().into_iter().map(Into::into).collect();
-    let references = meridian_core::workspace::reference::reconcile_references(provided_refs, parsed)?;
+    let references =
+        meridian_core::workspace::reference::reconcile_references(context_refs.unwrap_or_default(), parsed)?;
     if !references.is_empty() && delivery == Delivery::Interject {
         return Err("workspace references can only be queued as follow-up messages".into());
     }
@@ -359,11 +358,9 @@ mod tests {
     }
 
     async fn conversation(db: &meridian_core::db::sea::cap::Db) {
-        db.write(async |tx| {
-            meridian_core::db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await
-        })
-        .await
-        .unwrap();
+        db.write(async |tx| meridian_core::db::sea::ops::conversation::create(tx, "c1", None, None, None, 1).await)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]

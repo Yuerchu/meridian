@@ -52,12 +52,12 @@ pub async fn invoke_conversation_compaction(
     let (assistant, keep_recent) = services
         .db
         .read(async |tx| {
-            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = conversation_ops::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             // An assistant that cannot be read is no assistant, as before.
             let assistant = match conv.assistant_id.as_deref() {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
             let keep_recent = assistant
@@ -134,10 +134,8 @@ pub async fn list_conversations(
     request: ConversationListRequest,
 ) -> Result<ConversationListResponse, String> {
     let rows = match request.project_id.0.as_deref() {
-        Some(project_id) => {
-            conversation_ops::list_conversations_by_project(&app.services().db, project_id, request.archived).await
-        }
-        None => conversation_ops::list_conversations(&app.services().db, request.archived).await,
+        Some(project_id) => conversation_ops::list_by_project(&app.services().db, project_id, request.archived).await,
+        None => conversation_ops::list(&app.services().db, request.archived).await,
     }
     .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()
@@ -161,8 +159,8 @@ pub async fn create_conversation(
         .services()
         .db
         .write(async |tx| {
-            let default_assistant = db::sea::ops::assistant::get_default_assistant(tx).await?;
-            conversation_ops::create_conversation(
+            let default_assistant = db::sea::ops::assistant::get_default(tx).await?;
+            conversation_ops::create(
                 tx,
                 &id,
                 request.title.0.as_deref(),
@@ -217,7 +215,7 @@ async fn update_conversation_unless_plan_barrier(
     now: i64,
 ) -> Result<Option<db::entity::conversation::Model>, DbErr> {
     let id = &patch.id;
-    let current = conversation_ops::get_conversation(tx, id)
+    let current = conversation_ops::get(tx, id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))?;
     if patch.needs_turn_guard() && plan_review_ops::has_conversation_barrier(tx, id).await? {
@@ -230,15 +228,11 @@ async fn update_conversation_unless_plan_barrier(
         let canonical = mode.and_then(meridian_core::agent::modes::ChatMode::canonical_storage);
         conversation_ops::update_mode(tx, id, canonical, now).await?;
     }
-    if let Some(is_pinned) = patch.is_pinned
-        && current.is_pinned.get() != is_pinned
-    {
-        conversation_ops::toggle_pin(tx, id, now).await?;
+    if let Some(is_pinned) = patch.is_pinned {
+        conversation_ops::set_pinned(tx, id, is_pinned, now).await?;
     }
-    if let Some(is_archived) = patch.is_archived
-        && current.is_archived.get() != is_archived
-    {
-        conversation_ops::toggle_archive(tx, id, now).await?;
+    if let Some(is_archived) = patch.is_archived {
+        conversation_ops::set_archived(tx, id, is_archived, now).await?;
     }
     if let Some(ref assistant_id) = patch.assistant_id {
         conversation_ops::update_assistant(tx, id, assistant_id.clone(), now).await?;
@@ -257,7 +251,7 @@ async fn update_conversation_unless_plan_barrier(
     if let Some(ref project_id) = patch.project_id {
         conversation_ops::update_project(tx, id, project_id.clone(), now).await?;
     }
-    let updated = conversation_ops::get_conversation(tx, id)
+    let updated = conversation_ops::get(tx, id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))?;
     Ok(Some(updated))
@@ -462,7 +456,7 @@ pub(crate) async fn delete_conversation_tree(
         }
     }
 
-    sea.write(async |tx| conversation_ops::delete_conversation(tx, &id).await)
+    sea.write(async |tx| conversation_ops::delete(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
@@ -694,17 +688,17 @@ pub async fn get_conversation_context(
     let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = services
         .db
         .read(async |tx| {
-            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = conversation_ops::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             // An assistant or project that cannot be read is none, as before.
             let assistant = match conv.assistant_id.as_deref() {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
-            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let history = db::sea::ops::message::list(tx, &conversation_id).await?;
             let project = match conv.project_id.as_deref() {
-                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                Some(pid) => db::sea::ops::project::get(tx, pid).await.ok().flatten(),
                 None => None,
             };
             let project_path = project.as_ref().and_then(|p| p.path.clone());
@@ -849,7 +843,7 @@ mod tests {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             for (id, path) in [("project-a", "A"), ("project-b", "B")] {
-                db::sea::ops::project::create_project(
+                db::sea::ops::project::create(
                     tx,
                     project_entity::Model {
                         id: id.into(),
@@ -866,7 +860,7 @@ mod tests {
                 .await?;
             }
             for id in ["conversation-1", "conversation-2"] {
-                conversation_ops::create_conversation(tx, id, None, None, Some("project-a"), 1).await?;
+                conversation_ops::create(tx, id, None, None, Some("project-a"), 1).await?;
             }
             db::sea::ops::plan_review::seed_pending_native_review(
                 tx,
@@ -908,10 +902,7 @@ mod tests {
             let refused = apply_conversation_update(&sea, &patch).await.unwrap_err();
             assert_eq!(refused, PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER);
         }
-        let held = conversation_ops::get_conversation(&sea, "conversation-1")
-            .await
-            .unwrap()
-            .unwrap();
+        let held = conversation_ops::get(&sea, "conversation-1").await.unwrap().unwrap();
         assert_eq!(
             (
                 held.project_id.as_deref(),
@@ -925,10 +916,7 @@ mod tests {
         for patch in patches("conversation-2") {
             apply_conversation_update(&sea, &patch).await.unwrap();
         }
-        let free = conversation_ops::get_conversation(&sea, "conversation-2")
-            .await
-            .unwrap()
-            .unwrap();
+        let free = conversation_ops::get(&sea, "conversation-2").await.unwrap().unwrap();
         assert_eq!(
             (
                 free.project_id.as_deref(),
@@ -1167,7 +1155,7 @@ mod tests {
             created_at: 1000,
             updated_at: 1000,
         };
-        db.write(async |tx| meridian_core::db::sea::ops::memory::upsert_memory(tx, row).await)
+        db.write(async |tx| meridian_core::db::sea::ops::memory::upsert(tx, row).await)
             .await
             .unwrap();
         db
