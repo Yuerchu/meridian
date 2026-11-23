@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -60,8 +62,13 @@ describe('TurnStatusIcon', () => {
   /// may have left something half-done, and is coloured to say so.
   it('colours a crash as a warning and a stop as nothing', () => {
     const { container, rerender } = render(<TurnStatusIcon status="crashed" />)
-    expect(container.querySelector('svg')).toHaveClass('text-status-warning-soft-foreground')
+    const icon = container.querySelector('svg')!
+    expect(icon).toHaveAttribute('data-status', 'crashed')
+    expect(icon).toHaveClass('m-turn-status-icon')
     rerender(<TurnStatusIcon status="interrupted" />)
-    expect(container.querySelector('svg')).toHaveClass('text-text-secondary')
+    expect(container.querySelector('svg')).toHaveAttribute('data-status', 'interrupted')
+    const css = readFileSync(resolve(__dirname, 'turn-status.css'), 'utf8')
+    expect(css).toMatch(/\[data-status='crashed'\]\s*\{[^}]*color:\s*var\(--warning-fg\)/)
+    expect(css).toMatch(/\.m-turn-status-icon\s*\{[^}]*color:\s*var\(--text-secondary\)/)
   })
 })

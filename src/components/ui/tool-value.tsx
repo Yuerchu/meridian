@@ -1,9 +1,9 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { cx } from '@/utils/cx'
 import { fieldLabel, isInlineValue, parseStructured } from '@/lib/tool-value'
 import { titleIfTruncated } from '@/lib/truncation'
+import './tool-value.css'
 
 /**
  * A value of a shape nobody told us about, drawn as something to look at.
@@ -21,6 +21,10 @@ import { titleIfTruncated } from '@/lib/truncation'
  */
 
 const MAX_DEPTH = 6
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -47,41 +51,34 @@ function Scalar({ value }: { value: null | number | boolean | string }) {
   const { t } = useTranslation()
   if (value === null) {
     return (
-      <span data-slot="tool-value-null" className="text-text-secondary">
+      <span data-slot="tool-value-null" className="m-tool-value-muted">
         {t('chat.tool.value.none')}
       </span>
     )
   }
   if (typeof value === 'boolean') {
     return (
-      <span
-        data-slot="tool-value-boolean"
-        data-value={value}
-        className={cx(value ? 'text-status-success-soft-foreground' : 'text-text-secondary')}
-      >
+      <span data-slot="tool-value-boolean" data-value={value} className="m-tool-value-boolean">
         {t(value ? 'chat.tool.value.yes' : 'chat.tool.value.no')}
       </span>
     )
   }
   if (typeof value === 'number') {
     return (
-      <span data-slot="tool-value-number" className="font-mono text-text-primary tabular-nums">
+      <span data-slot="tool-value-number" className="m-tool-value-number">
         {value}
       </span>
     )
   }
   if (value === '') {
     return (
-      <span data-slot="tool-value-empty" className="text-text-secondary">
+      <span data-slot="tool-value-empty" className="m-tool-value-muted">
         {t('chat.tool.value.empty')}
       </span>
     )
   }
   return (
-    <span
-      data-slot="tool-value-string"
-      className="min-w-0 font-mono break-words text-text-primary [overflow-wrap:anywhere]"
-    >
+    <span data-slot="tool-value-string" className="m-tool-value-string">
       {value}
     </span>
   )
@@ -89,10 +86,7 @@ function Scalar({ value }: { value: null | number | boolean | string }) {
 
 function LongText({ text }: { text: string }) {
   return (
-    <pre
-      data-slot="tool-value-text"
-      className="max-h-48 min-w-0 overflow-auto rounded-md bg-background-secondary-default/40 px-2 py-1 font-mono text-caption-1-regular whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]"
-    >
+    <pre data-slot="tool-value-text" className="m-tool-value-text">
       {text}
     </pre>
   )
@@ -111,26 +105,21 @@ export function ToolFields({
   const { t } = useTranslation()
   if (entries.length === 0) {
     return (
-      <span data-slot="tool-value-empty" className="text-text-secondary">
+      <span data-slot="tool-value-empty" className="m-tool-value-muted">
         {t('chat.tool.value.empty')}
       </span>
     )
   }
   return (
-    <dl data-slot="tool-fields" className={cx('flex min-w-0 flex-col gap-1.5 text-caption-1-regular', className)}>
+    <dl data-slot="tool-fields" className={joinClasses('m-tool-fields', className)}>
       {entries.map(([key, value]) => {
         const inline = isInlineValue(value)
         return (
-          <div
-            key={key}
-            data-slot="tool-field"
-            data-inline={inline || undefined}
-            className={cx('flex min-w-0 gap-x-2', inline ? 'flex-row items-baseline' : 'flex-col gap-y-1')}
-          >
-            <dt data-slot="tool-field-label" className="shrink-0 text-text-secondary">
+          <div key={key} data-slot="tool-field" data-inline={inline || undefined} className="m-tool-field">
+            <dt data-slot="tool-field-label" className="m-tool-field__label">
               {fieldLabel(t, key)}
             </dt>
-            <dd data-slot="tool-field-value" className="min-w-0">
+            <dd data-slot="tool-field-value" className="m-tool-field__value">
               <ToolValue value={value} depth={depth + 1} />
             </dd>
           </div>
@@ -163,16 +152,12 @@ function tableShape(items: unknown[]): string[] | null {
 function Table({ items, keys }: { items: Record<string, unknown>[]; keys: string[] }) {
   const { t } = useTranslation()
   return (
-    <div data-slot="tool-value-table-scroll" className="max-h-72 min-w-0 overflow-auto">
-      <table data-slot="tool-value-table" className="w-full border-collapse text-left text-caption-1-regular">
+    <div data-slot="tool-value-table-scroll" className="m-tool-value-table-scroll">
+      <table data-slot="tool-value-table" className="m-tool-value-table">
         <thead data-slot="tool-value-table-head">
           <tr data-slot="tool-value-table-row">
             {keys.map((key) => (
-              <th
-                key={key}
-                data-slot="tool-value-table-header"
-                className="border-b border-border-button-default/50 px-2 py-1 text-caption-1-medium whitespace-nowrap text-text-secondary"
-              >
+              <th key={key} data-slot="tool-value-table-header" className="m-tool-value-table__header">
                 {fieldLabel(t, key)}
               </th>
             ))}
@@ -180,15 +165,11 @@ function Table({ items, keys }: { items: Record<string, unknown>[]; keys: string
         </thead>
         <tbody data-slot="tool-value-table-body">
           {items.map((item, i) => (
-            <tr
-              key={i}
-              data-slot="tool-value-table-row"
-              className="not-last:border-b not-last:border-border-button-default/30"
-            >
+            <tr key={i} data-slot="tool-value-table-row" className="m-tool-value-table__row">
               {keys.map((key) => {
                 const v = item[key]
                 return (
-                  <td key={key} data-slot="tool-value-table-cell" className="px-2 py-1 align-top">
+                  <td key={key} data-slot="tool-value-table-cell" className="m-tool-value-table__cell">
                     {Array.isArray(v) ? (
                       <InlineList items={v as string[]} />
                     ) : (
@@ -209,19 +190,15 @@ function InlineList({ items }: { items: string[] }) {
   const { t } = useTranslation()
   if (items.length === 0) {
     return (
-      <span data-slot="tool-value-empty" className="text-text-secondary">
+      <span data-slot="tool-value-empty" className="m-tool-value-muted">
         {t('chat.tool.value.empty')}
       </span>
     )
   }
   return (
-    <span data-slot="tool-value-chips" className="inline-flex flex-wrap gap-1">
+    <span data-slot="tool-value-chips" className="m-tool-value-chips">
       {items.map((item, i) => (
-        <span
-          key={i}
-          data-slot="tool-value-chip"
-          className="rounded-md bg-background-secondary-default/60 px-1.5 font-mono text-caption-1-regular text-text-primary"
-        >
+        <span key={i} data-slot="tool-value-chip" className="m-tool-value-chip">
           {item}
         </span>
       ))}
@@ -231,7 +208,7 @@ function InlineList({ items }: { items: string[] }) {
 
 function McpContent({ parts }: { parts: McpPart[] }) {
   return (
-    <div data-slot="tool-value-mcp" className="flex min-w-0 flex-col gap-2">
+    <div data-slot="tool-value-mcp" className="m-tool-value-mcp">
       {parts.map((part, i) => {
         if (part.type === 'text') {
           const nested = parseStructured(part.text)
@@ -248,17 +225,17 @@ function McpContent({ parts }: { parts: McpPart[] }) {
               data-slot="tool-value-image"
               alt=""
               src={`data:${part.mimeType};base64,${part.data}`}
-              className="max-h-72 max-w-full rounded-md object-contain"
+              className="m-tool-value-image"
             />
           )
         }
         return (
-          <div key={i} data-slot="tool-value-resource" className="flex min-w-0 flex-col gap-1">
+          <div key={i} data-slot="tool-value-resource" className="m-tool-value-resource">
             {part.resource.uri && (
               <span
                 data-slot="tool-value-resource-uri"
                 onPointerEnter={titleIfTruncated}
-                className="truncate font-mono text-text-secondary"
+                className="m-tool-value-resource__uri"
               >
                 {part.resource.uri}
               </span>
@@ -276,7 +253,7 @@ export function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number
   const { t } = useTranslation()
   if (depth > MAX_DEPTH) {
     return (
-      <span data-slot="tool-value-deep" className="text-text-secondary">
+      <span data-slot="tool-value-deep" className="m-tool-value-muted">
         …
       </span>
     )
@@ -289,7 +266,7 @@ export function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number
   if (Array.isArray(value)) {
     if (value.length === 0) {
       return (
-        <span data-slot="tool-value-empty" className="text-text-secondary">
+        <span data-slot="tool-value-empty" className="m-tool-value-muted">
           {t('chat.tool.value.emptyList')}
         </span>
       )
@@ -300,12 +277,13 @@ export function ToolValue({ value, depth = 0 }: { value: unknown; depth?: number
     const keys = tableShape(value)
     if (keys) return <Table items={value as Record<string, unknown>[]} keys={keys} />
     return (
-      <ol data-slot="tool-value-list" className="flex min-w-0 flex-col gap-1.5">
+      <ol data-slot="tool-value-list" className="m-tool-value-list">
         {value.map((item, i) => (
           <li
             key={i}
             data-slot="tool-value-list-item"
-            className={cx('min-w-0', isRecord(item) && 'rounded-md border border-border-button-default/50 px-2 py-1.5')}
+            data-record={isRecord(item) || undefined}
+            className="m-tool-value-list__item"
           >
             <ToolValue value={item} depth={depth + 1} />
           </li>
@@ -325,19 +303,13 @@ export function ToolTextResult({ text, className }: { text: string; className?: 
   const structured = React.useMemo(() => parseStructured(text), [text])
   if (structured !== null) {
     return (
-      <div data-slot="tool-structured-result" className={cx('max-h-96 min-w-0 overflow-auto px-3 py-2', className)}>
+      <div data-slot="tool-structured-result" className={joinClasses('m-tool-structured-result', className)}>
         <ToolValue value={structured} />
       </div>
     )
   }
   return (
-    <pre
-      data-slot="tool-text-result"
-      className={cx(
-        'max-h-72 overflow-auto px-3 py-2 font-mono text-caption-1-regular whitespace-pre-wrap text-text-primary/90 [overflow-wrap:anywhere]',
-        className,
-      )}
-    >
+    <pre data-slot="tool-text-result" className={joinClasses('m-tool-text-result', className)}>
       {text}
     </pre>
   )

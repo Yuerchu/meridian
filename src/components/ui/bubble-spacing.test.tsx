@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { TurnItem } from '@/components/chat/turn-item'
@@ -94,7 +96,7 @@ function mixedTurn() {
 }
 
 const GAP = /^(?:[a-z-]+:)*gap-/
-const VERTICAL_MARGIN = /^(?:[a-z-]+:)*-?(?:m|my|mt|mb)-/
+const VERTICAL_MARGIN = /^(?:[a-z-]+:)*-?(?:m|my|mt|mb)-(?:\d|auto|px|\[)/
 
 function classes(el: Element): string[] {
   return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
@@ -116,10 +118,12 @@ describe('spacing inside a run', () => {
     expect(stacks.length).toBeGreaterThan(5)
     expect(container.querySelector('[data-slot="bubble"][data-variant="tools-only"]')).not.toBeNull()
     for (const stack of stacks) {
-      const gaps = classes(stack).filter((c) => GAP.test(c))
-      expect({ slot: stack.getAttribute('data-slot'), gaps }).toEqual({
+      const cls = classes(stack)
+      const gaps = cls.filter((c) => GAP.test(c))
+      expect({ slot: stack.getAttribute('data-slot'), hasRunGap: cls.includes(BUBBLE_RUN_GAP), gaps }).toEqual({
         slot: stack.getAttribute('data-slot'),
-        gaps: [BUBBLE_RUN_GAP],
+        hasRunGap: true,
+        gaps: [],
       })
     }
   })
@@ -141,7 +145,7 @@ describe('spacing inside a run', () => {
 
   it('closes a run of questions up to the same gap', () => {
     // `space-y-6` (24px) between the parts of a turn, `-mt-5.5` (22px) taken
-    // back for a continuing question: 2px, which is `gap-0.5`.
+    // back for a continuing question: 2px, matching `.m-bubble-run-gap`.
     const turn = buildTurns([msg('user', { content: 'again' })])[0]
     const { container } = render(<TurnItem turn={turn} conversationId="c" questionPosition="last" />)
     const question = container.querySelector('[data-slot="turn-question"]')
@@ -149,6 +153,9 @@ describe('spacing inside a run', () => {
     const px = (cls: string) => Number(/(\d+(?:\.\d+)?)$/.exec(cls)?.[1]) * 4
     const spacing = classes(turnRoot!).find((c) => c.startsWith('space-y-'))!
     const pull = classes(question!).find((c) => c.startsWith('-mt-'))!
-    expect(px(spacing) - px(pull)).toBe(px(BUBBLE_RUN_GAP))
+    const css = readFileSync(resolve(__dirname, 'bubble.css'), 'utf8')
+    const runGapMatch = new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*(\\d+)px`).exec(css)
+    expect(runGapMatch).not.toBeNull()
+    expect(px(spacing) - px(pull)).toBe(Number(runGapMatch![1]))
   })
 })

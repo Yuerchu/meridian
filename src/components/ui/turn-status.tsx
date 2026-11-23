@@ -2,15 +2,19 @@ import * as React from 'react'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Ban, ChevronLeft, ChevronRight, CircleAlert, CircleCheck, TriangleAlert } from '@keyline-icons/react/two-tone'
 
-import { cx } from '@/utils/cx'
 // Imported rather than restated. This used to be a copy of the union in
 // `lib/turns`, structurally identical by luck, which meant a new status had to
 // be added in two places and nothing failed if it was added in one.
 import type { TurnStatus } from '@/lib/turns'
+import './turn-status.css'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /** The one glyph a turn's status is drawn as, wherever it is drawn. */
 function TurnStatusIcon({ status, className }: { status: TurnStatus; className?: string }) {
-  const shared = cx('size-3.5 shrink-0', className)
+  const iconClass = joinClasses('m-turn-status-icon', className)
   switch (status) {
     case 'streaming':
       return (
@@ -19,19 +23,19 @@ function TurnStatusIcon({ status, className }: { status: TurnStatus; className?:
         </span>
       )
     case 'awaiting-input':
-      return <CircleAlert aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
+      return <CircleAlert aria-hidden data-status={status} className={iconClass} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user
     // stopped needs no attention; one that stopped unexpectedly, part way
     // through whatever it was doing, may have left something half-done.
     case 'crashed':
-      return <TriangleAlert aria-hidden className={cx(shared, 'text-status-warning-soft-foreground')} />
+      return <TriangleAlert aria-hidden data-status={status} className={iconClass} />
     case 'interrupted':
-      return <Ban aria-hidden className={cx(shared, 'text-text-secondary')} />
+      return <Ban aria-hidden data-status={status} className={iconClass} />
     case 'empty':
-      return <Ban aria-hidden className={cx(shared, 'text-text-secondary')} />
+      return <Ban aria-hidden data-status={status} className={iconClass} />
     case 'complete':
     default:
-      return <CircleCheck aria-hidden className={cx(shared, 'text-text-secondary')} />
+      return <CircleCheck aria-hidden data-status={status} className={iconClass} />
   }
 }
 
@@ -61,27 +65,18 @@ function TurnBranchPager({
 }: TurnBranchPagerProps) {
   if (total <= 1) return null
   return (
-    // `touch-hitbox` on both arrows below: at `p-0.5` around a 14px chevron they
-    // are about 22px, and on a touch screen they are the only way to reach a
-    // regenerated or edited branch. Nothing here clips, so the expanded box
-    // survives — unlike the composer's toolbar, where the shell's
-    // `overflow: hidden` cuts it back off.
-    <div
-      data-slot="turn-branch-pager"
-      className={cx('flex items-center gap-0.5 text-caption-1-regular text-text-secondary', className)}
-      {...props}
-    >
+    <div data-slot="turn-branch-pager" className={joinClasses('m-turn-branch-pager', className)} {...props}>
       <button
         type="button"
         data-slot="turn-branch-pager-prev"
         aria-label={previousLabel}
         disabled={disabled || index <= 1}
         onClick={onPrevious}
-        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 disabled:pointer-events-none disabled:opacity-40"
+        className="m-turn-branch-pager__btn"
       >
-        <ChevronLeft aria-hidden className="size-3.5" />
+        <ChevronLeft aria-hidden className="m-turn-branch-pager__chevron" />
       </button>
-      <span data-slot="turn-branch-pager-label" className="tabular-nums">
+      <span data-slot="turn-branch-pager-label" className="m-turn-branch-pager__label">
         {index}/{total}
       </span>
       <button
@@ -90,9 +85,9 @@ function TurnBranchPager({
         aria-label={nextLabel}
         disabled={disabled || index >= total}
         onClick={onNext}
-        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring/50 disabled:pointer-events-none disabled:opacity-40"
+        className="m-turn-branch-pager__btn"
       >
-        <ChevronRight aria-hidden className="size-3.5" />
+        <ChevronRight aria-hidden className="m-turn-branch-pager__chevron" />
       </button>
     </div>
   )

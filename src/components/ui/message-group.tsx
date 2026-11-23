@@ -1,7 +1,7 @@
 import * as React from 'react'
 
-import { cx } from '@/utils/cx'
 import { BUBBLE_RUN_GAP } from './bubble'
+import './message-group.css'
 
 /**
  * A run of messages from one speaker, drawn the way a messenger draws one:
@@ -19,7 +19,9 @@ import { BUBBLE_RUN_GAP } from './bubble'
  * siblings.
  */
 
-const base = 'group/message relative flex w-full min-w-0 text-body-regular'
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /** What the person said: a column against the right edge.
  *
@@ -30,7 +32,7 @@ function MessageGroupUser({ className, ...props }: React.ComponentProps<'div'>) 
     <div
       data-slot="message-group"
       data-align="end"
-      className={cx(base, 'flex-col items-end', BUBBLE_RUN_GAP, className)}
+      className={joinClasses('m-message-group', BUBBLE_RUN_GAP, className)}
       {...props}
     />
   )
@@ -46,7 +48,12 @@ function MessageGroupUser({ className, ...props }: React.ComponentProps<'div'>) 
  *  bottom of the viewport up the run and is beside whatever is being read. */
 function MessageGroupAssistant({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div data-slot="message-group" data-align="start" className={cx(base, 'items-end gap-2', className)} {...props} />
+    <div
+      data-slot="message-group"
+      data-align="start"
+      className={joinClasses('m-message-group', className)}
+      {...props}
+    />
   )
 }
 
@@ -64,14 +71,7 @@ function MessageGroupAssistant({ className, ...props }: React.ComponentProps<'di
  */
 function MessageGroupAvatar({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="message-group-avatar"
-      className={cx(
-        'sticky bottom-2 flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-background-secondary-default',
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="message-group-avatar" className={joinClasses('m-message-group__avatar', className)} {...props} />
   )
 }
 
@@ -81,7 +81,7 @@ function MessageGroupBubbles({ className, ...props }: React.ComponentProps<'div'
   return (
     <div
       data-slot="message-group-bubbles"
-      className={cx('flex w-full min-w-0 flex-col wrap-break-word', BUBBLE_RUN_GAP, className)}
+      className={joinClasses('m-message-group__bubbles', BUBBLE_RUN_GAP, className)}
       {...props}
     />
   )
@@ -93,14 +93,7 @@ function MessageGroupBubbles({ className, ...props }: React.ComponentProps<'div'
  *  the message. */
 function MessageGroupHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="message-group-header"
-      className={cx(
-        'mb-0.5 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-button-ghost-foreground',
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="message-group-header" className={joinClasses('m-message-group__header', className)} {...props} />
   )
 }
 
@@ -108,14 +101,7 @@ function MessageGroupHeader({ className, ...props }: React.ComponentProps<'div'>
  *  where there is no hover. */
 function MessageGroupFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="message-group-footer"
-      className={cx(
-        'mt-1 flex max-w-full min-w-0 items-center gap-2 text-caption-1-medium text-text-secondary opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 pointer-coarse:opacity-100',
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="message-group-footer" className={joinClasses('m-message-group__footer', className)} {...props} />
   )
 }
 

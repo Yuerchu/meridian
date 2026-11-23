@@ -1,0 +1,31 @@
+@layer components {
+  .m-path-label {
+    display: inline-flex;
+    max-width: 100%;
+    min-width: 0;
+    font-family: var(--font-mono);
+    white-space: nowrap;
+  }
+
+  .m-path-label[data-wrap] {
+    display: inline;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .m-path-label__dir {
+    color: var(--text-secondary);
+  }
+
+  .m-path-label:not([data-wrap]) .m-path-label__dir {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-path-label__name {
+    flex-shrink: 0;
+    color: var(--text);
+  }
+}

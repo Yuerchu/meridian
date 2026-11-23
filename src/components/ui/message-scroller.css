@@ -1,0 +1,113 @@
+@layer components {
+  .m-message-scroller {
+    position: relative;
+    display: flex;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* overflow-anchor: none lets the scroller own the scroll position instead of
+     letting the browser nudge scrollTop on fractional row heights. */
+  .m-message-scroller__viewport {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    min-width: 0;
+    scrollbar-gutter: stable;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    overflow-anchor: none;
+  }
+
+  .m-message-scroller__viewport[data-autoscrolling] {
+    scrollbar-color: transparent transparent;
+  }
+
+  .m-message-scroller__content {
+    display: flex;
+    height: max-content;
+    min-height: 100%;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .m-message-scroller__item {
+    min-width: 0;
+    flex-shrink: 0;
+  }
+
+  /* content-visibility:auto crashes WebView2; keep it on Android only. */
+  .m-message-scroller__item[data-android] {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 120px;
+  }
+
+  .m-message-scroller__anchor {
+    min-width: 0;
+  }
+
+  .m-message-scroller__button-slot {
+    position: absolute;
+    inset-inline-start: 50%;
+    transform: translateX(-50%) translateY(0) scale(1);
+    transition:
+      transform var(--dur-fast) var(--ease-enter),
+      opacity var(--dur-fast) var(--ease-enter);
+  }
+
+  .m-message-scroller__button-slot:dir(rtl) {
+    transform: translateX(50%) translateY(0) scale(1);
+  }
+
+  .m-message-scroller__button-slot[data-direction='end'] {
+    bottom: var(--space-4);
+  }
+
+  .m-message-scroller__button-slot[data-direction='start'] {
+    top: var(--space-4);
+  }
+
+  .m-message-scroller__button-slot[data-active='false'] {
+    pointer-events: none;
+    opacity: 0;
+    transition-duration: var(--dur-considered);
+    transition-timing-function: var(--ease-exit);
+  }
+
+  .m-message-scroller__button-slot[data-direction='end'][data-active='false'] {
+    transform: translateX(-50%) translateY(100%) scale(0.95);
+  }
+
+  .m-message-scroller__button-slot[data-direction='start'][data-active='false'] {
+    transform: translateX(-50%) translateY(-100%) scale(0.95);
+  }
+
+  .m-message-scroller__button-slot:dir(rtl)[data-direction='end'][data-active='false'] {
+    transform: translateX(50%) translateY(100%) scale(0.95);
+  }
+
+  .m-message-scroller__button-slot:dir(rtl)[data-direction='start'][data-active='false'] {
+    transform: translateX(50%) translateY(-100%) scale(0.95);
+  }
+
+  .m-message-scroller__button-slot .ui-button {
+    --ui-button-shadow: var(--shadow-raised);
+  }
+
+  .m-message-scroller__button-slot[data-direction='start'] .ui-button svg {
+    transform: rotate(180deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-message-scroller__button-slot {
+      transition: none;
+    }
+  }
+
+  :root[data-motion='reduced'] .m-message-scroller__button-slot {
+    transition: none;
+  }
+}

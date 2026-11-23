@@ -1,0 +1,92 @@
+@layer components {
+  .m-bubble-block-button {
+    display: flex;
+    width: fit-content;
+    min-height: 36px;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    text-align: left;
+    font: var(--text-caption);
+    cursor: pointer;
+    outline: none;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-bubble-block-button:active:not(:disabled),
+  .m-bubble-block-button[data-pressed]:not([data-disabled]) {
+    background-color: color-mix(in oklch, var(--bubble-fill, var(--bubble-assistant)), var(--text) 8%);
+  }
+
+  .m-bubble-block-button:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .m-bubble-block-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .m-bubble-block-button[data-state='queued'] {
+    color: var(--text-secondary);
+  }
+
+  .m-bubble-block-button[data-state='output-error'] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
+  }
+
+  .m-bubble-block-button[data-state='requires-action'] {
+    width: 100%;
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning-fg) 50%, transparent);
+  }
+
+  .m-bubble-block-button[data-state='navigate'] {
+    width: 100%;
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 40%, transparent);
+  }
+
+  .m-bubble-fold-badge {
+    display: inline-flex;
+    height: 20px;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    border: 0;
+    border-radius: var(--radius-pill);
+    font: var(--text-caption);
+    line-height: 1;
+    color: var(--text-secondary);
+    background-color: color-mix(
+      in oklch,
+      var(--bubble-fill, var(--bubble-assistant)),
+      var(--bubble-ink, var(--text)) 6%
+    );
+    cursor: pointer;
+    outline: none;
+    user-select: none;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-bubble-fold-badge:hover,
+  .m-bubble-fold-badge[aria-expanded='true'] {
+    background-color: color-mix(
+      in oklch,
+      var(--bubble-fill, var(--bubble-assistant)),
+      var(--bubble-ink, var(--text)) 12%
+    );
+    color: var(--text);
+  }
+
+  .m-bubble-fold-badge:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+}

@@ -1,7 +1,11 @@
 import * as React from 'react'
 
-import { cx } from '@/utils/cx'
 import { splitPath } from '@/lib/paths'
+import './path-label.css'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /**
  * A path, drawn so the file's name is the part that survives.
@@ -26,19 +30,16 @@ function PathLabel({
   return (
     <span
       data-slot="path-label"
-      className={cx(
-        'max-w-full min-w-0 font-mono',
-        wrap ? 'inline whitespace-pre-wrap break-all' : 'inline-flex whitespace-nowrap',
-        className,
-      )}
+      data-wrap={wrap || undefined}
+      className={joinClasses('m-path-label', className)}
       {...props}
     >
       {dir !== '' && (
-        <span data-slot="path-dir" className={cx('text-text-secondary', !wrap && 'min-w-0 truncate')}>
+        <span data-slot="path-dir" className="m-path-label__dir">
           {dir}
         </span>
       )}
-      <span data-slot="path-name" className="shrink-0 text-text-primary">
+      <span data-slot="path-name" className="m-path-label__name">
         {name}
       </span>
     </span>

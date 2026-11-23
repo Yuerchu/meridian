@@ -1,8 +1,7 @@
 import * as React from 'react'
-import { tv, type VariantProps } from '@/components/base'
 
-import { cx } from '@/utils/cx'
 import { BUBBLE_BLOCK } from './bubble'
+import './bubble-block.css'
 
 /**
  * The parts of a bubble that are not prose.
@@ -26,52 +25,39 @@ import { BUBBLE_BLOCK } from './bubble'
  * the same thing by construction.
  */
 
+export type BubbleBlockState =
+  | 'input-streaming'
+  | 'input-available'
+  | 'queued'
+  | 'output-available'
+  | 'output-error'
+  | 'requires-action'
+  | 'navigate'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
+
 /**
  * A block that goes somewhere rather than opening something.
  *
  * Sized like a shut tool block — as wide as its content — except where it is
  * still waiting on the reader, which takes the column so it cannot be missed.
- * The ring rather than a fill for that: a filled `bg-button-primary` block is a solid
+ * The ring rather than a fill for that: a filled primary block is a solid
  * white bar in the dark theme, louder than an approval sitting beside it.
  */
-const bubbleBlockVariants = tv({
-  base: [
-    BUBBLE_BLOCK,
-    'flex w-fit min-h-9 items-center gap-2 px-3 py-2 text-left text-caption-1-regular transition-colors outline-none',
-    'data-[pressed]:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--color-text-primary)_8%)]',
-    'focus-visible:ring-2 focus-visible:ring-border-focus-ring',
-    'disabled:opacity-60',
-  ],
-  variants: {
-    state: {
-      'input-streaming': '',
-      'input-available': '',
-      queued: 'text-text-secondary',
-      'output-available': '',
-      'output-error': 'ring-1 ring-status-danger/40 ring-inset',
-      'requires-action': 'w-full ring-1 ring-status-warning/50 ring-inset',
-      /** Somewhere to go, while the page it leads to is still waiting on the
-       *  reader. Info rather than warning, matching the page. */
-      navigate: 'w-full ring-1 ring-status-info/40 ring-inset',
-    },
-  },
-  defaultVariants: {
-    state: 'input-available',
-  },
-})
-
 function BubbleBlockButton({
   state,
   className,
   ...props
-}: React.ComponentProps<'button'> & VariantProps<typeof bubbleBlockVariants>) {
+}: React.ComponentProps<'button'> & { state?: BubbleBlockState }) {
   return (
     <button
       type="button"
       data-slot="bubble-block-button"
       data-bubble-block=""
       data-state={state ?? 'input-available'}
-      className={cx(bubbleBlockVariants({ state }), className)}
+      className={joinClasses(BUBBLE_BLOCK, 'm-bubble-block-button', className)}
       {...props}
     />
   )
@@ -98,13 +84,7 @@ function BubbleFoldBadge({ expanded, className, ...props }: React.ComponentProps
       type="button"
       data-slot="bubble-fold-badge"
       aria-expanded={expanded}
-      className={cx(
-        'inline-flex h-5 shrink-0 items-center gap-1 rounded-full px-2 text-caption-1-regular leading-none text-text-secondary transition-colors outline-none select-none',
-        'bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_6%)]',
-        'hover:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] hover:text-text-primary focus-visible:ring-2 focus-visible:ring-border-focus-ring',
-        'aria-expanded:bg-[color-mix(in_oklch,var(--bubble-fill,var(--bubble-assistant)),var(--bubble-ink,var(--color-text-primary))_12%)] aria-expanded:text-text-primary',
-        className,
-      )}
+      className={joinClasses('m-bubble-fold-badge', className)}
       {...props}
     />
   )

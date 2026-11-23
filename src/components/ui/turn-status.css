@@ -1,0 +1,68 @@
+@layer components {
+  .m-turn-status-icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-turn-status-icon[data-status='awaiting-input'],
+  .m-turn-status-icon[data-status='crashed'] {
+    color: var(--warning-fg);
+  }
+
+  .m-turn-branch-pager {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-turn-branch-pager__btn {
+    border: 0;
+    border-radius: calc(var(--radius-item) - 6px);
+    background: transparent;
+    padding: 2px;
+    color: inherit;
+    cursor: pointer;
+    outline: none;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-turn-branch-pager__btn:hover:not(:disabled) {
+    color: var(--text);
+  }
+
+  .m-turn-branch-pager__btn:focus-visible {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-turn-branch-pager__btn:disabled {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-turn-branch-pager__btn {
+      position: relative;
+    }
+
+    .m-turn-branch-pager__btn::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+
+  .m-turn-branch-pager__chevron {
+    display: block;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .m-turn-branch-pager__label {
+    font-variant-numeric: tabular-nums;
+  }
+}

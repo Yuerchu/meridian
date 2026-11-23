@@ -1,8 +1,8 @@
 import { Mic } from '@keyline-icons/react/two-tone'
 import { Stop } from '@keyline-icons/react/fill'
-import { PromptInput } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
-import { cx } from '@/utils/cx'
+import './voice-button.css'
 
 export type VoiceButtonState =
   | 'idle'
@@ -47,30 +47,21 @@ export function VoiceButton({
   const recording = state === 'recording-hold' || state === 'recording-toggle'
 
   return (
-    <div data-slot="voice-button" className="flex items-center gap-1.5">
+    <div data-slot="voice-button" data-state={state} data-recording={recording || undefined} className="m-voice-button">
       {recording && (
-        <span
-          data-slot="voice-button-elapsed"
-          className="text-caption-1-regular tabular-nums text-status-danger select-none"
-        >
+        <span data-slot="voice-button-elapsed" className="m-voice-button__elapsed">
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
       <TooltipTrigger>
-        {/* The composer's round control (the registry agent-composer's
-            `ai-chat-composer-add-*` button), red while it is listening. */}
-        <PromptInput.Control
-          leadingIcon={state === 'recording-toggle' ? Stop : Mic}
+        {/* The composer's round control, red while it is listening. */}
+        <Button
+          variant="secondary"
+          icon={state === 'recording-toggle' ? <Stop /> : <Mic />}
           aria-label={ariaLabel}
           aria-pressed={recording}
-          tone={recording ? 'danger' : 'default'}
           isDisabled={disabled}
           isPending={state === 'transcribing'}
-          className={cx(
-            'touch-hitbox touch-none select-none',
-            // Opening the device: dimmer, so nobody starts talking yet.
-            state === 'starting' && 'text-foreground-icon-secondary',
-          )}
           onPointerDown={onPointerDown}
           onPointerUp={onPointerUp}
           onPointerCancel={onPointerCancel}
