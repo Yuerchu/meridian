@@ -1,6 +1,13 @@
 import { useState } from 'react'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { FloatingToc, Kanban } from '@/components/base'
+import { FloatingToc } from '@/components/base'
+import {
+  Kanban,
+  KanbanCard,
+  KanbanColumn,
+  type KanbanColumnData,
+  type KanbanItem,
+} from '@/components/yuerchu-ui/components/kanban/kanban'
 import { CommandPalette } from '@/components/yuerchu-ui/components/command-palette/command-palette'
 import { MenuItem, MenuSection } from '@/components/yuerchu-ui/components/menu/menu'
 import { ResizablePanels } from '@/components/yuerchu-ui/components/resizable-panels/resizable-panels'
@@ -64,6 +71,19 @@ export function CoreParts() {
   )
 }
 
+const READONLY_KANBAN: KanbanColumnData<KanbanItem>[] = [
+  { id: 'todo', heading: '待做', cards: [{ id: 'k1', textValue: '补过期 token 的测试' }] },
+  { id: 'doing', heading: '进行中', cards: [{ id: 'k2', textValue: '抽出 verify_token' }] },
+  {
+    id: 'done',
+    heading: '已完成',
+    cards: [
+      { id: 'k3', textValue: '确认走 middleware' },
+      { id: 'k4', textValue: '列出三个路由' },
+    ],
+  },
+]
+
 /** A file tree and a board, the two collections the product builds on. */
 export function DataParts() {
   return (
@@ -81,30 +101,16 @@ export function DataParts() {
           </Tree>
         </div>
       </Section>
-      <Section title="Kanban / 看板">
-        <Kanban size="sm" aria-label="待办" className="max-w-2xl [--kanban-column-height:auto]">
-          {[
-            ['待做', ['补过期 token 的测试']],
-            ['进行中', ['抽出 verify_token']],
-            ['已完成', ['确认走 middleware', '列出三个路由']],
-          ].map(([title, cards]) => (
-            <Kanban.Column key={title as string}>
-              <Kanban.ColumnHeader>
-                <Kanban.ColumnTitle>{title}</Kanban.ColumnTitle>
-                <Kanban.ColumnCount>{(cards as string[]).length}</Kanban.ColumnCount>
-              </Kanban.ColumnHeader>
-              <Kanban.ColumnBody>
-                <Kanban.CardList aria-label={title as string}>
-                  {(cards as string[]).map((card) => (
-                    <Kanban.Card key={card} id={card} textValue={card}>
-                      <div className="p-2.5 text-caption-1-regular">{card}</div>
-                    </Kanban.Card>
-                  ))}
-                </Kanban.CardList>
-              </Kanban.ColumnBody>
-            </Kanban.Column>
-          ))}
-        </Kanban>
+      <Section title="Kanban / 看板（库）">
+        <div className="max-w-2xl">
+          <Kanban columns={READONLY_KANBAN} isReadOnly aria-label="待办">
+            {(column) => (
+              <KanbanColumn key={column.id} column={column}>
+                {(card) => <KanbanCard key={card.id} card={card} />}
+              </KanbanColumn>
+            )}
+          </Kanban>
+        </div>
       </Section>
       <Section title="Kanban / 拖拽">
         {/* Pointer: drag a card. Keyboard: Tab to a card's grip, Enter to pick

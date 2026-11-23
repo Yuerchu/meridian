@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ArrowInDownDashedPanel, ArrowUp, Copy, CursorText, Plus, Scissors } from '@keyline-icons/react/two-tone'
 
-import { ContextMenu, Disclosure, Kbd, Label, Markdown } from '@/components/base'
+import { ContextMenu, Kbd, Label, Markdown } from '@/components/base'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
@@ -450,21 +450,6 @@ export default function WebViewLab() {
                 </ListBoxItem>
               </Select>
             </div>
-
-            {/* 与聊天里的折叠卡片同类，之前在虚拟滚动上踩过坑 */}
-            <Disclosure>
-              <Disclosure.Heading>
-                <Disclosure.Trigger className="flex w-full items-center gap-2">
-                  展开看折叠动画
-                  <Disclosure.Indicator />
-                </Disclosure.Trigger>
-              </Disclosure.Heading>
-              <Disclosure.Content>
-                <Disclosure.Body className="text-body-regular text-text-secondary">
-                  展开时高度过渡是否平滑，有没有闪烁或跳动。
-                </Disclosure.Body>
-              </Disclosure.Content>
-            </Disclosure>
           </div>
         </Section>
 

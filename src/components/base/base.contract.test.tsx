@@ -2,24 +2,12 @@ import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { Plus } from '@keyline-icons/react/two-tone'
 import i18n from '@/i18n'
-import { expectCollapsed, expectExpanded } from '@/test/disclosure'
-import {
-  Avatar,
-  ContextMenu,
-  DataGrid,
-  Disclosure,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Kanban,
-  Sheet,
-  Spinner,
-} from '@/components/base'
+import { Avatar, ContextMenu, Dropdown, DropdownItem, DropdownPopover, Sheet, Spinner } from '@/components/base'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Dialog } from '@/components/yuerchu-ui/components/dialog/dialog'
@@ -135,25 +123,6 @@ describe('Button is a React Aria pressable', () => {
   })
 })
 
-describe('Disclosure', () => {
-  it('toggles, names its panel, and hides it when shut', async () => {
-    const onExpandedChange = vi.fn()
-    render(
-      <Disclosure onExpandedChange={onExpandedChange}>
-        <Disclosure.Trigger>Details</Disclosure.Trigger>
-        <Disclosure.Content>
-          <Disclosure.Body>the details</Disclosure.Body>
-        </Disclosure.Content>
-      </Disclosure>,
-    )
-    const trigger = screen.getByRole('button', { name: 'Details' })
-    expectCollapsed(trigger)
-    await userEvent.click(trigger)
-    expectExpanded(trigger)
-    expect(onExpandedChange).toHaveBeenCalledWith(true)
-  })
-})
-
 describe('Select is named by its label slot', () => {
   it('Select is named by its label slot', () => {
     render(
@@ -224,51 +193,6 @@ describe('Menus open from their trigger', () => {
   })
 })
 
-describe('Kanban cards are a React Aria grid list', () => {
-  function Board({ withField = false }: { withField?: boolean }) {
-    return (
-      <Kanban aria-label="Board">
-        <Kanban.Column>
-          <Kanban.CardList aria-label="Running">
-            <Kanban.Card id="a" textValue="Alpha">
-              Alpha
-              {withField && <textarea aria-label="Say to Alpha" />}
-            </Kanban.Card>
-            <Kanban.Card id="b" textValue="Beta">
-              Beta
-            </Kanban.Card>
-          </Kanban.CardList>
-        </Kanban.Column>
-      </Kanban>
-    )
-  }
-
-  it('names its list and walks cards with the arrow keys', async () => {
-    render(<Board />)
-    expect(screen.getByRole('grid', { name: 'Running' })).toBeInTheDocument()
-    await userEvent.tab()
-    expect(screen.getByRole('row', { name: 'Alpha' })).toHaveFocus()
-    await userEvent.keyboard('{ArrowDown}')
-    expect(screen.getByRole('row', { name: 'Beta' })).toHaveFocus()
-  })
-
-  it('cannot be dragged without dragAndDropHooks', () => {
-    render(<Board />)
-    expect(screen.getByRole('row', { name: 'Alpha' })).not.toHaveAttribute('draggable')
-  })
-
-  // The list's keyboard delegate listens on the way up; a field inside a card
-  // lost its caret to the next card on the first arrow key.
-  it('leaves the keys typed into a field inside a card to the field', async () => {
-    render(<Board withField />)
-    const field = screen.getByRole('textbox', { name: 'Say to Alpha' })
-    await userEvent.click(field)
-    await userEvent.keyboard('ab{ArrowLeft}{ArrowDown}{Home}{End}x')
-    expect(field).toHaveFocus()
-    expect(field).toHaveValue('abx')
-  })
-})
-
 describe('Presentation parts honour their props', () => {
   it('Avatar draws a child glyph instead of initials', () => {
     render(
@@ -290,40 +214,6 @@ describe('Presentation parts honour their props', () => {
     fireEvent.error(screen.getByRole('presentation'))
     expect(screen.getByTestId('glyph')).toBeInTheDocument()
     expect(screen.queryByRole('presentation')).toBeNull()
-  })
-
-  it('DataGrid shows the property a column names by accessorKey alone', () => {
-    type Row = { id: string; seen: number }
-    render(
-      <DataGrid<Row>
-        aria-label="Counts"
-        columns={[
-          { id: 'id', header: 'Id', isRowHeader: true, cell: (r) => r.id },
-          { id: 'seen', header: 'Seen', accessorKey: 'seen' },
-        ]}
-        data={[{ id: 'a', seen: 42 }]}
-        getRowId={(r) => r.id}
-      />,
-    )
-    expect(screen.getByRole('gridcell', { name: '42' })).toBeInTheDocument()
-  })
-
-  it('DataGrid with children is a treegrid with an expand button', async () => {
-    type Row = { id: string; label: string; children?: Row[] }
-    const rows: Row[] = [{ id: 'p', label: 'Parent', children: [{ id: 'c', label: 'Child' }] }]
-    render(
-      <DataGrid<Row>
-        aria-label="Tree"
-        columns={[{ id: 'label', header: 'Label', isRowHeader: true, cell: (r) => r.label }]}
-        data={rows}
-        getRowId={(r) => r.id}
-        getChildren={(r) => r.children}
-      />,
-    )
-    const grid = screen.getByRole('treegrid', { name: 'Tree' })
-    expect(within(grid).queryByRole('rowheader', { name: 'Child' })).toBeNull()
-    await userEvent.click(within(grid).getByRole('button', { name: /Expand row/ }))
-    expect(within(grid).getByRole('rowheader', { name: 'Child' })).toBeInTheDocument()
   })
 })
 

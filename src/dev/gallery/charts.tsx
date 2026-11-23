@@ -1,41 +1,5 @@
-import type { ReactNode } from 'react'
-import {
-  ActivityHeatmap,
-  AreaChart,
-  BarChart,
-  BarList,
-  DonutChart,
-  type BarListItem,
-  type DonutChartItem,
-} from '@/components/base'
-import { Section } from './shell'
-
-/** A gallery-only frame for a chart. The usage page draws its own card and
- *  legend now, so boardui's are deleted; the charts are what is on show here. */
-function ChartCard({ title, action, children }: { title: string; action?: ReactNode; children: ReactNode }) {
-  return (
-    <figure className="m-0 flex flex-col gap-3 rounded-2xl bg-background-primary-default p-4 shadow-card">
-      <figcaption className="flex items-center justify-between gap-3">
-        <span className="text-body-medium">{title}</span>
-        {action}
-      </figcaption>
-      {children}
-    </figure>
-  )
-}
-
-function ChartLegend({ items }: { items: readonly { key: string; color: string; label: string }[] }) {
-  return (
-    <span className="flex flex-wrap items-center gap-3 text-caption-1-regular text-text-secondary">
-      {items.map((item) => (
-        <span key={item.key} className="flex items-center gap-1.5">
-          <span className="size-2 rounded-full" style={{ background: item.color }} />
-          {item.label}
-        </span>
-      ))}
-    </span>
-  )
-}
+import { BarChart, DonutChart } from '@/components/yuerchu-ui/components/chart/chart'
+import { Section, Stage } from './shell'
 
 const DAYS = ['10-01', '10-02', '10-03', '10-04', '10-05', '10-06', '10-07']
 
@@ -47,167 +11,79 @@ const USAGE = DAYS.map((day, i) => ({
 }))
 
 const BANDS = [
-  { key: 'input', label: '输入', color: 'var(--color-chart-1)' },
-  { key: 'cache', label: '缓存', color: 'var(--color-chart-2)' },
-  { key: 'output', label: '输出', color: 'var(--color-chart-3)' },
-] as const
-
-const compact = new Intl.NumberFormat('zh-CN', { notation: 'compact' })
-const percent = new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 1 })
-
-const RANKED: BarListItem[] = [
-  { key: 'sonnet', label: 'claude-sonnet-5', value: '842万', width: '100%', share: '61%' },
-  { key: 'gpt', label: 'gpt-5.1', value: '311万', width: '37%', share: '22%' },
-  { key: 'qwen', label: 'qwen3-coder（本地）', value: '196万', width: '23%', share: '14%' },
-  { key: 'flash', label: 'gemini-3-flash', value: '41万', width: '5%', share: '3%' },
+  { key: 'input' as const, label: '输入' },
+  { key: 'cache' as const, label: '缓存' },
+  { key: 'output' as const, label: '输出' },
 ]
 
-const MIX: DonutChartItem[] = [
-  { key: 'cache', label: '缓存读取', value: 9_120_000, color: 'var(--color-chart-2)' },
-  { key: 'input', label: '输入', value: 4_310_000, color: 'var(--color-chart-1)' },
-  { key: 'output', label: '输出', value: 862_000, color: 'var(--color-chart-3)' },
+const MIX = [
+  { key: 'cache', label: '缓存读取', value: 9_120_000 },
+  { key: 'input', label: '输入', value: 4_310_000 },
+  { key: 'output', label: '输出', value: 862_000 },
 ]
 
-/** One part far under 1%: its arc is shorter than its own caps, so it draws as a dot. */
-const MIX_TINY: DonutChartItem[] = [
-  { key: 'input', label: '输入', value: 9_990_000, color: 'var(--color-chart-1)' },
-  { key: 'reasoning', label: '推理', value: 4_000, color: 'var(--color-chart-4)' },
+const MIX_TINY = [
+  { key: 'input', label: '输入', value: 9_990_000 },
+  { key: 'reasoning', label: '推理', value: 4_000 },
 ]
-
-const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
-const HOURS = 24
-const EMPTY_GRID = WEEKDAYS.map(() => Array.from({ length: HOURS }, () => 0))
-const FULL_GRID = WEEKDAYS.map((_, row) =>
-  Array.from({ length: HOURS }, (_, hour) => {
-    const working = hour >= 9 && hour <= 23 ? 6 + ((row * 7 + hour * 3) % 18) : (hour * row) % 3
-    return row >= 5 ? Math.floor(working / 2) : working
-  }),
-)
-
-function Heatmap({ data }: { data: number[][] }) {
-  return (
-    <ActivityHeatmap
-      data={data}
-      rowLabels={WEEKDAYS}
-      columnLabel={(hour) => (hour % 6 === 0 ? `${hour}时` : '')}
-      caption={(row, hour, value) => `周${WEEKDAYS[row]} ${hour}:00 · ${value} 条回复`}
-      less="少"
-      more="多"
-      aria-label="使用时段"
-    />
-  )
-}
-
-function StackedBars({ bands }: { bands: readonly (typeof BANDS)[number][] }) {
-  return (
-    <BarChart data={USAGE} height={200}>
-      <BarChart.Grid vertical={false} />
-      <BarChart.XAxis dataKey="day" tickMargin={8} />
-      <BarChart.YAxis width={44} tickFormatter={(v: number) => compact.format(v)} />
-      {bands.map((band, i) => (
-        <BarChart.Bar
-          key={band.key}
-          dataKey={band.key}
-          fill={band.color}
-          name={band.label}
-          stackId="tokens"
-          radius={i === bands.length - 1 ? [4, 4, 0, 0] : 0}
-        />
-      ))}
-      <BarChart.Tooltip
-        content={<BarChart.TooltipContent indicator="dot" valueFormatter={(v) => compact.format(Number(v))} />}
-      />
-    </BarChart>
-  )
-}
 
 export default function Charts() {
-  const legend = BANDS.map((band) => ({ key: band.key, color: band.color, label: band.label }))
   return (
     <>
-      <Section title="ChartCard · ChartLegend · BarChart（堆叠，只有最上一段带圆角）">
+      <Section title="BarChart（库 · 堆叠与单系列）">
         <div className="grid gap-3 lg:grid-cols-2">
-          <ChartCard title="每日 token" action={<ChartLegend items={legend} />}>
-            <StackedBars bands={BANDS} />
-          </ChartCard>
-          <ChartCard title="只剩一个分段" action={<ChartLegend items={legend.slice(0, 1)} />}>
-            <StackedBars bands={BANDS.slice(0, 1)} />
-          </ChartCard>
+          <Stage>
+            <BarChart
+              heading="每日 token"
+              data={USAGE}
+              x="day"
+              series={BANDS}
+              stacked
+              height={200}
+              showLegend
+              valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+            />
+          </Stage>
+          <Stage>
+            <BarChart
+              heading="只剩一个分段"
+              data={USAGE}
+              x="day"
+              series={BANDS.slice(0, 1)}
+              stacked
+              height={200}
+              showLegend
+              valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+            />
+          </Stage>
         </div>
       </Section>
-      <Section title="BarList">
+      <Section title="DonutChart（库）">
         <div className="grid gap-3 lg:grid-cols-2">
-          <ChartCard title="按模型 token · 带占比">
-            <BarList items={RANKED} aria-label="按模型 token" />
-          </ChartCard>
-          <ChartCard title="不带占比">
-            <BarList items={RANKED.map(({ share: _share, ...item }) => item)} color="var(--color-chart-1)" />
-          </ChartCard>
-        </div>
-      </Section>
-      <Section title="DonutChart">
-        <div className="grid gap-3 lg:grid-cols-2">
-          <ChartCard title="token 去向">
+          <Stage>
             <DonutChart
-              items={MIX}
-              centerValue={compact.format(MIX.reduce((sum, item) => sum + item.value, 0))}
-              centerLabel="总计"
-              format={(v) => compact.format(v)}
-              formatShare={(share) => percent.format(share)}
+              heading="token 去向"
+              data={MIX}
+              label="label"
+              value="value"
+              totalLabel="总计"
+              valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+              height={200}
+              showLegend
             />
-          </ChartCard>
-          <ChartCard title="极小分段画成圆点">
+          </Stage>
+          <Stage>
             <DonutChart
-              items={MIX_TINY}
-              centerValue={compact.format(MIX_TINY.reduce((sum, item) => sum + item.value, 0))}
-              centerLabel="总计"
-              format={(v) => compact.format(v)}
-              formatShare={(share) => percent.format(share)}
+              heading="极小分段"
+              data={MIX_TINY}
+              label="label"
+              value="value"
+              totalLabel="总计"
+              valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
+              height={200}
+              showLegend
             />
-          </ChartCard>
-        </div>
-      </Section>
-      <Section title="ActivityHeatmap">
-        <div className="grid gap-3">
-          <ChartCard title="使用时段 · 有数据">
-            <Heatmap data={FULL_GRID} />
-          </ChartCard>
-          <ChartCard title="使用时段 · 空">
-            <Heatmap data={EMPTY_GRID} />
-          </ChartCard>
-        </div>
-      </Section>
-      <Section title="AreaChart · 堆叠">
-        <div className="rounded-2xl bg-background-primary-default p-4 shadow-card">
-          <AreaChart data={USAGE} height={220}>
-            <defs>
-              {BANDS.map((band) => (
-                <linearGradient key={band.key} id={`pg-fill-${band.key}`} x1="0" x2="0" y1="0" y2="1">
-                  <stop offset="0%" stopColor={band.color} stopOpacity={0.4} />
-                  <stop offset="100%" stopColor={band.color} stopOpacity={0.1} />
-                </linearGradient>
-              ))}
-            </defs>
-            <AreaChart.Grid vertical={false} />
-            <AreaChart.XAxis dataKey="day" tickMargin={8} />
-            <AreaChart.YAxis width={44} tickFormatter={(v: number) => compact.format(v)} />
-            {BANDS.map((band) => (
-              <AreaChart.Area
-                key={band.key}
-                dataKey={band.key}
-                dot={false}
-                fill={`url(#pg-fill-${band.key})`}
-                name={band.label}
-                stackId="tokens"
-                stroke={band.color}
-                strokeWidth={2}
-                type="monotone"
-              />
-            ))}
-            <AreaChart.Tooltip
-              content={<AreaChart.TooltipContent indicator="line" valueFormatter={(v) => compact.format(Number(v))} />}
-            />
-          </AreaChart>
+          </Stage>
         </div>
       </Section>
     </>

@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import type { Key, Selection } from 'react-aria-components'
 import { Check, FileText, Folder } from '@keyline-icons/react/two-tone'
 
-import { DataGrid, Disclosure, ListBox, type DataGridColumn, type DataGridSelection } from '@/components/base'
+import { ListBox } from '@/components/base'
+import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { Cell, Column, Row, Table, TableBody, TableHeader } from '@/components/yuerchu-ui/components/table/table'
 import { Section, Stage } from './shell'
 import { DataParts } from './parts'
 
@@ -22,34 +25,58 @@ const SERVERS: Server[] = [
   { id: 'db', name: 'sqlite', transport: 'stdio', tools: 6 },
 ]
 
-const COLUMNS: DataGridColumn<Server>[] = [
-  { key: 'name', header: '名称', accessorKey: 'name', isRowHeader: true, allowsSorting: true },
-  { key: 'transport', header: '传输', accessorKey: 'transport' },
-  { key: 'tools', header: '工具数', cell: (s) => s.tools, align: 'end' },
+const COLUMNS: DataTableColumn<Server>[] = [
+  { id: 'name', header: '名称', isRowHeader: true, sortValue: (s) => s.name },
+  { id: 'transport', header: '传输' },
+  { id: 'tools', header: '工具数', align: 'end', sortValue: (s) => s.tools },
 ]
 
-function Grids() {
-  const [selected, setSelected] = useState<DataGridSelection>(new Set(['gh']))
+function Tables() {
+  const [selected, setSelected] = useState<Set<Key>>(new Set(['gh']))
+  const [tableSelected, setTableSelected] = useState<Selection>(new Set(['fs']))
   return (
     <div className="flex flex-col gap-4">
-      {(['primary', 'secondary'] as const).map((variant) => (
-        <DataGrid<Server>
-          key={variant}
-          aria-label={`MCP 服务器 · ${variant}`}
-          variant={variant}
-          columns={COLUMNS}
-          data={SERVERS}
-          getRowId={(s) => s.id}
-          selectionMode="multiple"
-          showSelectionCheckboxes
-          selectedKeys={selected}
-          onSelectionChange={setSelected}
-        />
-      ))}
-      <DataGrid<Server>
-        aria-label="空表"
+      <DataTable<Server>
+        aria-label="MCP 服务器 · DataTable"
+        size="sm"
         columns={COLUMNS}
-        data={[]}
+        rows={SERVERS}
+        getRowId={(s) => s.id}
+        selectionMode="multiple"
+        selectedKeys={selected}
+        onSelectionChange={setSelected}
+      />
+      <Table
+        aria-label="MCP 服务器 · Table"
+        size="sm"
+        selectionMode="multiple"
+        selectedKeys={tableSelected}
+        onSelectionChange={setTableSelected}
+      >
+        <TableHeader>
+          <Column id="name" isRowHeader>
+            名称
+          </Column>
+          <Column id="transport">传输</Column>
+          <Column id="tools" data-align="end">
+            工具数
+          </Column>
+        </TableHeader>
+        <TableBody items={SERVERS}>
+          {(s) => (
+            <Row id={s.id}>
+              <Cell>{s.name}</Cell>
+              <Cell>{s.transport}</Cell>
+              <Cell>{s.tools}</Cell>
+            </Row>
+          )}
+        </TableBody>
+      </Table>
+      <DataTable<Server>
+        aria-label="空表"
+        size="sm"
+        columns={COLUMNS}
+        rows={[]}
         getRowId={(s) => s.id}
         renderEmptyState={() => <EmptyState heading="还没有 MCP 服务器" headingLevel={3} size="sm" />}
       />
@@ -85,44 +112,14 @@ function Lists() {
   )
 }
 
-function Disclosures() {
-  return (
-    <div className="flex flex-col gap-2">
-      {['默认助手', '代码审查员'].map((name, i) => (
-        <Disclosure
-          key={name}
-          id={name}
-          defaultExpanded={i === 0}
-          className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
-        >
-          <Disclosure.Heading>
-            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-body-regular outline-none">
-              <span className="min-w-0 flex-1 truncate">{name}</span>
-              <Disclosure.Indicator />
-            </Disclosure.Trigger>
-          </Disclosure.Heading>
-          <Disclosure.Content>
-            <Disclosure.Body className="px-3 pb-3 text-body-2-regular text-text-secondary">
-              模型 claude-sonnet-5 · 工具 12 个 · 记忆开启
-            </Disclosure.Body>
-          </Disclosure.Content>
-        </Disclosure>
-      ))}
-    </div>
-  )
-}
-
 export default function Data() {
   return (
     <>
-      <Section title="DataGrid">
-        <Grids />
+      <Section title="Table / DataTable（库）">
+        <Tables />
       </Section>
       <Section title="ListBox">
         <Lists />
-      </Section>
-      <Section title="Disclosure">
-        <Disclosures />
       </Section>
       <Section title="SettingsGroup / SettingsRow（库）">
         <SettingsGroup heading="通用" description="这些设置仅对当前设备生效。">
