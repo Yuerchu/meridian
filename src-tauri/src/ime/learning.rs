@@ -57,25 +57,22 @@ fn overlay(dirs: &ImeDirs) -> Result<(MemoryLearner, usize), String> {
     }
     let merges = pending_merges(dirs).map_err(|e| format!("cannot read the requests to merge: {e}"))?;
     for p in &merges {
-        match &p.request {
-            Ok(req) => {
-                pending += 1;
-                let incoming = match FileLearner::read(&p.path) {
-                    Ok(t) => t,
-                    Err(e) => {
-                        tracing::warn!(error = %e, path = %p.path.display(), "pending merge unreadable; listed without it");
-                        continue;
-                    }
-                };
-                match req.kind {
-                    MergeKind::Add => tables.absorb(&incoming),
-                    MergeKind::Replace => {
-                        tables.erase_all();
-                        tables.absorb(&incoming);
-                    }
+        if let Ok(req) = &p.request {
+            pending += 1;
+            let incoming = match FileLearner::read(&p.path) {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(error = %e, path = %p.path.display(), "pending merge unreadable; listed without it");
+                    continue;
+                }
+            };
+            match req.kind {
+                MergeKind::Add => tables.absorb(&incoming),
+                MergeKind::Replace => {
+                    tables.erase_all();
+                    tables.absorb(&incoming);
                 }
             }
-            Err(_) => {}
         }
     }
     Ok((tables, pending))

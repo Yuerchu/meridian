@@ -903,14 +903,15 @@ pub async fn decide_plan_review(
         .await
         .map_err(|error| error.to_string())?;
 
-    if !commit.replayed && request.action == PlanReviewDecisionActionRequest::Approve && commit.edited_by_user {
-        if let Err(error) = services
+    if !commit.replayed
+        && request.action == PlanReviewDecisionActionRequest::Approve
+        && commit.edited_by_user
+        && let Err(error) = services
             .plan_files
             .reconcile_document(&services.db, &commit.document_id, now_ms())
             .await
-        {
-            tracing::warn!(%error, document_id = %commit.document_id, "could not sync edited approved plan.md");
-        }
+    {
+        tracing::warn!(%error, document_id = %commit.document_id, "could not sync edited approved plan.md");
     }
 
     emit_review_update_best_effort(&services.events, &commit.event);

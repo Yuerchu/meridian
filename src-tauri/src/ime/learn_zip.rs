@@ -121,7 +121,7 @@ pub fn unpack_zip(zip: &Path, dest: &Path) -> Result<(), String> {
                 entry.name()
             ));
         };
-        if rel.parent().is_some_and(|p| p.as_os_str().len() > 0) {
+        if rel.parent().is_some_and(|p| !p.as_os_str().is_empty()) {
             return Err(format!("{} is not a file at the archive root", entry.name()));
         }
         let Some(name) = rel.file_name().and_then(|n| n.to_str()) else {
