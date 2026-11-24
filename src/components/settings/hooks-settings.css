@@ -1,23 +1,18 @@
 @layer components {
-  .m-hooks__stack {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-2);
+  .m-hooks__select {
+    min-width: 11rem;
+    max-width: 100%;
   }
 
-  .m-hooks__label,
-  .m-hooks__hint,
+  .m-hooks__compact-field {
+    width: min(100%, 11rem);
+  }
+
   .m-hooks__status-title,
   .m-hooks__endpoint {
     margin: 0;
   }
 
-  .m-hooks__label {
-    color: var(--text-secondary);
-    font: var(--text-small-medium);
-  }
-
-  .m-hooks__hint,
   .m-hooks__endpoint {
     color: var(--text-secondary);
     font: var(--text-caption);
@@ -39,7 +34,8 @@
   }
 
   .m-hooks__token {
-    align-items: flex-end;
+    align-items: center;
+    width: 100%;
   }
 
   .m-hooks__token-field {

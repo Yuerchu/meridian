@@ -16,6 +16,7 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolPresetInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -123,58 +124,72 @@ function CustomToolEditor({
         void handleSave()
       }}
     >
-      <div data-slot="custom-tool-fields" className="m-tools__grid">
-        <TextField
-          isInvalid={invalid.has('name')}
-          label={t('settings.tools.name')}
-          ref={nameRef}
-          name="customToolName"
-          value={name}
-          onChange={setName}
-          placeholder="my_tool"
-        />
-        <SettingsSelect
-          label={t('settings.tools.permission')}
-          value={permission}
-          options={permissionOptions}
-          onChange={setPermission}
-        />
-      </div>
-      <TextField
-        isInvalid={invalid.has('description')}
-        label={t('settings.tools.description')}
-        ref={descriptionRef}
-        name="customToolDescription"
-        value={description}
-        onChange={setDescription}
-      />
-      <TextField
-        isInvalid={invalid.has('command')}
-        label={t('settings.tools.command')}
-        ref={commandRef}
-        name="customToolCommand"
-        value={command}
-        onChange={setCommand}
-        placeholder="python script.py"
-      />
-      <TextField
-        label={t('settings.tools.argsTemplate')}
-        name="customToolArgs"
-        value={argsTemplate}
-        onChange={setArgsTemplate}
-        placeholder="--input {{input}} --output {{output}}"
-        description={t('settings.tools.argsTemplateHint')}
-      />
-      <NumberField
-        isInvalid={invalid.has('timeout')}
-        label={t('settings.tools.timeout')}
-        value={draftToNumber(timeoutMs)}
-        onChange={(value) => setTimeoutMs(numberToDraft(value))}
-        ref={timeoutRef}
-        name="customToolTimeout"
-        minValue={1}
-        formatOptions={PLAIN_INTEGER}
-      />
+      <SettingsGroup>
+        <SettingsRow label={t('settings.tools.name')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('name')}
+            ref={nameRef}
+            name="customToolName"
+            value={name}
+            onChange={setName}
+            placeholder="my_tool"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.permission')}>
+          <div className="m-tools__select">
+            <SettingsSelect
+              ariaLabel={t('settings.tools.permission')}
+              value={permission}
+              options={permissionOptions}
+              onChange={setPermission}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.description')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('description')}
+            ref={descriptionRef}
+            name="customToolDescription"
+            value={description}
+            onChange={setDescription}
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.command')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('command')}
+            ref={commandRef}
+            name="customToolCommand"
+            value={command}
+            onChange={setCommand}
+            placeholder="python script.py"
+          />
+        </SettingsRow>
+        <SettingsRow
+          label={t('settings.tools.argsTemplate')}
+          description={t('settings.tools.argsTemplateHint')}
+          layout="stacked"
+        >
+          <TextField
+            name="customToolArgs"
+            value={argsTemplate}
+            onChange={setArgsTemplate}
+            placeholder="--input {{input}} --output {{output}}"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.timeout')}>
+          <div className="m-tools__compact-field">
+            <NumberField
+              isInvalid={invalid.has('timeout')}
+              value={draftToNumber(timeoutMs)}
+              onChange={(value) => setTimeoutMs(numberToDraft(value))}
+              ref={timeoutRef}
+              name="customToolTimeout"
+              minValue={1}
+              formatOptions={PLAIN_INTEGER}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
       {invalid.size > 0 && (
         <Alert data-slot="custom-tool-validation" tone="danger" shouldAnnounce>
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
@@ -266,21 +281,27 @@ export function ToolMarketplace() {
         title={t('settings.tools.builtinSection')}
         summary={builtinTools.filter((tool) => tool.source === 'builtin').length}
       >
-        <div data-slot="builtin-tool-list" className="m-tools__list">
-          {builtinTools
-            .filter((t) => t.source === 'builtin')
-            .map((tool) => (
-              <div key={tool.name} data-slot="builtin-tool-row" className="m-tools__line">
-                <Wrench size={14} aria-hidden />
-                <span data-slot="builtin-tool-name" className="m-tools__mono">
-                  {tool.name}
-                </span>
-                <span data-slot="builtin-tool-description" onPointerEnter={titleIfTruncated} className="m-tools__desc">
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-        </div>
+        <SettingsGroup>
+          <div data-slot="builtin-tool-list" className="m-tools__list">
+            {builtinTools
+              .filter((t) => t.source === 'builtin')
+              .map((tool) => (
+                <div key={tool.name} data-slot="builtin-tool-row" className="m-tools__line">
+                  <Wrench size={14} aria-hidden />
+                  <span data-slot="builtin-tool-name" className="m-tools__mono">
+                    {tool.name}
+                  </span>
+                  <span
+                    data-slot="builtin-tool-description"
+                    onPointerEnter={titleIfTruncated}
+                    className="m-tools__desc"
+                  >
+                    {tool.description}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </SettingsGroup>
       </SettingsDrilldown>
 
       {builtinTools.some((tool) => tool.source === 'onebot') && (
@@ -288,32 +309,31 @@ export function ToolMarketplace() {
           title={t('settings.tools.onebotSection')}
           summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
         >
-          <p data-slot="onebot-tool-hint" className="m-tools__hint">
-            {t('settings.tools.onebotHint')}
-          </p>
-          <div data-slot="onebot-tool-list" className="m-tools__list">
-            {builtinTools
-              .filter((tool) => tool.source === 'onebot')
-              .map((tool) => (
-                <div key={tool.name} data-slot="onebot-tool-row" className="m-tools__line">
-                  <Wrench size={14} aria-hidden />
-                  <span data-slot="onebot-tool-name" className="m-tools__mono">
-                    {tool.name}
-                  </span>
-                  <span data-slot="onebot-tool-description" className="m-tools__desc">
-                    {t(`settings.tools.qq.${tool.name}`)}
-                  </span>
-                  {tool.scope === 'group' && <Badge>{t('settings.tools.qqGroupOnly')}</Badge>}
-                  {tool.scope === 'private' && <Badge>{t('settings.tools.qqPrivateOnly')}</Badge>}
-                  {tool.admin_only === true && <Badge>{t('settings.tools.qqAdminOnly')}</Badge>}
-                  {tool.needs_approval === true && <Badge>{t('settings.tools.qqApproval')}</Badge>}
-                </div>
-              ))}
-          </div>
+          <SettingsGroup description={t('settings.tools.onebotHint')}>
+            <div data-slot="onebot-tool-list" className="m-tools__list">
+              {builtinTools
+                .filter((tool) => tool.source === 'onebot')
+                .map((tool) => (
+                  <div key={tool.name} data-slot="onebot-tool-row" className="m-tools__line">
+                    <Wrench size={14} aria-hidden />
+                    <span data-slot="onebot-tool-name" className="m-tools__mono">
+                      {tool.name}
+                    </span>
+                    <span data-slot="onebot-tool-description" className="m-tools__desc">
+                      {t(`settings.tools.qq.${tool.name}`)}
+                    </span>
+                    {tool.scope === 'group' && <Badge>{t('settings.tools.qqGroupOnly')}</Badge>}
+                    {tool.scope === 'private' && <Badge>{t('settings.tools.qqPrivateOnly')}</Badge>}
+                    {tool.admin_only === true && <Badge>{t('settings.tools.qqAdminOnly')}</Badge>}
+                    {tool.needs_approval === true && <Badge>{t('settings.tools.qqApproval')}</Badge>}
+                  </div>
+                ))}
+            </div>
+          </SettingsGroup>
         </SettingsDrilldown>
       )}
 
-      <div data-slot="custom-tools">
+      <div data-slot="custom-tools" className="m-tools__section">
         <div data-slot="custom-tools-header" className="m-tools__header">
           <h3 data-slot="custom-tools-title" className="m-tools__title">
             {t('settings.tools.customSection')}
@@ -337,82 +357,83 @@ export function ToolMarketplace() {
         {/* One open at a time is the group's own default
             (`allowsMultipleExpanded` is off), so the single-open rule lives in
             the primitive rather than in the click handler. */}
-        <DisclosureGroup
-          className="m-tools__folds"
-          expandedKeys={expandedToolId ? [expandedToolId] : []}
-          onExpandedChange={(keys) => setExpandedToolId(([...keys][0] as string | undefined) ?? null)}
-        >
-          {customTools.map((ct) => {
-            const isExpanded = expandedToolId === ct.id
-            return (
-              <Disclosure key={ct.id} id={ct.id} className="m-tools__fold">
-                <Heading>
-                  <AriaButton slot="trigger" className="m-tools__trigger">
-                    <Terminal size={14} aria-hidden />
-                    <span data-slot="custom-tool-name" onPointerEnter={titleIfTruncated} className="m-tools__mono">
-                      {ct.name}
-                    </span>
-                    <span data-slot="custom-tool-command" onPointerEnter={titleIfTruncated} className="m-tools__desc">
-                      {ct.command}
-                    </span>
-                    {!ct.is_enabled && <Badge>{t('settings.tools.disabled')}</Badge>}
-                    <ChevronRight size={14} aria-hidden className="m-tools__chevron" />
-                  </AriaButton>
-                </Heading>
-                <DisclosurePanel className="m-tools__panel">
-                  <div className="m-tools__body">
-                    {/* A collapsed panel is only hidden, not unmounted, so the
-                        editor is still gated on the open row. */}
-                    {isExpanded && (
-                      <CustomToolEditor
-                        tool={ct}
-                        onSave={refresh}
-                        onDelete={async () => {
-                          if (
-                            !(await confirm({
-                              description: t('settings.confirmDelete.customTool'),
-                              confirmLabel: t('common.delete'),
-                              tone: 'danger',
-                            }))
-                          )
-                            return
-                          await api.deleteCustomTool(ct.id)
-                          setExpandedToolId(null)
-                          refresh()
-                        }}
-                      />
-                    )}
-                  </div>
-                </DisclosurePanel>
-              </Disclosure>
-            )
-          })}
-          {customTools.length === 0 && !showCreate && (
-            <EmptyState heading={t('settings.tools.noCustom')} headingLevel={3} size="sm" />
-          )}
-        </DisclosureGroup>
+        <SettingsGroup>
+          <DisclosureGroup
+            className="m-tools__folds"
+            expandedKeys={expandedToolId ? [expandedToolId] : []}
+            onExpandedChange={(keys) => setExpandedToolId(([...keys][0] as string | undefined) ?? null)}
+          >
+            {customTools.map((ct) => {
+              const isExpanded = expandedToolId === ct.id
+              return (
+                <Disclosure key={ct.id} id={ct.id} className="m-tools__fold">
+                  <Heading className="m-tools__fold-heading">
+                    <AriaButton slot="trigger" className="m-tools__trigger">
+                      <Terminal size={14} aria-hidden />
+                      <span data-slot="custom-tool-name" onPointerEnter={titleIfTruncated} className="m-tools__mono">
+                        {ct.name}
+                      </span>
+                      <span data-slot="custom-tool-command" onPointerEnter={titleIfTruncated} className="m-tools__desc">
+                        {ct.command}
+                      </span>
+                      {!ct.is_enabled && <Badge>{t('settings.tools.disabled')}</Badge>}
+                      <ChevronRight size={14} aria-hidden className="m-tools__chevron" />
+                    </AriaButton>
+                  </Heading>
+                  <DisclosurePanel className="m-tools__panel">
+                    <div className="m-tools__body">
+                      {/* A collapsed panel is only hidden, not unmounted, so the
+                          editor is still gated on the open row. */}
+                      {isExpanded && (
+                        <CustomToolEditor
+                          tool={ct}
+                          onSave={refresh}
+                          onDelete={async () => {
+                            if (
+                              !(await confirm({
+                                description: t('settings.confirmDelete.customTool'),
+                                confirmLabel: t('common.delete'),
+                                tone: 'danger',
+                              }))
+                            )
+                              return
+                            await api.deleteCustomTool(ct.id)
+                            setExpandedToolId(null)
+                            refresh()
+                          }}
+                        />
+                      )}
+                    </div>
+                  </DisclosurePanel>
+                </Disclosure>
+              )
+            })}
+            {customTools.length === 0 && !showCreate && (
+              <EmptyState heading={t('settings.tools.noCustom')} headingLevel={3} size="sm" />
+            )}
+          </DisclosureGroup>
+        </SettingsGroup>
       </div>
 
       <div data-slot="tool-presets">
-        <h3 data-slot="tool-presets-title" className="m-tools__title">
-          {t('settings.tools.presetsSection')}
-        </h3>
-        <div data-slot="tool-preset-list" className="m-tools__list">
-          {presets.map((preset) => {
-            const toolNames = preset.tool_names
-            return (
-              <div key={preset.id} data-slot="tool-preset-row" className="m-tools__line">
-                <span data-slot="tool-preset-name" className="m-tools__preset-name">
-                  {preset.name}
-                </span>
-                <span data-slot="tool-preset-count" className="m-tools__hint">
-                  {t('settings.tools.presetCount', { count: toolNames.length })}
-                </span>
-                {preset.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
-              </div>
-            )
-          })}
-        </div>
+        <SettingsGroup heading={t('settings.tools.presetsSection')} headingLevel={3}>
+          <div data-slot="tool-preset-list" className="m-tools__list">
+            {presets.map((preset) => {
+              const toolNames = preset.tool_names
+              return (
+                <div key={preset.id} data-slot="tool-preset-row" className="m-tools__line">
+                  <span data-slot="tool-preset-name" className="m-tools__preset-name">
+                    {preset.name}
+                  </span>
+                  <span data-slot="tool-preset-count" className="m-tools__hint">
+                    {t('settings.tools.presetCount', { count: toolNames.length })}
+                  </span>
+                  {preset.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
+                </div>
+              )
+            })}
+          </div>
+        </SettingsGroup>
       </div>
       {confirmDialog}
     </SettingsPane>

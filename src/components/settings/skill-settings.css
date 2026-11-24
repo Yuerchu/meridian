@@ -5,29 +5,38 @@
   .m-skill__create {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: 0;
   }
 
   .m-skill__editor {
     gap: var(--space-3);
   }
 
-  .m-skill__create,
-  .m-skill__item {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-item);
-    background: var(--surface);
+  .m-skill__body {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-skill__body-state {
+    padding: var(--space-3) var(--space-4);
+    border-block-start: 1px solid var(--border);
   }
 
   .m-skill__create {
-    padding: var(--space-3);
-    background: var(--surface-muted);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
   }
 
   .m-skill__item {
     display: flex;
     flex-direction: column;
+  }
+
+  .m-skill__item + .m-skill__item {
+    border-block-start: 1px solid var(--border);
   }
 
   .m-skill__header {
@@ -36,7 +45,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--space-2);
-    padding-inline-end: var(--space-3);
+    padding-inline-end: var(--space-4);
   }
 
   .m-skill__heading {
@@ -57,11 +66,11 @@
     box-sizing: border-box;
     width: 100%;
     margin: 0;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
     border: 0;
     background: transparent;
     color: var(--text);
-    font: var(--text-caption);
+    font: var(--text-body);
     text-align: start;
     cursor: pointer;
   }
@@ -113,10 +122,6 @@
   .m-skill__panel {
     width: 100%;
     min-height: 0;
-  }
-
-  .m-skill__body {
-    padding: var(--space-3);
   }
 
   .m-skill__aside {

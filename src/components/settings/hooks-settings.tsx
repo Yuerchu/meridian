@@ -2,7 +2,8 @@ import './hooks-settings.css'
 import { Select } from '@/components/yuerchu-ui/components/select/select'
 import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
-import { useCallback, useEffect, useId, useRef, useState } from 'react'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
@@ -188,7 +189,6 @@ export function HooksSettings() {
   const [modelDraftDirty, setModelDraftDirty] = useState(false)
   const { confirm, confirmDialog } = useConfirm()
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const enableHintId = useId()
   const draft = JSON.stringify({
     ...config,
     token: undefined,
@@ -384,125 +384,118 @@ export function HooksSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.hooks.title')} />
 
-      <div data-slot="hooks-enable" className="m-hooks__stack">
-        <Switch
-          variant="card"
-          aria-label={t('settings.hooks.enable')}
-          aria-describedby={enableHintId}
-          isSelected={config.enabled}
-          onChange={(selected) => setConfig({ ...config, enabled: selected })}
+      <SettingsGroup>
+        <SettingsRow label={t('settings.hooks.enable')} description={t('settings.hooks.enableHint')}>
+          <Switch
+            data-slot="hooks-enable"
+            isSelected={config.enabled}
+            onChange={(selected) => setConfig({ ...config, enabled: selected })}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label={t('settings.hooks.reviewModel')}
+          description={t('settings.hooks.reviewModelHint')}
+          layout="stacked"
         >
-          {t('settings.hooks.enable')}
-        </Switch>
-        <p data-slot="hooks-enable-hint" id={enableHintId} className="m-hooks__hint">
-          {t('settings.hooks.enableHint')}
-        </p>
-      </div>
+          <ModelPicker
+            providers={providers}
+            value={config.review_model}
+            onChange={(review_model) => setConfig({ ...config, review_model })}
+            onDirtyChange={setModelDraftDirty}
+          />
+        </SettingsRow>
 
-      <div data-slot="hooks-review-model" className="m-hooks__stack">
-        <p data-slot="hooks-review-model-label" className="m-hooks__label">
-          {t('settings.hooks.reviewModel')}
-        </p>
-        <ModelPicker
-          providers={providers}
-          value={config.review_model}
-          onChange={(review_model) => setConfig({ ...config, review_model })}
-          onDirtyChange={setModelDraftDirty}
-        />
-        <p data-slot="hooks-review-model-hint" className="m-hooks__hint">
-          {t('settings.hooks.reviewModelHint')}
-        </p>
-      </div>
+        <SettingsRow label={t('settings.hooks.assistant')} description={t('settings.hooks.assistantHint')}>
+          <div data-slot="hooks-assistant" className="m-hooks__select">
+            <Select
+              selectedKey={config.assistant_id ?? '_default'}
+              onSelectionChange={(v) => {
+                if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })
+              }}
+            >
+              {assistantOptions.map((o) => (
+                <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                </ListBoxItem>
+              ))}
+            </Select>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <div data-slot="hooks-assistant" className="m-hooks__stack">
-        {/* Through the `label` slot rather than a sibling `Label`: only inside
-            the Select's own context does React Aria wire it to the trigger. */}
-        <Select
-          label={t('settings.hooks.assistant')}
-          selectedKey={config.assistant_id ?? '_default'}
-          onSelectionChange={(v) => {
-            if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })
-          }}
-        >
-          {assistantOptions.map((o) => (
-            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
-              {o.label}
-            </ListBoxItem>
-          ))}
-        </Select>
-        <p data-slot="hooks-assistant-hint" className="m-hooks__hint">
-          {t('settings.hooks.assistantHint')}
-        </p>
-      </div>
+      <SettingsGroup>
+        <SettingsRow label={t('settings.hooks.host')} layout="stacked">
+          <TextField
+            name="hooksHost"
+            value={config.host}
+            onChange={(e) => setConfig({ ...config, host: e })}
+            placeholder="127.0.0.1"
+          />
+        </SettingsRow>
 
-      <div data-slot="hooks-endpoint" className="m-hooks__grid">
-        <TextField
-          label={t('settings.hooks.host')}
-          name="hooksHost"
-          value={config.host}
-          onChange={(e) => setConfig({ ...config, host: e })}
-          placeholder="127.0.0.1"
-        />
-        <NumberField
-          label={t('settings.hooks.port')}
-          value={draftToNumber(portInput)}
-          onChange={(value) => setPortInput(numberToDraft(value))}
-          name="hooksPort"
-          minValue={1}
-          maxValue={65535}
-          placeholder="8765"
-          formatOptions={PLAIN_INTEGER}
-        />
-      </div>
+        <SettingsRow label={t('settings.hooks.port')}>
+          <div className="m-hooks__compact-field">
+            <NumberField
+              value={draftToNumber(portInput)}
+              onChange={(value) => setPortInput(numberToDraft(value))}
+              name="hooksPort"
+              minValue={1}
+              maxValue={65535}
+              placeholder="8765"
+              formatOptions={PLAIN_INTEGER}
+            />
+          </div>
+        </SettingsRow>
 
-      <div data-slot="hooks-timeout" className="m-hooks__stack">
-        <NumberField
-          label={t('settings.hooks.timeout')}
-          value={draftToNumber(timeoutInput)}
-          onChange={(value) => setTimeoutInput(numberToDraft(value))}
-          name="hooksTimeout"
-          minValue={10}
-          maxValue={1200}
-          formatOptions={PLAIN_INTEGER}
-        />
-        <p data-slot="hooks-timeout-hint" className="m-hooks__hint">
-          {t('settings.hooks.timeoutHint')}
-        </p>
-      </div>
+        <SettingsRow label={t('settings.hooks.timeout')} description={t('settings.hooks.timeoutHint')}>
+          <div className="m-hooks__compact-field">
+            <NumberField
+              value={draftToNumber(timeoutInput)}
+              onChange={(value) => setTimeoutInput(numberToDraft(value))}
+              name="hooksTimeout"
+              minValue={10}
+              maxValue={1200}
+              formatOptions={PLAIN_INTEGER}
+            />
+          </div>
+        </SettingsRow>
 
-      <div data-slot="hooks-max-rounds" className="m-hooks__stack">
-        <NumberField
+        <SettingsRow
           label={t('settings.hooks.maxRounds')}
-          value={draftToNumber(roundsInput)}
-          onChange={(value) => setRoundsInput(numberToDraft(value))}
-          name="hooksMaxRounds"
-          minValue={0}
-          maxValue={20}
-          formatOptions={PLAIN_INTEGER}
-        />
-        <p data-slot="hooks-max-rounds-hint" className="m-hooks__hint">
-          {roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
-        </p>
-      </div>
+          description={roundsInput === '0' ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
+        >
+          <div className="m-hooks__compact-field">
+            <NumberField
+              value={draftToNumber(roundsInput)}
+              onChange={(value) => setRoundsInput(numberToDraft(value))}
+              name="hooksMaxRounds"
+              minValue={0}
+              maxValue={20}
+              formatOptions={PLAIN_INTEGER}
+            />
+          </div>
+        </SettingsRow>
 
-      {/* A generated key shown read-only, with copy: the library's rule is not to
-          mask a key nobody types, so there is no reveal toggle. */}
-      <div data-slot="hooks-token" className="m-hooks__token">
-        <TextField
-          label={t('settings.hooks.token')}
-          description={t('settings.hooks.tokenHint')}
-          name="hooksToken"
-          isReadOnly
-          spellCheck="false"
-          value={config.token ?? ''}
-          placeholder={t('settings.hooks.tokenPending')}
-          className="m-hooks__token-field"
-        />
-        <CopyButton value={config.token ?? ''} isDisabled={!config.token} />
-        <Button variant="secondary" onPress={handleRegenerate}>
-          {t('settings.hooks.regenerate')}
-        </Button>
-      </div>
+        {/* A generated key shown read-only, with copy: the library's rule is not to
+            mask a key nobody types, so there is no reveal toggle. */}
+        <SettingsRow label={t('settings.hooks.token')} description={t('settings.hooks.tokenHint')} layout="stacked">
+          <div data-slot="hooks-token" className="m-hooks__token">
+            <TextField
+              name="hooksToken"
+              isReadOnly
+              spellCheck="false"
+              value={config.token ?? ''}
+              placeholder={t('settings.hooks.tokenPending')}
+              className="m-hooks__token-field"
+            />
+            <CopyButton value={config.token ?? ''} isDisabled={!config.token} />
+            <Button variant="secondary" onPress={handleRegenerate}>
+              {t('settings.hooks.regenerate')}
+            </Button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
       {error && (
         <Alert data-slot="hooks-error" tone="danger" shouldAnnounce>
