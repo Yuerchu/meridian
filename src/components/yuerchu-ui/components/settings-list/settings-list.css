@@ -171,12 +171,12 @@
     }
   }
 
-  /* 窄屏下开关、下拉选择、分段控件仍与名称同行，仅宽输入类控件自动折到说明下方 */
+  /* 窄屏下开关、下拉选择、分段控件与数字步进框仍与名称同行，仅宽输入类控件自动折到说明下方 */
   @container (width < 440px) {
     .ui-settings-row:not(.ui-settings-nav-row):has(
         > .ui-settings-row__control
           > :is(
-            .ui-text-field,
+            .ui-text-field:not(.ui-number-field),
             .ui-password-field,
             .ui-search-field,
             .ui-textarea,
@@ -191,7 +191,7 @@
     .ui-settings-row:not(.ui-settings-nav-row):has(
         > .ui-settings-row__control
           > :is(
-            .ui-text-field,
+            .ui-text-field:not(.ui-number-field),
             .ui-password-field,
             .ui-search-field,
             .ui-textarea,
@@ -207,7 +207,7 @@
     .ui-settings-row:not(.ui-settings-nav-row)
       > .ui-settings-row__control:has(
         > :is(
-          .ui-text-field,
+          .ui-text-field:not(.ui-number-field),
           .ui-password-field,
           .ui-search-field,
           .ui-textarea,
