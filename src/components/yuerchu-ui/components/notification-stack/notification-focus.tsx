@@ -43,13 +43,22 @@ export class NotificationFocus extends Component<FocusProps, unknown, FocusSnaps
       if (canFocus(snapshot.origin)) snapshot.origin.focus({ preventScroll: true });
       return;
     }
-    if (snapshot.key === null || keys.includes(snapshot.key)) {
+    if (snapshot.key === null) {
       if (active !== snapshot.node && canFocus(snapshot.node)) snapshot.node.focus({ preventScroll: true });
       return;
     }
+    if (keys.includes(snapshot.key) && canFocus(snapshot.node)) {
+      if (active !== snapshot.node) snapshot.node.focus({ preventScroll: true });
+      return;
+    }
     const i = prev.keys.indexOf(snapshot.key);
-    const neighbor = [...prev.keys.slice(i + 1), ...prev.keys.slice(0, i).reverse()].find((key) => keys.includes(key));
-    const row = [...root.children].find((el) => el.getAttribute("data-notification-key") === (neighbor ?? keys[0]));
+    const neighbor = keys.includes(snapshot.key)
+      ? keys[0]
+      : [...prev.keys.slice(i + 1), ...prev.keys.slice(0, i).reverse()].find((key) => keys.includes(key));
+    const targetKey = neighbor ?? keys[0];
+    const row = [...root.querySelectorAll<HTMLElement>("[data-notification-key]")].find(
+      (el) => el.dataset.notificationKey === targetKey,
+    );
     const target = row?.querySelector<HTMLElement>('article[tabindex="-1"]') ?? root;
     origin.current = snapshot.origin;
     if (canFocus(target)) target.focus({ preventScroll: true });

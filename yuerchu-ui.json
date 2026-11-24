@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "c1703ba936d1f51f1cada23deeba6622e93f8f08"
+    "commit": "a8758b77bd76666dcdf98eea261a39a51ba36bb2"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -167,10 +167,10 @@
     "components/nav-list/nav-list.strings.ts": "529a74517bac08150e0deb6941cfc3e9f9e00e56706e49b6f88bc044167559af",
     "components/nav-list/nav-list.tsx": "31c30d2cd17f655ca9d2735275a859ddee4d8b759ef00d506aea2c8a50fc4c74",
     "components/notification-stack/notification-dock.ts": "67f624020b8ad8af90e11fd1ef88b989c77a382cc01722dcf50d7dba43830329",
-    "components/notification-stack/notification-focus.tsx": "dc5056167ba929eef74f49dda47dbf2b50d95871f9cc1665b93954f5d5e6d35f",
-    "components/notification-stack/notification-stack.css": "eada4626d5509145675e74ee9249a57c760069fd749c0b89b40b6bc3429f089f",
-    "components/notification-stack/notification-stack.strings.ts": "2f395fe0d55182d8dec4bb6332f81ebe2f777ae5127e5d5bebccbace204a915b",
-    "components/notification-stack/notification-stack.tsx": "07cb8ccd7c454e06516d162eb05a2c4c659153acdf17fca8cd4dd37a51262243",
+    "components/notification-stack/notification-focus.tsx": "5bba94207de1a8458959d5b4cf019dd978f81bb72cf8408286f846f0e6d0360a",
+    "components/notification-stack/notification-stack.css": "3a7ae642cb384d1f267dcbbe705f69623ec35c04e37589d03a5d1266f87110ae",
+    "components/notification-stack/notification-stack.strings.ts": "81c2328b7fca1e93ed7b898c96fb0db2dd8aa2dde06f3a94a203099d102e5c4b",
+    "components/notification-stack/notification-stack.tsx": "69252dae3a7b0969c000139218026a0601e36366e615372adaa6f02d3cc5dfde",
     "components/number-field/number-field.css": "6102e40fbf5cd7f7e26fac4eec47a304266423aa18cd8354fea1b748fa0966bb",
     "components/number-field/number-field.tsx": "5ab2258b8c5f4f602484c920844b0783d8c6ab3558aba05ee52edbf8c544b26b",
     "components/pagination/pagination.css": "e5eb7ad3cde64b95878db34b1ab84d0d4d8fbdf85aa8a9bf868309629dd20169",

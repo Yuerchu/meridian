@@ -93,7 +93,7 @@ export function ApprovalNotifications({
 
   return (
     <>
-      <NotificationStack placement="top" aria-label={t('notifications.region')}>
+      <NotificationStack placement="top" collapsible aria-label={t('notifications.region')}>
         {approvals.map((item) => (
           <ApprovalNotification key={item.approvalId} item={item} onSelect={onSelect} />
         ))}
