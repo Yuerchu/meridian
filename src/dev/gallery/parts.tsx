@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Bin } from '@keyline-icons/react/two-tone'
-import { FloatingToc } from '@/components/base'
 import {
   Kanban,
   KanbanCard,
@@ -151,24 +150,6 @@ export function NavigationParts() {
           <Segment id="stdio">stdio</Segment>
           <Segment id="streamablehttp">HTTP</Segment>
         </SegmentedControl>
-      </Section>
-      <Section title="FloatingToc / 对话小地图">
-        <div className="relative flex h-40 max-w-md items-center justify-end rounded-2xl bg-background-secondary-default pe-2">
-          <FloatingToc placement="right">
-            <FloatingToc.Trigger aria-label="对话目录">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <FloatingToc.Bar key={i} active={i === 2} />
-              ))}
-            </FloatingToc.Trigger>
-            <FloatingToc.Content>
-              {['鉴权改走 middleware', '先别动 handler', '补测试', '跑一遍 clippy', '提交'].map((q, i) => (
-                <FloatingToc.Item key={q} active={i === 2} onPress={noop}>
-                  {q}
-                </FloatingToc.Item>
-              ))}
-            </FloatingToc.Content>
-          </FloatingToc>
-        </div>
       </Section>
       <Section title="CommandPalette（库）">
         <Button variant="secondary" onPress={() => setPaletteOpen(true)}>

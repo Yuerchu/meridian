@@ -1,4 +1,3 @@
-import { existsSync, readFileSync } from 'node:fs'
 import js from '@eslint/js'
 import tseslint from 'typescript-eslint'
 import reactHooks from 'eslint-plugin-react-hooks'
@@ -237,16 +236,6 @@ const racRestrictions = [
   },
 ]
 
-// Files installed from the registry, as `boardui.json` records them. They keep
-// the registry's spelling; only the React Aria contract is enforced on them.
-const VENDORED = existsSync(new URL('./boardui.json', import.meta.url))
-  ? Object.values(JSON.parse(readFileSync(new URL('./boardui.json', import.meta.url), 'utf8')).items)
-      .flatMap((item) => item.files)
-      // The manifest lists the registry's stylesheets too; a `files` glob that
-      // matches a .css file makes ESLint try to parse it as JavaScript.
-      .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
-  : []
-
 // For scripts/eslint-rules.test.mjs, which pins every selector to the shape it
 // was written for.
 export const uiRestrictions = {
@@ -274,17 +263,10 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
-  {
-    files: ['src/components/base/**/*.{ts,tsx}'],
-    rules: {
-      'react-refresh/only-export-components': 'off',
-    },
-  },
   // The UI conventions that need to see more than one node, or a stylesheet:
   // the local plugin under scripts/eslint-rules/.
   {
     files: ['src/**/*.tsx'],
-    ignores: ['src/components/foundations/**', ...VENDORED],
     rules: {
       'meridian-ui/icon-only-needs-name': 'error',
       'meridian-ui/button-icon-through-prop': 'error',
@@ -315,10 +297,8 @@ export default tseslint.config(
   // a default the save path writes back (four settings pages, 2026-09); and an
   // absent fact about a model (its window, a price, a limit) is not replaced by
   // a constant (the context ring's `?? 128000`, 2026-09).
-  // App code only: the registry's files are not where settings are loaded.
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: VENDORED,
     rules: {
       'meridian-ui/no-default-on-load-failure': 'error',
       'meridian-ui/no-parse-or-default': 'error',
@@ -344,9 +324,7 @@ export default tseslint.config(
       ],
     },
   },
-  // Accessible names are in the app's language. App code outside the dev
-  // playground; vendored registry files keep their English prop defaults (the
-  // block after this one), and their callers are what has to pass the prop.
+  // Accessible names are in the app's language.
   {
     files: ['src/**/*.tsx'],
     ignores: ['src/dev/**', '**/test/**'],
@@ -354,36 +332,18 @@ export default tseslint.config(
       'meridian-ui/translated-aria-label': 'error',
     },
   },
-  ...(VENDORED.length > 0
-    ? [
-        {
-          files: VENDORED.filter((file) => file.endsWith('.tsx')),
-          rules: {
-            'meridian-ui/translated-aria-label': ['error', { allowPropDefaults: true }],
-          },
-        },
-      ]
-    : []),
-  // The base layer: a prop it accepts, it honours.
-  {
-    files: ['src/components/base/**/*.tsx'],
-    rules: {
-      'meridian-ui/no-silent-prop-drop': 'error',
-    },
-  },
-  // BoardUI's rules. Three config blocks because flat config REPLACES a rule
+  // UI syntax gates. Two config blocks because flat config REPLACES a rule
   // wholesale when a later block redefines it: each block carries the full set
   // it means.
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/components/foundations/**'],
     rules: {
       'no-restricted-syntax': ['error', ...styleRestrictions, ...racRestrictions, ...nativeChromeRestrictions],
     },
   },
   {
     files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/components/ui/**', 'src/components/base/**'],
+    ignores: ['src/components/ui/**'],
     rules: {
       'no-restricted-syntax': [
         'error',
@@ -394,18 +354,6 @@ export default tseslint.config(
       ],
     },
   },
-  ...(VENDORED.length > 0
-    ? [
-        {
-          files: VENDORED,
-          rules: {
-            'no-restricted-syntax': ['error', ...racRestrictions],
-            // Registry files export their helpers beside their components.
-            'react-refresh/only-export-components': 'off',
-          },
-        },
-      ]
-    : []),
   // The settings barrel imports all eleven panels, and App.tsx loads it lazily
   // so none of that reaches the main bundle. A *value* import from the barrel
   // anywhere eagerly-loaded undoes that silently — nothing breaks, the bundle

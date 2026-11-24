@@ -2,26 +2,22 @@ import './overlays.css'
 import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useState } from 'react'
-import { Copy, Hammer, Pen, Scissors, TriangleAlert } from '@keyline-icons/react/two-tone'
+import { Hammer, Pen, TriangleAlert } from '@keyline-icons/react/two-tone'
 
-import {
-  ContextMenu,
-  Dropdown,
-  DropdownGroup,
-  DropdownItem,
-  DropdownPopover,
-  DropdownTrigger,
-  Kbd,
-  Sheet,
-} from '@/components/base'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { AlertDialog, Dialog, DialogFooter, type DialogProps } from '@/components/yuerchu-ui/components/dialog/dialog'
-import type { SheetPlacement } from '@/components/base/sheet'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
-import { Menu, MenuItem, MenuSection, MenuSeparator, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import {
+  Menu,
+  MenuItem,
+  MenuSection,
+  MenuSeparator,
+  MenuTrigger,
+  SubmenuTrigger,
+} from '@/components/yuerchu-ui/components/menu/menu'
 import {
   NotificationCard,
   NotificationStack,
@@ -35,63 +31,6 @@ import { OverlayParts } from './parts'
 function Menus() {
   return (
     <Stage>
-      <Row>
-        <Dropdown>
-          <DropdownTrigger className="rounded-full bg-background-secondary-default px-3 py-1.5 text-body-medium">
-            权限 · 手动
-          </DropdownTrigger>
-          <DropdownPopover aria-label="权限" selectionMode="single" defaultSelectedKeys={['ask']}>
-            <DropdownGroup label="权限">
-              <DropdownItem id="ask" textValue="手动">
-                <Hammer className="size-5 text-foreground-icon-secondary" aria-hidden />
-                <span className="flex flex-col">
-                  <span>手动</span>
-                  <span className="text-caption-1-regular text-text-secondary">每次修改前询问</span>
-                </span>
-              </DropdownItem>
-              <DropdownItem id="accept" textValue="接受编辑">
-                <Pen className="size-5 text-foreground-icon-secondary" aria-hidden />
-                接受编辑
-              </DropdownItem>
-            </DropdownGroup>
-            <DropdownGroup label="对话">
-              <DropdownItem id="rename" textValue="重命名">
-                重命名
-                <Kbd className="ms-auto">F2</Kbd>
-              </DropdownItem>
-              <DropdownItem id="delete" textValue="删除" variant="danger">
-                删除
-              </DropdownItem>
-              <DropdownItem id="disabled" textValue="不可用" isDisabled>
-                不可用
-              </DropdownItem>
-            </DropdownGroup>
-          </DropdownPopover>
-        </Dropdown>
-        <ContextMenu>
-          <ContextMenu.Trigger className="rounded-2xl border border-dashed border-border-button-default px-4 py-3 text-body-2-regular text-text-secondary">
-            在这里右键
-          </ContextMenu.Trigger>
-          <ContextMenu.Popover>
-            <ContextMenu.Menu aria-label="右键菜单">
-              <ContextMenu.Item id="cut" textValue="剪切">
-                <Scissors className="size-4 text-text-secondary" />
-                <span>剪切</span>
-                <Kbd className="ms-auto">Ctrl X</Kbd>
-              </ContextMenu.Item>
-              <ContextMenu.Item id="copy" textValue="复制">
-                <Copy className="size-4 text-text-secondary" />
-                <span>复制</span>
-                <Kbd className="ms-auto">Ctrl C</Kbd>
-              </ContextMenu.Item>
-              <ContextMenu.Separator />
-              <ContextMenu.Item id="select" textValue="选择文字">
-                <span>选择文字</span>
-              </ContextMenu.Item>
-            </ContextMenu.Menu>
-          </ContextMenu.Popover>
-        </ContextMenu>
-      </Row>
       <Row label="Menu（库）">
         <MenuTrigger>
           <Button variant="secondary" size="sm">
@@ -107,6 +46,14 @@ function Menus() {
               </MenuItem>
             </MenuSection>
             <MenuSection header="对话">
+              <SubmenuTrigger>
+                <MenuItem id="effort">思考强度</MenuItem>
+                <Menu aria-label="思考强度">
+                  <MenuItem id="low">低</MenuItem>
+                  <MenuItem id="medium">中</MenuItem>
+                  <MenuItem id="high">高</MenuItem>
+                </Menu>
+              </SubmenuTrigger>
               <MenuItem id="rename" shortcut="F2">
                 重命名
               </MenuItem>
@@ -216,7 +163,6 @@ function Hints() {
 function Dialogs() {
   const [modal, setModal] = useState<NonNullable<DialogProps['size']> | null>(null)
   const [alert, setAlert] = useState(false)
-  const [sheet, setSheet] = useState<SheetPlacement | null>(null)
   return (
     <Stage>
       <Row label="Dialog">
@@ -230,13 +176,6 @@ function Dialogs() {
         <Button variant="destructive" size="sm" onPress={() => setAlert(true)}>
           删除对话
         </Button>
-      </Row>
-      <Row label="Sheet">
-        {(['right', 'left', 'bottom', 'top'] as const).map((placement) => (
-          <Button key={placement} variant="secondary" size="sm" onPress={() => setSheet(placement)}>
-            {placement}
-          </Button>
-        ))}
       </Row>
 
       <Dialog
@@ -262,26 +201,6 @@ function Dialogs() {
         confirmLabel="删除"
         tone="danger"
       />
-
-      <Sheet isOpen={sheet !== null} placement={sheet ?? 'right'} onOpenChange={(open) => !open && setSheet(null)}>
-        <Sheet.Backdrop>
-          <Sheet.Content>
-            <Sheet.Dialog aria-label="Sheet">
-              <Sheet.Header>
-                <Sheet.Heading>子 agent · 修好偶发失败的测试</Sheet.Heading>
-              </Sheet.Header>
-              <Sheet.Body className="text-body-regular text-text-secondary">
-                从 {sheet} 滑入；底部抽屉可以拖动关闭。
-              </Sheet.Body>
-              <Sheet.Footer>
-                <Button slot="close" variant="secondary">
-                  关闭
-                </Button>
-              </Sheet.Footer>
-            </Sheet.Dialog>
-          </Sheet.Content>
-        </Sheet.Backdrop>
-      </Sheet>
     </Stage>
   )
 }
@@ -305,14 +224,17 @@ function HotkeyProbe() {
   useHotkey('escape', () => note('escape'))
 
   return (
-    <div data-slot="hotkey-probe" className="space-y-3">
-      <div data-slot="hotkey-probe-controls" className="flex flex-wrap items-center gap-3">
+    <div data-slot="hotkey-probe" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+      <div
+        data-slot="hotkey-probe-controls"
+        style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-3)' }}
+      >
         <Button variant="secondary" onPress={() => setPaletteOpen(true)}>
           打开面板
         </Button>
         <TextField aria-label="焦点测试用输入框" placeholder="在这里打字，再按 mod+k / mod+shift+k" />
       </div>
-      <p data-slot="hotkey-probe-expectation" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="hotkey-probe-expectation" style={{ fontSize: 'var(--text-xs)', color: 'var(--fg-muted)' }}>
         预期：<code data-slot="hotkey-probe-code">mod+k</code> 在输入框里也触发，
         <code data-slot="hotkey-probe-code">mod+shift+k</code> 不触发（
         <code data-slot="hotkey-probe-code">ignoreInInput</code> 默认开）， 且{' '}
@@ -321,12 +243,18 @@ function HotkeyProbe() {
       </p>
       <div
         data-slot="hotkey-probe-log"
-        className="rounded-lg border border-border-button-default bg-background-primary-default p-3 text-caption-1-regular"
+        style={{
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--border)',
+          background: 'var(--surface)',
+          padding: 'var(--space-3)',
+          fontSize: 'var(--text-xs)',
+        }}
       >
-        <div data-slot="hotkey-probe-hits" className="text-text-secondary">
+        <div data-slot="hotkey-probe-hits" style={{ color: 'var(--fg-muted)' }}>
           最近命中：{log.length ? log.join(' · ') : '（无）'}
         </div>
-        <div data-slot="hotkey-probe-chosen" className="mt-1">
+        <div data-slot="hotkey-probe-chosen" style={{ marginTop: 'var(--space-1)' }}>
           面板选中：{chosen}
         </div>
       </div>
@@ -348,7 +276,7 @@ function HotkeyProbe() {
 export default function Overlays() {
   return (
     <>
-      <Section title="Dropdown / ContextMenu / Menu">
+      <Section title="Menu（库）">
         <Menus />
       </Section>
       <Section title="Drawer / NotificationStack / Toast（库）">
@@ -357,16 +285,10 @@ export default function Overlays() {
       <Section title="Tooltip / Popover">
         <Hints />
       </Section>
-      <Section title="Dialog / AlertDialog / Sheet">
+      <Section title="Dialog / AlertDialog">
         <Dialogs />
       </Section>
       <Section title="快捷键 / 命令面板">
-        {/* Two things this is here to answer, neither of which a unit test
-            can: whether the WebView hands us Ctrl+K at all (Edge binds it to
-            the address bar, and WebView2 has been known to keep bindings the
-            app never asked for), and whether the palette still opens while a
-            text field has focus. Run this one under `pnpm tauri dev`, not in
-            a browser — the browser is not the environment in question. */}
         <HotkeyProbe />
       </Section>
       <OverlayParts />

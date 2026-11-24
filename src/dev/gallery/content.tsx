@@ -1,14 +1,11 @@
-import { Bold, Code, Italic, List, Strikethrough } from '@keyline-icons/react/two-tone'
-import type { ComponentType } from 'react'
-
+import { useState } from 'react'
 import {
-  ChatAttachment,
-  ChatAttachmentGroup,
-  ChatSource,
-  ChatSources,
-  RichTextEditor,
-  type RichTextEditorFormatCommand,
-} from '@/components/base'
+  AttachmentList,
+  AttachmentPreview,
+} from '@/components/yuerchu-ui/components/attachment-preview/attachment-preview'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { HoverCard } from '@/components/yuerchu-ui/components/hover-card/hover-card'
+import { ImageViewer } from '@/components/yuerchu-ui/components/image-viewer/image-viewer'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { ShikiCode } from '@/components/chat/shiki-code'
@@ -27,7 +24,7 @@ const MARKDOWN = [
   '> 引用：在计划里写清楚验证方法。',
   '',
   '1. 有序列表',
-  '2. 第二项，带 [链接](https://boardui.com)',
+  '2. 第二项，带 [链接](https://yuerchu.com)',
 ].join('\n')
 
 const RUST = [
@@ -40,34 +37,37 @@ const RUST = [
   '}',
 ].join('\n')
 
-const FORMATS: [RichTextEditorFormatCommand, string, ComponentType<{ className?: string }>][] = [
-  ['bold', '粗体', Bold],
-  ['italic', '斜体', Italic],
-  ['strike', '删除线', Strikethrough],
-  ['code', '行内代码', Code],
-  ['bulletList', '列表', List],
-]
+const SAMPLE_IMAGE = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3"><rect width="4" height="3" fill="#8fb4ff"/></svg>',
+)}`
 
-function Editor() {
+function AttachmentsAndViewer() {
+  const [viewerOpen, setViewerOpen] = useState(false)
   return (
-    <RichTextEditor placeholder="写点什么…" className="min-h-48">
-      <RichTextEditor.Shell className="flex flex-col">
-        <RichTextEditor.Toolbar aria-label="格式">
-          <RichTextEditor.ToolbarGroup>
-            {FORMATS.map(([command, label, icon]) => (
-              <RichTextEditor.ToggleButton
-                key={command}
-                command={command}
-                aria-label={label}
-                tooltip={label}
-                leadingIcon={icon}
-              />
-            ))}
-          </RichTextEditor.ToolbarGroup>
-        </RichTextEditor.Toolbar>
-        <RichTextEditor.Content />
-      </RichTextEditor.Shell>
-    </RichTextEditor>
+    <Stage>
+      <AttachmentList aria-label="附件预览">
+        <AttachmentPreview name="design-notes.md" size={4096} />
+        <AttachmentPreview name="report-final.pdf" size={248_000} />
+        <AttachmentPreview name="截图.svg" imageUrl={SAMPLE_IMAGE} />
+      </AttachmentList>
+      <div>
+        <Button variant="secondary" size="sm" onPress={() => setViewerOpen(true)}>
+          查看图片
+        </Button>
+        <ImageViewer
+          isOpen={viewerOpen}
+          onOpenChange={setViewerOpen}
+          images={[{ id: 'sample', src: SAMPLE_IMAGE, alt: '示例截图' }]}
+        />
+      </div>
+      <div>
+        <HoverCard content={<div>引用来源摘要：Yuerchu UI 文档</div>}>
+          <a href="https://yuerchu.com" target="_blank" rel="noreferrer">
+            悬停查看引用卡片
+          </a>
+        </HoverCard>
+      </div>
+    </Stage>
   )
 }
 
@@ -90,47 +90,8 @@ export default function Content() {
           <FileDiffCard key={diff.path} diff={diff} />
         ))}
       </Section>
-      <Section title="RichTextEditor">
-        <Stage>
-          <Editor />
-        </Stage>
-      </Section>
-      <Section title="ChatAttachment / ChatSource">
-        <Stage>
-          <ChatAttachmentGroup>
-            <ChatAttachment name="design-notes.md" />
-            <ChatAttachment name="report-final.pdf" />
-            <ChatAttachment
-              mediaType="image"
-              name="截图"
-              src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-                '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 3"><rect width="4" height="3" fill="#8fb4ff"/></svg>',
-              )}`}
-            />
-          </ChatAttachmentGroup>
-          <ChatSources defaultExpanded>
-            <ChatSources.Trigger>2 个来源</ChatSources.Trigger>
-            <ChatSources.Content>
-              <ChatSources.List>
-                {[
-                  ['boardui', 'https://boardui.com', 'BoardUI'],
-                  ['Base UI', 'https://base-ui.com/react/components/collapsible', 'Base UI Collapsible'],
-                ].map(([site, href, title]) => (
-                  <ChatSource key={href} href={href} title={site} description={title}>
-                    <ChatSource.Trigger
-                      href="#meridian-external"
-                      rel="noreferrer noopener"
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      <ChatSource.Icon />
-                      <ChatSource.Title>{site}</ChatSource.Title>
-                    </ChatSource.Trigger>
-                  </ChatSource>
-                ))}
-              </ChatSources.List>
-            </ChatSources.Content>
-          </ChatSources>
-        </Stage>
+      <Section title="AttachmentPreview · ImageViewer · HoverCard（库）">
+        <AttachmentsAndViewer />
       </Section>
     </>
   )

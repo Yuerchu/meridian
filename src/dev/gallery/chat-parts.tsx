@@ -1,9 +1,4 @@
-import { useState } from 'react'
 import { Copy, List, Pen, RefreshCw } from '@keyline-icons/react/two-tone'
-import { PromptInput } from '@/components/base'
-import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
-import { ComposerLoader } from '@/components/application/composer-loader/composer-loader'
-import { ShimmerText } from '@/components/application/agent-log/agent-log'
 import { ActionButton } from '@/components/ui/action-button'
 import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
 import { BubbleBlockButton, BubbleFoldBadge } from '@/components/ui/bubble-block'
@@ -78,33 +73,6 @@ function MessageGroups() {
   )
 }
 
-function Prompt() {
-  const [value, setValue] = useState('')
-  const [lit, setLit] = useState(true)
-  return (
-    <div className="flex max-w-2xl flex-col gap-3">
-      <PromptInput value={value} onValueChange={setValue} onSubmit={() => setValue('')} status="ready">
-        <ComposerLoader active={lit} radius={24}>
-          <PromptInput.Shell>
-            <PromptInput.Content>
-              <PromptInput.TextArea placeholder="发送消息…" aria-label="prompt input probe" />
-            </PromptInput.Content>
-            <PromptInput.Toolbar>
-              <PromptInput.ToolbarStart />
-              <PromptInput.ToolbarEnd>
-                <PromptInput.Send />
-              </PromptInput.ToolbarEnd>
-            </PromptInput.Toolbar>
-          </PromptInput.Shell>
-        </ComposerLoader>
-      </PromptInput>
-      <Switch isSelected={lit} onChange={setLit}>
-        ComposerLoader 亮着
-      </Switch>
-    </div>
-  )
-}
-
 export default function ChatParts() {
   return (
     <>
@@ -112,9 +80,9 @@ export default function ChatParts() {
         <MessageGroups />
       </Section>
       <Section title="TurnStatusIcon / 回合状态">
-        <div className="flex flex-wrap items-center gap-4">
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-4)' }}>
           {STATUSES.map((status) => (
-            <span key={status} className="flex items-center gap-1.5 text-body-2-regular text-text-secondary">
+            <span key={status} style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1-5)' }}>
               <TurnStatusIcon status={status} />
               {status}
             </span>
@@ -122,7 +90,7 @@ export default function ChatParts() {
         </div>
       </Section>
       <Section title="Marker / 时间线标记">
-        <div className="flex max-w-xl flex-col gap-4">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: '36rem' }}>
           {(['default', 'separator', 'border'] as const).map((variant) => (
             <Marker key={variant} variant={variant}>
               <MarkerIcon>
@@ -133,11 +101,8 @@ export default function ChatParts() {
           ))}
         </div>
       </Section>
-      <Section title="ShimmerText / 进行中的文字">
-        <ShimmerText>正在读取 src/components/chat/composer.tsx</ShimmerText>
-      </Section>
       <Section title="ToolValue · ToolTextResult / 工具参数与结果">
-        <div className="grid max-w-3xl gap-3 lg:grid-cols-2">
+        <div style={{ display: 'grid', gap: 'var(--space-3)', maxWidth: '48rem' }}>
           <ToolValue
             value={{
               path: 'src/api.ts',
@@ -152,9 +117,6 @@ export default function ChatParts() {
           />
           <ToolTextResult text={'error[E0425]: cannot find value `pool` in this scope\n  --> src/db.rs:12:5'} />
         </div>
-      </Section>
-      <Section title="PromptInput · ComposerLoader / 输入框底座">
-        <Prompt />
       </Section>
     </>
   )

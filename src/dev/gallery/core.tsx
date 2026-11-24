@@ -2,10 +2,10 @@ import { Separator } from '@/components/yuerchu-ui/components/separator/separato
 import { useState } from 'react'
 import { Bin, Plus, Sparkles } from '@keyline-icons/react/two-tone'
 
-import { Avatar, Kbd, Spinner } from '@/components/base'
-import { Kbd as NativeKbd } from '@/components/yuerchu-ui/components/kbd/kbd'
+import { Avatar } from '@/components/yuerchu-ui/components/avatar/avatar'
+import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Link } from '@/components/yuerchu-ui/components/link/link'
-import { Spinner as NativeSpinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
@@ -80,12 +80,8 @@ function Chips() {
         </Button>
       </Row>
       <Row label="Kbd">
-        <NativeKbd keys={['Ctrl', 'K']} />
-        <NativeKbd keys={['⇧', '↵']} />
-        <NativeKbd>Esc</NativeKbd>
-      </Row>
-      <Row label="Kbd · 旧版（菜单迁移前）">
-        <Kbd>Ctrl K</Kbd>
+        <Kbd keys={['Ctrl', 'K']} />
+        <Kbd keys={['⇧', '↵']} />
         <Kbd>Esc</Kbd>
       </Row>
       <Row label="Link">
@@ -101,13 +97,16 @@ function Chips() {
 function Avatars() {
   return (
     <Stage>
-      {(['neutral', 'blue', 'lime', 'pink'] as const).map((color) => (
-        <Row key={color} label={color}>
-          {(['xs', 'sm', 'md', 'lg'] as const).map((size) => (
-            <Avatar key={size} size={size} color={color} initials="于" alt="于小丘" />
-          ))}
-        </Row>
-      ))}
+      <Row label="circle">
+        {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+          <Avatar key={size} size={size} name="于小丘" />
+        ))}
+      </Row>
+      <Row label="square">
+        {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
+          <Avatar key={size} size={size} shape="square" name="Meridian" />
+        ))}
+      </Row>
     </Stage>
   )
 }
@@ -115,18 +114,11 @@ function Avatars() {
 function Spinners() {
   return (
     <Stage>
-      <Row label="Native Spinner">
+      <Row label="Spinner">
         {SIZES.map((size) => (
-          <NativeSpinner key={size} size={size} aria-label={`加载中 ${size}`} />
+          <Spinner key={size} size={size} aria-label={`加载中 ${size}`} />
         ))}
       </Row>
-      {(['current', 'accent', 'success', 'warning', 'danger'] as const).map((color) => (
-        <Row key={color} label={color}>
-          {(['sm', 'md', 'lg', 'xl'] as const).map((size) => (
-            <Spinner key={size} size={size} color={color} aria-label={`${color} ${size}`} />
-          ))}
-        </Row>
-      ))}
     </Stage>
   )
 }

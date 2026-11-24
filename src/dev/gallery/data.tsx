@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import type { Key, Selection } from 'react-aria-components'
-import { Check, FileText, Folder } from '@keyline-icons/react/two-tone'
+import { FileText, Folder } from '@keyline-icons/react/two-tone'
 
-import { ListBox } from '@/components/base'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
@@ -87,25 +87,15 @@ function Tables() {
 function Lists() {
   return (
     <Stage>
-      <ListBox aria-label="移动到" selectionMode="single" defaultSelectedKeys={['meridian']} className="gap-1">
+      <ListBox aria-label="移动到" selectionMode="single" defaultSelectedKeys={['meridian']}>
         {[
           { id: 'none', label: '不属于任何项目', icon: FileText },
           { id: 'meridian', label: 'meridian', icon: Folder },
           { id: 'core', label: 'meridian-core', icon: Folder },
         ].map(({ id, label, icon: Icon }) => (
-          <ListBox.Item key={id} id={id} textValue={label}>
-            {({ isSelected }) => (
-              <>
-                <Icon className="size-4 text-text-secondary" aria-hidden />
-                {label}
-                {isSelected ? (
-                  <ListBox.ItemIndicator>
-                    <Check className="size-4" aria-hidden />
-                  </ListBox.ItemIndicator>
-                ) : null}
-              </>
-            )}
-          </ListBox.Item>
+          <ListBoxItem key={id} id={id} textValue={label} icon={<Icon aria-hidden />}>
+            {label}
+          </ListBoxItem>
         ))}
       </ListBox>
     </Stage>

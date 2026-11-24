@@ -1,10 +1,3 @@
-/* Tailwind stays only while the business layer is rewritten as plain CSS
-   (refactor/yuerchu-ui, P2): its layout utilities keep the screens that have not
-   been converted yet from collapsing. It maps no token — a colour, type step,
-   radius or shadow comes from Yuerchu UI or from nowhere — and it goes with the
-   last converted file. Its layer order is the library's (`theme, base,
-   components, utilities`). */
-@import 'tailwindcss';
 /* Yuerchu UI: tokens, then the global rules (focus, selection, scrollbars,
    body text). Components import their own CSS. */
 @import './components/yuerchu-ui/styles/index.css';
@@ -13,28 +6,6 @@
 /* Meridian's own layer on the library's tokens: bubbles, insets, the settings
    width, the arrival mark, the code block, the app frame. */
 @import './styles/meridian.css';
-
-/* The standalone editor is a rounded field. Here the page already owns the
-   surface and scroll boundary, so the document uses the same tokens without
-   stacking another card inside it. */
-.plan-review-rich-editor .rich-text-editor__shell {
-  border: 0;
-  border-radius: 0;
-  background: var(--surface);
-}
-
-.plan-review-rich-editor .rich-text-editor__toolbar {
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border);
-}
-
-.plan-review-rich-editor .rich-text-editor__prosemirror {
-  width: 100%;
-  max-width: 54rem;
-  min-height: 100%;
-  margin-inline: auto;
-  padding: 2rem clamp(1rem, 4cqi, 3rem) 6rem;
-}
 
 /* A comment anchor is both tinted and underlined, so it remains identifiable
    when status colours cannot be distinguished. */
@@ -54,49 +25,20 @@
   border-inline-start: 3px dashed var(--warning-fg);
 }
 
-/* `any-pointer`, not `pointer`. `pointer` describes the *primary* pointer only,
-   and on the machines this most needs to work — a Windows touchscreen laptop, a
-   tablet in a keyboard case — the primary pointer is the trackpad, so it reports
-   `fine` and every one of these hitboxes stayed at its drawn size while a finger
-   was the thing reaching for it. `any-pointer: coarse` is true whenever *some*
-   pointer is coarse, which is the question being asked.
-
-   The cost is that a hybrid device expands them while the mouse is in use. That
-   is the right direction to be wrong in: the expansion is an invisible
-   `::after`, so a mouse user loses nothing but a little precision between
-   neighbours, and a touch user without it loses the control.
-
-   `overflow: visible !important` because the expansion is the element's own
-   child as far as `overflow` goes, and the registry's `Button` is
-   `overflow-hidden`: every expanded button was clipped straight back to its
-   drawn size. `.overflow-hidden` and `.touch-hitbox` are both one class in the
-   same layer, so which wins is emission order — `!important` makes it this one
-   whatever the order (a doubled `&.touch-hitbox` would lose to any variant-
-   qualified `overflow-*` of equal weight). The cost is that a caller cannot
-   clip a hitbox control on a touch screen; none should — nothing a finger has
-   to reach may depend on clipping, and the primary/danger gradient's `::before`
-   rounds itself (`border-radius: inherit`) rather than relying on it.
+/* `any-pointer`, not `pointer`: expand small controls to a 44px touch target
+   whenever any coarse pointer is present, and lift overflow clipping so the
+   invisible ::after hit area is never clipped back to the drawn box.
    `src/dev/responsive-detectors.ts` reads this rule back (`hitboxLiftsOwnClip`). */
-@utility touch-hitbox {
-  @media (any-pointer: coarse) {
-    position: relative;
-    overflow: visible !important;
-    &::after {
-      content: '';
-      position: absolute;
-      inset: min(0px, calc((100% - 2.75rem) / 2));
+@layer utilities {
+  .touch-hitbox {
+    @media (any-pointer: coarse) {
+      position: relative;
+      overflow: visible !important;
+      &::after {
+        content: '';
+        position: absolute;
+        inset: min(0px, calc((100% - 2.75rem) / 2));
+      }
     }
-  }
-}
-
-/* MotionConfig only reaches motion/react. Loading and attention indicators use
-   Tailwind's CSS animations, so honour the same system preference here as the
-   final backstop. The icon or status text remains visible; only movement stops. */
-@media (prefers-reduced-motion: reduce) {
-  .animate-spin,
-  .animate-spin-fast,
-  .animate-pulse,
-  .animate-bounce {
-    animation: none !important;
   }
 }

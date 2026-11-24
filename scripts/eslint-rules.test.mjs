@@ -252,12 +252,8 @@ describe('translated-aria-label scope', () => {
     assert.equal(rule?.[0], 2)
     assert.notEqual(rule?.[1]?.allowPropDefaults, true)
   })
-  it('lets vendored registry files keep their prop defaults', async () => {
-    // Any file still listed in boardui.json; the pagination item was deleted
-    // with the migration, and the fixture has to follow the ledger.
-    const rule = await setting('src/components/base/dropdown/dropdown.tsx')
-    assert.equal(rule?.[0], 2)
-    assert.equal(rule?.[1]?.allowPropDefaults, true)
+  it('skips vendored Yuerchu UI files (linted upstream)', async () => {
+    assert.equal(await setting('src/components/yuerchu-ui/components/button/button.tsx'), undefined)
   })
   it('skips the dev playground, test directories and test files', async () => {
     assert.equal(await setting('src/dev/responsive-lab.tsx'), undefined)
