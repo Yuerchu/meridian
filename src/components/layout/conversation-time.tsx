@@ -15,18 +15,41 @@ export function ConversationTime({ updatedAt }: { updatedAt: number }) {
 }
 
 /**
- * The right-click / long-press menu's heading for a conversation: when it last
- * moved, relative and in full.
+ * The right-click / long-press / overflow menu's heading for a conversation:
+ * the full untruncated title (essential when the narrow sidebar row truncated
+ * it) followed by when it last moved, relative and in full.
  */
-export function ConversationTimeSection({ updatedAt, children }: { updatedAt: number; children: ReactNode }) {
+export function ConversationTimeSection({
+  title,
+  updatedAt,
+  children,
+}: {
+  title?: string
+  updatedAt: number
+  children: ReactNode
+}) {
   const { t, i18n } = useTranslation()
   const relativeTime = useRelativeTime()
   const exact = useMemo(
     () => new Intl.DateTimeFormat(i18n.resolvedLanguage ?? i18n.language, { dateStyle: 'medium', timeStyle: 'short' }),
     [i18n.resolvedLanguage, i18n.language],
   )
+  const timestamp = t('sidebar.updatedAt', { relative: relativeTime(updatedAt), exact: exact.format(updatedAt) })
   return (
-    <MenuSection header={t('sidebar.updatedAt', { relative: relativeTime(updatedAt), exact: exact.format(updatedAt) })}>
+    <MenuSection
+      header={
+        title ? (
+          <span data-slot="conversation-menu-header" className="m-sidebar__menu-header">
+            <span data-slot="conversation-menu-title" className="m-sidebar__menu-title">
+              {title}
+            </span>
+            <span className="m-sidebar__menu-time">{timestamp}</span>
+          </span>
+        ) : (
+          timestamp
+        )
+      }
+    >
       {children}
     </MenuSection>
   )

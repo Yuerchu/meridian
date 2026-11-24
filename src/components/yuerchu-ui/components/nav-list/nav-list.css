@@ -158,7 +158,8 @@
     pointer-events: auto;
   }
 
-  /* 同时有 trailing 和 actions 时，操作区叠在尾部信息原位：平时看时间/计数，悬停或聚焦切换为按钮，零抖动 */
+  /* 同时有 trailing 和 actions 时：平时隐藏操作区（不占宽度）显示尾部信息；
+     悬停、聚焦或弹层打开时收起尾部信息，把腾出的宽度还给标题，操作区回归文档流仅占按钮自身宽度 */
   :is(.ui-nav-list__row, .ui-nav-group__row)[data-has-trailing] > .ui-nav-list__actions {
     position: absolute;
     inset-inline-end: var(--space-1);
@@ -170,8 +171,18 @@
     [data-focus-within],
     :has([aria-expanded="true"])
   )
+    > .ui-nav-list__actions {
+    position: static;
+    padding-inline-end: var(--space-1);
+  }
+
+  :is(.ui-nav-list__row, .ui-nav-group__row)[data-has-trailing]:is(
+    [data-hovered]:not([data-disabled]),
+    [data-focus-within],
+    :has([aria-expanded="true"])
+  )
     :is(.ui-nav-item__trailing, .ui-nav-group__trailing) {
-    opacity: 0;
+    display: none;
   }
 
   @media (pointer: coarse) {
@@ -187,6 +198,7 @@
 
     :is(.ui-nav-list__row, .ui-nav-group__row)[data-has-trailing]
       :is(.ui-nav-item__trailing, .ui-nav-group__trailing) {
+      display: initial;
       opacity: 1;
     }
   }

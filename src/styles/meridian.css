@@ -15,11 +15,12 @@
     /* The two bubble fills of the transcript. Who is speaking is the one
        colour on screen that carries meaning, so it is a token of its own
        rather than the action colour or a hover wash written at the call site.
-       The person's bubble is a card on the chat surface; the model's is one
-       step off the surface so it reads against both the page and that card. */
-    --bubble-user: var(--surface);
+       The person's bubble takes a soft accent tint (Telegram-style) so it
+       reads clearly against the white/dark main surface; the model's stays on
+       a neutral muted step. */
+    --bubble-user: color-mix(in oklch, var(--accent) 13%, var(--surface));
     --bubble-user-foreground: var(--text);
-    --bubble-user-shadow: var(--shadow-resting);
+    --bubble-user-shadow: none;
     --bubble-assistant: var(--surface-muted);
     --bubble-assistant-foreground: var(--text);
 
@@ -33,6 +34,16 @@
     /* The one width every settings page has: moving between sections must not
        move the column under the reader. */
     --content-settings: 33.25rem;
+  }
+
+  :root[data-theme='dark'] {
+    --bubble-user: color-mix(in oklch, var(--accent) 22%, var(--surface));
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+      --bubble-user: color-mix(in oklch, var(--accent) 22%, var(--surface));
+    }
   }
 }
 

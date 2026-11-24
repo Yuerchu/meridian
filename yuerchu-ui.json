@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "38dca5b594e2b5f654a4fa3d04130be98ceefc93"
+    "commit": "c1703ba936d1f51f1cada23deeba6622e93f8f08"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -163,7 +163,7 @@
     "components/menu/menu.tsx": "c0e4ea8766a93951f38f48a79b19dfb77c3bd51dbc6aaa3c628c7f285eed3891",
     "components/meter/meter.css": "981809d5b48e5c7537abffdd033e0ab593e488b2d4178cf08819b82f2f05a9f6",
     "components/meter/meter.tsx": "efb14ef49e930a806c7afd1abea97fb19b7d63c49d61386139eb70b9a861fd6d",
-    "components/nav-list/nav-list.css": "2c93cce4aec60a4c6919dc1e87a5913bf16bd09931fe7c8d59d7809222a09f77",
+    "components/nav-list/nav-list.css": "f09ad5512c6b51c12b4393b0dbd9505bbbbfaa62736842125dc09d0ca8a6f8bf",
     "components/nav-list/nav-list.strings.ts": "529a74517bac08150e0deb6941cfc3e9f9e00e56706e49b6f88bc044167559af",
     "components/nav-list/nav-list.tsx": "31c30d2cd17f655ca9d2735275a859ddee4d8b759ef00d506aea2c8a50fc4c74",
     "components/notification-stack/notification-dock.ts": "67f624020b8ad8af90e11fd1ef88b989c77a382cc01722dcf50d7dba43830329",

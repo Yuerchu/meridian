@@ -69,7 +69,6 @@ import { RenameDialog } from './rename-dialog'
 import { RowActionDropdownItems, RowActionsMenu } from './row-actions-menu'
 import { ConversationTime, ConversationTimeSection } from './conversation-time'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
-import { titleIfTruncated } from '@/lib/truncation'
 
 interface AppSidebarProps {
   conversations: ConversationInfoResponse[]
@@ -236,12 +235,7 @@ function NewProjectForm({
           isDisabled={saving}
           className="m-sidebar__form-browse"
         >
-          <span
-            data-slot="project-form-path"
-            onPointerEnter={titleIfTruncated}
-            className="m-sidebar__form-path"
-            data-empty={!path || undefined}
-          >
+          <span data-slot="project-form-path" className="m-sidebar__form-path" data-empty={!path || undefined}>
             {path || t('sidebar.browsePath')}
           </span>
         </Button>
@@ -338,12 +332,7 @@ function NewHostedSessionForm({
           onPress={() => void handleBrowse()}
           className="m-sidebar__form-browse"
         >
-          <span
-            data-slot="hosted-session-form-path"
-            onPointerEnter={titleIfTruncated}
-            className="m-sidebar__form-path"
-            data-empty={!path || undefined}
-          >
+          <span data-slot="hosted-session-form-path" className="m-sidebar__form-path" data-empty={!path || undefined}>
             {path || t('sidebar.hostedSessionFolder')}
           </span>
         </Button>
@@ -479,24 +468,26 @@ function ConversationNavItem({
       data-row-id={conv.id}
       data-row-kind="conversation"
       isCurrent={conv.id === activeId}
-      icon={conv.is_archived ? <Archive /> : <ConversationIcon agentKind={conv.agent_kind} />}
+      icon={
+        conv.is_archived ? (
+          <Archive />
+        ) : conv.is_pinned ? (
+          <Bookmark aria-label={t('contextMenu.pin')} className="m-sidebar__pin" />
+        ) : (
+          <ConversationIcon agentKind={conv.agent_kind} />
+        )
+      }
       className={conv.is_archived ? 'm-sidebar__archived' : undefined}
       onPress={() => onSelect(conv.id)}
       trailing={
         <span className="m-sidebar__conv-meta">
-          {conv.is_pinned && <Bookmark aria-label={t('contextMenu.pin')} className="m-sidebar__pin" />}
           <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={transcriptInert} />
           <ConversationTime updatedAt={conv.updated_at} />
         </span>
       }
-      actions={<RowActionsMenu label={title} actions={actions} />}
+      actions={dndDisabled ? undefined : <RowActionsMenu label={title} updatedAt={conv.updated_at} actions={actions} />}
     >
-      <span
-        {...dragProps}
-        className="m-sidebar__conv-title"
-        data-dragging={isDragging || undefined}
-        onPointerEnter={titleIfTruncated}
-      >
+      <span {...dragProps} className="m-sidebar__conv-title" data-dragging={isDragging || undefined}>
         {title}
       </span>
     </NavItem>
@@ -585,21 +576,13 @@ function ConversationGroup({
           label={
             projectId ? (
               <span className="m-sidebar__project-label">
-                <span
-                  data-slot="sidebar-group-title"
-                  onPointerEnter={titleIfTruncated}
-                  className="m-sidebar__project-name"
-                >
+                <span data-slot="sidebar-group-title" className="m-sidebar__project-name">
                   {title}
                 </span>
                 {isCurrent && <span className="m-sidebar__project-dot" aria-hidden />}
               </span>
             ) : (
-              <span
-                data-slot="sidebar-group-title"
-                onPointerEnter={titleIfTruncated}
-                className="m-sidebar__project-name"
-              >
+              <span data-slot="sidebar-group-title" className="m-sidebar__project-name">
                 {title}
               </span>
             )
@@ -1174,7 +1157,10 @@ export function AppSidebar({
       >
         <Menu variant="inline" aria-label={hitLabel} onAction={() => setContextMenu(null)}>
           {hitConversation ? (
-            <ConversationTimeSection updatedAt={hitConversation.updated_at}>
+            <ConversationTimeSection
+              title={hitConversation.title ?? t('sidebar.newChat')}
+              updatedAt={hitConversation.updated_at}
+            >
               <RowActionDropdownItems actions={hitActions} grouped />
             </ConversationTimeSection>
           ) : (

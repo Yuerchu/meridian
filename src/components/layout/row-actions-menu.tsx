@@ -5,6 +5,7 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 
+import { ConversationTimeSection } from './conversation-time'
 import type { RowAction } from './row-actions'
 
 const GROUP_STARTS = new Set<RowAction['key']>(['export-sft', 'delete'])
@@ -44,10 +45,13 @@ export function RowActionDropdownItems({ actions, grouped = false }: { actions: 
  */
 export function RowActionsMenu({
   label,
+  updatedAt,
   actions,
 }: {
   /** Names the button for a screen reader — the row's own title. */
   label: string
+  /** When present (a conversation row), shows the full title and timestamp in the menu header. */
+  updatedAt?: number
   /** This row's actions, already built. */
   actions: RowAction[]
 }) {
@@ -66,7 +70,13 @@ export function RowActionsMenu({
         <Tooltip>{moreLabel}</Tooltip>
       </TooltipTrigger>
       <Menu placement="bottom end" aria-label={moreLabel}>
-        <RowActionDropdownItems actions={actions} grouped />
+        {updatedAt !== undefined ? (
+          <ConversationTimeSection title={label} updatedAt={updatedAt}>
+            <RowActionDropdownItems actions={actions} grouped />
+          </ConversationTimeSection>
+        ) : (
+          <RowActionDropdownItems actions={actions} grouped />
+        )}
       </Menu>
     </MenuTrigger>
   )

@@ -122,10 +122,26 @@
   }
 
   .m-sidebar__pin {
-    flex: none;
-    width: 12px;
-    height: 12px;
+    color: var(--accent-strong);
+  }
+
+  .m-sidebar__menu-header {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-width: 16rem;
+    white-space: normal;
+  }
+
+  .m-sidebar__menu-title {
+    color: var(--text);
+    font: var(--text-small-medium);
+    overflow-wrap: anywhere;
+  }
+
+  .m-sidebar__menu-time {
     color: var(--text-secondary);
+    font: var(--text-caption);
   }
 
   .m-sidebar__archived {
