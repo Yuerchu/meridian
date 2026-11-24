@@ -100,18 +100,22 @@ export function LocalModelSettings({
       )}
       {info !== null && error === null && (
         <>
-          <SettingsRow label={t('settings.localModel.fileAlias')} description={t('settings.localModel.fileAliasHint')}>
+          <SettingsRow
+            layout="stacked"
+            label={t('settings.localModel.fileAlias')}
+            description={t('settings.localModel.fileAliasHint')}
+          >
             <p className="m-local-model__value" data-wrap="anywhere">
               {info.file_name}
             </p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.identity')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.identity')}>
             <p className="m-local-model__value">{t('settings.localModel.unavailable')}</p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.runtime')}>
             <p className="m-local-model__value">{info.runtime_version}</p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.kind')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.kind')}>
             <p className="m-local-model__value">{t(`settings.localModel.kind.${info.kind}`)}</p>
           </SettingsRow>
           <SettingsRow label={t('settings.localModel.fileSize')}>
@@ -125,27 +129,33 @@ export function LocalModelSettings({
             </p>
           </SettingsRow>
           {info.modalities.map((item) => (
-            <SettingsRow key={item.modality} label={t(`settings.localModel.modality.${item.modality}`)}>
-              <p className="m-local-model__value">
-                {item.preferred_backends.map((value) => value.toUpperCase()).join(', ')}
-              </p>
-              {item.preferred_backends.includes('npu') && (
-                <p className="m-local-model__note">
-                  {t('settings.localModel.npuTarget', {
-                    brand:
-                      item.npu_brand === null
-                        ? t('settings.localModel.unavailable')
-                        : t(`settings.localModel.brand.${item.npu_brand}`),
-                    soc: item.soc_name ?? t('settings.localModel.unavailable'),
-                  })}
+            <SettingsRow
+              key={item.modality}
+              layout="stacked"
+              label={t(`settings.localModel.modality.${item.modality}`)}
+            >
+              <div className="m-local-model__stack">
+                <p className="m-local-model__value">
+                  {item.preferred_backends.map((value) => value.toUpperCase()).join(', ')}
                 </p>
-              )}
+                {item.preferred_backends.includes('npu') && (
+                  <p className="m-local-model__note">
+                    {t('settings.localModel.npuTarget', {
+                      brand:
+                        item.npu_brand === null
+                          ? t('settings.localModel.unavailable')
+                          : t(`settings.localModel.brand.${item.npu_brand}`),
+                      soc: item.soc_name ?? t('settings.localModel.unavailable'),
+                    })}
+                  </p>
+                )}
+              </div>
             </SettingsRow>
           ))}
           <SettingsRow label={t('settings.localModel.context')} description={t('settings.localModel.contextHint')}>
             <p className="m-local-model__value">{number(info.max_context_tokens)}</p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.contextMode')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.contextMode')}>
             <p className="m-local-model__value">
               {t(
                 info.max_context_tokens === null
@@ -156,24 +166,24 @@ export function LocalModelSettings({
               )}
             </p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.thinking')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.thinking')}>
             <p className="m-local-model__value">
               {t(info.supports_thinking ? 'settings.localModel.declared' : 'settings.localModel.notDeclared')}
             </p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.tools')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.tools')}>
             <p className="m-local-model__value">
               {t(info.supports_function_calling ? 'settings.localModel.declared' : 'settings.localModel.notDeclared')}
             </p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.speculative')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.speculative')}>
             <p className="m-local-model__value">
               {t(
                 info.supports_speculative_decoding ? 'settings.localModel.declared' : 'settings.localModel.notDeclared',
               )}
             </p>
           </SettingsRow>
-          <SettingsRow label={t('settings.localModel.sampler')}>
+          <SettingsRow layout="stacked" label={t('settings.localModel.sampler')}>
             <p className="m-local-model__value">
               {info.sampler_defaults === null
                 ? t('settings.localModel.unavailable')
