@@ -1,0 +1,26 @@
+# Which license covers which files (REUSE specification, https://reuse.software).
+# Everything not listed below is AGPL-3.0-or-later. The meridian-core
+# submodule (src-tauri/crates) is a separate repository under Apache-2.0.
+version = 1
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
+SPDX-License-Identifier = "AGPL-3.0-or-later"
+
+# Components synced from @yuerchu/ui: source-available, Meridian only.
+# They may be used, modified and distributed as part of Meridian (and its
+# forks), but not extracted into another product or component library.
+[[annotations]]
+path = "src/components/yuerchu-ui/**"
+precedence = "override"
+SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
+SPDX-License-Identifier = "LicenseRef-Yuerchu-UI"
+
+# The design system itself (tokens and the design rules) is MIT.
+[[annotations]]
+path = ["src/components/yuerchu-ui/styles/tokens.css", "src/components/yuerchu-ui/DESIGN.md"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>"
+SPDX-License-Identifier = "MIT"

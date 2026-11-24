@@ -22,6 +22,47 @@ a commercial license is available from the copyright holder.
 
 Contact: **admin@yuxiaoqiu.cn**
 
+## Yuerchu UI components (not AGPL)
+
+The user-interface components under `src/components/yuerchu-ui/` are synced
+from @yuerchu/ui, a separate component library by the same author. They are
+**not** covered by the AGPL. They are source-available under the
+[Yuerchu UI License](LICENSES/LicenseRef-Yuerchu-UI.txt):
+
+- you may read, build, modify and distribute them **as part of Meridian**,
+  including your own fork or modified version of Meridian;
+- you may **not** extract them into another application or product, or
+  distribute them as a component library, design system or UI kit.
+
+The design system they are built on — the design tokens
+(`src/components/yuerchu-ui/styles/tokens.css`) and the design rules
+(`src/components/yuerchu-ui/DESIGN.md`) — is licensed under the
+[MIT License](LICENSES/MIT.txt) and may be used anywhere.
+
+Only the components Meridian actually uses are synced into this
+repository; the rest of @yuerchu/ui is not published.
+
+If you want a Meridian that is AGPL from top to bottom, replace the
+contents of `src/components/yuerchu-ui/` with your own components. The
+rest of the frontend and the whole backend remain available to you under
+the AGPL. `REUSE.toml` records which license covers which path.
+
+### Additional permission under GNU AGPL version 3 section 7
+
+If you modify this Program, or any covered work, by linking or combining
+it with the Yuerchu UI components (the files that `REUSE.toml` marks as
+`LicenseRef-Yuerchu-UI`, or a modified version of them), containing parts
+covered by the terms of the Yuerchu UI License, the licensors of this
+Program grant you additional permission to convey the resulting work.
+Corresponding Source for a non-source form of such a combination shall
+include the source code for the parts of the Yuerchu UI components used as
+well as that of the covered work.
+
+This permission does not relicense the Yuerchu UI components: they remain
+under their own license. You may remove this additional permission from
+your own copies of Meridian, as section 7 allows; you then also have to
+remove the Yuerchu UI components.
+
 ## Third-Party Components
 
 Meridian depends on [meridian-core](https://github.com/Yuerchu/meridian-core),
