@@ -197,6 +197,7 @@ const scenes: Scene[] = [
   },
   {
     name: 'settings-general',
+    narrow: true,
     arrange: (page) => openSettings(page, '通用'),
   },
   {

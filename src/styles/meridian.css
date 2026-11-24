@@ -18,7 +18,10 @@
        The person's bubble takes a soft accent tint (Telegram-style) so it
        reads clearly against the white/dark main surface; the model's stays on
        a neutral muted step. */
-    --bubble-user: color-mix(in oklch, var(--accent) 13%, var(--surface));
+    /* Use srgb (not oklch) when mixing with achromatic --surface: oklch
+       interpolates blue (hue 260) toward neutral white/black (hue 0) through
+       magenta instead of staying pure blue. */
+    --bubble-user: color-mix(in srgb, var(--accent) 12%, var(--surface));
     --bubble-user-foreground: var(--text);
     --bubble-user-shadow: none;
     --bubble-assistant: var(--surface-muted);
@@ -37,12 +40,12 @@
   }
 
   :root[data-theme='dark'] {
-    --bubble-user: color-mix(in oklch, var(--accent) 22%, var(--surface));
+    --bubble-user: color-mix(in srgb, var(--accent) 20%, var(--surface));
   }
 
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) {
-      --bubble-user: color-mix(in oklch, var(--accent) 22%, var(--surface));
+      --bubble-user: color-mix(in srgb, var(--accent) 20%, var(--surface));
     }
   }
 }

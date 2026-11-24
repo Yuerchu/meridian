@@ -1,38 +1,35 @@
 import './remote-client-settings.css'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
-import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
-import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Button as AriaButton, Disclosure, DisclosurePanel } from 'react-aria-components'
+import { ChevronDown } from '@keyline-icons/react/two-tone'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
+import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { api } from '@/api'
 import { useConnectionState } from '@/hooks/use-connection-state'
 import { isRemote, probeRemote, readRemoteConfig, writeRemoteConfig, type ProbeResult } from '@/lib/transport'
 import { useSettingsDirtyRegistration } from './dirty-guard'
-import { titleIfTruncated } from '@/lib/truncation'
 
 /**
  * Where *this* device gets its Meridian from.
  *
- * The counterpart to `remote-access-settings.tsx`, and deliberately not in it:
- * that panel is one of the three the tab list hides on a phone, because a phone
- * is the client in this arrangement rather than the host. A phone that cannot
- * see the panel cannot type an address into it.
- *
- * It sits at the top of General for the same reason the theme and the language
- * do — those are the settings that describe the device in front of you rather
- * than the app's own state, and this one has to be, since in remote mode every
- * other setting on the page belongs to the machine across the room. It is also
- * the only control that still works when that machine has stopped answering,
- * which is exactly when someone comes looking for it.
+ * Rendered as a compact M3E-style collapsible summary card when running locally
+ * so it stays reachable at the top of General without crowding everyday
+ * appearance/language controls off mobile screens; expands inline into a
+ * compact host+port / token form on tap, or stays open when connected.
  */
 export function RemoteClientSettings() {
   const { t } = useTranslation()
   const state = useConnectionState()
   const [config] = useState(() => readRemoteConfig())
 
+  const [expanded, setExpanded] = useState(false)
   const [host, setHost] = useState('')
   const [port, setPort] = useState('8787')
   const [token, setToken] = useState('')
@@ -91,96 +88,121 @@ export function RemoteClientSettings() {
   if (isRemote) {
     return (
       <div data-slot="remote-client-connected" className="m-remote-client">
-        <p data-slot="remote-client-label" className="m-remote-client__label">
-          {t('settings.client.title')}
-        </p>
-        <div className="m-remote-client__card">
-          <p className="m-remote-client__state">
-            {/* Decoration: the state it stands for is spelled out beside it. */}
-            <span data-slot="remote-client-state-dot" data-state={state} aria-hidden className="m-remote-client__dot" />
-            {t(`settings.client.state.${state}`)}
-          </p>
-          <p className="m-remote-client__host" onPointerEnter={titleIfTruncated}>
-            {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
-          </p>
-        </div>
-        <Button variant="secondary" onPress={handleDisconnect}>
-          {t('settings.client.disconnect')}
-        </Button>
-        <p data-slot="remote-client-disconnect-hint" className="m-remote-client__hint">
-          {t('settings.client.disconnectHint')}
-        </p>
+        <SettingsGroup
+          heading={t('settings.client.title')}
+          description={t('settings.client.disconnectHint')}
+          headingLevel={3}
+        >
+          <div className="m-remote-client__connected-row">
+            <div className="m-remote-client__connected-info">
+              <p className="m-remote-client__state">
+                <span
+                  data-slot="remote-client-state-dot"
+                  data-state={state}
+                  aria-hidden
+                  className="m-remote-client__dot"
+                />
+                {t(`settings.client.state.${state}`)}
+              </p>
+              <p className="m-remote-client__host">
+                {config ? `${config.host}:${config.port}` : t('settings.client.unknownHost')}
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onPress={handleDisconnect}>
+              {t('settings.client.disconnect')}
+            </Button>
+          </div>
+        </SettingsGroup>
       </div>
     )
   }
 
+  const isOpen = expanded || dirty
+
   return (
     <div data-slot="remote-client" className="m-remote-client">
-      <p data-slot="remote-client-label" className="m-remote-client__label">
-        {t('settings.client.title')}
-      </p>
-      <p data-slot="remote-client-intro" className="m-remote-client__hint">
-        {t('settings.client.intro')}
-      </p>
+      <SettingsGroup>
+        <Disclosure isExpanded={isOpen} onExpandedChange={setExpanded}>
+          <AriaButton slot="trigger" className="m-remote-client__summary">
+            <span data-slot="remote-client-label" className="m-remote-client__summary-title">
+              {t('settings.client.title')}
+            </span>
+            <span className="m-remote-client__summary-end">
+              <Badge size="sm" tone="neutral">
+                {t('settings.client.localSummary')}
+              </Badge>
+              <ChevronDown
+                size={16}
+                aria-hidden
+                data-expanded={isOpen || undefined}
+                className="m-remote-client__chevron"
+              />
+            </span>
+          </AriaButton>
+          <DisclosurePanel>
+            <div className="m-remote-client__panel">
+              <p data-slot="remote-client-intro" className="m-remote-client__hint">
+                {t('settings.client.intro')}
+              </p>
 
-      <div data-slot="remote-client-endpoint" className="m-remote-client__endpoint">
-        <TextField
-          label={t('settings.client.host')}
-          name="remoteClientHost"
-          value={host}
-          onChange={setHost}
-          placeholder="192.168.1.20"
-        />
-        <NumberField
-          label={t('settings.client.port')}
-          value={draftToNumber(port)}
-          onChange={(value) => setPort(numberToDraft(value))}
-          minValue={1}
-          maxValue={65535}
-          name="remoteClientPort"
-          placeholder="8787"
-          formatOptions={PLAIN_INTEGER}
-        />
-      </div>
+              <div data-slot="remote-client-endpoint" className="m-remote-client__endpoint">
+                <TextField
+                  label={t('settings.client.host')}
+                  name="remoteClientHost"
+                  value={host}
+                  onChange={setHost}
+                  placeholder="192.168.1.20"
+                />
+                <NumberField
+                  label={t('settings.client.port')}
+                  value={draftToNumber(port)}
+                  onChange={(value) => setPort(numberToDraft(value))}
+                  minValue={1}
+                  maxValue={65535}
+                  name="remoteClientPort"
+                  placeholder="8787"
+                  formatOptions={PLAIN_INTEGER}
+                />
+              </div>
 
-      <PasswordField
-        label={t('settings.client.token')}
-        description={t('settings.client.tokenHint')}
-        name="remoteClientToken"
-        // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
-        autoComplete="current-password"
-        value={token}
-        onChange={setToken}
-        className="m-remote-client__token"
-      />
+              <PasswordField
+                label={t('settings.client.token')}
+                description={t('settings.client.tokenHint')}
+                name="remoteClientToken"
+                // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                autoComplete="current-password"
+                value={token}
+                onChange={setToken}
+              />
 
-      <div data-slot="remote-client-actions" className="m-remote-client__actions">
-        <Button variant="secondary" onPress={handleTest} isDisabled={!host.trim() || probing} aria-busy={probing}>
-          {probing ? t('settings.client.testing') : t('settings.client.test')}
-        </Button>
-        <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
-          {t('settings.client.connect')}
-        </Button>
-      </div>
+              <div data-slot="remote-client-actions" className="m-remote-client__actions">
+                <Button
+                  variant="secondary"
+                  onPress={handleTest}
+                  isDisabled={!host.trim() || probing}
+                  aria-busy={probing}
+                >
+                  {probing ? t('settings.client.testing') : t('settings.client.test')}
+                </Button>
+                <Button onPress={handleConnect} isDisabled={!host.trim() || !token.trim()}>
+                  {t('settings.client.connect')}
+                </Button>
+              </div>
 
-      {probe && <ProbeMessage probe={probe} />}
-      {error && (
-        <Alert data-slot="remote-client-error" tone="danger" shouldAnnounce>
-          {error}
-        </Alert>
-      )}
+              {probe && <ProbeMessage probe={probe} />}
+              {error && (
+                <Alert data-slot="remote-client-error" tone="danger" shouldAnnounce>
+                  {error}
+                </Alert>
+              )}
+            </div>
+          </DisclosurePanel>
+        </Disclosure>
+      </SettingsGroup>
     </div>
   )
 }
 
-/**
- * What the probe found, said in the terms of what to do about it.
- *
- * Announced either way, because pressing a button and getting a line of text
- * that is only a colour is no answer at all to anyone not looking at it — a
- * success politely (`status`), a failure at once (`alert`), which is how every
- * other failure on these pages is announced.
- */
 function ProbeMessage({ probe }: { probe: ProbeResult }) {
   const { t } = useTranslation()
 
@@ -192,8 +214,6 @@ function ProbeMessage({ probe }: { probe: ProbeResult }) {
     )
   }
 
-  // A version mismatch names itself. Folded into "could not connect" it sends
-  // the user back to check an address that was right all along.
   const message =
     probe.reason === 'client-too-old' || probe.reason === 'server-too-old'
       ? t(`settings.client.${probe.reason === 'client-too-old' ? 'testClientOld' : 'testServerOld'}`, {

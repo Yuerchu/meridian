@@ -1,10 +1,14 @@
 import './general-settings.css'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Check } from '@keyline-icons/react/two-tone'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -15,7 +19,7 @@ import { FontPicker } from './font-picker'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
 import { RemoteClientSettings } from './remote-client-settings'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SettingsHeader, SettingsPane } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { SandboxMode, SearchProvider, ShellType } from '@/types'
@@ -33,6 +37,28 @@ const SEARCH_PROVIDERS = [
   { value: 'zhipu', label: '智谱 (Zhipu)', keyService: 'ZHIPU_SEARCH' },
 ] as const
 
+function InlineSelect<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T
+  options: readonly { value: T; label: string }[]
+  onChange: (value: T) => void
+}) {
+  return (
+    <div className="m-general__select">
+      <Select selectedKey={value} onSelectionChange={(key) => typeof key === 'string' && onChange(key as T)}>
+        {options.map((opt) => (
+          <ListBoxItem key={opt.value} id={opt.value} textValue={opt.label}>
+            {opt.label}
+          </ListBoxItem>
+        ))}
+      </Select>
+    </div>
+  )
+}
+
 export function GeneralSettings() {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
@@ -49,10 +75,6 @@ export function GeneralSettings() {
   const [searchKeyError, setSearchKeyError] = useState<string | null>(null)
   const [prefError, setPrefError] = useState<string | null>(null)
   const searchProviderTouched = useRef(false)
-  // The stored shell, sandbox and search provider. Until they arrive the
-  // controls would show the defaults above as if they were the settings, and
-  // an unreadable preference drawn as its default is a setting nobody chose —
-  // so they wait, and a failure says so instead.
   const [prefsState, setPrefsState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [prefsLoadError, setPrefsLoadError] = useState<string | null>(null)
   const [prefsAttempt, setPrefsAttempt] = useState(0)
@@ -71,8 +93,6 @@ export function GeneralSettings() {
       .then(([shellPref, sandboxPref, searchPref]) => {
         if (cancelled) return
         if (shellPref.value) setShell(shellPref.value)
-        // `auto` is the canonical missing-value default: whatever this platform
-        // confines commands with, and nothing where it has none.
         setSandboxMode(sandboxPref.value ?? 'auto')
         if (searchPref.value && !searchProviderTouched.current) setSearchProvider(searchPref.value)
         setPrefsState('ready')
@@ -119,90 +139,122 @@ export function GeneralSettings() {
   const handleShellChange = (value: ShellType) => {
     setShell(value)
     setPrefError(null)
-    api.setPreference({ key: 'shell', value }).catch((reason) => setPrefError(String(reason)))
+    api.setPreference({ key: 'shell', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
-  // Unlike the settings below, the theme and the fonts are not Tauri
-  // preferences: they have to be readable before the first paint, so they
-  // live in localStorage — see `src/lib/theme.tsx` and `src/lib/fonts.tsx`.
-  const themeOptions: { value: ThemePreference; label: string }[] = [
-    { value: 'system', label: t('settings.general.themeSystem') },
-    { value: 'light', label: t('settings.general.themeLight') },
-    { value: 'dark', label: t('settings.general.themeDark') },
-  ]
-
-  const sandboxOptions = [
-    { value: 'auto', label: t('settings.general.sandboxOn') },
-    { value: 'container', label: t('settings.general.sandboxContainer') },
-    { value: 'off', label: t('settings.general.sandboxOff') },
-  ] as const
-
-  // Written verbatim rather than mapped back to a boolean: the backend parses
-  // the same three words, and a mapping here would be a second place for them
-  // to be decided.
   const handleSandboxChange = (value: SandboxMode) => {
     setSandboxMode(value)
     setPrefError(null)
-    api.setPreference({ key: 'sandbox.enabled', value }).catch((reason) => setPrefError(String(reason)))
+    api.setPreference({ key: 'sandbox.enabled', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
   const handleSearchProviderChange = async (value: SearchProvider) => {
     if (value === searchProvider) return
     if (
-      searchApiKey.trim() &&
-      !(await confirm({
-        description: t('settings.unsavedChanges'),
-        confirmLabel: t('common.discardChanges'),
-      }))
+      searchApiKey.trim().length > 0 &&
+      !(await confirm({ description: t('settings.dirty.description'), confirmLabel: t('common.discardChanges') }))
     ) {
       return
     }
     searchProviderTouched.current = true
     setSearchProvider(value)
     setPrefError(null)
-    await api.setPreference({ key: 'search_provider', value }).catch((reason) => setPrefError(String(reason)))
+    api.setPreference({ key: 'search_provider', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
   const handleSaveSearchKey = async () => {
-    if (!searchApiKey.trim()) return
     const provider = SEARCH_PROVIDERS.find((p) => p.value === searchProvider)
-    if (!provider) return
+    if (!provider || !searchApiKey.trim()) return
     setSearchKeyError(null)
     try {
       await api.setServiceKey({ service: provider.keyService, key: searchApiKey.trim() })
       setSearchKeyExists(true)
       setSearchApiKey('')
       markSearchKeySaved()
-    } catch (reason) {
-      setSearchKeyError(String(reason))
+    } catch (e) {
+      setSearchKeyError(String(e))
     }
   }
+
+  const sandboxOptions: { value: SandboxMode; label: string }[] = [
+    { value: 'auto', label: t('settings.general.sandboxOn') },
+    { value: 'container', label: t('settings.general.sandboxContainer') },
+    { value: 'off', label: t('settings.general.sandboxOff') },
+  ]
 
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.general.title')} />
 
-      {/* First, and above the language: in remote mode every other control on
-          this page is editing the *other* machine's preferences, and this is
-          the only one that is still about the device in your hand — including
-          when that other machine has stopped answering. */}
+      {/* Compact collapsible summary card at the top: reachable when remote
+          host fails, without pushing everyday settings off mobile screens. */}
       <RemoteClientSettings />
 
-      <SettingsSelect
-        label={t('settings.general.language')}
-        value={i18n.language}
-        options={LANGUAGE_OPTIONS}
-        onChange={setLocale}
-      />
-
-      <SettingsSelect label={t('settings.general.theme')} value={theme} options={themeOptions} onChange={setTheme} />
+      <SettingsGroup heading={t('settings.general.appearanceGroup')} headingLevel={3}>
+        <div className="m-general__inline-row">
+          <span className="m-general__inline-label">{t('settings.general.theme')}</span>
+          <SegmentedControl
+            aria-label={t('settings.general.theme')}
+            size="sm"
+            selectedKey={theme}
+            onSelectionChange={(next) => {
+              if (next === 'system' || next === 'light' || next === 'dark') setTheme(next as ThemePreference)
+            }}
+          >
+            <Segment id="light">{t('settings.general.themeLight')}</Segment>
+            <Segment id="dark">{t('settings.general.themeDark')}</Segment>
+            <Segment id="system">{t('settings.general.themeSystem')}</Segment>
+          </SegmentedControl>
+        </div>
+        <div className="m-general__inline-row">
+          <span className="m-general__inline-label">{t('settings.general.language')}</span>
+          <div className="m-general__select">
+            <Select
+              aria-label={t('settings.general.language')}
+              selectedKey={i18n.language}
+              onSelectionChange={(key) => typeof key === 'string' && setLocale(key)}
+            >
+              {LANGUAGE_OPTIONS.map((opt) => (
+                <ListBoxItem key={opt.value} id={opt.value} textValue={opt.label}>
+                  {opt.label}
+                </ListBoxItem>
+              ))}
+            </Select>
+          </div>
+        </div>
+      </SettingsGroup>
 
       <div data-slot="general-fonts" className="m-general__stack">
-        <FontPicker label={t('settings.general.fontUi')} value={sans} onChange={setSans} families={fontFamilies} />
-        <FontPicker label={t('settings.general.fontCode')} value={mono} onChange={setMono} families={fontFamilies} />
-        <p data-slot="general-font-hint" className="m-general__hint">
-          {t('settings.general.fontHint')}
-        </p>
+        <SettingsGroup
+          heading={t('settings.general.fontsGroup')}
+          description={t('settings.general.fontHint')}
+          headingLevel={3}
+        >
+          <div className="m-general__inline-row">
+            <span className="m-general__inline-label">{t('settings.general.fontUi')}</span>
+            <div className="m-general__font">
+              <FontPicker
+                hideLabel
+                label={t('settings.general.fontUi')}
+                value={sans}
+                onChange={setSans}
+                families={fontFamilies}
+              />
+            </div>
+          </div>
+          <div className="m-general__inline-row">
+            <span className="m-general__inline-label">{t('settings.general.fontCode')}</span>
+            <div className="m-general__font">
+              <FontPicker
+                hideLabel
+                label={t('settings.general.fontCode')}
+                value={mono}
+                onChange={setMono}
+                families={fontFamilies}
+              />
+            </div>
+          </div>
+        </SettingsGroup>
         {fontListFailed && (
           <p data-slot="general-font-list-error" role="status" className="m-general__hint">
             {t('settings.general.fontListError')}
@@ -211,18 +263,18 @@ export function GeneralSettings() {
       </div>
 
       {prefsState === 'loading' && (
-        <div
-          data-slot="general-prefs-loading"
-          role="status"
-          aria-busy="true"
-          aria-label={t('common.loading')}
-          className="m-general__stack"
-        >
-          {Array.from({ length: 3 }, (_, i) => (
-            <Skeleton key={i} shape="rect" width="min(100%, 20rem)" height="2.25rem" />
-          ))}
+        <div data-slot="general-prefs-loading" role="status" aria-busy="true" aria-label={t('common.loading')}>
+          <SettingsGroup>
+            {Array.from({ length: 3 }, (_, i) => (
+              <div key={i} className="m-general__skeleton-row">
+                <Skeleton shape="rect" width="6rem" height="1rem" />
+                <Skeleton shape="rect" width="9rem" height="2rem" />
+              </div>
+            ))}
+          </SettingsGroup>
         </div>
       )}
+
       {prefsState === 'error' && (
         <Alert
           data-slot="general-prefs-error"
@@ -240,70 +292,73 @@ export function GeneralSettings() {
       )}
 
       {prefsState === 'ready' && platform !== null && platform !== 'android' && (
-        <SettingsSelect
-          label={t('settings.general.shell')}
-          value={shell}
-          options={SHELLS}
-          onChange={handleShellChange}
-          description={t('settings.general.shellHint')}
-        />
-      )}
-
-      {/* No longer Windows-only: the restricted token is, a container is not. */}
-      {prefsState === 'ready' && platform !== null && platform !== 'android' && (
-        <SettingsSelect
-          label={t('settings.general.sandbox')}
-          value={sandboxMode}
-          options={sandboxOptions}
-          onChange={handleSandboxChange}
-          description={
-            sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
-          }
-        />
+        <SettingsGroup heading={t('settings.general.terminalGroup')} headingLevel={3}>
+          <SettingsRow label={t('settings.general.shell')} description={t('settings.general.shellHint')}>
+            <InlineSelect value={shell} options={SHELLS} onChange={handleShellChange} />
+          </SettingsRow>
+          <SettingsRow
+            label={t('settings.general.sandbox')}
+            description={
+              sandboxMode === 'container'
+                ? t('settings.general.sandboxContainerHint')
+                : t('settings.general.sandboxHint')
+            }
+          >
+            <InlineSelect value={sandboxMode} options={sandboxOptions} onChange={handleSandboxChange} />
+          </SettingsRow>
+        </SettingsGroup>
       )}
 
       {prefsState === 'ready' && (
         <div data-slot="general-web-search" className="m-general__stack">
-          <p data-slot="general-section-label" className="m-general__section">
-            {t('settings.general.webSearch')}
-          </p>
-          {/* The heading above names the whole section, not this control, so both
-            the picker and the key field carry their own name. Without them a
-            screen reader announces the trigger by its current value alone. */}
-          <SettingsSelect
-            ariaLabel={t('settings.general.webSearch')}
-            value={searchProvider}
-            options={SEARCH_PROVIDERS}
-            onChange={(value) => void handleSearchProviderChange(value)}
-          />
-          <div data-slot="general-search-key-row" className="m-general__key-row">
-            <PasswordField
-              aria-label={t('settings.provider.apiKey')}
-              name="searchApiKey"
-              // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
-              autoComplete="current-password"
-              value={searchApiKey}
-              onChange={setSearchApiKey}
-              onKeyDown={(e) => {
-                if (e.nativeEvent.isComposing) return
-                if (e.key === 'Enter') handleSaveSearchKey()
-              }}
-              placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
-              className="m-general__key"
-            />
-            <Button
-              aria-label={t('settings.general.save')}
-              variant="secondary"
-              onPress={handleSaveSearchKey}
-              isDisabled={!searchApiKey.trim()}
-            >
-              {searchKeySaved && <Check size={16} aria-hidden />}
-              {t('settings.general.save')}
-            </Button>
-          </div>
-          <p data-slot="general-search-hint" className="m-general__hint">
-            {t('settings.general.searchHint')}
-          </p>
+          <SettingsGroup
+            heading={t('settings.general.webSearch')}
+            description={t('settings.general.searchHint')}
+            headingLevel={3}
+          >
+            <div className="m-general__inline-row">
+              <span className="m-general__inline-label">{t('settings.general.webSearch')}</span>
+              <SegmentedControl
+                aria-label={t('settings.general.webSearch')}
+                size="sm"
+                selectedKey={searchProvider}
+                onSelectionChange={(next) => {
+                  if (next === 'tavily' || next === 'zhipu') void handleSearchProviderChange(next)
+                }}
+              >
+                {SEARCH_PROVIDERS.map((provider) => (
+                  <Segment key={provider.value} id={provider.value}>
+                    {provider.label}
+                  </Segment>
+                ))}
+              </SegmentedControl>
+            </div>
+            <div data-slot="general-search-key-row" className="m-general__key-row">
+              <PasswordField
+                aria-label={t('settings.provider.apiKey')}
+                name="searchApiKey"
+                // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                autoComplete="current-password"
+                value={searchApiKey}
+                onChange={setSearchApiKey}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return
+                  if (e.key === 'Enter') handleSaveSearchKey()
+                }}
+                placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
+                className="m-general__key"
+              />
+              <Button
+                aria-label={t('settings.general.save')}
+                variant="secondary"
+                onPress={handleSaveSearchKey}
+                isDisabled={!searchApiKey.trim()}
+              >
+                {searchKeySaved && <Check size={16} aria-hidden />}
+                {t('settings.general.save')}
+              </Button>
+            </div>
+          </SettingsGroup>
           {searchKeyError && (
             <Alert data-slot="general-search-key-error" tone="danger" shouldAnnounce>
               {searchKeyError}

@@ -40,11 +40,14 @@ function FontPickerDismiss({
 
 export function FontPicker({
   label,
+  hideLabel = false,
   value,
   onChange,
   families,
 }: {
   label: string
+  /** Hide the internal `<Label>` when rendered inside a `SettingsRow`, which provides the accessible name via context. */
+  hideLabel?: boolean
   value: string | null
   onChange: (family: string | null) => void
   families: string[]
@@ -111,6 +114,7 @@ export function FontPicker({
     <AriaComboBox<FontPickerItem>
       data-slot="font-picker"
       className="m-font-picker"
+      aria-label={hideLabel ? label : undefined}
       items={items}
       selectedKey={selectedKey}
       onSelectionChange={handleSelectionChange}
@@ -137,7 +141,7 @@ export function FontPicker({
       {({ isOpen }) => (
         <>
           <FontPickerDismiss groupRef={groupRef} popoverRef={popoverRef} />
-          <Label>{label}</Label>
+          {!hideLabel && <Label>{label}</Label>}
           <AriaGroup ref={groupRef} className="m-font-picker__group">
             <AriaInput
               autoComplete="off"

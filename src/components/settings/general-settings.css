@@ -5,27 +5,66 @@
     gap: var(--space-3);
   }
 
-  .m-general__section,
   .m-general__hint {
     margin: 0;
     color: var(--text-secondary);
-  }
-
-  .m-general__section {
-    font: var(--text-small-medium);
-  }
-
-  .m-general__hint {
     font: var(--text-caption);
+  }
+
+  /* Keep compact single-line rows (appearance, language, search provider) side
+     by side on phones too, matching M3E inline settings rows. */
+  .m-general__inline-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-general__inline-row + .m-general__inline-row,
+  .m-general__inline-row + .m-general__key-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-general__inline-label {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  /* Compact inline select inside SettingsRow */
+  .m-general__select {
+    min-width: 9.5rem;
+    max-width: 100%;
+  }
+
+  .m-general__font {
+    width: min(100%, 13rem);
   }
 
   .m-general__key-row {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border-block-start: 1px solid var(--border);
   }
 
   .m-general__key {
-    width: min(100%, 20rem);
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-general__skeleton-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-general__skeleton-row + .m-general__skeleton-row {
+    border-block-start: 1px solid var(--border);
   }
 }
