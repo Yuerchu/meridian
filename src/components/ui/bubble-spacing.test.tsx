@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { TurnItem } from '@/components/chat/turn-item'
-import { BUBBLE_RUN_GAP } from '@/components/ui/bubble'
+import { BUBBLE_RUN_GAP } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { buildTurns } from '@/lib/turns'
 import i18n from '@/i18n'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
@@ -155,15 +155,16 @@ describe('spacing inside a run', () => {
     expect(question).toHaveAttribute('data-continues-run', 'true')
 
     const tokensCss = readFileSync(resolve(__dirname, '../yuerchu-ui/styles/tokens.css'), 'utf8')
+    const space1Match = /--space-1:\s*(\d+)px/.exec(tokensCss)
     const space6Match = /--space-6:\s*(\d+)px/.exec(tokensCss)
+    expect(space1Match).not.toBeNull()
     expect(space6Match).not.toBeNull()
     const turnCss = readFileSync(resolve(__dirname, '../chat/turn-item.css'), 'utf8')
     expect(turnCss).toMatch(/\.m-turn\s*\{[^}]*gap:\s*var\(--space-6\)/)
     const pullMatch = /\.m-turn__question\[data-continues-run='true'\]\s*\{[^}]*margin-top:\s*-(\d+)px/.exec(turnCss)
     expect(pullMatch).not.toBeNull()
-    const bubbleCss = readFileSync(resolve(__dirname, 'bubble.css'), 'utf8')
-    const runGapMatch = new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*(\\d+)px`).exec(bubbleCss)
-    expect(runGapMatch).not.toBeNull()
-    expect(Number(space6Match![1]) - Number(pullMatch![1])).toBe(Number(runGapMatch![1]))
+    const bubbleCss = readFileSync(resolve(__dirname, '../yuerchu-ui/components/chat-bubble/chat-bubble.css'), 'utf8')
+    expect(bubbleCss).toMatch(new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*calc\\(var\\(--space-1\\) / 2\\)`))
+    expect(Number(space6Match![1]) - Number(pullMatch![1])).toBe(Number(space1Match![1]) / 2)
   })
 })

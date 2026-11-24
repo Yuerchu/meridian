@@ -2,7 +2,7 @@ import './acp-notice-bubble.css'
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { AcpNoticeActionsContext } from './acp-notice-actions'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 

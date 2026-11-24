@@ -9,7 +9,7 @@ import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert }
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
 import { isAskTool, toolUi } from '@/lib/tool-catalog'
-import { BUBBLE_BLOCK } from '@/components/ui/bubble'
+import { BUBBLE_BLOCK } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'

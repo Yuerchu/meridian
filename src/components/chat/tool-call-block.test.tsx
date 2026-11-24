@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock, identifyingArg, toolLabel } from './tool-call-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -200,9 +200,9 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
 
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
-    await userEvent.click(screen.getByRole('button', { name: 'Show all lines' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
-    expect(screen.getByRole('button', { name: 'Show fewer lines' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {
@@ -278,7 +278,7 @@ describe('large tool results', () => {
     await userEvent.click(trigger)
 
     expect(container.textContent).not.toContain(tail)
-    await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(container.textContent).toContain(tail)
     expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
   })
@@ -296,7 +296,7 @@ describe('large tool results', () => {
     const { container } = render(<ToolCallBlock data={data} />)
     await userEvent.click(container.querySelector('[data-slot="chat-tool-trigger"]')!)
 
-    const toggle = screen.getByRole('button', { name: 'Show full result' })
+    const toggle = screen.getByRole('button', { name: 'Show all' })
     expect(screen.queryByRole('link', { name: /Show/ })).toBeNull()
 
     toggle.focus()
@@ -1092,9 +1092,12 @@ describe('as bubble blocks', () => {
   /// rests on is the exact path, and a decision made about a truncated one is
   /// a decision about something the reader could not see.
   it('gives a call waiting on a decision the whole column, path and description both on the head', () => {
-    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
     expect(chatToolCss).toMatch(
-      /\.m-chat-tool\[data-presentation='bubble'\]\[data-expanded\],\s*\.m-chat-tool\[data-presentation='bubble'\]\[data-state='requires-action'\]\s*\{[^}]*width:\s*100%/s,
+      /\.ui-chat-tool\[data-presentation="bubble"\]\[data-expanded\],\s*\.ui-chat-tool\[data-presentation="bubble"\]\[data-state="requires-action"\]\s*\{[^}]*width:\s*100%/s,
     )
     const { container } = inBubble(
       <ToolCallBlock
@@ -1107,7 +1110,7 @@ describe('as bubble blocks', () => {
     )
     const key = keyOf(container)
     const block = blockOf(container)
-    expect(block).toHaveClass('m-chat-tool')
+    expect(block).toHaveClass('ui-chat-tool')
     expect(block).toHaveAttribute('data-presentation', 'bubble')
     expect(block).toHaveAttribute('data-state', 'requires-action')
     expect(key.querySelector('[data-slot="tool-arg"]')).toHaveTextContent('/home/me/.ssh/config')
@@ -1118,8 +1121,11 @@ describe('as bubble blocks', () => {
   })
 
   it('keeps an ordinary block as wide as its label, with the description as a tooltip', async () => {
-    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
-    expect(chatToolCss).toMatch(/\.m-chat-tool\[data-presentation='bubble'\]\s*\{[^}]*width:\s*fit-content/s)
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
+    expect(chatToolCss).toMatch(/\.ui-chat-tool\[data-presentation="bubble"\]\s*\{[^}]*width:\s*fit-content/s)
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('Bash', { command: 'git log --oneline', description: 'Recent history' }, 'completed')}
@@ -1127,7 +1133,7 @@ describe('as bubble blocks', () => {
     )
     const key = keyOf(container)
     const block = blockOf(container)
-    expect(block).toHaveClass('m-chat-tool')
+    expect(block).toHaveClass('ui-chat-tool')
     expect(block).toHaveAttribute('data-presentation', 'bubble')
     expect(block).not.toHaveAttribute('data-expanded')
     expect(block).not.toHaveAttribute('data-state', 'requires-action')

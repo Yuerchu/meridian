@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import i18n from '@/i18n'
 import { api } from '@/api'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { useConversationStore } from '@/stores/conversation-store'
 import { planReviewProjection } from '@/lib/plan-review-sync'

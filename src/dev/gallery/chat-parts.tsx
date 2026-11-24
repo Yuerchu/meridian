@@ -1,17 +1,20 @@
 import { Copy, List, Pen, RefreshCw } from '@keyline-icons/react/two-tone'
 import { ActionButton } from '@/components/ui/action-button'
-import { Bubble, BubbleContent, BubbleTime } from '@/components/ui/bubble'
-import { BubbleBlockButton, BubbleFoldBadge } from '@/components/ui/bubble-block'
-import { CopyButton } from '@/components/ui/copy-button'
-import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import {
+  Bubble,
+  BubbleBlockButton,
+  BubbleContent,
+  BubbleFoldBadge,
+  BubbleTime,
   MessageGroupAssistant,
   MessageGroupAvatar,
   MessageGroupBubbles,
   MessageGroupFooter,
   MessageGroupHeader,
   MessageGroupUser,
-} from '@/components/ui/message-group'
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { CopyButton } from '@/components/ui/copy-button'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { ToolTextResult, ToolValue } from '@/components/ui/tool-value'
 import { TurnBranchPager, TurnStatusIcon } from '@/components/ui/turn-status'
 import type { TurnStatus } from '@/lib/turns'
@@ -42,11 +45,11 @@ function MessageGroups() {
         <MessageGroupBubbles>
           <MessageGroupHeader>claude-sonnet-5</MessageGroupHeader>
           <Bubble variant="assistant" position="first">
-            <BubbleBlockButton state="output-available" onClick={noop}>
+            <BubbleBlockButton state="output-available" onPress={noop}>
               <List aria-hidden className="size-3.5 shrink-0" />
               <span className="text-caption-1-medium">计划 · 第 3 版</span>
             </BubbleBlockButton>
-            <BubbleFoldBadge expanded={false} onClick={noop}>
+            <BubbleFoldBadge expanded={false} onPress={noop}>
               读取 4 个文件
             </BubbleFoldBadge>
           </Bubble>

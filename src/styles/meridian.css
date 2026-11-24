@@ -12,21 +12,6 @@
 
 @layer theme {
   :root {
-    /* The two bubble fills of the transcript. Who is speaking is the one
-       colour on screen that carries meaning, so it is a token of its own
-       rather than the action colour or a hover wash written at the call site.
-       The person's bubble takes a soft accent tint (Telegram-style) so it
-       reads clearly against the white/dark main surface; the model's stays on
-       a neutral muted step. */
-    /* Use srgb (not oklch) when mixing with achromatic --surface: oklch
-       interpolates blue (hue 260) toward neutral white/black (hue 0) through
-       magenta instead of staying pure blue. */
-    --bubble-user: color-mix(in srgb, var(--accent) 12%, var(--surface));
-    --bubble-user-foreground: var(--text);
-    --bubble-user-shadow: none;
-    --bubble-assistant: var(--surface-muted);
-    --bubble-assistant-foreground: var(--text);
-
     /* Insets the native shell reports (`use-android-insets.ts`), with the CSS
        environment as the fallback for a plain WebView. Zero on a desktop. */
     --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
@@ -37,16 +22,6 @@
     /* The one width every settings page has: moving between sections must not
        move the column under the reader. */
     --content-settings: 33.25rem;
-  }
-
-  :root[data-theme='dark'] {
-    --bubble-user: color-mix(in srgb, var(--accent) 20%, var(--surface));
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme='light']) {
-      --bubble-user: color-mix(in srgb, var(--accent) 20%, var(--surface));
-    }
   }
 }
 
@@ -99,9 +74,9 @@
    where they landed. */
 [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
   --arrival-wash: color-mix(
-    in oklch,
-    var(--bubble-fill, var(--bubble-assistant)),
-    var(--bubble-ink, var(--bubble-assistant-foreground)) 14%
+    in srgb,
+    var(--ui-bubble-fill, var(--surface-muted)),
+    var(--ui-bubble-ink, var(--text)) 14%
   );
   animation: meridian-arrival var(--dur-linger) var(--ease-standard);
 }

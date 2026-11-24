@@ -2,11 +2,19 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Bubble, BubbleContent, BUBBLE_BLOCK } from './bubble'
-import { BubbleBlockButton } from './bubble-block'
-import { ChatTool, ChatToolPresentationProvider, ChatToolTrigger } from './chat-tool'
+import {
+  Bubble,
+  BubbleBlockButton,
+  BubbleContent,
+  BUBBLE_BLOCK,
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import {
+  ChatTool,
+  ChatToolPresentationProvider,
+  ChatToolTrigger,
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 
-const bubbleCss = readFileSync(resolve(__dirname, 'bubble.css'), 'utf8')
+const bubbleCss = readFileSync(resolve(__dirname, '../yuerchu-ui/components/chat-bubble/chat-bubble.css'), 'utf8')
 
 function blocks(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>('[data-bubble-block]'))
@@ -30,15 +38,15 @@ describe('a bubble block', () => {
     for (const block of found) {
       expect(block).toHaveClass(BUBBLE_BLOCK)
     }
-    expect(bubbleCss).toMatch(/\.m-bubble-block\s*\{[^}]*border-radius:\s*var\(--bubble-radius/)
-    expect(bubbleCss).toMatch(/\.m-bubble-block\s*\{[^}]*overflow:\s*hidden/)
+    expect(bubbleCss).toMatch(/\.ui-chat-bubble__block\s*\{[^}]*border-radius:\s*var\(--ui-bubble-radius/)
+    expect(bubbleCss).toMatch(/\.ui-chat-bubble__block\s*\{[^}]*overflow:\s*hidden/)
     expect(bubbleCss).toMatch(
-      /\.m-bubble-block\s*\{[^}]*background-color:\s*var\(--bubble-fill,\s*var\(--bubble-assistant\)\)/,
+      /\.ui-chat-bubble__block\s*\{[^}]*background-color:\s*var\(--ui-bubble-fill,\s*var\(--surface-muted\)\)/,
     )
   })
 
   it('takes its colour by inheritance, not by being a direct child', () => {
-    expect(bubbleCss).not.toMatch(/\.m-bubble\s*>\s*\.m-bubble-block/)
+    expect(bubbleCss).not.toMatch(/\.ui-chat-bubble\s*>\s*\.ui-chat-bubble__block/)
     const { container } = render(
       <Bubble variant="user" align="end" position="first">
         <BubbleContent>asked</BubbleContent>
@@ -46,7 +54,9 @@ describe('a bubble block', () => {
     )
     const bubble = container.querySelector('[data-slot="bubble"]')!
     expect(bubble).toHaveAttribute('data-variant', 'user')
-    expect(bubbleCss).toMatch(/\.m-bubble\[data-variant='user'\]\s*\{[^}]*--bubble-fill:\s*var\(--bubble-user\)/)
+    expect(bubbleCss).toMatch(
+      /\.ui-chat-bubble\[data-variant="user"\]\s*\{[^}]*--ui-bubble-fill:\s*var\(--ui-bubble-user\)/,
+    )
     expect(blocks(container)[0]).toHaveClass(BUBBLE_BLOCK)
   })
 
@@ -59,13 +69,13 @@ describe('a bubble block', () => {
     const bubble = container.querySelector('[data-slot="bubble"]')!
     expect(bubble).toHaveAttribute('data-align', 'start')
     expect(bubble).toHaveAttribute('data-position', 'middle')
-    expect(bubbleCss).toContain(".m-bubble[data-align='start'] > [data-bubble-block] ~ [data-bubble-block]")
-    expect(bubbleCss).toContain(".m-bubble[data-align='start'] > [data-bubble-block]:has(~ [data-bubble-block])")
+    expect(bubbleCss).toContain('.ui-chat-bubble[data-align="start"] > [data-bubble-block] ~ [data-bubble-block]')
+    expect(bubbleCss).toContain('.ui-chat-bubble[data-align="start"] > [data-bubble-block]:has(~ [data-bubble-block])')
     expect(bubbleCss).toContain(
-      ".m-bubble[data-align='start']:is([data-position='middle'], [data-position='last']) > [data-bubble-block]",
+      '.ui-chat-bubble[data-align="start"]:is([data-position="middle"], [data-position="last"]) > [data-bubble-block]',
     )
     expect(bubbleCss).toContain(
-      ".m-bubble[data-align='start']:is([data-position='first'], [data-position='middle']) > [data-bubble-block]",
+      '.ui-chat-bubble[data-align="start"]:is([data-position="first"], [data-position="middle"]) > [data-bubble-block]',
     )
   })
 

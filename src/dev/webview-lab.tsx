@@ -44,7 +44,7 @@ import { Composer } from '@/components/chat/composer'
 import { FilePreviewContext, type FilePreviewContextValue } from '@/components/chat/file-preview-context'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { ShikiCode } from '@/components/chat/shiki-code'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { languageIconUrl } from '@/lib/file-icon'
 
 /** Feature detections, each phrased so `true` means "WebView2 will render it". */

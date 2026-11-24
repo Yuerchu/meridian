@@ -9,9 +9,8 @@ import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { BUBBLE_BLOCK } from '@/components/ui/bubble'
-import { BubbleBlockButton } from '@/components/ui/bubble-block'
-import { ChatToolPresentationContext } from '@/components/ui/chat-tool'
+import { BUBBLE_BLOCK, BubbleBlockButton } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { ChatToolPresentationContext } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { errorMessage } from '@/lib/error-message'
 import {
   approveFromCard,
@@ -295,7 +294,7 @@ export function PlanReviewEntryView({
   // nothing left to decide: the review has a page of its own.
   if (presentation === 'bubble' && !pending) {
     return (
-      <BubbleBlockButton data-slot="plan-review-entry" data-status={status} state="output-available" onClick={onOpen}>
+      <BubbleBlockButton data-slot="plan-review-entry" data-status={status} state="output-available" onPress={onOpen}>
         <List aria-hidden className="m-plan-review-entry__key-icon" />
         <span data-slot="plan-review-entry-title" className="m-plan-review-entry__key-title">
           {t('chat.plan.title')}

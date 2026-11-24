@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { resetEditLocations } from '@/hooks/use-edit-location'
 import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'

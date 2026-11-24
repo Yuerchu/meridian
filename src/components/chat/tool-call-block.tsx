@@ -32,7 +32,12 @@ import { SubAgentGroup } from './sub-agent-group'
 import { PlanReviewEntryBlock } from './plan-review-entry'
 import { DiffStats, FileDiffCard, FileIcon } from './file-diff-card'
 import { pathExtension } from '@/lib/paths'
-import { PathLabel } from '@/components/ui/path-label'
+import {
+  PathLabel,
+  ToolCommandView,
+  ToolFileList,
+  ToolSearchResult,
+} from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import { Hint } from '@/components/ui/hint'
 import {
   ArrowUTurnLeft,
@@ -70,7 +75,7 @@ import {
   ChatToolStatusIcon,
   ChatToolTrigger,
   type ChatToolState,
-} from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { errorMessage } from '@/lib/error-message'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
@@ -809,14 +814,14 @@ function SearchResult({ result }: { result: string }) {
   const { t } = useTranslation()
   const { body, footnote } = useMemo(() => splitListingFootnote(result), [result])
   const matches = useMemo(() => parseSearchMatches(body), [body])
-  const grouped = useMemo(() => {
+  const groups = useMemo(() => {
     const map = new Map<string, { line: number; text: string }[]>()
     for (const m of matches ?? []) {
       const existing = map.get(m.file)
       if (existing) existing.push({ line: m.line, text: m.text })
       else map.set(m.file, [{ line: m.line, text: m.text }])
     }
-    return map
+    return Array.from(map.entries()).map(([file, items]) => ({ file, matches: items }))
   }, [matches])
 
   if (!matches) {
@@ -825,34 +830,14 @@ function SearchResult({ result }: { result: string }) {
   }
 
   return (
-    <div data-slot="search-result">
-      <div data-slot="search-result-scroll" className="m-tool-call-block__scroll-lg">
-        {Array.from(grouped.entries()).map(([file, items]) => (
-          <div key={file} data-slot="search-result-file" className="m-tool-call-block__search-file">
-            <div data-slot="search-result-file-header" className="m-tool-call-block__search-file-header">
-              <FileIcon path={file} />
-              <PathLabel path={file} className="m-tool-call-block__flex-1" />
-              <span data-slot="search-result-count" className="m-tool-call-block__search-count">
-                {items.length}
-              </span>
-            </div>
-            {items.map((item, i) => (
-              <div key={i} data-slot="search-result-match" className="m-tool-call-block__search-match">
-                <span data-slot="search-result-line-no" className="m-tool-call-block__search-line-no">
-                  {item.line}
-                </span>
-                <span data-slot="search-result-text" className="m-tool-call-block__search-text">
-                  {item.text}
-                </span>
-              </div>
-            ))}
-          </div>
-        ))}
-      </div>
-      {footnote.showingFirst !== null && (
-        <Footnote>{t('chat.tool.panel.showingFirst', { count: footnote.showingFirst })}</Footnote>
-      )}
-    </div>
+    <ToolSearchResult
+      groups={groups}
+      emptyMessage={t('chat.tool.panel.noMatches')}
+      footnote={
+        footnote.showingFirst !== null ? t('chat.tool.panel.showingFirst', { count: footnote.showingFirst }) : undefined
+      }
+      renderIcon={(file) => <FileIcon path={file} />}
+    />
   )
 }
 
@@ -862,55 +847,42 @@ function GlobResult({ result }: { result: string }) {
   const { t } = useTranslation()
   const { body, footnote } = useMemo(() => splitListingFootnote(result), [result])
   const { paths, empty } = useMemo(() => parseGlobResult(body), [body])
+  const entries = useMemo(() => paths.map((path) => ({ path, kind: 'file' as const })), [paths])
   if (empty) return <EmptyLine>{t('chat.tool.panel.noGlobMatches')}</EmptyLine>
   return (
-    <div data-slot="glob-result">
-      <div data-slot="glob-result-scroll" className="m-tool-call-block__list-scroll">
-        {paths.map((path) => (
-          <div key={path} data-slot="glob-result-path" className="m-tool-call-block__list-row">
-            <FileIcon path={path} />
-            <PathLabel path={path} className="m-tool-call-block__flex-1" />
-          </div>
-        ))}
-      </div>
-      {footnote.showingFirst !== null && (
-        <Footnote>{t('chat.tool.panel.showingFirst', { count: footnote.showingFirst })}</Footnote>
-      )}
-    </div>
+    <ToolFileList
+      entries={entries}
+      emptyMessage={t('chat.tool.panel.noGlobMatches')}
+      footnote={
+        footnote.showingFirst !== null ? t('chat.tool.panel.showingFirst', { count: footnote.showingFirst }) : undefined
+      }
+      renderIcon={(entry) => <FileIcon path={entry.path} />}
+    />
   )
 }
 
 function DirectoryResult({ result }: { result: string }) {
   const { t } = useTranslation()
   const entries = useMemo(() => parseDirectoryListing(result), [result])
+  const list = useMemo(
+    () => (entries ?? []).map((entry) => ({ path: entry.name, kind: entry.kind, size: entry.size })),
+    [entries],
+  )
   if (entries === null) return <PlainText text={result} />
-  if (entries.length === 0) return <EmptyLine>{t('chat.tool.panel.emptyDirectory')}</EmptyLine>
   return (
-    <div data-slot="directory-result" className="m-tool-call-block__list-scroll">
-      {entries.map((entry) => (
-        <div key={`${entry.kind}:${entry.name}`} data-slot="directory-entry" className="m-tool-call-block__list-row">
-          {entry.kind === 'dir' ? (
-            <Folder aria-hidden className="m-tool-call-block__icon-sm" />
-          ) : entry.kind === 'link' ? (
-            <Link aria-hidden className="m-tool-call-block__icon-sm" />
-          ) : (
-            <FileIcon path={entry.name} />
-          )}
-          <span
-            data-slot="directory-entry-name"
-            onPointerEnter={titleIfTruncated}
-            className="m-tool-call-block__dir-name"
-          >
-            {entry.name}
-          </span>
-          {entry.size !== null && (
-            <span data-slot="directory-entry-size" className="m-tool-call-block__dir-size">
-              {entry.size}
-            </span>
-          )}
-        </div>
-      ))}
-    </div>
+    <ToolFileList
+      entries={list}
+      emptyMessage={t('chat.tool.panel.emptyDirectory')}
+      renderIcon={(entry) =>
+        entry.kind === 'dir' ? (
+          <Folder aria-hidden className="m-tool-call-block__icon-sm" />
+        ) : entry.kind === 'link' ? (
+          <Link aria-hidden className="m-tool-call-block__icon-sm" />
+        ) : (
+          <FileIcon path={entry.path} />
+        )
+      }
+    />
   )
 }
 
@@ -921,23 +893,14 @@ function DirectoryResult({ result }: { result: string }) {
  */
 function CommandOutputView({ output }: { output: CommandOutput }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
-  if (output.noOutput) return <EmptyLine>{t('chat.shell.noOutput')}</EmptyLine>
-  const long = output.stdout.length > 2000
-  const stdout = long && !expanded ? `${output.stdout.slice(0, 2000)}…` : output.stdout
   return (
-    <div data-slot="command-output">
-      {output.stdout !== '' && <PlainText text={stdout} />}
-      {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
-      {output.stderr !== '' && (
-        <div data-slot="command-stderr" className="m-tool-call-block__stderr">
-          <div data-slot="command-stderr-label" className="m-tool-call-block__stderr-label">
-            {t('chat.tool.panel.stderr')}
-          </div>
-          <PlainText text={output.stderr} className="m-tool-call-block__stderr-text" />
-        </div>
-      )}
-    </div>
+    <ToolCommandView
+      stdout={output.stdout}
+      stderr={output.stderr}
+      noOutput={output.noOutput}
+      emptyMessage={t('chat.shell.noOutput')}
+      stderrLabel={t('chat.tool.panel.stderr')}
+    />
   )
 }
 
@@ -2568,7 +2531,7 @@ export function ToolCallBlock({
       <ChatToolContent>
         {(title !== null || headerDescription !== null || metaArgs.length > 0 || end.length > 0) && (
           <ChatToolPanelHeader
-            title={title}
+            heading={title}
             description={
               headerDescription !== null || metaArgs.length > 0 ? (
                 <>

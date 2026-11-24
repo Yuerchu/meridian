@@ -1,7 +1,8 @@
-import './todo-list.css'
-import { Square, SquareCheck, SquareMinus } from '@keyline-icons/react/two-tone'
-import { useTranslation } from 'react-i18next'
-
+import {
+  ToolChecklist,
+  ToolChecklistRow,
+  ToolChecklistStatusIcon,
+} from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import type { TodoItemInfoResponse, TodoItemStatus } from '@/types'
 
 /**
@@ -55,47 +56,13 @@ export function todoProgress(todos: TodoDraft[]) {
 }
 
 export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; className?: string }) {
-  const { t } = useTranslation()
-  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareMinus : Square
-  return (
-    // Named rather than hidden: the status is carried by this icon, by the
-    // colour and by a strikethrough, and none of the three reaches a screen
-    // reader. Hidden, the list read as a run of sentences with no state at all.
-    <Icon
-      role="img"
-      aria-label={t(`chat.todo.status.${status}`)}
-      data-slot="todo-status-icon"
-      data-status={status}
-      className={className ? `m-todo-list__icon ${className}` : 'm-todo-list__icon'}
-    />
-  )
+  return <ToolChecklistStatusIcon status={status} className={className} />
 }
 
 export function TodoItemRow({ item, className }: { item: TodoDraft; className?: string }) {
-  return (
-    <div
-      role="listitem"
-      data-slot="todo-item"
-      data-status={item.status}
-      className={className ? `m-todo-list__item ${className}` : 'm-todo-list__item'}
-    >
-      <TodoStatusIcon status={item.status} className="m-todo-list__item-icon" />
-      <span data-slot="todo-item-content" data-status={item.status} className="m-todo-list__content">
-        {item.content}
-      </span>
-    </div>
-  )
+  return <ToolChecklistRow item={item} className={className} />
 }
 
 export function TodoItemList({ todos, className }: { todos: TodoDraft[]; className?: string }) {
-  return (
-    <div role="list" data-slot="todo-item-list" className={className ? `m-todo-list ${className}` : 'm-todo-list'}>
-      {/* Index as key: a `TodoDraft` has no id — neither the streamed ones nor
-          the stored ones carry one — and the list is replaced wholesale rather
-          than reordered, so position is stable for as long as it exists. */}
-      {todos.map((item, i) => (
-        <TodoItemRow key={i} item={item} />
-      ))}
-    </div>
-  )
+  return <ToolChecklist items={todos} className={className} />
 }

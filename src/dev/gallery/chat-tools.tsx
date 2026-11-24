@@ -9,7 +9,17 @@ import {
   ChatToolPanelHeader,
   ChatToolStatusIcon,
   ChatToolTrigger,
-} from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
+import {
+  ToolChecklist,
+  ToolChecklistRow,
+  ToolChecklistStatusIcon,
+  ToolCommandView,
+  ToolDiffStats,
+  ToolDiffView,
+  ToolFileList,
+  ToolSearchResult,
+} from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
@@ -129,7 +139,7 @@ export default function ChatTools() {
             </span>
           </ChatToolTrigger>
           <ChatToolContent>
-            <ChatToolPanelHeader title="src/lib/plan-card.ts" description="新文件 · 142 行" end="已写入" />
+            <ChatToolPanelHeader heading="src/lib/plan-card.ts" description="新文件 · 142 行" end="已写入" />
             <ChatToolPanelBody>
               <ToolFields entries={[['mode', 'create']]} className="px-3 py-2" />
             </ChatToolPanelBody>
@@ -342,6 +352,27 @@ export default function ChatTools() {
               result: WEB_SEARCH_RESULT,
             })}
           />
+        </div>
+      </Section>
+      <Section title="ToolViews / 专用工具视图">
+        <div className="space-y-3">
+          <ToolDiffStats added={3} removed={1} />
+          <ToolDiffView
+            path="src/lib/cache.ts"
+            lines={[
+              { kind: 'context', oldNo: 1, newNo: 1, text: 'export const ttl = 60' },
+              { kind: 'remove', oldNo: 2, text: 'export const max = 10' },
+              { kind: 'add', newNo: 2, text: 'export const max = 100' },
+            ]}
+          />
+          <ToolSearchResult
+            groups={[{ file: 'src/lib/cache.ts', matches: [{ line: 2, text: 'export const max = 100' }] }]}
+          />
+          <ToolFileList entries={[{ path: 'src/lib/cache.ts', kind: 'file', size: '1.2 KB' }]} />
+          <ToolCommandView stdout="ok" stderr="warn" />
+          <ToolChecklist items={[{ content: '完成迁移', status: 'completed' }]} />
+          <ToolChecklistRow item={{ content: '核验视觉基线', status: 'in_progress' }} />
+          <ToolChecklistStatusIcon status="pending" />
         </div>
       </Section>
     </>

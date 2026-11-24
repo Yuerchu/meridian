@@ -7,14 +7,10 @@
   .m-message-item__quoted {
     margin-bottom: var(--space-2);
     border-inline-start: 2px solid
-      color-mix(in oklch, var(--bubble-fill, var(--bubble-user)), var(--bubble-ink, var(--bubble-user-foreground)) 30%);
+      color-mix(in srgb, var(--ui-bubble-fill, var(--surface-muted)), var(--ui-bubble-ink, var(--text)) 30%);
     padding-inline-start: var(--space-3);
     font: var(--text-caption);
-    color: color-mix(
-      in oklch,
-      var(--bubble-fill, var(--bubble-user)),
-      var(--bubble-ink, var(--bubble-user-foreground)) 70%
-    );
+    color: color-mix(in srgb, var(--ui-bubble-fill, var(--surface-muted)), var(--ui-bubble-ink, var(--text)) 70%);
   }
 
   .m-message-item__quoted-sender {
@@ -65,7 +61,7 @@
   }
 
   .m-message-item__user-speaker {
-    color: color-mix(in oklch, var(--bubble-user-foreground) 80%, transparent);
+    color: color-mix(in srgb, var(--ui-bubble-ink, var(--text)) 80%, transparent);
   }
 
   .m-message-item__refs {

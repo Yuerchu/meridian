@@ -99,7 +99,7 @@
 
   .m-shell-command-bubble__panel[data-failed] {
     box-shadow:
-      var(--bubble-shadow, none),
+      var(--ui-bubble-shadow, none),
       inset 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
   }
 

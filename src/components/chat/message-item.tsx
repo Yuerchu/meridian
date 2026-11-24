@@ -34,16 +34,19 @@ import {
   AttachmentPreview,
 } from '@/components/yuerchu-ui/components/attachment-preview/attachment-preview'
 import {
+  Bubble,
+  BubbleContent,
+  BubbleFoldBadge,
+  BubbleTime,
+  BUBBLE_RUN_GAP,
   MessageGroupAssistant,
   MessageGroupAvatar,
   MessageGroupBubbles,
   MessageGroupFooter,
   MessageGroupHeader,
   MessageGroupUser,
-} from '@/components/ui/message-group'
-import { Bubble, BubbleContent, BubbleTime, BUBBLE_RUN_GAP } from '@/components/ui/bubble'
-import { BubbleFoldBadge } from '@/components/ui/bubble-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { ErrorBoundary } from '@/components/error-boundary'
@@ -623,7 +626,7 @@ function FoldBadges({
       {folded.map((fold) => {
         const Icon = FOLD_ICONS[fold.kind]
         return (
-          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onClick={() => toggle(fold.key)}>
+          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onPress={() => toggle(fold.key)}>
             <Icon aria-hidden className="m-message-item__fold-icon" />
             {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
           </BubbleFoldBadge>

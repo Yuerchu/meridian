@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "a8758b77bd76666dcdf98eea261a39a51ba36bb2"
+    "commit": "bac4b18861a94d0863c0f05a7951085bfaea56fc"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -12,6 +12,8 @@
     "components/badge/badge.tsx",
     "components/button/button.tsx",
     "components/chart/chart.tsx",
+    "components/chat-bubble/chat-bubble.tsx",
+    "components/chat-tool/chat-tool.tsx",
     "components/checkbox/checkbox.tsx",
     "components/citation/citation.tsx",
     "components/command-palette/command-palette.tsx",
@@ -56,6 +58,7 @@
     "components/text-field/text-field.tsx",
     "components/thinking-state/thinking-state.tsx",
     "components/toast/toast.tsx",
+    "components/tool-views/tool-views.tsx",
     "components/tooltip/tooltip.tsx",
     "components/tree/tree.tsx",
     "styles/index.css",
@@ -96,6 +99,11 @@
     "components/chart/chart.css": "9339f7a9e9a64c468b812a20c22f8c59e477941b96a3142c33ab093039c45fff",
     "components/chart/chart.strings.ts": "84914367b0b299ce0e4a0a1fca7439fa6e766a7842629a4e5010bd25da4f3a1c",
     "components/chart/chart.tsx": "33d7d1bdd9f7dca9b0cadf2a602e94dc96a41ccff2a1b8994fb52ea40bc169c0",
+    "components/chat-bubble/chat-bubble.css": "a4ca11e361c31e4d84464e085b2ffde2ecfb9579fabf830dfbe11795c94df6df",
+    "components/chat-bubble/chat-bubble.tsx": "6e5da92dd0b9c803eb5a44ab2e50cd380ae4eb2a62de3eb0821b3b593348dc29",
+    "components/chat-tool/chat-tool.css": "3d8da986a1de15053535c337b212ad3d4ace50cd7e17572fb0606828135865fb",
+    "components/chat-tool/chat-tool.strings.ts": "2400571c53044942db81d436690dc5909590091877c185efbe0babb6085b383d",
+    "components/chat-tool/chat-tool.tsx": "0a2ca0999e25988fb58bcbd5ceb8ca654a3b63919e3f1150bbf975bf45a7c243",
     "components/checkbox/checkbox.css": "e0d376e374dd90b2619980ed7bb3689094ed498c6806a7a4efdce1e49973f8d5",
     "components/checkbox/checkbox.tsx": "ffa95b15c155165f91c25d3b65a2c7524929951410f5a84ff393e6a1ff19a4b4",
     "components/citation/citation.css": "6cb65dbcf3a55d3b2a3e5138e5381a73d44b8b92120645d6ec278a721aa50311",
@@ -244,6 +252,9 @@
     "components/toast/toast.css": "97ab9f41d06a6007e7d81c05f6c6c02260d10f8c96c1b64ba0b62000a630a835",
     "components/toast/toast.strings.ts": "dc3148b0c9a5e7e1ef3c0cd6c7cf89fa46b055fa58d6c8a3aa3a11c309ffc1aa",
     "components/toast/toast.tsx": "1a0293e8d73cbb8dd1e53ed6e8df2d174b6e0b440517251b1a0843674a08d5c3",
+    "components/tool-views/tool-views.css": "a6cae315d39bbfa6c7e5ea7e6f4bb2e8ce9b3d6cbb6d0824ed76eaf56c8fd7d0",
+    "components/tool-views/tool-views.strings.ts": "207d79cc35da32084671905213f8c9a26060f1da6a81434d8b5e4ea98b2f2eb2",
+    "components/tool-views/tool-views.tsx": "120e145ce5cb1035f2b525ed27399256f5d6ac95319d6e4b1aee5520e69b8e42",
     "components/tooltip/tooltip.css": "07b6fca933fa35a20416f53f712497a22e1da81e8d24e7e4607d60835c034dbd",
     "components/tooltip/tooltip.tsx": "5fb04fba98632547b63ad190b6e370fc12c17cca8fc16d21620e1752007f381d",
     "components/tree/tree.css": "751dfbe73660ce0370b412cdd30ea01eb8c56d5fbdef2173ebe67cfffbd9acc9",

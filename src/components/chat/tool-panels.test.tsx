@@ -11,7 +11,7 @@ import {
   ChatToolPanelBody,
   ChatToolPresentationProvider,
   ChatToolTrigger,
-} from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { resetEditLocations } from '@/hooks/use-edit-location'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -108,15 +108,18 @@ describe('tool panels', () => {
   })
 
   it('keeps an ordinary key to one line with the file name intact', async () => {
-    const pathLabelCss = readFileSync(resolve(process.cwd(), 'src/components/ui/path-label.css'), 'utf8')
+    const pathLabelCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/tool-views/tool-views.css'),
+      'utf8',
+    )
     expect(pathLabelCss).toMatch(
-      /\.m-path-label:not\(\[data-wrap\]\)\s+\.m-path-label__dir\s*\{[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/s,
+      /\.ui-path-label:not\(\[data-wrap\]\)\s+\.ui-path-label__dir\s*\{[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/s,
     )
     const path = '/home/me/very/deep/directory/structure/for/this/test/turn.rs'
     const { container } = inBubble(<ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />)
     const arg = container.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
     expect(arg.querySelector('[data-slot="path-label"]')).not.toHaveAttribute('data-wrap')
-    expect(arg.querySelector('[data-slot="path-dir"]')).toHaveClass('m-path-label__dir')
+    expect(arg.querySelector('[data-slot="path-dir"]')).toHaveClass('ui-path-label__dir')
     expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('turn.rs')
     // The panel is where the whole path is, since the key could not hold it.
     await userEvent.click(screen.getByRole('button', { name: /Read File/ }))
@@ -201,7 +204,7 @@ describe('tool panels', () => {
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Glob Files/ }))
-    const list = panel(container).querySelector('[data-slot="glob-result"]')!
+    const list = panel(container).querySelector('[data-slot="file-list-result"]')!
     expect(list.querySelectorAll('[data-slot="path-label"]')).toHaveLength(2)
     expect(list).toHaveTextContent('b.ts')
     expect(panel(container).querySelector('[data-slot="tool-footnote"]')).toHaveTextContent('first 1000')
@@ -217,7 +220,7 @@ describe('tool panels', () => {
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /List Directory/ }))
-    const rows = panel(container).querySelectorAll('[data-slot="directory-result"] > div')
+    const rows = panel(container).querySelectorAll('[data-slot="file-list-entry"]')
     expect(rows).toHaveLength(2)
     expect(rows[1]).toHaveTextContent('main.rs')
     expect(rows[1]).toHaveTextContent('1.2 KB')
@@ -329,16 +332,19 @@ describe('every panel opens the same way', () => {
     ['enter_plan', { reason: 'a big change' }],
   ])('insets every section %s draws inside a bubble', (name, args) => {
     const toolCallBlockCss = readFileSync(resolve(process.cwd(), 'src/components/chat/tool-call-block.css'), 'utf8')
-    const chatToolCss = readFileSync(resolve(process.cwd(), 'src/components/ui/chat-tool.css'), 'utf8')
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
     expect(toolCallBlockCss).toMatch(/\.m-tool-call-block__bubble-section\s*\{[^}]*padding:\s*10px var\(--space-3\)/s)
-    expect(chatToolCss).toMatch(/\.m-chat-tool__panel-footer\s*\{[^}]*padding:\s*10px var\(--space-3\)/s)
+    expect(chatToolCss).toMatch(/\.ui-chat-tool__panel-footer\s*\{[^}]*padding:\s*var\(--space-2\) var\(--space-3\)/s)
     const { container } = inBubble(<ToolCallBlock data={call(name, args, 'pending')} />)
     const sections = [...panel(container).children] as HTMLElement[]
     expect(sections.length).toBeGreaterThan(0)
     for (const section of sections) {
       expect(
         section.classList.contains('m-tool-call-block__bubble-section') ||
-          section.classList.contains('m-chat-tool__panel-footer'),
+          section.classList.contains('ui-chat-tool__panel-footer'),
       ).toBe(true)
     }
   })

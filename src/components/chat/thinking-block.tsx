@@ -1,7 +1,7 @@
 import './thinking-block.css'
 import { useTranslation } from 'react-i18next'
 import { ChevronDown, Message } from '@keyline-icons/react/two-tone'
-import { BubbleFoldBadge } from '@/components/ui/bubble-block'
+import { BubbleFoldBadge } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { MarkdownContent } from './markdown-content'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -117,7 +117,7 @@ function ThinkingFold({ text, panelKey, isStreaming }: { text: string; panelKey:
         <BubbleFoldBadge
           expanded={isExpanded}
           aria-controls={isExpanded ? panelId : undefined}
-          onClick={() => onExpandedChange(!isExpanded)}
+          onPress={() => onExpandedChange(!isExpanded)}
         >
           <Message aria-hidden className="m-thinking-block__icon" />
           {isStreaming ? (

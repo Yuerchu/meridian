@@ -12,7 +12,9 @@ import {
   ChatToolPresentationProvider,
   ChatToolStatusIcon,
   ChatToolTrigger,
-} from './chat-tool'
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
+
+const chatToolCss = readFileSync(resolve(__dirname, '../yuerchu-ui/components/chat-tool/chat-tool.css'), 'utf8')
 
 describe('ChatTool', () => {
   it('exposes active state without treating a queued call as busy', () => {
@@ -66,9 +68,8 @@ describe('ChatTool', () => {
     )
 
     const actions = container.querySelector('[data-slot="chat-tool-approval-actions"]')!
-    expect(actions).toHaveClass('m-chat-tool__approval-actions')
-    const css = readFileSync(resolve(__dirname, 'chat-tool.css'), 'utf8')
-    expect(css).toMatch(/\.m-chat-tool__approval-actions\s*\{[^}]*flex-wrap:\s*wrap/)
+    expect(actions).toHaveClass('ui-chat-tool__approval-actions')
+    expect(chatToolCss).toMatch(/\.ui-chat-tool__approval-actions\s*\{[^}]*flex-wrap:\s*wrap/)
     expect(screen.getByRole('button', { name: 'Reject' })).toBeVisible()
     expect(screen.getByRole('button', { name: 'Allow without sandbox' })).toBeVisible()
   })
@@ -89,7 +90,7 @@ describe('ChatTool as a bubble block', () => {
     const key = screen.getByRole('button', { name: /Read file/ })
     expect(container.querySelector('h3')).toBeNull()
     const block = container.querySelector('[data-slot="chat-tool"]')!
-    // What `bubble.tsx` styles it by, and the whole of why there is no portal:
+    // What `chat-bubble.tsx` styles it by, and the whole of why there is no portal:
     // the head and the panel are children of this one element.
     expect(block).toHaveAttribute('data-bubble-block')
     expect(block).toContainElement(key)
@@ -112,13 +113,12 @@ describe('ChatTool as a bubble block', () => {
     // block rather than on either half — one outline, not two.
     expect(block).toHaveAttribute('data-presentation', 'bubble')
     expect(block).toHaveAttribute('data-state', 'requires-action')
-    expect(block).toHaveClass('m-chat-tool')
-    const css = readFileSync(resolve(__dirname, 'chat-tool.css'), 'utf8')
-    expect(css).toMatch(
-      /\.m-chat-tool\[data-presentation='bubble'\]\[data-state='requires-action'\]\s*\{[^}]*width:\s*100%/,
+    expect(block).toHaveClass('ui-chat-tool')
+    expect(chatToolCss).toMatch(
+      /\.ui-chat-tool\[data-presentation="bubble"\]\[data-expanded\],\s*\.ui-chat-tool\[data-presentation="bubble"\]\[data-state="requires-action"\]\s*\{[^}]*width:\s*100%/,
     )
-    expect(css).toMatch(
-      /\.m-chat-tool\[data-presentation='bubble'\]\[data-state='requires-action'\]\s*\{[^}]*--warning-fg/,
+    expect(chatToolCss).toMatch(
+      /\.ui-chat-tool\[data-presentation="bubble"\]\[data-state="requires-action"\]\s*\{[^}]*--warning-fg/,
     )
     expect(container.querySelector('[data-slot="chat-tool-content"]')).not.toHaveAttribute(
       'data-state',
@@ -167,8 +167,9 @@ describe('ChatTool as a bubble block', () => {
     )
     const actions = container.querySelector('[data-slot="chat-tool-approval-actions"]')!
     expect(actions).toHaveAttribute('data-presentation', 'bubble')
-    expect(actions).toHaveClass('m-chat-tool__approval-actions')
-    const css = readFileSync(resolve(__dirname, 'chat-tool.css'), 'utf8')
-    expect(css).toMatch(/\.m-chat-tool__approval-actions\[data-presentation='bubble'\]\s*>\s*button\s*\{[^}]*flex:\s*1/)
+    expect(actions).toHaveClass('ui-chat-tool__approval-actions')
+    expect(chatToolCss).toMatch(
+      /\.ui-chat-tool__approval-actions\[data-presentation="bubble"\]\s*>\s*button\s*\{[^}]*flex:\s*1/,
+    )
   })
 })

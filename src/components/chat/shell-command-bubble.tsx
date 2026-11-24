@@ -7,8 +7,13 @@ import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
 import { Hint } from '@/components/ui/hint'
-import { Bubble, BubbleContent, BubbleTime, BUBBLE_BLOCK } from '@/components/ui/bubble'
-import { BubbleFoldBadge } from '@/components/ui/bubble-block'
+import {
+  Bubble,
+  BubbleContent,
+  BubbleFoldBadge,
+  BubbleTime,
+  BUBBLE_BLOCK,
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { useClockTime } from '@/hooks/use-clock-time'
 import { usePanelExpansion } from '@/hooks/use-panel-expansion'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -138,7 +143,7 @@ export function ShellCommandBubble({
           <BubbleFoldBadge
             expanded={isExpanded}
             aria-controls={isExpanded ? panelId : undefined}
-            onClick={() => onExpandedChange(!isExpanded)}
+            onPress={() => onExpandedChange(!isExpanded)}
           >
             {t('chat.shell.output')}
             <ChevronDown
