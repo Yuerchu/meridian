@@ -88,6 +88,7 @@
   .m-plan-review-entry__action-row {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: var(--space-2);
   }
 

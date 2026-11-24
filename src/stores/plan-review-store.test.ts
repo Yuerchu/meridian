@@ -9,41 +9,34 @@ const event = {
   revision_id: 'revision-1',
   turn_id: 'turn-1',
   status: 'approved' as const,
-  delivery_state: 'held' as const,
   lock_version: 2,
 }
 
 describe('plan review invalidation projection', () => {
   beforeEach(() => usePlanReviewStore.setState({ activeReviewId: null, summaries: {} }))
 
-  it('projects the exact durable delivery state carried by the event', () => {
+  it('projects the status carried by the event', () => {
     usePlanReviewStore.getState().receiveReviewEvent(event)
     expect(usePlanReviewStore.getState().summaries['review-1']).toMatchObject({
       status: 'approved',
-      delivery_state: 'held',
+      lock_version: 2,
     })
   })
 
-  it('does not invent a delivery barrier for pending or orphaned review events', () => {
-    usePlanReviewStore.getState().receiveReviewEvent({ ...event, status: 'pending', delivery_state: null })
-    expect(usePlanReviewStore.getState().summaries['review-1'].delivery_state).toBeNull()
-    usePlanReviewStore
-      .getState()
-      .receiveReviewEvent({ ...event, status: 'orphaned', delivery_state: null, lock_version: 3 })
-    expect(usePlanReviewStore.getState().summaries['review-1'].delivery_state).toBeNull()
+  it('advances status when lock_version increases', () => {
+    usePlanReviewStore.getState().receiveReviewEvent({ ...event, status: 'pending', lock_version: 1 })
+    expect(usePlanReviewStore.getState().summaries['review-1'].status).toBe('pending')
+    usePlanReviewStore.getState().receiveReviewEvent({ ...event, status: 'orphaned', lock_version: 3 })
+    expect(usePlanReviewStore.getState().summaries['review-1'].status).toBe('orphaned')
   })
 
   it('rejects an older projection and an equal-version state rollback', () => {
     expect(usePlanReviewStore.getState().receiveReviewEvent(event)).toBe(true)
+    expect(usePlanReviewStore.getState().receiveReviewEvent({ ...event, status: 'pending', lock_version: 1 })).toBe(
+      false,
+    )
     expect(
-      usePlanReviewStore
-        .getState()
-        .receiveReviewEvent({ ...event, status: 'pending', delivery_state: null, lock_version: 1 }),
-    ).toBe(false)
-    expect(
-      usePlanReviewStore
-        .getState()
-        .receiveReviewEvent({ ...event, status: 'approved', delivery_state: 'acknowledged' }),
+      usePlanReviewStore.getState().receiveReviewEvent({ ...event, status: 'changes_requested', lock_version: 2 }),
     ).toBe(false)
     expect(usePlanReviewStore.getState().summaries['review-1']).toMatchObject(event)
   })

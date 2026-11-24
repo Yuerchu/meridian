@@ -164,15 +164,7 @@ const WITHHELD_MESSAGE = {
 export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: AttentionShape }) {
   const { t } = useTranslation()
   if (item.kind === 'plan_review') {
-    return (
-      <span data-slot="approval-notification-plan-message">
-        {item.stage === 'review'
-          ? t('chat.plan.reviewReady')
-          : item.stage === 'delivery_queued'
-            ? t('planReview.deliveryQueued')
-            : t('chat.plan.continuationNeedsAttention')}
-      </span>
-    )
+    return <span data-slot="approval-notification-plan-message">{t('chat.plan.reviewReady')}</span>
   }
   return (
     <>

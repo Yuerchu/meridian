@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => {
     'conversation-1': {
       messages: [] as MessageViewModel[],
       streaming: false,
-      planReviewBarrier: false,
       activeShellTurnId: null as string | null,
       shellResultKeys: {},
       compacting: false,
@@ -228,52 +227,12 @@ describe('ChatView initial draft', () => {
     mocks.loadMessages.mockResolvedValue(true)
     mocks.sessions['conversation-1'].messages = []
     mocks.sessions['conversation-1'].streaming = false
-    mocks.sessions['conversation-1'].planReviewBarrier = false
     mocks.sessions['conversation-1'].activeShellTurnId = null
     mocks.confirm.mockResolvedValue(false)
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
   })
 
-  it.each([
-    ['pending review', 'pending', null, /Review plan|审阅计划|chat\.plan\.review$/],
-    ['queued continuation', 'approved', 'queued', /View progress|查看进度|chat\.plan\.viewDelivery/],
-    ['held continuation', 'changes_requested', 'held', /Resolve|去处理|chat\.plan\.resolveDelivery/],
-    ['in-doubt continuation', 'approved', 'in_doubt', /Resolve|去处理|chat\.plan\.resolveDelivery/],
-  ] as const)(
-    'blocks the composer and starter prompts for a durable %s barrier',
-    (_label, status, deliveryState, action) => {
-      usePlanReviewStore.setState({
-        summaries: {
-          'review-1': {
-            review_id: 'review-1',
-            conversation_id: 'conversation-1',
-            document_id: 'document-1',
-            revision_id: 'revision-1',
-            assistant_message_id: 'message-1',
-            provider_call_id: 'call-1',
-            turn_id: 'turn-1',
-            status,
-            delivery_state: deliveryState,
-            lock_version: 0,
-          },
-        },
-      })
-
-      render(<ChatView conversationId="conversation-1" />)
-
-      expect(latestInputBar().disabled).toBe(true)
-      expect(latestInputBar().streaming).toBe(false)
-      expect(latestStarterPrompts().disabled).toBe(true)
-      // The banner says what is owed: a review while the plan is pending, the
-      // delivery once the decision has been made.
-      expect(screen.getByRole('button', { name: action })).toBeInTheDocument()
-      if (status !== 'pending') {
-        expect(screen.queryByText(/Review the pending plan|请先审阅待处理的计划/)).not.toBeInTheDocument()
-      }
-    },
-  )
-
-  it('unblocks after continuation delivery is acknowledged', () => {
+  it('does not render a blocking banner above the composer while a plan review is pending', () => {
     usePlanReviewStore.setState({
       summaries: {
         'review-1': {
@@ -284,28 +243,16 @@ describe('ChatView initial draft', () => {
           assistant_message_id: 'message-1',
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
-          status: 'approved',
-          delivery_state: 'acknowledged',
+          status: 'pending',
           lock_version: 0,
         },
       },
     })
 
-    render(<ChatView conversationId="conversation-1" />)
+    const { container } = render(<ChatView conversationId="conversation-1" />)
 
+    expect(container.querySelector('[data-slot="review-blocked-notice"]')).toBeNull()
     expect(latestInputBar().disabled).toBe(false)
-    expect(latestStarterPrompts().disabled).toBe(false)
-  })
-
-  it('blocks from the conversation-wide snapshot barrier without relying on an exit-plan card', () => {
-    mocks.sessions['conversation-1'].planReviewBarrier = true
-
-    render(<ChatView conversationId="conversation-1" />)
-
-    expect(latestInputBar().disabled).toBe(true)
-    expect(latestStarterPrompts().disabled).toBe(true)
-    expect(screen.getByText(/Review the pending plan|chat.plan.reviewBlocked/)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Review plan|chat.plan.review/ })).not.toBeInTheDocument()
   })
 
   it('delivers the complete first turn exactly once', async () => {
@@ -733,7 +680,6 @@ describe('ChatView composer draft', () => {
     mocks.loadMessages.mockResolvedValue(true)
     mocks.sessions['conversation-1'].messages = []
     mocks.sessions['conversation-1'].streaming = false
-    mocks.sessions['conversation-1'].planReviewBarrier = false
     mocks.sessions['conversation-1'].activeShellTurnId = null
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
   })

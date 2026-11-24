@@ -2,8 +2,9 @@ import './plan-review-page.css'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Message, X } from '@keyline-icons/react/two-tone'
-import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { Check, ChevronDown, ChevronsRight, Clock, Message, RefreshCw, X, Zap } from '@keyline-icons/react/two-tone'
+import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { SplitButton } from '@/components/yuerchu-ui/components/split-button/split-button'
 import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
@@ -36,13 +37,17 @@ import {
   type ProjectedPlanDraft,
 } from '@/lib/plan-review-projection'
 import {
+  PLAN_APPROVAL_OPTIONS,
   PlanDraftSaveQueue,
   PlanDecisionAttempt,
   PlanDecisionInDoubtError,
   planDraftUnsavedParts,
   planReviewActionRules,
+  type PlanApprovalOptionKey,
+  type PlanApprovalOptions,
   type PlanDraftSaveState,
 } from '@/lib/plan-review-draft'
+import { planReviewProjection, receivePlanReview } from '@/lib/plan-review-sync'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type {
   PlanCommentAnchor,
@@ -219,7 +224,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const [loading, setLoading] = useState(true)
   const [deciding, setDeciding] = useState(false)
   const [restoring, setRestoring] = useState(false)
-  const [continuing, setContinuing] = useState(false)
   const [editorMount, setEditorMount] = useState(0)
   const [focusAnchor, setFocusAnchor] = useState<PlanProseMirrorRange | null>(null)
   const [commentFocus, setCommentFocus] = useState<PlanCommentFocusRequest | null>(null)
@@ -313,10 +317,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   useEffect(() => {
     if (!info || !summary) return
-    const projection = `${summary.status}\0${summary.delivery_state ?? ''}`
+    const projection = summary.status
     if (projection === observedSummaryRef.current) return
     observedSummaryRef.current = projection
-    if (summary.status !== info.review.state || summary.delivery_state !== (info.delivery?.state ?? null)) {
+    if (summary.status !== info.review.state) {
       void loadReview()
     }
   }, [info, loadReview, summary])
@@ -580,7 +584,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       </p>
     )
 
-  const decide = async (action: 'approve' | 'request_changes') => {
+  const decide = async (
+    action: 'approve' | 'request_changes',
+    approvalOptions: PlanApprovalOptions = PLAN_APPROVAL_OPTIONS.default,
+  ) => {
     setDeciding(true)
     setPageError(null)
     try {
@@ -597,12 +604,16 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         expectedGeneration: committed.generation,
         expectedDraftHash: committed.draftHash,
         action,
+        approvalMode: action === 'approve' ? approvalOptions.approvalMode : null,
+        clearContext: action === 'approve' ? approvalOptions.clearContext : false,
       })
       setInfo((current) => (current ? { ...current, review: { ...current.review, state: result.state } } : current))
       decisionAttemptRef.current.reset()
-      if (result.delivery_state !== null) {
-        const delivery = await api.getPlanReviewDelivery({ reviewId })
-        setInfo((current) => (current ? { ...current, delivery } : current))
+      try {
+        const refreshed = await api.getPlanReview({ reviewId })
+        receivePlanReview(planReviewProjection(refreshed))
+      } catch {
+        // The decision itself succeeded; the backend event remains the other delivery path.
       }
     } catch (error) {
       setPageError(
@@ -651,20 +662,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       setPageError(String(error))
     } finally {
       setRestoring(false)
-    }
-  }
-
-  const continueDelivery = async () => {
-    if (!info?.delivery || continuing) return
-    setContinuing(true)
-    setPageError(null)
-    try {
-      const delivery = await api.continuePlanReviewDelivery({ deliveryId: info.delivery.id })
-      setInfo((current) => (current ? { ...current, delivery } : current))
-    } catch (error) {
-      setPageError(String(error))
-    } finally {
-      setContinuing(false)
     }
   }
 
@@ -721,26 +718,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       actions: [{ label: t('planReview.restoreFile'), run: () => void restorePlanFile(), pending: restoring }],
     })
   }
-  if (info.delivery?.state === 'held' || info.delivery?.state === 'in_doubt') {
-    // The error is the whole answer to "why does the button do nothing": a
-    // retry that fails the same way lands back here with the same message.
-    problems.push({
-      key: 'delivery',
-      status: 'warning',
-      message: info.delivery.error
-        ? t('planReview.deliveryHeldError', { error: info.delivery.error })
-        : t('planReview.deliveryHeld'),
-      actions: [{ label: t('planReview.continueDelivery'), run: () => void continueDelivery(), pending: continuing }],
-    })
-  }
-  // Progress, not a problem: the decision is made and on its way. Announced as
-  // status so a screen reader is told once rather than interrupted.
-  const progress =
-    info.delivery?.state === 'queued'
-      ? { message: t('planReview.deliveryQueued'), resumable: true }
-      : info.delivery?.state === 'dispatched'
-        ? { message: t('planReview.deliveryDispatched'), resumable: false }
-        : null
 
   const historyItems = [...revisions]
     // The submitted revision is what "current review" shows; listing it again
@@ -836,21 +813,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 <p data-slot="plan-review-problem-message">{problem.message}</p>
               </Alert>
             ))}
-          </div>
-        </div>
-      )}
-
-      {progress && (
-        <div data-slot="plan-review-progress" className="m-plan-review__progress">
-          <div data-slot="plan-review-progress-row" className="m-plan-review__progress-row">
-            <p data-slot="plan-review-progress-message" role="status" className="m-plan-review__progress-message">
-              {progress.message}
-            </p>
-            {progress.resumable && (
-              <Button size="sm" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
-                {t('planReview.continueDelivery')}
-              </Button>
-            )}
           </div>
         </div>
       )}
@@ -999,17 +961,16 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           <div data-slot="plan-review-footer-status" className="m-plan-review__footer-status">
             <p data-slot="plan-review-decision-state" className="m-plan-review__hint">
               {info.review.state === 'pending'
-                ? t('planReview.queueHeld')
+                ? rules.hasFeedback
+                  ? t('planReview.approveIncludesFeedback')
+                  : t('planReview.ready')
                 : t(`planReview.decision.${info.review.state}`)}
             </p>
-            {!rules.canApprove &&
-              info.review.state === 'pending' &&
-              rules.isPristine &&
-              effectiveSaveState !== 'saved' && (
-                <p data-slot="plan-review-wait-for-save" className="m-plan-review__hint">
-                  {t('planReview.waitForSave')}
-                </p>
-              )}
+            {!rules.canApprove && info.review.state === 'pending' && effectiveSaveState !== 'saved' && (
+              <p data-slot="plan-review-wait-for-save" className="m-plan-review__hint">
+                {t('planReview.waitForSave')}
+              </p>
+            )}
           </div>
           <div data-slot="plan-review-decision-actions" className="m-plan-review__decision-actions">
             <Button
@@ -1026,14 +987,38 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             >
               {t('planReview.requestChanges')}
             </Button>
-            <Button
-              variant="primary"
+            <SplitButton
+              icon={<Check />}
               isPending={deciding}
               isDisabled={!rules.canApprove}
-              onPress={() => void decide('approve')}
+              onPress={() => void decide('approve', PLAN_APPROVAL_OPTIONS.default)}
+              menuLabel={t('chat.plan.moreModes')}
+              placement="top end"
+              onAction={(key) => {
+                if (key in PLAN_APPROVAL_OPTIONS) {
+                  void decide('approve', PLAN_APPROVAL_OPTIONS[key as PlanApprovalOptionKey])
+                }
+              }}
+              menu={
+                <>
+                  <MenuItem id="default" icon={<Check />}>
+                    {t('planReview.mode.default')}
+                  </MenuItem>
+                  <MenuItem id="accept_edits" icon={<ChevronsRight />}>
+                    {t('planReview.mode.acceptEdits')}
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem id="clear_context_default" icon={<RefreshCw />}>
+                    {t('planReview.mode.clearContextDefault')}
+                  </MenuItem>
+                  <MenuItem id="clear_context_accept_edits" icon={<Zap />}>
+                    {t('planReview.mode.clearContextAcceptEdits')}
+                  </MenuItem>
+                </>
+              }
             >
               {t('planReview.approve')}
-            </Button>
+            </SplitButton>
           </div>
         </div>
       </footer>

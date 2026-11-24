@@ -123,6 +123,7 @@ impl TryFrom<OneBotConfigUpdateRequest> for onebot::OneBotConfig {
             assistant_id: config.assistant_id.0,
             admin_users: config.admin_users,
             ack_emoji_id: config.ack_emoji_id,
+            private_media_origins: Vec::new(),
             voice_capture_sessions: config.voice_capture_sessions,
             voice_send_enabled: config.voice_send_enabled,
             voice_send_groups: config.voice_send_groups,

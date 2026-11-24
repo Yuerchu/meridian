@@ -245,7 +245,6 @@ describe('durable plan review transcript entry', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
@@ -261,7 +260,7 @@ describe('durable plan review transcript entry', () => {
     const { container } = render(<ToolCallBlock data={data} />)
     expect(container.querySelector('[data-slot="plan-review-entry"]')).not.toBeNull()
     expect(container.textContent).not.toContain('A very long plan body')
-    await userEvent.click(screen.getByRole('button', { name: 'Review plan' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Review & annotate' }))
     expect(usePlanReviewStore.getState().activeReviewId).toBe('review-1')
   })
 })
@@ -1200,7 +1199,6 @@ describe('as bubble blocks', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
@@ -1221,7 +1219,7 @@ describe('as bubble blocks', () => {
     const block = container.querySelector<HTMLElement>('[data-slot="plan-review-entry"]')!
     expect(block).toHaveAttribute('data-bubble-block')
     expect(container.textContent).not.toContain('A very long plan body')
-    await userEvent.click(within(block).getByRole('button', { name: 'Review plan' }))
+    await userEvent.click(within(block).getByRole('button', { name: 'Review & annotate' }))
     expect(usePlanReviewStore.getState().activeReviewId).toBe('review-2')
   })
 

@@ -820,7 +820,7 @@ interface ToolAttentionItem {
   askedAt: number
 }
 
-export type PlanReviewAttentionStage = 'review' | 'delivery_queued' | 'delivery_attention'
+export type PlanReviewAttentionStage = 'review'
 
 interface PlanReviewAttentionItem {
   conversationId: string
@@ -831,10 +831,6 @@ interface PlanReviewAttentionItem {
   documentId: string
   revisionId: string
   turnId: string
-  /** Why this review is in the global queue. A submitted plan needs a review;
-   *  a settled one stays here only while its continuation has not made it back
-   *  to the agent. Kept separate from the conversation barrier because a
-   *  dispatched delivery blocks new work without asking the user to act. */
   stage: PlanReviewAttentionStage
   kind: 'plan_review'
   askedAt: AttentionAskedAt
@@ -866,9 +862,6 @@ export interface PendingApprovalEntry {
 export interface ConversationSession {
   messages: MessageViewModel[]
   streaming: boolean
-  /** Authoritative conversation-wide plan barrier from the latest snapshot.
-   *  Unlike a review card, it does not depend on the active transcript path. */
-  planReviewBarrier: boolean
   /** Which run of a turn is streaming here, so a stop event can be told from
    *  someone else's. Null when nothing is running, and also for a turn that
    *  died before it wrote its first message — those send a stop with no id and
@@ -967,7 +960,6 @@ function defaultSession(): ConversationSession {
   return {
     messages: [],
     streaming: false,
-    planReviewBarrier: false,
     activeTurnId: null,
     activeShellTurnId: null,
     shellResultKeys: {},
@@ -1010,11 +1002,9 @@ function retireAttention(state: ConversationStore, approvalId: string) {
 }
 
 function planReviewAttentionStage(
-  review: Pick<PlanReviewSummaryInfoResponse, 'status' | 'delivery_state'>,
+  review: Pick<PlanReviewSummaryInfoResponse, 'status'>,
 ): PlanReviewAttentionStage | null {
   if (review.status === 'pending') return 'review'
-  if (review.delivery_state === 'queued') return 'delivery_queued'
-  if (review.delivery_state === 'held' || review.delivery_state === 'in_doubt') return 'delivery_attention'
   return null
 }
 
@@ -1601,7 +1591,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // just registered are not in there.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
-        session.planReviewBarrier = snap.plan_review_barrier
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
         session.acpNotices = checkedAcpNotices(snap.acp_notices)
@@ -1658,7 +1647,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           // Replaced outright, not merged: what is local belongs to the branch
           // being left, and splicing it in would carry messages across.
           session.messages = snapshot
-          session.planReviewBarrier = snap.plan_review_barrier
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
           session.acpNotices = checkedAcpNotices(snap.acp_notices)
@@ -2163,21 +2151,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   handlePlanReviewEvent: (event) => {
-    const barrier = Object.values(usePlanReviewStore.getState().summaries).some(
-      (review) =>
-        review.conversation_id === event.conversation_id &&
-        (review.status === 'pending' ||
-          review.delivery_state === 'queued' ||
-          review.delivery_state === 'dispatched' ||
-          review.delivery_state === 'held' ||
-          review.delivery_state === 'in_doubt'),
-    )
     set(
       produce((state: ConversationStore) => {
         const session = state.sessions[event.conversation_id]
         if (session) {
           session.generation += 1
-          session.planReviewBarrier = barrier
         }
         const stage = planReviewAttentionStage(event)
         if (stage === null) {
@@ -2717,7 +2695,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             // handler will reload, so applying the stale snapshot would clobber it.
             if (session.generation !== generation) return
             session.messages = mergeSnapshot(session, snapshot)
-            session.planReviewBarrier = snap.plan_review_barrier
             session.branches = indexBranches(snap.tree.branches)
             session.turns = snap.turns
             session.acpNotices = checkedAcpNotices(snap.acp_notices)
@@ -2771,7 +2748,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             // instead of clobbering, and skip entirely if a newer turn superseded it.
             if (session.generation !== generation) return
             session.messages = mergeSnapshot(session, snapshot)
-            session.planReviewBarrier = snap.plan_review_barrier
             session.branches = indexBranches(snap.tree.branches)
             session.turns = snap.turns
             session.acpNotices = checkedAcpNotices(snap.acp_notices)

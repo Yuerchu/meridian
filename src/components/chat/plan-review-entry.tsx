@@ -2,13 +2,15 @@ import './plan-review-entry.css'
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton } from 'react-aria-components'
-import { ArrowUTurnLeft, Check, List } from '@keyline-icons/react/two-tone'
+import { ArrowUTurnLeft, Check, ChevronsRight, List, RefreshCw, Zap } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
+import { SplitButton } from '@/components/yuerchu-ui/components/split-button/split-button'
 import { BUBBLE_BLOCK, BubbleBlockButton } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { ChatToolPresentationContext } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { errorMessage } from '@/lib/error-message'
@@ -19,7 +21,13 @@ import {
   sendBackFromCard,
   type PlanCardPreview,
 } from '@/lib/plan-card'
-import { PlanDecisionAttempt, PlanDecisionInDoubtError } from '@/lib/plan-review-draft'
+import {
+  PLAN_APPROVAL_OPTIONS,
+  PlanDecisionAttempt,
+  PlanDecisionInDoubtError,
+  type PlanApprovalOptionKey,
+  type PlanApprovalOptions,
+} from '@/lib/plan-review-draft'
 import { planReviewStatusOfTool } from '@/lib/plan-review-status'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type { PlanReviewStatus, ToolCallDisplay } from '@/types'
@@ -142,7 +150,8 @@ export function PlanReviewEntryBlock({ data, reviewId }: { data: ToolCallDisplay
     },
     [t, readSeq],
   )
-  const approve = () => decide(() => approveFromCard(reviewId, attempt))
+  const approve = (options: PlanApprovalOptions = PLAN_APPROVAL_OPTIONS.default, inlineNote?: string) =>
+    decide(() => approveFromCard(reviewId, attempt, options, inlineNote))
   const sendBack = () => {
     if (note.trim()) decide(() => sendBackFromCard(reviewId, note.trim(), attempt))
   }
@@ -185,7 +194,7 @@ export function PlanReviewEntryView({
   onNoteChange: (note: string) => void
   onUiChange: (ui: CardUi) => void
   onOpen: () => void
-  onApprove: () => void
+  onApprove: (options?: PlanApprovalOptions, inlineNote?: string) => void
   onSendBack: () => void
 }) {
   const { t } = useTranslation()
@@ -240,10 +249,25 @@ export function PlanReviewEntryView({
             autoFocus
           />
           <div className="m-plan-review-entry__feedback-actions">
-            <Button size="sm" variant="secondary" onPress={() => onUiChange({ step: 'idle' })}>
+            <Button size="sm" variant="ghost" onPress={() => onUiChange({ step: 'idle' })}>
               {t('chat.tool.cancel')}
             </Button>
-            <Button size="sm" icon={<ArrowUTurnLeft />} isDisabled={!note.trim()} onPress={onSendBack}>
+            <Button
+              size="sm"
+              variant="secondary"
+              icon={<Check />}
+              isDisabled={!note.trim()}
+              onPress={() => onApprove(PLAN_APPROVAL_OPTIONS.default, note.trim())}
+            >
+              {t('chat.plan.approveWithNote')}
+            </Button>
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<ArrowUTurnLeft />}
+              isDisabled={!note.trim()}
+              onPress={onSendBack}
+            >
               {t('chat.plan.sendBack')}
             </Button>
           </div>
@@ -266,14 +290,43 @@ export function PlanReviewEntryView({
             </p>
           )}
           <div className="m-plan-review-entry__action-row">
-            <Button size="sm" onPress={onOpen}>
-              {t('chat.plan.review')}
-            </Button>
-            {ui.step !== 'draft' && (
+            {ui.step === 'draft' ? (
+              <Button size="sm" variant="primary" onPress={onOpen}>
+                {t('chat.plan.review')}
+              </Button>
+            ) : (
               <>
-                <Button size="sm" variant="secondary" icon={<Check />} onPress={onApprove}>
+                <SplitButton
+                  size="sm"
+                  icon={<Check />}
+                  onPress={() => onApprove(PLAN_APPROVAL_OPTIONS.default)}
+                  menuLabel={t('chat.plan.moreModes')}
+                  placement="bottom start"
+                  onAction={(key) => {
+                    if (key in PLAN_APPROVAL_OPTIONS) {
+                      onApprove(PLAN_APPROVAL_OPTIONS[key as PlanApprovalOptionKey])
+                    }
+                  }}
+                  menu={
+                    <>
+                      <MenuItem id="default" icon={<Check />}>
+                        {t('planReview.mode.default')}
+                      </MenuItem>
+                      <MenuItem id="accept_edits" icon={<ChevronsRight />}>
+                        {t('planReview.mode.acceptEdits')}
+                      </MenuItem>
+                      <MenuSeparator />
+                      <MenuItem id="clear_context_default" icon={<RefreshCw />}>
+                        {t('planReview.mode.clearContextDefault')}
+                      </MenuItem>
+                      <MenuItem id="clear_context_accept_edits" icon={<Zap />}>
+                        {t('planReview.mode.clearContextAcceptEdits')}
+                      </MenuItem>
+                    </>
+                  }
+                >
                   {t('chat.plan.approve')}
-                </Button>
+                </SplitButton>
                 <Button
                   size="sm"
                   variant="secondary"
@@ -281,6 +334,9 @@ export function PlanReviewEntryView({
                   onPress={() => onUiChange({ step: 'feedback' })}
                 >
                   {t('chat.plan.revise')}
+                </Button>
+                <Button size="sm" variant="ghost" onPress={onOpen}>
+                  {t('chat.plan.review')}
                 </Button>
               </>
             )}

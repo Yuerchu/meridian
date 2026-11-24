@@ -43,7 +43,6 @@ function snapshotOf(
     turns: [],
     pending_approvals: [],
     plan_reviews: [],
-    plan_review_barrier: false,
     sub_agent_runs: [],
     acp_notices: [],
     ...over,
@@ -110,13 +109,11 @@ describe('plan review snapshot monotonicity', () => {
     revision_id: 'revision-race',
     turn_id: 'turn-race',
     status: 'pending' as const,
-    delivery_state: null,
     lock_version: 1,
   }
   const settledEvent = {
     ...pendingEvent,
     status: 'approved' as const,
-    delivery_state: 'acknowledged' as const,
     lock_version: 3,
   }
   const summary = {
@@ -136,7 +133,7 @@ describe('plan review snapshot monotonicity', () => {
   })
 
   it.each(['loadMessages', 'turn-stop', 'compact', 'switch'] as const)(
-    'does not let a delayed pending snapshot roll back an acknowledged event through %s',
+    'does not let a delayed pending snapshot roll back an approved event through %s',
     async (path) => {
       let resolveStale!: (snapshot: ConversationSnapshotResponse) => void
       const stalePromise = new Promise<ConversationSnapshotResponse>((resolve) => {
@@ -146,7 +143,6 @@ describe('plan review snapshot monotonicity', () => {
         { messages: [], head_message_id: null, branches: [] },
         {
           plan_reviews: [{ ...summary, ...settledEvent }],
-          plan_review_barrier: false,
         },
       )
       vi.mocked(api.conversationSnapshot).mockReturnValueOnce(stalePromise).mockResolvedValue(fresh)
@@ -164,10 +160,7 @@ describe('plan review snapshot monotonicity', () => {
       expect(usePlanReviewStore.getState().receiveReviewEvent(settledEvent)).toBe(true)
       store().handlePlanReviewEvent(settledEvent)
       resolveStale(
-        snapshotOf(
-          { messages: [msg('stale')], head_message_id: 'stale', branches: [] },
-          { plan_reviews: [summary], plan_review_barrier: true },
-        ),
+        snapshotOf({ messages: [msg('stale')], head_message_id: 'stale', branches: [] }, { plan_reviews: [summary] }),
       )
 
       if (operation) await operation
@@ -177,7 +170,6 @@ describe('plan review snapshot monotonicity', () => {
       }
 
       expect(usePlanReviewStore.getState().summaries['review-race']).toMatchObject(settledEvent)
-      expect(store().sessions[CONV]?.planReviewBarrier).toBe(false)
       expect(store().attention['review-race']).toBeUndefined()
       expect(store().sessions[CONV]?.messages.map((message) => message.id)).not.toContain('stale')
     },
@@ -189,7 +181,7 @@ describe('plan review global attention', () => {
   const REVIEW = 'review-attention'
   const store = () => useConversationStore.getState()
   const summary = (
-    deliveryState: PlanReviewSummaryInfoResponse['delivery_state'],
+    status: PlanReviewSummaryInfoResponse['status'],
     lockVersion = 1,
   ): PlanReviewSummaryInfoResponse => ({
     review_id: REVIEW,
@@ -199,8 +191,7 @@ describe('plan review global attention', () => {
     assistant_message_id: 'assistant-attention',
     provider_call_id: 'call-attention',
     turn_id: 'turn-attention',
-    status: 'approved',
-    delivery_state: deliveryState,
+    status,
     lock_version: lockVersion,
   })
 
@@ -213,48 +204,32 @@ describe('plan review global attention', () => {
   })
 
   it.each([
-    ['queued', 'delivery_queued', true],
-    ['held', 'delivery_attention', true],
-    ['in_doubt', 'delivery_attention', true],
-    ['dispatched', null, true],
-    ['acknowledged', null, false],
-  ] as const)('restores a %s settled delivery consistently from a snapshot', async (deliveryState, stage, barrier) => {
+    ['pending', 'review'],
+    ['approved', null],
+    ['changes_requested', null],
+    ['orphaned', null],
+  ] as const)('restores a %s review consistently from a snapshot', async (status, stage) => {
     vi.mocked(api.conversationSnapshot).mockResolvedValue(
-      snapshotOf(
-        { messages: [], head_message_id: null, branches: [] },
-        { plan_reviews: [summary(deliveryState)], plan_review_barrier: barrier },
-      ),
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }, { plan_reviews: [summary(status)] }),
     )
 
     await store().loadMessages(CONV)
 
     if (stage === null) expect(store().attention[REVIEW]).toBeUndefined()
     else expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage })
-    expect(store().sessions[CONV]?.planReviewBarrier).toBe(barrier)
   })
 
-  it('updates realtime attention without confusing it with the dispatched barrier', () => {
+  it('adds realtime attention for pending reviews and retires it once decided', () => {
     const apply = (review: PlanReviewSummaryInfoResponse) => {
       expect(usePlanReviewStore.getState().receiveReviewEvent(review)).toBe(true)
       store().handlePlanReviewEvent(review)
     }
 
-    apply({ ...summary(null, 1), status: 'pending' })
+    apply(summary('pending', 1))
     expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'review' })
 
-    apply(summary('queued', 2))
-    expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'delivery_queued' })
-
-    apply(summary('dispatched', 3))
+    apply(summary('approved', 2))
     expect(store().attention[REVIEW]).toBeUndefined()
-    expect(store().sessions[CONV]?.planReviewBarrier).toBe(true)
-
-    apply(summary('held', 4))
-    expect(store().attention[REVIEW]).toMatchObject({ kind: 'plan_review', stage: 'delivery_attention' })
-
-    apply(summary('acknowledged', 5))
-    expect(store().attention[REVIEW]).toBeUndefined()
-    expect(store().sessions[CONV]?.planReviewBarrier).toBe(false)
   })
 })
 

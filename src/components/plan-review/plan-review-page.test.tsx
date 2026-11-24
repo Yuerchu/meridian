@@ -15,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   getPlanReview: vi.fn(),
   listPlanRevisions: vi.fn(),
   savePlanReviewDraft: vi.fn(),
-  continuePlanReviewDelivery: vi.fn(),
   decidePlanReview: vi.fn(),
   discardPlanReviewDraft: vi.fn(),
   editorOnChange: null as null | ((document: JSONContent, anchors: Map<string, PlanProseMirrorRange | null>) => void),
@@ -39,7 +38,6 @@ vi.mock('@/api', () => ({
     getPlanReview: mocks.getPlanReview,
     listPlanRevisions: mocks.listPlanRevisions,
     savePlanReviewDraft: mocks.savePlanReviewDraft,
-    continuePlanReviewDelivery: mocks.continuePlanReviewDelivery,
     decidePlanReview: mocks.decidePlanReview,
     discardPlanReviewDraft: mocks.discardPlanReviewDraft,
   },
@@ -55,11 +53,15 @@ vi.mock('./plan-review-editor', () => ({
 
 vi.mock('@keyline-icons/react/two-tone', () => ({
   Bin: () => null,
+  Check: () => null,
   ChevronDown: () => null,
+  ChevronsRight: () => null,
   Clock: () => null,
   Message: () => null,
+  RefreshCw: () => null,
   TriangleAlert: () => null,
   X: () => null,
+  Zap: () => null,
 }))
 
 function saveState() {
@@ -151,7 +153,6 @@ function review(
           },
         ]
       : [],
-    delivery: null,
   }
 }
 
@@ -181,7 +182,6 @@ describe('PlanReviewPage history feedback', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'changes_requested',
-          delivery_state: 'acknowledged',
           lock_version: 0,
         },
         'review-2': {
@@ -193,7 +193,6 @@ describe('PlanReviewPage history feedback', () => {
           provider_call_id: 'call-2',
           turn_id: 'turn-2',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
@@ -208,99 +207,31 @@ describe('PlanReviewPage history feedback', () => {
     expect(screen.getByText('Old overall note')).toBeInTheDocument()
   })
 
-  it('refreshes when only delivery state changes and exposes held-delivery recovery', async () => {
+  it('allows approving with feedback and supports all four approval modes', async () => {
     const currentRevision = revision('revision-2', 2, '# Plan\n')
-    let current = review('review-2', currentRevision, 'pending')
-    mocks.getPlanReview.mockImplementation(() => Promise.resolve(current))
-    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
-    usePlanReviewStore.setState({
-      summaries: {
-        'review-2': {
-          review_id: 'review-2',
-          conversation_id: 'conversation-1',
-          document_id: 'document-1',
-          revision_id: 'revision-2',
-          assistant_message_id: 'message-2',
-          provider_call_id: 'call-2',
-          turn_id: 'turn-2',
-          status: 'pending',
-          delivery_state: null,
-          lock_version: 0,
-        },
-      },
+    const current = review('review-2', currentRevision, 'pending')
+    mocks.getPlanReview.mockResolvedValue({
+      ...current,
+      draft: { ...current.draft, global_note: 'Skip refactor for now' },
     })
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.decidePlanReview.mockResolvedValue({ review_id: 'review-2', state: 'approved' })
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.title')
-    current = {
-      ...current,
-      review: { ...current.review, state: 'approved' },
-      delivery: {
-        id: 'delivery-1',
-        review_id: 'review-2',
-        target: 'native',
-        state: 'held',
-        payload: {},
-        error: 'agent unavailable',
-        created_at: 1,
-        updated_at: 2,
-      },
-    }
-    act(() => {
-      usePlanReviewStore.setState({
-        summaries: {
-          'review-2': {
-            review_id: 'review-2',
-            conversation_id: 'conversation-1',
-            document_id: 'document-1',
-            revision_id: 'revision-2',
-            assistant_message_id: 'message-2',
-            provider_call_id: 'call-2',
-            turn_id: 'turn-2',
-            status: 'approved',
-            delivery_state: 'held',
-            lock_version: 1,
-          },
-        },
-      })
-    })
-
-    await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('button', { name: 'planReview.continueDelivery' })).toBeInTheDocument()
-  })
-
-  it('lets a queued delivery resume after restart but does not retry an in-flight delivery', async () => {
-    const currentRevision = revision('revision-2', 2, '# Plan\n')
-    const queued = {
-      ...review('review-2', currentRevision, 'pending'),
-      review: { ...review('review-2', currentRevision, 'pending').review, state: 'approved' as const },
-      delivery: {
-        id: 'delivery-queued',
-        review_id: 'review-2',
-        target: 'native' as const,
-        state: 'queued' as const,
-        payload: {},
-        error: null,
-        created_at: 1,
-        updated_at: 1,
-      },
-    }
-    mocks.getPlanReview.mockResolvedValue(queued)
-    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
-    mocks.continuePlanReviewDelivery.mockResolvedValue({ ...queued.delivery, state: 'dispatched' })
-
-    const { rerender } = render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    const resume = await screen.findByRole('button', { name: 'planReview.continueDelivery' })
-    expect(screen.getByText('planReview.deliveryQueued')).toBeInTheDocument()
-    await userEvent.click(resume)
+    expect(await screen.findByText('planReview.approveIncludesFeedback')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'chat.plan.moreModes' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'planReview.mode.clearContextAcceptEdits' }))
 
     await waitFor(() =>
-      expect(mocks.continuePlanReviewDelivery).toHaveBeenCalledWith({ deliveryId: 'delivery-queued' }),
+      expect(mocks.decidePlanReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviewId: 'review-2',
+          action: 'approve',
+          approvalMode: 'accept_edits',
+          clearContext: true,
+        }),
+      ),
     )
-    expect(await screen.findByText('planReview.deliveryDispatched')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'planReview.continueDelivery' })).not.toBeInTheDocument()
-
-    rerender(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
   })
 })
 
@@ -473,7 +404,7 @@ describe('PlanReviewPage save lifecycle', () => {
 
     // Withdraw the note so the other decision becomes available, then press it:
     // not a raw English string, and a way out beside it.
-    mocks.decidePlanReview.mockResolvedValue({ state: 'approved', delivery_state: null })
+    mocks.decidePlanReview.mockResolvedValue({ review_id: 'review-1', state: 'approved' })
     fireEvent.change(screen.getByLabelText('planReview.comments.globalNote'), { target: { value: '' } })
     const approve = screen.getByRole('button', { name: 'planReview.approve' })
     await waitFor(() => expect(approve).toBeEnabled())

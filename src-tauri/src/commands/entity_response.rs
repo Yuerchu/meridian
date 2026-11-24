@@ -1197,6 +1197,7 @@ mod tests {
             category_id: None,
             parameters_schema: Json(schema.as_object().unwrap().clone()),
             command: "tool".into(),
+            execution: None,
             args_template: None,
             working_directory: None,
             timeout_ms: None,

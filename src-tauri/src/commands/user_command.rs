@@ -300,12 +300,6 @@ pub async fn run_user_command(
         .clone()
         .try_acquire_turn_as(&conversation_id, TurnOrigin::UserShell, turn_id.clone())
         .map_err(|busy| busy.to_string())?;
-    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
-        return Err(
-            "This conversation is waiting for plan review or its continuation. Finish it before running a shell command."
-                .into(),
-        );
-    }
 
     let prepared = prepare(&services, &conversation_id, &turn_id, &command).await?;
     let prior = parse_latest(&prepared.prior)?;

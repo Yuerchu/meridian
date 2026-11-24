@@ -4,8 +4,6 @@ import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
 import './chat-view.css'
-import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Messages } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
@@ -34,7 +32,6 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useComposerDraft, type ComposerConversationRef, type ComposerDraftState } from '@/hooks/use-composer-draft'
 import { useConversationStore } from '@/stores/conversation-store'
-import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
 import { buildMessageContent } from '@/lib/message-content'
@@ -78,8 +75,6 @@ function ChatViewInner({
   onOpenSettingsTab?: (tab: SettingsTab) => void
 }) {
   const session = useConversationStore((s) => s.sessions[conversationId])
-  const planReviewSummaries = usePlanReviewStore((state) => state.summaries)
-  const openPlanReview = usePlanReviewStore((state) => state.openReview)
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
@@ -117,20 +112,6 @@ function ChatViewInner({
   const redactionNotice = session?.redactionNotice ?? null
   const acpNotices = session?.acpNotices ?? NO_NOTICES
   const activeTodos = session?.activeTodos ?? null
-  const pendingPlanReview = useMemo(
-    () =>
-      Object.values(planReviewSummaries).find(
-        (review) =>
-          review.conversation_id === conversationId &&
-          (review.status === 'pending' ||
-            review.delivery_state === 'queued' ||
-            review.delivery_state === 'dispatched' ||
-            review.delivery_state === 'held' ||
-            review.delivery_state === 'in_doubt'),
-      ) ?? null,
-    [conversationId, planReviewSummaries],
-  )
-  const reviewBlocked = (session?.planReviewBarrier ?? false) || pendingPlanReview !== null
 
   const [input, setInput] = useState('')
   const [commandPending, setCommandPending] = useState(false)
@@ -180,21 +161,6 @@ function ChatViewInner({
   }, [isOneBot, messages])
   const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
-  // What the barrier is waiting on. A decision already made is not a review
-  // still owed: after Approve the turn is held until the agent has read the
-  // decision, and telling the person to go and review it again is wrong twice.
-  const reviewBlockedMessage =
-    pendingPlanReview === null || pendingPlanReview.status === 'pending'
-      ? t('chat.plan.reviewBlocked')
-      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
-        ? t('chat.plan.deliveryAttention')
-        : t('chat.plan.deliveryPending')
-  const reviewBlockedAction =
-    pendingPlanReview === null || pendingPlanReview.status === 'pending'
-      ? t('chat.plan.review')
-      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
-        ? t('chat.plan.resolveDelivery')
-        : t('chat.plan.viewDelivery')
   const { confirm, confirmDialog } = useConfirm()
 
   const clearShellRetry = useCallback((turnId: string) => {
@@ -698,7 +664,6 @@ function ChatViewInner({
   // because they were typed on the empty screen.
   useEffect(() => {
     if (!initialDraft || initialDraftSent.current === conversationId) return
-    if (reviewBlocked) return
     initialDraftSent.current = conversationId
     if (initialDraft.remainingComposer) {
       setInput(initialDraft.remainingComposer.text)
@@ -748,7 +713,6 @@ function ChatViewInner({
     probeReference,
     sendMessage,
     storeSetError,
-    reviewBlocked,
   ])
 
   /**
@@ -862,11 +826,6 @@ function ChatViewInner({
   )
 
   const handleSubmit = useCallback(() => {
-    if (reviewBlocked) {
-      storeSetError(conversationId, reviewBlockedMessage)
-      if (pendingPlanReview) openPlanReview(pendingPlanReview.review_id)
-      return
-    }
     if (commandPendingRef.current) {
       storeSetError(conversationId, t('chat.command.busy'))
       return
@@ -932,10 +891,6 @@ function ChatViewInner({
     probeReference,
     submitPrompt,
     t,
-    reviewBlocked,
-    reviewBlockedMessage,
-    pendingPlanReview,
-    openPlanReview,
   ])
 
   return (
@@ -1015,10 +970,7 @@ function ChatViewInner({
                     headingLevel={3}
                     description={t('chat.startHint')}
                     actions={
-                      <StarterPrompts
-                        disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-                        onSelect={setInput}
-                      />
+                      <StarterPrompts disabled={streaming || !!shellTurnId || commandPending} onSelect={setInput} />
                     }
                   />
                 </div>
@@ -1057,24 +1009,6 @@ function ChatViewInner({
                 )
               })}
             </TagGroup>
-          </div>
-        )}
-
-        {reviewBlocked && (
-          <div className="m-chat-view__alert">
-            <Alert
-              data-slot="review-blocked-notice"
-              tone="neutral"
-              actions={
-                pendingPlanReview ? (
-                  <Button size="sm" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
-                    {reviewBlockedAction}
-                  </Button>
-                ) : undefined
-              }
-            >
-              <span data-slot="review-blocked-message">{reviewBlockedMessage}</span>
-            </Alert>
           </div>
         )}
 
@@ -1121,7 +1055,7 @@ function ChatViewInner({
           onSubmit={handleSubmit}
           onVoiceSend={handleVoiceSend}
           onStop={handleStop}
-          disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+          disabled={streaming || !!shellTurnId || commandPending}
           streaming={streaming || !!shellTurnId}
           steerable={shellTurnId ? false : steerable}
           queueing={queueing}

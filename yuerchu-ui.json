@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "83cd04759abb1bbabc78ed60a953d7e50818dfee"
+    "commit": "781b63f1423dca135729b628b53bc95218c1fa02"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -50,6 +50,7 @@
     "components/skeleton/skeleton.tsx",
     "components/slider/slider.tsx",
     "components/spinner/spinner.tsx",
+    "components/split-button/split-button.tsx",
     "components/switch/switch.tsx",
     "components/table-of-contents/table-of-contents.tsx",
     "components/tabs/tabs.tsx",
@@ -228,6 +229,9 @@
     "components/spinner/spinner.css": "cb9168969c8cd81d071ac044f59a99cea4c919ce8358162747a4fab92bd28c1d",
     "components/spinner/spinner.strings.ts": "9941f4e6fb9ebabb0b05abc919b11be0f42e27ae054fbaa70447f1da9ff112ef",
     "components/spinner/spinner.tsx": "2bf98c623a451f496ea023372df602ca45d9be8a9734f9e90190367e96d702d2",
+    "components/split-button/split-button.css": "921b2c858eff7b3973ada26f0e70b810abf3969ec5ac8aa6bbe740f12eb13e43",
+    "components/split-button/split-button.strings.ts": "4b8ed13c0165272a280f899033e0f3c529ff912819175804614cdf950fe6552d",
+    "components/split-button/split-button.tsx": "0873d21138052d4d20dc8d70c08b3d9477912f9d4aabced01eee3cc2f36410c4",
     "components/switch/switch.css": "780bb30583b9d246aec8bd7bd93da3a4e3ff83d3432854137f6e01d91cbfefa7",
     "components/switch/switch.tsx": "41078b99923cc47492ea6f309b7093a415c53397d926b6d8b658971a9fb20852",
     "components/table-of-contents/table-of-contents.css": "05b8de92c0577125277117cca2514ba6dde7443ad71a8516f1a1938bafa5b78f",

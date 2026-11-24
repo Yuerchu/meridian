@@ -268,7 +268,6 @@ describe('SubAgentSheetProvider', () => {
       sub_agent_runs: [],
       acp_notices: [],
       plan_reviews: [],
-      plan_review_barrier: false,
     } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
     render(
       <SubAgentSheetProvider>
@@ -310,7 +309,6 @@ describe('SubAgentSheetProvider', () => {
       sub_agent_runs: [],
       acp_notices: [],
       plan_reviews: [],
-      plan_review_barrier: false,
     } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
     await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }))
     expect(await within(dialog).findByText('Nothing recorded yet.')).toBeVisible()

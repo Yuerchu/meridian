@@ -151,27 +151,6 @@
     gap: var(--space-2);
   }
 
-  /* Progress, not a problem: neutral, since info is not a colour. */
-  .m-plan-review__progress {
-    padding: var(--space-2) var(--space-4);
-    background: var(--surface-muted);
-    color: var(--text-secondary);
-    font: var(--text-body);
-  }
-
-  .m-plan-review__progress-row {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .m-plan-review__progress-message {
-    min-width: 0;
-    flex: 1;
-    margin: 0;
-    overflow-wrap: break-word;
-  }
-
   .m-plan-review__body {
     box-sizing: border-box;
     display: flex;

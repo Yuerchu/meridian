@@ -38,7 +38,6 @@ export function planReviewProjection(info: PlanReviewInfoResponse): PlanReviewEv
     revision_id: info.submitted_revision.id,
     turn_id: info.review.turn_id,
     status: info.review.state,
-    delivery_state: info.delivery?.state ?? null,
     lock_version: info.review.lock_version,
   }
 }

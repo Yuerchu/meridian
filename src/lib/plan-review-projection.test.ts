@@ -87,7 +87,6 @@ function review(
       updated_at: 1,
     },
     comments: overrides.comments ?? [],
-    delivery: null,
   }
 }
 

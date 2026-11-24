@@ -242,20 +242,13 @@ describe('approval notifications', () => {
     expect(within(card('a')).getByText(i18n.t('chat.approvalNotification.argumentsTooLong'))).toBeInTheDocument()
   })
 
-  it('replaces queued plan copy with the recovery prompt when delivery needs attention', async () => {
-    seed([reviewAttention('delivery_queued')])
+  it('shows the pending plan review prompt in notifications', async () => {
+    seed([reviewAttention('review')])
     useConversationStore.setState({
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' } as ConversationInfoResponse],
     })
     render(<ApprovalNotifications onSelect={async () => true} />)
-    expect(await screen.findByText(i18n.t('planReview.deliveryQueued'))).toBeInTheDocument()
-
-    act(() => {
-      useConversationStore.setState({ attention: { 'review-1': reviewAttention('delivery_attention') } })
-    })
-
-    expect(await screen.findByText(i18n.t('chat.plan.continuationNeedsAttention'))).toBeInTheDocument()
-    expect(screen.queryByText(i18n.t('planReview.deliveryQueued'))).toBeNull()
+    expect(await screen.findByText(i18n.t('chat.plan.reviewReady'))).toBeInTheDocument()
   })
 })
 

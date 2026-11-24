@@ -60,8 +60,6 @@ fn refuse_attached_interjection(delivery: Delivery, content: &str) -> Result<(),
     Ok(())
 }
 
-/// The barrier check and the write in the caller's one IMMEDIATE transaction:
-/// checked outside it, a review submitted in between would be queued past.
 async fn enqueue_unless_plan_barrier(
     tx: &WriteTx,
     id: &str,
@@ -71,18 +69,12 @@ async fn enqueue_unless_plan_barrier(
     context: &[meridian_core::workspace::reference::PreparedContextItem],
     now: i64,
 ) -> Result<Option<queued_prompt::Model>, DbErr> {
-    if meridian_core::db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
-        return Ok(None);
-    }
     ops::enqueue_with_context(tx, id, conversation_id, content, delivery, context, now)
         .await
         .map(Some)
 }
 
 async fn release_unless_plan_barrier(tx: &WriteTx, conversation_id: &str) -> Result<Option<u64>, DbErr> {
-    if meridian_core::db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
-        return Ok(None);
-    }
     ops::release_all(tx, conversation_id).await.map(Some)
 }
 
@@ -318,32 +310,6 @@ pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Re
 mod tests {
     use super::*;
 
-    fn native_plan_runtime() -> meridian_core::db::models::plan_review::NativePlanReviewRuntimeConfig {
-        meridian_core::db::models::plan_review::NativePlanReviewRuntimeConfig {
-            provider_id: "provider-test".into(),
-            model: "model-test".into(),
-            assistant_id: None,
-            thinking_level: None,
-            fast: false,
-            project_id: None,
-            project_path: None,
-            accept_edits: false,
-        }
-    }
-
-    async fn seed_pending_plan_review(db: &meridian_core::db::sea::cap::Db, conversation_id: &str) {
-        db.write(async |tx| {
-            meridian_core::db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                conversation_id,
-                &native_plan_runtime(),
-            )
-            .await
-        })
-        .await
-        .unwrap();
-    }
-
     async fn conversation(db: &meridian_core::db::sea::cap::Db) {
         db.write(async |tx| {
             meridian_core::db::sea::ops::conversation::create_conversation(tx, "c1", None, None, None, 1).await
@@ -434,41 +400,6 @@ mod tests {
         assert_eq!(rows.len(), 1, "a failed snapshot must roll back its prompt");
         assert_eq!(rows[0].id, "q1");
         assert!(list_prepared(&db, "q2").await.unwrap().is_empty());
-    }
-
-    #[tokio::test]
-    async fn enqueue_and_release_are_both_refused_by_the_durable_plan_barrier() {
-        let db = meridian_core::db::sea::sea_test_db().await;
-        conversation(&db).await;
-        db.write(async |tx| {
-            ops::enqueue(tx, "held-1", "c1", "existing held message", Delivery::FollowUp, 2).await?;
-            ops::hold_all(tx, "c1", 3).await
-        })
-        .await
-        .unwrap();
-        seed_pending_plan_review(&db, "c1").await;
-
-        assert!(
-            db.write(async |tx| {
-                enqueue_unless_plan_barrier(tx, "new-1", "c1", "must not enqueue", Delivery::FollowUp, &[], 6).await
-            })
-            .await
-            .unwrap()
-            .is_none()
-        );
-        assert_eq!(
-            db.write(async |tx| release_unless_plan_barrier(tx, "c1").await)
-                .await
-                .unwrap(),
-            None
-        );
-        let rows = ops::list(&db, "c1").await.unwrap();
-        assert_eq!(rows.len(), 1, "the refused enqueue writes no row");
-        assert_eq!(
-            rows[0].state(),
-            meridian_core::db::models::queue::QueueState::Held,
-            "the refused release leaves the queue held"
-        );
     }
 
     /// Attachments queue as a follow-up and are refused as an interjection;

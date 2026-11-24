@@ -7,6 +7,8 @@ import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Link } from '@/components/yuerchu-ui/components/link/link'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
+import { SplitButton } from '@/components/yuerchu-ui/components/split-button/split-button'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
 import { MeridianMark } from '@/components/ui/meridian-mark'
@@ -40,6 +42,43 @@ function Buttons() {
         <Button variant="destructive" isDisabled>
           不可用
         </Button>
+      </Row>
+      <Row label="SplitButton">
+        <SplitButton
+          size="sm"
+          icon={<Plus />}
+          onPress={noop}
+          menuLabel="更多发布方式"
+          menu={
+            <>
+              <MenuItem id="notify" icon={<Sparkles />} onAction={noop}>
+                发布并通知
+              </MenuItem>
+              <MenuSeparator />
+              <MenuItem id="delete" icon={<Bin />} tone="danger" onAction={noop}>
+                删除草稿
+              </MenuItem>
+            </>
+          }
+        >
+          发布
+        </SplitButton>
+        <SplitButton
+          variant="secondary"
+          size="md"
+          icon={<Plus />}
+          onPress={noop}
+          menuLabel="更多保存方式"
+          menu={
+            <>
+              <MenuItem id="copy" onAction={noop}>
+                另存为副本
+              </MenuItem>
+            </>
+          }
+        >
+          保存
+        </SplitButton>
       </Row>
     </Stage>
   )
