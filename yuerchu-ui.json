@@ -3,7 +3,7 @@
   "source": {
     "repository": "https://github.com/Yuerchu/ui",
     "path": "packages/ui/src",
-    "commit": "426b8e65c5f592a7fd46548fd1d6ad307b516d71"
+    "commit": "56245af6856a5ca9df157c466b6ca7357eda9270"
   },
   "entries": [
     "components/alert/alert.tsx",
@@ -217,7 +217,7 @@
     "components/selection-bar/selection-bar.tsx": "8676c81d3cb794f8d4aa4a80058c7e4878d26db64a16911267b5908eecaa277c",
     "components/separator/separator.css": "e62f9a2d48c7de77b03651c15f7709b1b113e0034c08c12692156bc6f873cc0e",
     "components/separator/separator.tsx": "c9761ea045f0062bbdc2fdb38831437fcfda526d2dca02e393786725e6cf1d33",
-    "components/settings-list/settings-list.css": "6113f8c0d3cc0602d79e9faa8c1eee1ed1e5fdc7853fb1327c13888aa1b0c826",
+    "components/settings-list/settings-list.css": "1d49afd49d0e81d1149766a11763997c8c19c3783dd11defb5e52f380fad48a5",
     "components/settings-list/settings-list.tsx": "e60ec532d295e4526174d2501fbde07a9be3c4c851c0b4d514c75d77bd248426",
     "components/sidebar/sidebar.css": "36980cd28d2bf943beb6de0e17c3996e6b5daa156cd729f2eef83dba8a9b5dd8",
     "components/sidebar/sidebar.strings.ts": "c74a2b6d99d7f9a2d0cd534dc376fb37f4542ddf0db75eed79f59f32791e81b4",

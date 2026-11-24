@@ -69,7 +69,11 @@ function EmojiSuggestRow() {
   return (
     <div data-slot="emoji-suggest">
       <SettingsGroup heading={t('settings.emoji.suggestModelSection')} headingLevel={3}>
-        <SettingsRow label={t('settings.emoji.suggestModel')} description={t('settings.emoji.suggestModelHint')}>
+        <SettingsRow
+          layout="stacked"
+          label={t('settings.emoji.suggestModel')}
+          description={t('settings.emoji.suggestModelHint')}
+        >
           <ProviderModelPicker
             providers={providers}
             models={models}
