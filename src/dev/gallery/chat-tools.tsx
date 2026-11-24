@@ -121,7 +121,7 @@ export default function ChatTools() {
 
   return (
     <>
-      <Section title="ChatTool / 预设五态（原语）">
+      <Section title="ChatTool / 预设状态（原语）">
         <div data-slot="gallery-chat-tools" className="m-gallery-tools__stack">
           <ChatTool state="output-available" defaultExpanded>
             <ChatToolTrigger>
@@ -165,6 +165,30 @@ export default function ChatTools() {
               </span>
               <span data-slot="chat-tool-name" className="m-gallery-tools__name">
                 runTests
+              </span>
+            </ChatToolTrigger>
+          </ChatTool>
+
+          <ChatTool state="output-denied">
+            <ChatToolTrigger>
+              <ChatToolStatusIcon />
+              <span data-slot="chat-tool-verb" className="m-gallery-tools__verb">
+                Denied tool:
+              </span>
+              <span data-slot="chat-tool-name" className="m-gallery-tools__name">
+                readSecret
+              </span>
+            </ChatToolTrigger>
+          </ChatTool>
+
+          <ChatTool state="output-interrupted">
+            <ChatToolTrigger>
+              <ChatToolStatusIcon />
+              <span data-slot="chat-tool-verb" className="m-gallery-tools__verb">
+                Interrupted tool:
+              </span>
+              <span data-slot="chat-tool-name" className="m-gallery-tools__name">
+                deployProd
               </span>
             </ChatToolTrigger>
           </ChatTool>

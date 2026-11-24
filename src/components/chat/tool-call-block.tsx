@@ -680,11 +680,10 @@ export function AskUserBlock({
             ) : null
           }
         >
-          <CircleQuestion aria-hidden className="m-tool-call-block__icon-sm" />
+          <ChatToolStatusIcon />
           <span data-slot="ask-user-title" className="m-tool-call-block__trigger-title">
             {t('chat.tool.askUser')}
           </span>
-          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -838,10 +837,11 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   const long = content.length > 2000
   const body = long && !expanded ? headOf(content, 2000) : content
   return (
-    <div data-slot="read-file-result">
+    <div data-slot="read-file-result" className="m-tool-call-block__read-file">
       <div data-slot="read-file-scroll" className="m-tool-call-block__scroll-lg">
         <NumberedCode code={body} language={pathExtension(path)} />
       </div>
+      {content !== '' && <CopyButton text={content} className="m-tool-call-block__read-copy" />}
       {long && <ResultToggle expanded={expanded} onToggle={() => setExpanded((current) => !current)} />}
       {capped && (
         <Footnote>
@@ -1426,7 +1426,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
             ) : null
           }
         >
-          <Globe aria-hidden className="m-tool-call-block__icon-sm" />
+          <ChatToolStatusIcon />
           <span data-slot="web-search-title" className="m-tool-call-block__trigger-title">
             {providerWebToolTitle(t, data.tool_name)}
           </span>
@@ -1521,7 +1521,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   // is still searching.
   if (data.status === 'orphaned') {
     return (
-      <ChatTool state="output-error" defaultExpanded={false} className="m-tool-call-block__card-disclosure">
+      <ChatTool state="output-interrupted" defaultExpanded={false} className="m-tool-call-block__card-disclosure">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
           <span data-slot="web-search-title" className="m-tool-call-block__trigger-title">
@@ -1709,12 +1709,10 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <Compass aria-hidden className="m-tool-call-block__icon-sm" />
+          <ChatToolStatusIcon />
           <span data-slot="enter-plan-title" className="m-tool-call-block__trigger-title">
             {t('chat.plan.enterTitle')}
           </span>
-          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
-          {declined && <X aria-hidden className="m-tool-call-block__icon-sm" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -1857,12 +1855,10 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
         <ChatToolTrigger>
-          <List aria-hidden className="m-tool-call-block__icon-sm" />
+          <ChatToolStatusIcon />
           <span data-slot="exit-plan-title" className="m-tool-call-block__trigger-title">
             {t('chat.plan.title')}
           </span>
-          {data.status === 'completed' && <Check aria-hidden className="m-tool-call-block__check-icon" />}
-          {wasRejected && <X aria-hidden className="m-tool-call-block__icon-sm" />}
         </ChatToolTrigger>
         <ChatToolContent>{body}</ChatToolContent>
       </ChatTool>
@@ -2144,12 +2140,11 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
       return 'input-available'
     case 'completed':
       return 'output-available'
-    // Explicit rather than left to the default: an orphaned call really did
-    // fail to produce a result, so the error styling is right — but saying so
-    // here keeps the next person from reading it as an oversight.
+    case 'denied':
+      return 'output-denied'
     case 'orphaned':
-      return 'output-error'
-    default:
+      return 'output-interrupted'
+    case 'error':
       return 'output-error'
   }
 }
@@ -2608,7 +2603,16 @@ export function ToolCallBlock({
   if (titleArg?.key) shownKeys.add(titleArg.key)
   if (isCommand) shownKeys.add('command')
   if (fileDiffs) for (const key of ['content', 'old_string', 'new_string', 'patch', 'replace_all']) shownKeys.add(key)
-  const restArgs = Object.entries(parsedArgs).filter(([key]) => !shownKeys.has(key))
+  const restArgs = Object.entries(parsedArgs).filter(
+    ([key, value]) =>
+      !shownKeys.has(key) &&
+      !(
+        diffKind === 'patch' &&
+        key === 'base_path' &&
+        typeof value === 'string' &&
+        (value.trim() === '.' || value.trim() === './')
+      ),
+  )
   const metaArgs = restArgs.filter(([, value]) => !isLongArg(value))
   const longArgs = restArgs.filter(([, value]) => isLongArg(value))
 
@@ -2639,7 +2643,11 @@ export function ToolCallBlock({
             {label}
           </span>
         )}
-        <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} compact={compact} />
+        <ToolArgsSummary
+          toolName={data.tool_name}
+          args={parsedArgs}
+          compact={compact || (presentation === 'bubble' && isCommand)}
+        />
         {/* In the trigger, not the body: a queued card is collapsed, and a
             standing clock beside a spinning one is too fine a distinction to
             rest the whole answer on. The summary stays — with three commands

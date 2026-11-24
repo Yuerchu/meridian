@@ -92,6 +92,21 @@
     margin-inline-start: auto;
   }
 
+  .ui-tool-diff__viewport {
+    position: relative;
+    min-width: 0;
+  }
+
+  .ui-tool-diff__viewport[data-overflow-end]::after {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    width: var(--space-6);
+    pointer-events: none;
+    background: linear-gradient(90deg, transparent, var(--ui-bubble-fill, var(--surface)));
+  }
+
   .ui-tool-diff__content {
     max-height: 18lh;
     overflow: auto;
@@ -137,7 +152,7 @@
     inset-inline-start: 0;
     display: flex;
     flex-shrink: 0;
-    background-color: var(--surface);
+    background-color: var(--ui-bubble-fill, var(--surface));
     color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
     user-select: none;
     font-variant-numeric: tabular-nums;

@@ -11,7 +11,15 @@ import type {
 import { Button as AriaButton, Disclosure, DisclosurePanel, DisclosureStateContext } from "react-aria-components";
 import { withUiClass } from "../../lib/class-name";
 import { useStrings } from "../../lib/i18n";
-import { ChevronRightIcon, CircleAlertIcon, CircleCheckIcon, CircleXIcon, ClockIcon } from "../../lib/icons";
+import {
+  BanIcon,
+  ChevronRightIcon,
+  CircleAlertIcon,
+  CircleCheckIcon,
+  CircleXIcon,
+  ClockIcon,
+  TriangleAlertIcon,
+} from "../../lib/icons";
 import { BUBBLE_BLOCK, BUBBLE_BLOCK_HOVER } from "../chat-bubble/chat-bubble";
 import { Spinner } from "../spinner/spinner";
 import { Tooltip, TooltipTrigger } from "../tooltip/tooltip";
@@ -31,6 +39,8 @@ export type ChatToolState =
   | "input-available"
   | "queued"
   | "output-available"
+  | "output-denied"
+  | "output-interrupted"
   | "output-error"
   | "requires-action";
 
@@ -194,6 +204,22 @@ export function ChatToolStatusIcon({ className }: ChatToolStatusIconProps) {
         <CircleCheckIcon
           data-slot="chat-tool-status-icon"
           data-state="output-available"
+          className={joinClass("ui-chat-tool__status-icon", className)}
+        />
+      );
+    case "output-denied":
+      return (
+        <BanIcon
+          data-slot="chat-tool-status-icon"
+          data-state="output-denied"
+          className={joinClass("ui-chat-tool__status-icon", className)}
+        />
+      );
+    case "output-interrupted":
+      return (
+        <TriangleAlertIcon
+          data-slot="chat-tool-status-icon"
+          data-state="output-interrupted"
           className={joinClass("ui-chat-tool__status-icon", className)}
         />
       );

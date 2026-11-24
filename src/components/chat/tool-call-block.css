@@ -283,6 +283,20 @@
     color: color-mix(in oklch, var(--text) 90%, transparent);
   }
 
+  .m-tool-call-block__read-file {
+    position: relative;
+  }
+
+  .m-tool-call-block__read-copy {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 1;
+    border-radius: var(--radius-item);
+    background-color: color-mix(in oklch, var(--ui-bubble-fill, var(--surface)) 82%, transparent);
+    backdrop-filter: blur(4px);
+  }
+
   .m-tool-call-block__scroll-lg {
     max-height: 18rem;
     overflow: auto;

@@ -6,6 +6,35 @@
     font: var(--text-caption);
   }
 
+  .m-sub-agent-group[data-presentation='card'] {
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background-color: var(--surface);
+    box-shadow:
+      var(--shadow-resting),
+      inset 0 0 0 1px var(--border-strong);
+  }
+
+  .m-sub-agent-group[data-presentation='card'][data-state='waiting'] {
+    box-shadow:
+      var(--shadow-resting),
+      inset 0 0 0 1px color-mix(in oklch, var(--warning-fg) 40%, transparent);
+  }
+
+  .m-sub-agent-group[data-presentation='card'][data-state='failed'] {
+    box-shadow:
+      var(--shadow-resting),
+      inset 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
+  }
+
+  .m-sub-agent-group[data-presentation='bubble'][data-state='waiting'] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--warning-fg) 50%, transparent);
+  }
+
+  .m-sub-agent-group[data-presentation='bubble'][data-state='failed'] {
+    box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
+  }
+
   .m-sub-agent-group__status {
     display: contents;
   }
@@ -17,11 +46,30 @@
 
   .m-sub-agent-group__header {
     display: flex;
+    min-height: calc(var(--control-md) + var(--space-1));
     align-items: center;
-    gap: var(--space-2);
+    gap: calc(var(--space-1) + var(--space-1) / 2);
     border-bottom: 1px solid color-mix(in oklch, var(--border-strong) 50%, transparent);
-    padding: 6px var(--space-3);
+    padding: var(--space-2) var(--space-3);
     color: var(--text-secondary);
+  }
+
+  .m-sub-agent-group__status-icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+  }
+
+  .m-sub-agent-group__status-icon[data-state='done'] {
+    color: var(--success-fg);
+  }
+
+  .m-sub-agent-group__status-icon[data-state='waiting'] {
+    color: var(--warning-fg);
+  }
+
+  .m-sub-agent-group__status-icon[data-state='failed'] {
+    color: var(--danger);
   }
 
   .m-sub-agent-group__title {
@@ -30,17 +78,25 @@
     color: var(--text);
   }
 
-  .m-sub-agent-group__ticks {
+  .m-sub-agent-group__header-end {
     margin-inline-start: auto;
     display: flex;
-    gap: 2px;
+    align-items: center;
+    gap: var(--space-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-sub-agent-group__ticks {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
   }
 
   .m-sub-agent-group__tick {
     display: block;
-    width: var(--space-4);
-    height: var(--space-1);
-    border-radius: 2px;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
     background-color: var(--surface-muted);
   }
 
@@ -80,13 +136,13 @@
     min-width: 0;
     grid-template-columns: auto auto 1fr auto;
     align-items: center;
-    gap: 10px;
+    gap: var(--space-2);
   }
 
   .m-sub-agent-group__dot {
     display: block;
-    width: var(--space-2);
-    height: var(--space-2);
+    width: 6px;
+    height: 6px;
     border-radius: var(--radius-pill);
     background-color: var(--surface-muted);
   }
@@ -97,12 +153,12 @@
 
   .m-sub-agent-group__dot[data-state='running'] {
     background-color: var(--accent);
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 20%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 20%, transparent);
   }
 
   .m-sub-agent-group__dot[data-state='waiting'] {
     background-color: var(--warning-fg);
-    box-shadow: 0 0 0 4px color-mix(in oklch, var(--warning-fg) 25%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--warning-fg) 25%, transparent);
     animation: m-sub-agent-pulse var(--dur-shimmer) var(--ease-standard) infinite;
   }
 
@@ -155,7 +211,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font: var(--text-body);
+    font: var(--text-small-medium);
     color: var(--text);
   }
 
@@ -205,6 +261,13 @@
 
   .m-sub-agent-group__steps {
     font-variant-numeric: tabular-nums;
+  }
+
+  .m-sub-agent-group__chevron {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+    color: var(--text-secondary);
   }
 
   .m-sub-agent-group__question {

@@ -1,10 +1,10 @@
 "use client";
 
 import type { ComponentProps, ReactNode, Ref } from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link as AriaLink } from "react-aria-components";
 import { useStrings } from "../../lib/i18n";
-import { ArrowUpRightIcon, CircleCheckIcon, CircleDashedIcon, LinkIcon, MinusIcon } from "../../lib/icons";
+import { ArrowUpRightIcon, CircleCheckIcon, CircleDashedIcon, CircleDotIcon, LinkIcon } from "../../lib/icons";
 import { Button } from "../button/button";
 import { FileIcon } from "../file-icon/file-icon";
 import { toolViewsStrings } from "./tool-views.strings";
@@ -172,6 +172,24 @@ export function ToolDiffView({
 }: ToolDiffViewProps) {
   const t = useStrings(toolViewsStrings);
   const [expanded, setExpanded] = useState(false);
+  const [overflowEnd, setOverflowEnd] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const syncOverflow = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setOverflowEnd(el.scrollWidth - el.clientWidth - el.scrollLeft > 2);
+  }, []);
+
+  useEffect(() => {
+    syncOverflow();
+    const el = scrollRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(syncOverflow);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [syncOverflow, lines, expanded]);
+
   const shown = expanded ? lines : lines.slice(0, maxLines);
   const hidden = lines.length - shown.length;
   const hasOldNo = lines.some((line) => line.oldNo !== undefined);
@@ -218,48 +236,59 @@ export function ToolDiffView({
           </span>
         </div>
       ) : null}
-      <div data-slot="file-diff-content" className="ui-tool-diff__content">
-        <div data-slot="file-diff-lines" className="ui-tool-diff__lines">
-          {shown.map((line, i) => (
-            <div
-              key={i}
-              data-slot="file-diff-line"
-              data-kind={line.kind}
-              data-highlighted={highlighted || undefined}
-              className="ui-tool-diff__line"
-            >
-              {numbered ? (
-                <span aria-hidden="true" data-slot="file-diff-gutter" className="ui-tool-diff__gutter">
-                  {hasOldNo ? (
-                    <span data-slot="file-diff-old-no" className="ui-tool-diff__old-no">
-                      {line.oldNo ?? ""}
-                    </span>
-                  ) : null}
-                  {hasNewNo ? (
-                    <span data-slot="file-diff-new-no" className="ui-tool-diff__new-no">
-                      {line.newNo ?? ""}
-                    </span>
-                  ) : null}
+      <div
+        data-slot="file-diff-viewport"
+        data-overflow-end={overflowEnd || undefined}
+        className="ui-tool-diff__viewport"
+      >
+        <div
+          ref={scrollRef}
+          onScroll={syncOverflow}
+          data-slot="file-diff-content"
+          className="ui-tool-diff__content"
+        >
+          <div data-slot="file-diff-lines" className="ui-tool-diff__lines">
+            {shown.map((line, i) => (
+              <div
+                key={i}
+                data-slot="file-diff-line"
+                data-kind={line.kind}
+                data-highlighted={highlighted || undefined}
+                className="ui-tool-diff__line"
+              >
+                {numbered ? (
+                  <span aria-hidden="true" data-slot="file-diff-gutter" className="ui-tool-diff__gutter">
+                    {hasOldNo ? (
+                      <span data-slot="file-diff-old-no" className="ui-tool-diff__old-no">
+                        {line.oldNo ?? ""}
+                      </span>
+                    ) : null}
+                    {hasNewNo ? (
+                      <span data-slot="file-diff-new-no" className="ui-tool-diff__new-no">
+                        {line.newNo ?? ""}
+                      </span>
+                    ) : null}
+                  </span>
+                ) : null}
+                <span data-slot="file-diff-sign" className="ui-tool-diff__sign">
+                  {diffLinePrefix(line.kind)}
                 </span>
-              ) : null}
-              <span data-slot="file-diff-sign" className="ui-tool-diff__sign">
-                {diffLinePrefix(line.kind)}
-              </span>
-              <span data-slot="file-diff-text" className="ui-tool-diff__text">
-                {renderLine ? renderLine(line.text, line) : line.text || " "}
-              </span>
-            </div>
-          ))}
-          {lines.length > maxLines ? (
-            <div data-slot="file-diff-more" className="ui-tool-diff__more">
-              {!expanded ? (
-                <span data-slot="file-diff-hidden-count">{t.moreLines({ count: hidden })}</span>
-              ) : null}
-              <Button variant="ghost" size="sm" onPress={() => setExpanded((current) => !current)}>
-                {expanded ? t.showLess : t.showAll}
-              </Button>
-            </div>
-          ) : null}
+                <span data-slot="file-diff-text" className="ui-tool-diff__text">
+                  {renderLine ? renderLine(line.text, line) : line.text || " "}
+                </span>
+              </div>
+            ))}
+            {lines.length > maxLines ? (
+              <div data-slot="file-diff-more" className="ui-tool-diff__more">
+                {!expanded ? (
+                  <span data-slot="file-diff-hidden-count">{t.moreLines({ count: hidden })}</span>
+                ) : null}
+                <Button variant="ghost" size="sm" onPress={() => setExpanded((current) => !current)}>
+                  {expanded ? t.showLess : t.showAll}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -506,7 +535,7 @@ export function ToolChecklistStatusIcon({ status, className }: ToolChecklistStat
     status === "completed" ? (
       <CircleCheckIcon />
     ) : status === "in_progress" ? (
-      <MinusIcon />
+      <CircleDotIcon />
     ) : (
       <CircleDashedIcon />
     );

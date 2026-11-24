@@ -163,7 +163,7 @@
   "chat.tool.denyReason": "Reason for denying this tool call",
   "chat.tool.cancel": "Cancel",
   "chat.tool.running": "Running...",
-  "chat.tool.queued": "Waiting for the call before it",
+  "chat.tool.queued": "Queued",
   "chat.tool.fold.commands_one": "Ran {{count}} command",
   "chat.tool.fold.commands_other": "Ran {{count}} commands",
   "chat.tool.fold.files_one": "Viewed {{count}} file",

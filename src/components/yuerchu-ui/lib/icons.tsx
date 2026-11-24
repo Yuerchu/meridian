@@ -498,3 +498,23 @@ export function StopIcon(props: IconProps) {
     </Svg>
   );
 }
+
+/** 禁止 / 已拒绝（圆圈内斜杠）。按同样的 2px 圆角描边画的 */
+export function BanIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M4.93 4.93L19.07 19.07" />
+    </Svg>
+  );
+}
+
+/** 进行中圆点（外圈 + 实心中心点）。与虚线圆、打勾圆同属一套几何图形 */
+export function CircleDotIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="10" />
+      <circle cx="12" cy="12" r="3.5" fill="currentColor" stroke="none" />
+    </Svg>
+  );
+}

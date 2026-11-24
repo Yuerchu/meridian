@@ -382,4 +382,71 @@ describe('every panel opens the same way', () => {
       /:root\[data-theme='dark'\]\s+\[data-slot='file-diff-highlighted'\]\s+span\[style\][^}]*color:\s*var\(--shiki-dark\)/s,
     )
   })
+
+  it('distinguishes denied and orphaned tool states from errors', () => {
+    const { container: deniedView } = inBubble(
+      <ToolCallBlock data={call('read_file', { path: '.ssh/id_ed25519' }, 'denied')} />,
+    )
+    expect(deniedView.querySelector('[data-slot="chat-tool"]')).toHaveAttribute('data-state', 'output-denied')
+    expect(deniedView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-denied',
+    )
+
+    const { container: orphanedView } = inBubble(
+      <ToolCallBlock data={call('run_command', { command: 'git push --force' }, 'orphaned')} />,
+    )
+    expect(orphanedView.querySelector('[data-slot="chat-tool"]')).toHaveAttribute('data-state', 'output-interrupted')
+    expect(orphanedView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-interrupted',
+    )
+  })
+
+  it('omits default base_path "." on apply_patch while keeping non-default paths', () => {
+    const patch = '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch'
+    const { container: dotView } = inBubble(
+      <ToolCallBlock data={call('apply_patch', { base_path: '.', patch }, 'pending')} />,
+    )
+    expect(panel(dotView).querySelector('[data-slot="tool-args-meta"]')).toBeNull()
+
+    const { container: subView } = inBubble(
+      <ToolCallBlock data={call('apply_patch', { base_path: 'src-tauri', patch }, 'pending')} />,
+    )
+    expect(panel(subView).querySelector('[data-slot="tool-args-meta"]')).toHaveTextContent('src-tauri')
+  })
+
+  it('offers a copy button on read_file results and uses unified status icons on web_search and ask_user', async () => {
+    const { container: readView } = inBubble(
+      <ToolCallBlock
+        data={call('read_file', { path: 'src/app.ts' }, 'completed', { result: 'export const x = 1\n' })}
+      />,
+    )
+    await userEvent.click(within(readView).getByRole('button', { name: /Read File/ }))
+    expect(within(panel(readView)).getByRole('button', { name: /Copy/i })).toBeVisible()
+
+    const { container: webView } = inBubble(
+      <ToolCallBlock
+        data={call('web_search', { query: 'react aria' }, 'completed', {
+          result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://example.com' }] }),
+        })}
+      />,
+    )
+    expect(webView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-available',
+    )
+
+    const { container: askView } = inBubble(
+      <ToolCallBlock
+        data={call('ask_user', { questions: [{ id: 'q1', question: 'Env?' }] }, 'completed', {
+          result: JSON.stringify({ q1: 'staging' }),
+        })}
+      />,
+    )
+    expect(askView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-available',
+    )
+  })
 })

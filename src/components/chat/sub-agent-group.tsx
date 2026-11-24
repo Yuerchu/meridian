@@ -1,15 +1,26 @@
 import './sub-agent-group.css'
-import { useMemo } from 'react'
+import { useContext, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
-import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
+import {
+  Ban,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleQuestion,
+  CircleX,
+  Compass,
+  SkipForward,
+  TriangleAlert,
+} from '@keyline-icons/react/two-tone'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
 import { isAskTool, toolUi } from '@/lib/tool-catalog'
 import { BUBBLE_BLOCK } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { ChatToolPresentationContext } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'
@@ -243,11 +254,14 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
   // though, and reading it from the transcript costs nothing and stops this
   // from being the thing that breaks if nesting is ever allowed.
   const conversationId = useTranscriptConversationId()
+  const presentation = useContext(ChatToolPresentationContext)
   const rows = useMemo(() => rowsOf(calls), [calls])
   if (rows.length === 0) return null
 
   const states = rows.map(stateOf)
   const count = (state: RowState) => states.filter((s) => s === state).length
+  const groupState: RowState =
+    count('waiting') > 0 ? 'waiting' : count('running') > 0 ? 'running' : count('failed') > 0 ? 'failed' : 'done'
   const summary = [
     count('done') > 0 && t('chat.subAgent.count.done', { count: count('done') }),
     count('running') > 0 && t('chat.subAgent.count.running', { count: count('running') }),
@@ -268,21 +282,57 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
     else openConversation(run.conversation_id)
   }
 
+  const asBubble = presentation === 'bubble'
+
   return (
     // A block of the bubble like any other, which is what it always looked
     // like — a head row over its contents, in the bubble's own fill — while
     // being an item on a keyboard. Now it says so, and `bubble.tsx` gives it
     // the fill, the radius and the shared corners the rest of them get.
-    <div data-slot="sub-agent-group" data-bubble-block="" className={joinClasses(BUBBLE_BLOCK, 'm-sub-agent-group')}>
+    <div
+      data-slot="sub-agent-group"
+      data-presentation={presentation}
+      data-state={groupState}
+      data-bubble-block={asBubble ? '' : undefined}
+      className={joinClasses(asBubble && BUBBLE_BLOCK, 'm-sub-agent-group')}
+    >
       <div data-slot="sub-agent-group-header" className="m-sub-agent-group__header">
+        {groupState === 'running' ? (
+          <span aria-hidden data-slot="sub-agent-group-status-icon">
+            <Spinner size="sm" />
+          </span>
+        ) : groupState === 'waiting' ? (
+          <CircleAlert
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="waiting"
+            className="m-sub-agent-group__status-icon"
+          />
+        ) : groupState === 'failed' ? (
+          <CircleX
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="failed"
+            className="m-sub-agent-group__status-icon"
+          />
+        ) : (
+          <CircleCheck
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="done"
+            className="m-sub-agent-group__status-icon"
+          />
+        )}
         <span data-slot="sub-agent-group-title" className="m-sub-agent-group__title">
           {t('chat.subAgent.group', { count: rows.length })}
         </span>
-        {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
-        <span data-slot="sub-agent-group-ticks" aria-hidden className="m-sub-agent-group__ticks">
-          {states.map((state, i) => (
-            <i key={i} data-slot="sub-agent-group-tick" data-state={state} className="m-sub-agent-group__tick" />
-          ))}
+        <span className="m-sub-agent-group__header-end">
+          {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
+          <span data-slot="sub-agent-group-ticks" aria-hidden className="m-sub-agent-group__ticks">
+            {states.map((state, i) => (
+              <i key={i} data-slot="sub-agent-group-tick" data-state={state} className="m-sub-agent-group__tick" />
+            ))}
+          </span>
         </span>
       </div>
       <div className="m-sub-agent-group__list">
@@ -333,6 +383,7 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
                   <span data-slot="sub-agent-row-end" className="m-sub-agent-group__row-end">
                     {row.outcome && row.outcome !== 'running' && <SubAgentStatusChip outcome={row.outcome} />}
                     <LiveSteps run={row.call.sub_agent} fallback={steps} />
+                    {row.call.sub_agent && <ChevronRight aria-hidden className="m-sub-agent-group__chevron" />}
                   </span>
                 </div>
               </ListBoxItem>
