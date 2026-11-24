@@ -13,7 +13,7 @@
     container-type: inline-size;
     container-name: composer;
     border-radius: 24px;
-    border: 1px solid var(--border-strong);
+    border: 1px solid var(--border);
     background: var(--surface);
     box-shadow: var(--shadow-resting);
     transition:
@@ -22,7 +22,7 @@
   }
 
   .m-composer__shell:focus-within {
-    border-color: var(--border-control);
+    border-color: var(--border-strong);
   }
 
   .m-composer__shell[data-running] {

@@ -36,6 +36,47 @@
   }
 }
 
+@layer base {
+  /* Minimal preflight replacing Tailwind's reset: Yuerchu UI's base.css sets
+     typography, focus and scrollbars, but leaves native browser button chrome
+     and default heading/paragraph margins untouched. Living in `@layer base`
+     ensures every `@layer components` rule (both Yuerchu UI and `.m-*`) wins. */
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  blockquote,
+  figure,
+  dl,
+  dd,
+  pre {
+    margin: 0;
+  }
+}
+
 /* The question of a turn a jump landed on (`lib/arrival-flash.ts`): held,
    then faded back to the bubble's own fill. A wash of the bubble's ink over
    its fill, as anything drawn on a bubble is — never the accent, which is not
