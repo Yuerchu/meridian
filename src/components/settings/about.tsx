@@ -7,6 +7,7 @@ import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
 import { Hint } from '@/components/ui/hint'
 import { api } from '@/api'
@@ -47,8 +48,7 @@ const OS_LABELS: Record<string, string> = {
 function InfoRow({ label, value, action }: { label: string; value?: string; action?: React.ReactNode }) {
   const { t } = useTranslation()
   return (
-    <div className="m-about__info">
-      <span className="m-about__info-label">{label}</span>
+    <SettingsRow label={label}>
       <span data-slot="info-row-value" className="m-about__info-value">
         {value === undefined ? (
           <span role="status" aria-busy="true" aria-label={`${label}: ${t('common.loadingLabel')}`}>
@@ -61,7 +61,7 @@ function InfoRow({ label, value, action }: { label: string; value?: string; acti
         )}
         {action}
       </span>
-    </div>
+    </SettingsRow>
   )
 }
 
@@ -129,28 +129,30 @@ export function About() {
         </div>
       </div>
 
-      <section className="m-about__group">
-        <h3 className="m-about__group-title">{t('settings.about.diagnostics')}</h3>
-        <div className="m-about__card">
-          {/* The row stays free of nested controls: the action sits beside it. */}
-          <div className="m-about__action-row">
-            <FileText size={16} aria-hidden className="m-about__row-icon" />
-            <span className="m-about__row-text">
-              <span className="m-about__row-title">{t('settings.about.logs.title')}</span>
-              <span className="m-about__row-description">{t('settings.about.logs.subtitle')}</span>
-            </span>
+      <div className="m-about__stack">
+        <SettingsGroup heading={t('settings.about.diagnostics')} headingLevel={3}>
+          <SettingsRow
+            label={
+              <span className="m-about__row-label">
+                <FileText size={16} aria-hidden className="m-about__row-icon" />
+                {t('settings.about.logs.title')}
+              </span>
+            }
+            description={t('settings.about.logs.subtitle')}
+          >
             <Button iconRight={<ChevronRight />} size="sm" variant="secondary" onPress={() => setShowLogs(true)}>
               {t('settings.about.logs.open')}
             </Button>
-          </div>
-          <div className="m-about__action-row">
-            <Copy size={16} aria-hidden className="m-about__row-icon" />
-            <span className="m-about__row-text">
-              <span className="m-about__row-title">{t('settings.about.copyInfo.title')}</span>
-              <span className="m-about__row-description">
-                {infoCopy.failure === null && t('settings.about.copyInfo.subtitle')}
+          </SettingsRow>
+          <SettingsRow
+            label={
+              <span className="m-about__row-label">
+                <Copy size={16} aria-hidden className="m-about__row-icon" />
+                {t('settings.about.copyInfo.title')}
               </span>
-            </span>
+            }
+            description={infoCopy.failure === null ? t('settings.about.copyInfo.subtitle') : undefined}
+          >
             <span className="m-about__row-action">
               <Button
                 size="sm"
@@ -164,50 +166,47 @@ export function About() {
               </Button>
               <CopyAnnouncement copied={infoCopy.copied} failure={null} />
             </span>
-          </div>
-          {infoCopy.failure !== null && (
-            <Alert tone="danger" shouldAnnounce>
-              {t('common.copyFailed', { error: infoCopy.failure })}
-            </Alert>
-          )}
-        </div>
-      </section>
+          </SettingsRow>
+        </SettingsGroup>
+        {infoCopy.failure !== null && (
+          <Alert tone="danger" shouldAnnounce>
+            {t('common.copyFailed', { error: infoCopy.failure })}
+          </Alert>
+        )}
+      </div>
 
-      <section className="m-about__group">
-        <h3 className="m-about__group-title">{t('settings.about.system.title')}</h3>
-        <div className="m-about__card">
-          <InfoRow label={t('settings.about.system.version')} value={info?.version} />
-          <InfoRow label="Tauri" value={info?.tauriVersion} />
-          {/* Read off `navigator`, so it needs no round trip and is never absent. */}
-          <InfoRow label={t('settings.about.system.runtime')} value={runtime} />
-          <InfoRow label={t('settings.about.system.platform')} value={platform ?? undefined} />
-          <InfoRow
-            label={t('settings.about.system.dataDir')}
-            value={info?.dataDir}
-            action={
-              info && (
-                <>
-                  <TooltipTrigger>
-                    <Button
-                      icon={pathCopy.failure !== null ? <TriangleAlert /> : pathCopy.copied ? <Check /> : <Copy />}
-                      size="sm"
-                      variant="ghost"
-                      aria-label={t('settings.about.system.copyDataDir')}
-                      onPress={() => void pathCopy.copy(info.dataDir)}
-                    />
-                    <Tooltip>
-                      {pathCopy.failure !== null
-                        ? t('common.copyFailed', { error: pathCopy.failure })
-                        : t('settings.about.system.copyDataDir')}
-                    </Tooltip>
-                  </TooltipTrigger>
-                  <CopyAnnouncement copied={pathCopy.copied} failure={pathCopy.failure} />
-                </>
-              )
-            }
-          />
-        </div>
-      </section>
+      <SettingsGroup heading={t('settings.about.system.title')} headingLevel={3}>
+        <InfoRow label={t('settings.about.system.version')} value={info?.version} />
+        <InfoRow label="Tauri" value={info?.tauriVersion} />
+        {/* Read off `navigator`, so it needs no round trip and is never absent. */}
+        <InfoRow label={t('settings.about.system.runtime')} value={runtime} />
+        <InfoRow label={t('settings.about.system.platform')} value={platform ?? undefined} />
+        <InfoRow
+          label={t('settings.about.system.dataDir')}
+          value={info?.dataDir}
+          action={
+            info && (
+              <>
+                <TooltipTrigger>
+                  <Button
+                    icon={pathCopy.failure !== null ? <TriangleAlert /> : pathCopy.copied ? <Check /> : <Copy />}
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('settings.about.system.copyDataDir')}
+                    onPress={() => void pathCopy.copy(info.dataDir)}
+                  />
+                  <Tooltip>
+                    {pathCopy.failure !== null
+                      ? t('common.copyFailed', { error: pathCopy.failure })
+                      : t('settings.about.system.copyDataDir')}
+                  </Tooltip>
+                </TooltipTrigger>
+                <CopyAnnouncement copied={pathCopy.copied} failure={pathCopy.failure} />
+              </>
+            )
+          }
+        />
+      </SettingsGroup>
 
       <div data-slot="about-footer" className="m-about__footer">
         <p data-slot="about-footer-line">{t('settings.about.copyright')}</p>

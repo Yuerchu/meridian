@@ -1,6 +1,4 @@
 @layer components {
-  .m-developer__section,
-  .m-developer__copy,
   .m-developer__level,
   .m-developer__lines {
     display: flex;
@@ -8,36 +6,22 @@
     gap: var(--space-2);
   }
 
-  .m-developer__label,
-  .m-developer__title,
-  .m-developer__hint,
+  .m-developer__lines {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
   .m-developer__speak {
     margin: 0;
   }
 
-  .m-developer__label,
-  .m-developer__hint {
-    color: var(--text-secondary);
-    font: var(--text-caption);
-  }
-
-  .m-developer__label {
-    font: var(--text-small-medium);
-  }
-
-  .m-developer__card {
+  .m-developer__output {
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
-  .m-developer__title {
-    color: var(--text);
-    font: var(--text-body-medium);
+    padding: var(--space-3) var(--space-4);
+    border-block-start: 1px solid var(--border);
   }
 
   .m-developer__actions,

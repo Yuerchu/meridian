@@ -5,6 +5,7 @@ import { TextField } from '@/components/yuerchu-ui/components/text-field/text-fi
 import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { api } from '@/api'
 import type { AcpCheckResponse, AcpConfigInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -172,28 +173,30 @@ export function AcpSettings() {
         actions={saved ? <SavedHint /> : null}
       />
 
-      <TextField
-        label={t('settings.acp.command')}
-        name="acpCommand"
-        value={config.command}
-        onChange={(e) => setConfig({ ...config, command: e })}
-        placeholder={DEFAULTS.command}
-        description={t('settings.acp.commandHint')}
-      />
+      <SettingsGroup>
+        <SettingsRow layout="stacked" label={t('settings.acp.command')} description={t('settings.acp.commandHint')}>
+          <TextField
+            name="acpCommand"
+            value={config.command}
+            onChange={(e) => setConfig({ ...config, command: e })}
+            placeholder={DEFAULTS.command}
+          />
+        </SettingsRow>
 
-      <TextArea
-        label={t('settings.acp.args')}
-        name="acpArgs"
-        rows={3}
-        spellCheck="false"
-        value={argsText}
-        onChange={setArgsText}
-        onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return
-          if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
-        }}
-        description={t('settings.acp.argsHint')}
-      />
+        <SettingsRow layout="stacked" label={t('settings.acp.args')} description={t('settings.acp.argsHint')}>
+          <TextArea
+            name="acpArgs"
+            rows={3}
+            spellCheck="false"
+            value={argsText}
+            onChange={setArgsText}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) void save()
+            }}
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
       {saveError && (
         <Alert data-slot="acp-save-error" tone="danger" shouldAnnounce>
