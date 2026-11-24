@@ -1,0 +1,159 @@
+@layer components {
+  .m-app-frame__skip-link {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+
+  .m-app-frame__skip-link:focus {
+    position: fixed;
+    inset-block-start: var(--space-2);
+    inset-inline-start: var(--space-2);
+    z-index: var(--z-overlay);
+    width: auto;
+    height: auto;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
+    overflow: visible;
+    clip-path: none;
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+    white-space: normal;
+    text-decoration: none;
+    box-shadow: var(--shadow-floating);
+    outline: var(--focus-ring);
+  }
+
+  .m-app-frame {
+    display: flex;
+    flex-direction: column;
+    height: 100svh;
+    min-height: 0;
+    overflow: hidden;
+    padding-bottom: var(--ime-bottom, 0px);
+  }
+
+  .m-app-frame__header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: 3rem;
+    padding-block: var(--space-2);
+    padding-inline: max(var(--space-4), var(--safe-left)) max(var(--space-4), var(--safe-right));
+    padding-top: calc(var(--space-2) + var(--safe-top, 0px));
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+  }
+
+  .m-app-frame__title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-body-medium);
+    outline: none;
+  }
+
+  .m-app-frame__title:focus-visible {
+    border-radius: var(--radius-item);
+    outline: 2px solid var(--border);
+  }
+
+  .m-app-frame__actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+    margin-inline-start: auto;
+  }
+
+  /* The drawer button is the phone's way into the list. On a wide window the
+     library does not mount a drawer, so the button would open and be closed
+     again in the same turn. */
+  .m-app-frame__drawer-toggle {
+    display: none;
+    margin-inline-start: calc(-1 * var(--space-1));
+  }
+
+  @media (width < 768px) {
+    .m-app-frame__drawer-toggle {
+      display: inline-flex;
+    }
+  }
+
+  /* The template pads its content for a document page and sizes its frame with
+     `min-height: 100%`, so an internal-scroll child (the chat transcript) would
+     otherwise expand the frame and push the composer below the fold. Pinning
+     the stage to the inset card's exact viewport height keeps `#main-content`
+     bounded while cancelling the template's gutters without touching library CSS. */
+  .m-app-frame__stage {
+    display: flex;
+    flex-direction: column;
+    height: calc(100svh - var(--ime-bottom, 0px));
+    min-height: 0;
+    overflow: hidden;
+    margin-inline: calc(-1 * var(--page-gutter));
+    margin-block-end: calc(-1 * var(--space-6));
+  }
+
+  @media (width >= 768px) {
+    .m-app-frame__stage {
+      height: calc(100svh - var(--ime-bottom, 0px) - 2 * var(--space-2));
+    }
+  }
+
+  .m-app-shell__shortcut {
+    margin-inline-start: var(--space-2);
+  }
+
+  .m-app-frame__action-error {
+    flex-shrink: 0;
+    padding: var(--space-2) var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-app-frame__main {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .m-app-frame__chat-layer {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .m-app-frame__split {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .m-app-frame__chat-pane {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-width: 0;
+  }
+
+  .m-app-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: var(--background);
+  }
+
+  .m-app-layer[data-front] {
+    z-index: 30;
+  }
+}

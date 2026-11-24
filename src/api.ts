@@ -158,9 +158,6 @@ import type {
   PlanFileConflictResolveRequest,
   PlanReviewDecisionRequest,
   PlanReviewDecisionResponse,
-  PlanReviewDeliveryContinueRequest,
-  PlanReviewDeliveryInfoResponse,
-  PlanReviewDeliveryReadRequest,
   PlanReviewDraftDiscardRequest,
   PlanReviewDraftSaveRequest,
   PlanReviewDraftSaveResponse,
@@ -605,12 +602,6 @@ export const api = {
 
   decidePlanReview: (request: PlanReviewDecisionRequest) =>
     invoke<PlanReviewDecisionResponse>('decide_plan_review', { request }),
-
-  getPlanReviewDelivery: (request: PlanReviewDeliveryReadRequest) =>
-    invoke<PlanReviewDeliveryInfoResponse | null>('get_plan_review_delivery', { request }),
-
-  continuePlanReviewDelivery: (request: PlanReviewDeliveryContinueRequest) =>
-    invoke<PlanReviewDeliveryInfoResponse>('continue_plan_review_delivery', { request }),
 
   resolvePlanFileConflict: (request: PlanFileConflictResolveRequest) =>
     invoke<PlanDocumentInfoResponse>('resolve_plan_file_conflict', { request }),

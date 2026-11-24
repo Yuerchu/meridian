@@ -1,13 +1,17 @@
+import './file-preview.css'
+import './view-switch.css'
 import * as React from 'react'
 import { Check, Copy, FileText, SquareArrowUpRight } from '@keyline-icons/react/two-tone'
-import { Button, Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Hint } from '@/components/ui/hint'
-import { Segment } from '@/components/base'
-import { Sheet } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
 import type { WorkspaceFileContentResponse } from '@/types'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -69,10 +73,7 @@ function FilePreviewLines({
   }, [start, file.content])
 
   return (
-    <div
-      data-slot="file-preview-lines"
-      className="code-block__code min-w-max overflow-visible py-2 font-mono text-caption-1-regular leading-5"
-    >
+    <div data-slot="file-preview-lines" className="code-block__code m-file-preview__lines">
       {lines.map((line, index) => {
         // A source location only selects rows in the bounded whole-file
         // prefix, so numbering always starts at the resolver's first line.
@@ -85,16 +86,12 @@ function FilePreviewLines({
             data-slot="file-preview-line"
             data-preview-line={number}
             data-highlighted={highlighted || undefined}
-            className={highlighted ? 'flex bg-date-range-background text-text-primary' : 'flex text-text-primary/80'}
+            className="m-file-preview__line"
           >
-            <span
-              data-slot="file-preview-line-number"
-              aria-hidden="true"
-              className="sticky left-0 w-14 shrink-0 select-none bg-background-primary-default px-3 text-right tabular-nums text-text-secondary"
-            >
+            <span data-slot="file-preview-line-number" aria-hidden="true" className="m-file-preview__line-number">
               {number}
             </span>
-            <span data-slot="file-preview-line-source" className="shiki min-w-0 whitespace-pre pe-6">
+            <span data-slot="file-preview-line-source" className="shiki m-file-preview__line-source">
               {highlightedLines && line ? (
                 // Shiki escapes the source and returns only token spans here.
                 <span
@@ -114,7 +111,7 @@ function FilePreviewLines({
 
 function MarkdownFilePreview({ content, path }: { content: string; path: string }) {
   return (
-    <div data-slot="markdown-file-preview" className="h-full overflow-auto bg-background-primary-default px-6 py-4">
+    <div data-slot="markdown-file-preview" className="m-file-preview__markdown">
       {/* A README may mention more project files, but opening one from inside
           an already-open preview would silently replace the current sheet.
           Keep those references visible and inert instead. */}
@@ -123,7 +120,7 @@ function MarkdownFilePreview({ content, path }: { content: string; path: string 
           content={content}
           blockId={`file-preview:${path}`}
           allowRemoteImages={false}
-          className="mx-auto max-w-3xl"
+          className="m-file-preview__markdown-content"
         />
       </FilePreviewContext>
     </div>
@@ -141,7 +138,7 @@ function HtmlFilePreview({ content, name }: { content: string; name: string }) {
       sandbox=""
       referrerPolicy="no-referrer"
       srcDoc={srcDoc}
-      className="h-full w-full border-0 bg-background-primary-default"
+      className="m-file-preview__html"
     />
   )
 }
@@ -149,9 +146,9 @@ function HtmlFilePreview({ content, name }: { content: string; name: string }) {
 function FileGlyph({ path }: { path: string }) {
   const icon = fileIconUrl(path)
   return icon ? (
-    <img data-slot="file-preview-glyph" src={icon} alt="" aria-hidden className="size-4 shrink-0" />
+    <img data-slot="file-preview-glyph" src={icon} alt="" aria-hidden className="m-file-preview__glyph" />
   ) : (
-    <FileText className="size-4" />
+    <FileText className="m-file-preview__glyph" aria-hidden />
   )
 }
 
@@ -176,6 +173,9 @@ function PreviewSheet({
   const richPreview =
     state.status === 'loaded' && state.kind === 'project_file' ? richFilePreview(reference.path) : null
 
+  // The library's Drawer does not know about the back gesture.
+  useHistoryLevel(true, () => onOpenChange(false))
+
   React.useEffect(() => {
     setMode('code')
   }, [reference.endLine, reference.line, reference.path])
@@ -196,137 +196,116 @@ function PreviewSheet({
   }, [conversationId, reference])
 
   return (
-    <Sheet isOpen placement="right" onOpenChange={onOpenChange} isDismissable>
-      <Sheet.Backdrop>
-        <Sheet.Content className="w-full sm:max-w-2xl">
-          <Sheet.Dialog className="flex h-full min-h-0 flex-col">
-            <Sheet.Header className="pe-14">
-              <div data-slot="file-preview-title" className="flex min-w-0 items-center gap-2">
-                <FileGlyph path={reference.path} />
-                <Sheet.Heading className="truncate">{name}</Sheet.Heading>
-              </div>
-              <Hint
-                as="p"
-                className="mt-1 truncate font-mono text-caption-1-regular text-text-secondary"
-                label={reference.path}
+    <Drawer
+      isOpen
+      side="right"
+      size="lg"
+      onOpenChange={onOpenChange}
+      isDismissable
+      heading={
+        <span data-slot="file-preview-title" className="m-file-preview__title">
+          <FileGlyph path={reference.path} />
+          <span className="m-file-preview__name">{name}</span>
+        </span>
+      }
+      description={
+        <>
+          <Hint as="p" className="m-file-preview__path" label={reference.path}>
+            {reference.path}
+            {reference.line
+              ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
+              : ''}
+          </Hint>
+          {richPreview && (
+            <div className="m-file-preview__mode">
+              <SegmentedControl
+                aria-label={t('chat.filePreview.mode')}
+                size="sm"
+                selectedKey={mode}
+                onSelectionChange={(next) => {
+                  if (next === 'code' || next === 'preview') setMode(next)
+                }}
               >
-                {reference.path}
-                {reference.line
-                  ? `:${reference.line}${reference.endLine ? `-${reference.endLine}` : ''}${reference.column ? `:${reference.column}` : ''}`
-                  : ''}
-              </Hint>
-              {richPreview && (
-                <Segment
-                  aria-label={t('chat.filePreview.mode')}
-                  size="sm"
-                  selectedKey={mode}
-                  onSelectionChange={(next) => {
-                    if (next === 'code' || next === 'preview') setMode(next)
-                  }}
-                  className="mt-3 w-fit"
-                >
-                  <Segment.Item id="code">{t('chat.filePreview.code')}</Segment.Item>
-                  <Segment.Item id="preview">{t('chat.filePreview.preview')}</Segment.Item>
-                </Segment>
-              )}
-              <Sheet.CloseTrigger aria-label={t('common.close')} />
-            </Sheet.Header>
-
-            <Sheet.Body data-sheet-no-drag className="min-h-0 flex-1 overflow-hidden p-0">
-              {state.status === 'loading' && (
-                <div
-                  data-slot="file-preview-loading"
-                  role="status"
-                  className="flex h-full items-center justify-center gap-2 text-body-regular text-text-secondary"
-                >
-                  <Spinner size="sm" />
-                  {t('chat.filePreview.loading')}
-                </div>
-              )}
-              {state.status === 'error' && (
-                <div
-                  data-slot="file-preview-error"
-                  role="alert"
-                  className="p-6 text-body-regular text-status-danger wrap-break-word"
-                >
-                  {t('chat.filePreview.loadError', { error: state.message })}
-                </div>
-              )}
-              {state.status === 'loaded' && state.file.binary && (
-                <div
-                  data-slot="file-preview-binary"
-                  className="flex h-full items-center justify-center p-6 text-center text-body-regular text-text-secondary"
-                >
-                  {t('chat.filePreview.binary')}
-                </div>
-              )}
-              {state.status === 'loaded' && !state.file.binary && (
-                <>
-                  {mode === 'preview' && richPreview === 'markdown' ? (
-                    <MarkdownFilePreview content={state.file.content} path={reference.path} />
-                  ) : mode === 'preview' && richPreview === 'html' ? (
-                    <HtmlFilePreview content={state.file.content} name={name} />
-                  ) : (
-                    <div data-slot="file-preview-source" className="h-full overflow-auto bg-background-primary-default">
-                      <FilePreviewLines file={state.file} reference={reference} firstLine={state.firstLine} />
-                    </div>
-                  )}
-                </>
-              )}
-            </Sheet.Body>
-
-            <Sheet.Footer className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <div
-                data-slot="file-preview-metadata"
-                className="min-w-0 flex-1 text-caption-1-regular text-text-secondary"
-              >
-                {state.status === 'loaded' && (
-                  <>
-                    {t('chat.filePreview.metadata', {
-                      lines: state.file.total_lines,
-                      size: humanBytes(state.file.size_bytes),
-                    })}
-                    {state.file.truncated && ` · ${t('chat.filePreview.truncated')}`}
-                  </>
-                )}
-                {copyFailure !== null && (
-                  <p
-                    data-slot="file-preview-copy-error"
-                    role="alert"
-                    className="mt-1 text-status-danger wrap-break-word"
-                  >
-                    {t('common.copyFailed', { error: copyFailure })}
-                  </p>
-                )}
-                {editorError && (
-                  <p
-                    data-slot="file-preview-editor-error"
-                    role="alert"
-                    className="mt-1 text-status-danger wrap-break-word"
-                  >
-                    {editorError === 'editor_not_configured'
-                      ? t('chat.filePreview.editorNotConfigured')
-                      : t('chat.filePreview.editorError', { error: editorError })}
-                  </p>
-                )}
+                <Segment id="code">{t('chat.filePreview.code')}</Segment>
+                <Segment id="preview">{t('chat.filePreview.preview')}</Segment>
+              </SegmentedControl>
+            </div>
+          )}
+        </>
+      }
+      footer={
+        <div className="m-file-preview__footer">
+          <div data-slot="file-preview-metadata" className="m-file-preview__metadata">
+            {state.status === 'loaded' && (
+              <>
+                {t('chat.filePreview.metadata', {
+                  lines: state.file.total_lines,
+                  size: humanBytes(state.file.size_bytes),
+                })}
+                {state.file.truncated && ` · ${t('chat.filePreview.truncated')}`}
+              </>
+            )}
+            {copyFailure !== null && (
+              <p data-slot="file-preview-copy-error" role="alert" className="m-file-preview__footer-error">
+                {t('common.copyFailed', { error: copyFailure })}
+              </p>
+            )}
+            {editorError && (
+              <p data-slot="file-preview-editor-error" role="alert" className="m-file-preview__footer-error">
+                {editorError === 'editor_not_configured'
+                  ? t('chat.filePreview.editorNotConfigured')
+                  : t('chat.filePreview.editorError', { error: editorError })}
+              </p>
+            )}
+          </div>
+          <div data-slot="file-preview-actions" className="m-file-preview__actions">
+            <Button variant="secondary" icon={copied ? <Check /> : <Copy />} onPress={copyPath}>
+              {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
+            </Button>
+            <CopyAnnouncement copied={copied} failure={null} />
+            {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
+              <Button icon={<SquareArrowUpRight />} variant="secondary" onPress={openInEditor}>
+                {t('chat.filePreview.openInEditor')}
+              </Button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      <div className="m-file-preview__body">
+        {state.status === 'loading' && (
+          <div data-slot="file-preview-loading" role="status" className="m-file-preview__loading">
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
+            {t('chat.filePreview.loading')}
+          </div>
+        )}
+        {state.status === 'error' && (
+          <div data-slot="file-preview-error" role="alert" className="m-file-preview__error">
+            {t('chat.filePreview.loadError', { error: state.message })}
+          </div>
+        )}
+        {state.status === 'loaded' && state.file.binary && (
+          <div data-slot="file-preview-binary" className="m-file-preview__binary">
+            {t('chat.filePreview.binary')}
+          </div>
+        )}
+        {state.status === 'loaded' && !state.file.binary && (
+          <>
+            {mode === 'preview' && richPreview === 'markdown' ? (
+              <MarkdownFilePreview content={state.file.content} path={reference.path} />
+            ) : mode === 'preview' && richPreview === 'html' ? (
+              <HtmlFilePreview content={state.file.content} name={name} />
+            ) : (
+              <div data-slot="file-preview-source" className="m-file-preview__source">
+                <FilePreviewLines file={state.file} reference={reference} firstLine={state.firstLine} />
               </div>
-              <div data-slot="file-preview-actions" className="flex shrink-0 justify-end gap-2">
-                <Button variant="secondary" onPress={copyPath}>
-                  {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-                  {t(copied ? 'chat.filePreview.pathCopied' : 'chat.filePreview.copyPath')}
-                </Button>
-                <CopyAnnouncement copied={copied} failure={null} />
-                {canOpenEditor && state.status === 'loaded' && state.kind === 'project_file' && (
-                  <Button leadingIcon={SquareArrowUpRight} variant="secondary" onPress={openInEditor}>
-                    {t('chat.filePreview.openInEditor')}
-                  </Button>
-                )}
-              </div>
-            </Sheet.Footer>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+            )}
+          </>
+        )}
+      </div>
+    </Drawer>
   )
 }
 
@@ -349,9 +328,6 @@ export function FilePreviewProvider({
     setRequest(null)
     setState({ status: 'idle' })
   }, [])
-
-  // The back gesture is the Sheet's own level now — see `base/sheet.tsx`. It
-  // closes through `onOpenChange`, which is `closePreview`.
 
   const openPreview = React.useCallback(
     (reference: MarkdownFileReference) => {

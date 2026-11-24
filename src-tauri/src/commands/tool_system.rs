@@ -129,6 +129,7 @@ pub async fn create_custom_tool(
         category_id: request.category_id.0,
         parameters_schema: Json(request.parameters_schema.0.unwrap_or_else(default_parameters_schema)),
         command: request.command,
+        execution: None,
         args_template: request.args_template.0,
         working_directory: request.working_directory.0,
         timeout_ms: request.timeout_ms.0,

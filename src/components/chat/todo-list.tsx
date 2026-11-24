@@ -1,7 +1,8 @@
-import { Square, SquareCheck, SquareMinus } from '@keyline-icons/react/two-tone'
-import { useTranslation } from 'react-i18next'
-
-import { cx } from '@/utils/cx'
+import {
+  ToolChecklist,
+  ToolChecklistRow,
+  ToolChecklistStatusIcon,
+} from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import type { TodoItemInfoResponse, TodoItemStatus } from '@/types'
 
 /**
@@ -55,61 +56,13 @@ export function todoProgress(todos: TodoDraft[]) {
 }
 
 export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; className?: string }) {
-  const { t } = useTranslation()
-  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareMinus : Square
-  return (
-    // Named rather than hidden: the status is carried by this icon, by the
-    // colour and by a strikethrough, and none of the three reaches a screen
-    // reader. Hidden, the list read as a run of sentences with no state at all.
-    <Icon
-      role="img"
-      aria-label={t(`chat.todo.status.${status}`)}
-      data-slot="todo-status-icon"
-      data-status={status}
-      className={cx(
-        'size-3.5 shrink-0',
-        status === 'completed' && 'text-status-success-soft-foreground',
-        status === 'in_progress' && 'text-status-info-soft-foreground',
-        status === 'pending' && 'text-text-secondary',
-        className,
-      )}
-    />
-  )
+  return <ToolChecklistStatusIcon status={status} className={className} />
 }
 
 export function TodoItemRow({ item, className }: { item: TodoDraft; className?: string }) {
-  return (
-    <div
-      role="listitem"
-      data-slot="todo-item"
-      data-status={item.status}
-      className={cx('flex items-start gap-2 text-caption-1-regular', className)}
-    >
-      <TodoStatusIcon status={item.status} className="mt-px" />
-      <span
-        data-slot="todo-item-content"
-        className={cx(
-          'min-w-0 flex-1',
-          item.status === 'completed' && 'text-text-secondary line-through',
-          item.status === 'in_progress' && 'text-caption-1-medium text-text-primary',
-          item.status === 'pending' && 'text-text-secondary',
-        )}
-      >
-        {item.content}
-      </span>
-    </div>
-  )
+  return <ToolChecklistRow item={item} className={className} />
 }
 
 export function TodoItemList({ todos, className }: { todos: TodoDraft[]; className?: string }) {
-  return (
-    <div role="list" data-slot="todo-item-list" className={cx('flex flex-col gap-1.5', className)}>
-      {/* Index as key: a `TodoDraft` has no id — neither the streamed ones nor
-          the stored ones carry one — and the list is replaced wholesale rather
-          than reordered, so position is stable for as long as it exists. */}
-      {todos.map((item, i) => (
-        <TodoItemRow key={i} item={item} />
-      ))}
-    </div>
-  )
+  return <ToolChecklist items={todos} className={className} />
 }

@@ -1,6 +1,8 @@
+import './auxiliary-model-settings.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { SettingsHeader } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -63,11 +65,11 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   }
 
   return (
-    <div data-slot="sub-agent-kind" className="space-y-1.5">
-      <p data-slot="sub-agent-kind-label" className="block text-caption-1-regular text-text-secondary">
+    <div data-slot="sub-agent-kind" className="m-sub-agent__kind">
+      <p data-slot="sub-agent-kind-label" className="m-sub-agent__label">
         {t(`settings.subAgent.${kind}`)}
       </p>
-      <p data-slot="sub-agent-kind-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="sub-agent-kind-hint" className="m-sub-agent__hint">
         {t(`settings.subAgent.${kind}Hint`)}
       </p>
       <ProviderModelPicker
@@ -88,13 +90,9 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
         isModelDisabledWithoutProvider
       />
       {error && (
-        <p
-          data-slot="sub-agent-kind-error"
-          role="alert"
-          className="text-caption-1-regular text-status-danger break-all"
-        >
+        <Alert data-slot="sub-agent-kind-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
     </div>
   )
@@ -111,7 +109,7 @@ export function SubAgentSettings({ providers }: { providers: ProviderInfoRespons
   const { t } = useTranslation()
 
   return (
-    <div data-slot="sub-agent-settings" className="space-y-4">
+    <div data-slot="sub-agent-settings" className="m-sub-agent">
       <SettingsHeader title={t('settings.subAgent.title')} subtitle={t('settings.subAgent.subtitle')} />
       {KINDS.map((kind) => (
         <KindRow key={kind} kind={kind} providers={providers} />

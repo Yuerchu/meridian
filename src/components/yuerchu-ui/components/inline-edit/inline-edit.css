@@ -1,0 +1,93 @@
+@layer components {
+  .ui-inline-edit {
+    --ui-inline-edit-height: var(--control-md);
+
+    display: flex;
+    min-width: 0;
+    /* 文字和外面的文字左边对齐：内边距用负外边距抵掉（写在最外层，写在按钮上会把按钮挤窄） */
+    margin-inline: calc(-1 * var(--space-2));
+  }
+
+  .ui-inline-edit[data-size="sm"] {
+    --ui-inline-edit-height: var(--control-sm);
+  }
+
+  /* 显示态：看起来是文字，悬停时露出底色和笔的图标，提示可以改 */
+  .ui-inline-edit__display {
+    /* 给读屏的隐藏文字（VisuallyHidden，绝对定位）以按钮为准：否则它的定位参照在表格的滚动容器外面，窄屏时撑宽整页 */
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 100%;
+    min-height: var(--ui-inline-edit-height);
+    padding: 0 var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    text-align: start;
+    cursor: text;
+    transition: background-color var(--dur-fast) var(--ease-standard), border-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-inline-edit__display[data-hovered]:not([data-disabled]) {
+    border-color: var(--border);
+    background: var(--surface-sunken);
+  }
+
+  .ui-inline-edit__display[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-inline-edit__display[data-disabled] {
+    cursor: default;
+  }
+
+  .ui-inline-edit__value {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* wrap：放不下时换行（显示态只有最小高度，换行后按钮跟着长高） */
+  .ui-inline-edit[data-wrap] .ui-inline-edit__value {
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  /* "未填写"是要读的文字：用次要文字色（--text-muted 不满足 4.5:1） */
+  .ui-inline-edit__value[data-empty] {
+    color: var(--text-secondary);
+  }
+
+  .ui-inline-edit__icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--text-secondary);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-inline-edit__icon svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-inline-edit__display[data-hovered]:not([data-disabled]) .ui-inline-edit__icon,
+  .ui-inline-edit__display[data-focus-visible] .ui-inline-edit__icon {
+    opacity: 1;
+  }
+
+  /* 编辑态：输入框占满，和显示态的文字左边对齐（内边距相同） */
+  .ui-inline-edit__field {
+    flex: 1;
+  }
+
+  .ui-inline-edit[data-size="md"] .ui-inline-edit__field {
+    --ui-input-height: var(--control-md);
+  }
+}

@@ -1,8 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { EmptyState as ProEmptyState } from '@/components/base'
-import { PromptSuggestion } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ErrorAlert } from '@/components/ui/error-alert'
+import './empty-state.css'
 
 import { useIsOffline } from '@/hooks/use-connection-state'
 import { usePlatform } from '@/hooks/use-platform'
@@ -28,15 +28,13 @@ export function StarterPrompts({ disabled, onSelect }: { disabled?: boolean; onS
   const { t } = useTranslation()
 
   return (
-    <PromptSuggestion>
-      <PromptSuggestion.Items>
-        {STARTER_PROMPT_KEYS.map((key) => (
-          <PromptSuggestion.Item key={key} isDisabled={disabled} onPress={() => onSelect(t(key))}>
-            {t(key)}
-          </PromptSuggestion.Item>
-        ))}
-      </PromptSuggestion.Items>
-    </PromptSuggestion>
+    <div data-slot="prompt-suggestion" className="m-welcome__suggestions">
+      {STARTER_PROMPT_KEYS.map((key) => (
+        <Button key={key} size="sm" variant="ghost" isDisabled={disabled} onPress={() => onSelect(t(key))}>
+          {t(key)}
+        </Button>
+      ))}
+    </div>
   )
 }
 
@@ -56,6 +54,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const headingId = useId()
   const settings = useTurnSettings(null)
   // The same rule as the composer in a conversation: creating one on a machine
   // that is not answering fails, so the field does not pretend otherwise.
@@ -215,12 +214,12 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   }, [])
 
   return (
-    <div data-slot="empty-state" className="flex h-full overflow-y-auto px-4">
-      <ProEmptyState size="lg" className="mx-auto my-auto w-full max-w-2xl gap-6 px-0 py-8">
-        <ProEmptyState.Header>
-          <ProEmptyState.Title className="text-title-2-medium">{t('chat.empty.subtitle')}</ProEmptyState.Title>
-        </ProEmptyState.Header>
-        <ProEmptyState.Content className="w-full gap-4">
+    <div data-slot="empty-state" className="m-welcome">
+      <section className="m-welcome__body" aria-labelledby={headingId}>
+        <h3 id={headingId} className="m-welcome__heading">
+          {t('chat.empty.subtitle')}
+        </h3>
+        <div className="m-welcome__composer">
           <InputBar
             embedded
             conversationId={null}
@@ -268,8 +267,8 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             />
           )}
           <StarterPrompts disabled={locked} onSelect={handleValueChange} />
-        </ProEmptyState.Content>
-      </ProEmptyState>
+        </div>
+      </section>
     </div>
   )
 }

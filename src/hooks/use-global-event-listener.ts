@@ -7,7 +7,6 @@ import i18n from '@/i18n'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
 import { isAskTool } from '@/lib/tool-catalog'
-import type { PlanReviewEventInfo } from '@/stores/plan-review-store'
 import { receivePlanReview } from '@/lib/plan-review-sync'
 import { useSystemNoticeStore } from '@/stores/system-notice-store'
 import { useBoardStore } from '@/stores/board-store'
@@ -96,10 +95,6 @@ async function trySendNotification(title: string, body: string) {
   if (granted) {
     sendNotification({ title, body })
   }
-}
-
-function planContinuationNeedsAttention(state: PlanReviewEventInfo['delivery_state'] | undefined): boolean {
-  return state === 'held' || state === 'in_doubt'
 }
 
 export function useGlobalEventListener() {
@@ -398,21 +393,7 @@ export function useGlobalEventListener() {
     })
 
     const planReviewUpdatedUnlisten = listen('plan-review-updated', (event) => {
-      const received = receivePlanReview(event.payload)
-      // `queued` remains visible in the app, but it is the normal automatic
-      // handoff and usually lasts only a moment. An OS interruption belongs to
-      // the two states where that handoff stopped and a person can recover it.
-      if (
-        received.accepted &&
-        planContinuationNeedsAttention(event.payload.delivery_state) &&
-        !planContinuationNeedsAttention(received.previous?.delivery_state) &&
-        shouldNotify(event.payload.conversation_id)
-      ) {
-        trySendNotification(
-          getConversationTitle(event.payload.conversation_id),
-          i18n.t('chat.plan.continuationNeedsAttention'),
-        )
-      }
+      receivePlanReview(event.payload)
     })
 
     return () => {

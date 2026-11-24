@@ -1,0 +1,57 @@
+@layer components {
+  .m-turn {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .m-turn__render-error {
+    padding-block: var(--space-2);
+    font: var(--text-caption);
+    color: var(--danger-fg);
+  }
+
+  .m-turn__question[data-continues-run='true'] {
+    margin-top: -22px;
+  }
+
+  .m-turn__question-pager {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: calc(-1 * var(--space-5));
+  }
+
+  .m-turn__answer-pager {
+    display: flex;
+    padding-inline-start: var(--space-10);
+    margin-top: calc(-1 * var(--space-5));
+  }
+
+  .m-turn__status {
+    padding-inline-start: var(--space-10);
+    font: var(--text-caption);
+  }
+
+  .m-turn__status-crashed {
+    color: var(--warning-fg);
+  }
+
+  .m-turn__date {
+    font: var(--text-caption);
+  }
+
+  .m-turn__woken {
+    padding-inline-start: var(--space-10);
+    font: var(--text-caption);
+  }
+
+  .m-turn__answer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .m-turn__failure {
+    padding-inline-start: var(--space-10);
+  }
+}

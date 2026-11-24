@@ -11,6 +11,59 @@ paths:
 
 # UI conventions
 
+## Migration in progress: boardui → Yuerchu UI (branch `refactor/yuerchu-ui`)
+
+The UI is moving from boardui + Tailwind to Yuerchu UI, a component library of
+our own copied into `src/components/yuerchu-ui/` by `scripts/yuerchu-ui.mjs`
+(`pnpm ui:sync`, `pnpm ui:check`; ledger `yuerchu-ui.json`). The switch is
+one-shot and has no compatibility layer: boardui's theme is already deleted, so
+every boardui class or variable still in the tree resolves to nothing until its
+file is rewritten. **Everything below this section describes the boardui system
+being removed.** Where it disagrees with this section, this section wins. New
+and rewritten code follows these rules:
+
+- **The library's rules are the constitution**: `docs/design/DESIGN.md`,
+  `A11Y.md` and `AGENTS.md` ("UI 规则") in the Yuerchu UI repository. A copied
+  file is never edited (`ui:check` fails on any byte); a missing ability or a
+  bug is an issue there, and comes back with the next sync.
+- **A library component before anything hand-made.** Import from
+  `@/components/yuerchu-ui/components/<name>/<name>`. `components/base/` is the
+  boardui layer and is deleted file by file as its callers move.
+- **No Tailwind in new or rewritten code — the business layer is plain CSS.**
+  Each component that needs styles has a sibling `<name>.css`, imported by the
+  `.tsx`, written in `@layer components`. Classes are `.m-<component>` and
+  `.m-<component>__<part>`; variants and states are `data-*` attributes (React
+  Aria's own: `data-hovered`, `data-pressed`, … with hover and press excluding
+  `[data-disabled]`), never modifier classes. Tailwind is still loaded only so
+  the screens not yet converted keep their layout; it maps no token and goes
+  with the last converted file. `cx()` and `tv()` are not used in new code.
+- **Tokens only**: colour from the library's semantic tokens (`--text`,
+  `--text-secondary`, `--surface`, `--border`, `--accent`, `--success-fg`, …),
+  never a literal or a primitive (`--neutral-*`); type as `font: var(--text-*)`;
+  spacing `--space-*`; radius `--radius-control / item / panel / surface /
+  pill`; motion `--dur-*` / `--ease-*`; z-index `--z-*`. Meridian's own tokens
+  (bubbles, safe-area insets, `--content-settings`) are in
+  `src/styles/meridian.css`, defined on the library's.
+- **Changing a library component's look from outside** is done only through the
+  `--ui-<component>-*` variables it reads, never by a second class on it.
+- **Ink is the primary action and the selection; blue (accent) is emphasis**,
+  once or twice a view. Info is neutral grey. Button variants are `primary /
+  secondary / ghost / destructive`, sizes `sm / md / lg` (boardui's `xs` goes to
+  `sm`).
+- **Theme and motion** are `data-theme` and `data-motion` on `<html>`; no
+  `.dark` class, no reduced-motion branch in JS.
+- **Before replacing a base component, list what it put on the DOM by
+  itself** — `role`, `aria-*`, `data-*`, default delays, default variants —
+  and decide each against the library's default. A codemod sees only what the
+  callers wrote. boardui's `Alert` set `role="alert"` on every alert without
+  being asked; the library announces only with `shouldAnnounce`, so every alert
+  whose caller had not repeated the role went silent, and two tests out of
+  thirty-five call sites were all that noticed.
+- The CSS gate is the library's stylelint rules, once they accept a consumer's
+  prefix and token files (Yuerchu/ui#564). Until then, review against this list.
+
+# The boardui system (being removed)
+
 Moved verbatim out of `CLAUDE.md` on 2026-09-30, when it outgrew the context
 budget; Claude Code loads it when a file matching `paths` is read. "Above",
 "below" and "see X" may name a section that is now in `CLAUDE.md` or in
@@ -119,7 +172,7 @@ What remains under `components/ui/` is Meridian-specific domain components (bubb
 - **Copy is plain, literal and bilingual.** Every string exists in `zh-CN` and `en`, and Chinese is the language the owner reads the app in, so a layout is checked in Chinese first. Sentences are sentence case and nothing is ALL CAPS. The user is "you"; the app speaks impersonally and never in a marketing voice — no exclamation marks, no emoji in chrome. A hint states the consequence precisely ("Shell used by the run_command tool. Bash (Git Bash) is recommended for UTF-8 support."); an error says what failed and passes the cause through ("Could not create the conversation: {{error}}"); a destructive action names its scope ("delete this exchange onward"); a recommended choice is marked inline ("Enabled (recommended)" / "开启(推荐)"). Technical nouns stay verbatim — tool names in code (`run_command`), model ids, "MCP", "OneBot" — rather than being translated.
 - **Fonts are defined in exactly one file.** The registry's `theme.css` reads `--font-inter` and `--font-mono-source` and is not edited; `src/styles/fonts.css` defines them as OS stacks (`--font-inter-fallback` / `--font-mono-source-fallback`, generic family last) and `src/styles/fonts.test.ts` holds the chain together, since redefining `--font-sans` anywhere afterwards cuts `fonts.css` out without a visible error. Settings → General prepends a family already on this device onto those stacks (`src/lib/fonts.tsx`); the picker lists them through `list_system_fonts` (DirectWrite on Windows, a directory walk elsewhere) and previews each name with `style.fontFamily` of that listed name — that inline style is the preview, not a second stack. Persistence is `localStorage` (`meridian-font-sans` / `meridian-font-mono`) plus the pre-paint script in `index.html`, the same pattern as the theme, so a remote client paints with the fonts on the device that is drawing. An empty or junk value is the CSS default.
 - **Motion is the recipes in `motion.md`, from one file.** `overlay-motion.ts` carries them: popovers and menus 150ms fade + `scale-95` + 2px blur with the origin following placement; tooltips 200ms `scale-90` with a 4px blur; modals 300ms on `cubic-bezier(0.32,0.72,0,1)` condensing from `scale-[0.85]` with a 4px blur, over a `bg-black/70` scrim, on the registry settings-modal's surface (`rounded-3xl bg-background-full shadow-xs`, no border). Hover colour changes are `transition-colors duration-150` everywhere, dense rows included — the old rule that high-frequency rows take no transition was ours, not BoardUI's, and is void. Press feedback is a colour step and never a scale. Every keyframe animation has a reduced-motion guard, and the `animation-needs-keyframes` rule checks that the keyframes exist at all.
-- **Notifications are the registry's `notification` item, unmodified but for the React Aria contract.** `base/notification/notification.tsx` is the official file (`boardui.json` records its two patches: `onPress` for the RAC `Button`/`CloseButton`, and keyline icons). There is no toast layer and no RAC `ToastQueue`: the shell mounts one `NotificationViewport` at `top-center` — the bottom is the composer's and, on Android, the keyboard's — with its top offset widened at the call site to clear `--safe-top`. The status vocabulary is the registry's own (`neutral` / `information` / `success` / `error`); there is no warning tier, and a warning is `neutral`. An approval notification is `dismissible={false}` because deferring is the only way past it. The viewport's `z-100` is the registry's own and is not overridden at the call site. The full queue is the registry's `notification-center` behind its app-shell `notification-bell`, both under `components/application/`, patched (see `boardui.json`) only with optional props — tabs, labels, `readable`, a `ReactNode` description, the bell's labels/`centerProps`/`before`/controlled open — plus the RAC/icon/motion changes; with no props they render what the registry does.
+- **(Removed 2026-11: the library's `NotificationStack` and `Toast` replaced all of this — see `frontend.md`.) Notifications were the registry's `notification` item, unmodified but for the React Aria contract.** `base/notification/notification.tsx` is the official file (`boardui.json` records its two patches: `onPress` for the RAC `Button`/`CloseButton`, and keyline icons). There is no toast layer and no RAC `ToastQueue`: the shell mounts one `NotificationViewport` at `top-center` — the bottom is the composer's and, on Android, the keyboard's — with its top offset widened at the call site to clear `--safe-top`. The status vocabulary is the registry's own (`neutral` / `information` / `success` / `error`); there is no warning tier, and a warning is `neutral`. An approval notification is `dismissible={false}` because deferring is the only way past it. The viewport's `z-100` is the registry's own and is not overridden at the call site. The full queue is the registry's `notification-center` behind its app-shell `notification-bell`, both under `components/application/`, patched (see `boardui.json`) only with optional props — tabs, labels, `readable`, a `ReactNode` description, the bell's labels/`centerProps`/`before`/controlled open — plus the RAC/icon/motion changes; with no props they render what the registry does.
 - **React Aria's state attributes live where React Aria puts them.** `data-expanded` / `data-entering` / `data-exiting` / `data-hovered` / `data-pressed` / `data-focus-visible` / `data-selected` — on the component *root*, styled from there with a descendant selector or a named `group`. `data-[selected=true]:` on a `CellSwitch.Control` matches nothing. Base components style from these rather than from `:hover`/`:active`, because `data-hovered` does not stick after a touch and `data-pressed` fires for keyboard presses too.
 - **An icon-only control is named by its own label, and a tooltip is optional.** A tooltip contributes `aria-describedby`, so it describes a control without naming it; `icon-only-needs-name` therefore asks for `aria-label` (or `aria-labelledby`) on anything marked `iconOnly`, and nothing more. BoardUI's own icon buttons carry the label alone, so requiring a `Tooltip` ancestor as well — the old rule — was stricter than the constitution and is gone. Where a tooltip does help, wrap a child in `Tooltip.Trigger` only when it cannot take focus itself: around a real button that wrapper becomes a second tab stop that does nothing.
 - **Controls and dialogs are the base layer's, not the browser's.** `<details>`, `<progress>`, `<meter>`, `<select>` and friends, and `alert` / `prompt` / `window.confirm`, are UI nobody designed, and the lint names the base replacement for each (`Disclosure`, `ProgressCircle`, `Select`, `useConfirm` / `AlertDialog`). A native `title` is no longer on that list: the ban came from the HeroUI-era taste profile, not from BoardUI, and it bought a tab stop or a wrapper per hint for the sake of a delay and a font. Use `title` for plain overflow text; reach for `ui/hint.tsx` (a `Tooltip.Trigger` rendered *as* the text's own element) when the extra text is something a keyboard user needs too. Text that CSS cuts off (`truncate`, `line-clamp-*`) takes `onPointerEnter={titleIfTruncated}` (`lib/truncation.ts`), which sets that `title` only while the text is actually cut off — measured with a `Range` on arrival, because `scrollWidth` rounds away a sub-pixel overflow and a few hundred rows each observing their width is a cost for a question asked on hover. Not on an element whose text content is more than the text (an icon's label, a badge beside it): the title would be the two run together.

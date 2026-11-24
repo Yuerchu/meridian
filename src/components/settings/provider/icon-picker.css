@@ -1,0 +1,59 @@
+@layer components {
+  .m-icon-picker__trigger {
+    width: 12.625rem;
+    justify-content: flex-start;
+  }
+
+  .m-icon-picker__trigger-content {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-icon-picker__trigger-label,
+  .m-icon-picker__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-drawer.m-icon-picker {
+    padding-block-end: var(--safe-bottom);
+  }
+
+  .m-icon-picker__grid {
+    display: grid;
+    max-height: 40vh;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-1);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .m-icon-picker__item {
+    flex-direction: column;
+    justify-content: center;
+    padding: var(--space-2);
+    text-align: center;
+  }
+
+  .m-icon-picker__name {
+    width: 100%;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-icon-picker__empty {
+    margin: 0;
+    padding: var(--space-3);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  @container (width >= 420px) {
+    .m-icon-picker__grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+}

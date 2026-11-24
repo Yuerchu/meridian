@@ -51,7 +51,7 @@ export type ToolResultView =
 export type IdentKind = 'path' | 'command' | 'text'
 
 /** The badge a finished call folds into. */
-export type FoldKind = 'commands' | 'files' | 'searches'
+export type FoldKind = 'commands' | 'files' | 'searches' | 'skills' | 'memory' | 'context'
 
 /** Which arguments describe a file change, and so which diff the card draws. */
 export type DiffKind = 'write' | 'edit' | 'patch'
@@ -272,8 +272,8 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     diff: 'patch',
     touches: { op: 'patch' },
   },
-  delete_file: plain('native', { touches: { op: 'delete', key: 'path' } }),
-  move_file: plain('native', { touches: { op: 'move' } }),
+  delete_file: plain('native', { ident: path('path'), touches: { op: 'delete', key: 'path' } }),
+  move_file: plain('native', { ident: path('from'), touches: { op: 'move' } }),
 
   // ---- shell ----
   run_command: {
@@ -339,13 +339,11 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   WebSearch: {
     side: 'hosted',
     twin: 'web-search',
-    args: 'fields',
-    result: 'markdown',
+    args: 'own-block',
+    result: 'own-block',
     ident: text('query'),
+    block: 'web-search',
     params: ['query', 'allowed_domains', 'blocked_domains'],
-    differs: {
-      block: 'its result is the tool’s own text ("Links: [...]"), which `WebSearchBlock` does not parse yet',
-    },
   },
   WebFetch: {
     side: 'hosted',
@@ -354,7 +352,7 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     ident: text('url'),
     params: ['url', 'prompt'],
   },
-  ToolSearch: unrecorded(['query', 'max_results'], { result: 'text', ident: text('query') }),
+  ToolSearch: unrecorded(['query', 'max_results'], { result: 'text', ident: text('query'), fold: 'context' }),
 
   // ---- plans ----
   enter_plan: {
@@ -396,7 +394,7 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     params: ['allowedPrompts', 'plan'],
   },
   // `{content, generation, sha256, file_sync_state}` — the plan is Markdown.
-  read_plan: { side: 'native', args: 'fields', result: 'structured' },
+  read_plan: { side: 'native', args: 'fields', result: 'structured', fold: 'context' },
   // The patch is an `apply_patch` envelope against `plan.md`, which is the
   // app's and not the project's: it is drawn as a diff and touches nothing.
   update_plan: { side: 'native', args: 'diff', result: 'structured', diff: 'patch' },
@@ -449,12 +447,27 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
     ],
     differs: { block: 'a hosted sub-agent’s own calls do not reach this app, so there is no group to draw' },
   },
-  load_skill: { side: 'native', twin: 'skill', args: 'fields', result: 'markdown', ident: text('skill_name') },
+  load_skill: {
+    side: 'native',
+    twin: 'skill',
+    args: 'fields',
+    result: 'markdown',
+    ident: text('skill_name'),
+    fold: 'skills',
+  },
   // Not in `sdk-tools.d.ts`.
-  Skill: { side: 'hosted', twin: 'skill', args: 'fields', result: 'markdown', ident: text('skill'), params: ['skill'] },
+  Skill: {
+    side: 'hosted',
+    twin: 'skill',
+    args: 'fields',
+    result: 'markdown',
+    ident: text('skill'),
+    fold: 'skills',
+    params: ['skill'],
+  },
   TaskCreate: unrecorded(['subject', 'description', 'activeForm', 'metadata']),
-  TaskGet: unrecorded(['taskId']),
-  TaskList: unrecorded([]),
+  TaskGet: unrecorded(['taskId'], { fold: 'context' }),
+  TaskList: unrecorded([], { fold: 'context' }),
   TaskUpdate: unrecorded([
     'taskId',
     'subject',
@@ -469,27 +482,27 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   Workflow: unrecorded(['script', 'name', 'description', 'title', 'args', 'scriptPath', 'resumeFromRunId']),
   ReportFindings: unrecorded(['level', 'findings']),
   // Not in `sdk-tools.d.ts`; nothing here reads its arguments.
-  LSP: unrecorded([]),
+  LSP: unrecorded([], { fold: 'context' }),
 
   // ---- memory, redaction, diagnostics: sentences and line lists ----
-  save_memory: plain('native'),
-  recall_memory: plain('native'),
-  list_memories: plain('native'),
-  delete_memory: plain('native'),
+  save_memory: plain('native', { fold: 'memory' }),
+  recall_memory: plain('native', { fold: 'memory' }),
+  list_memories: plain('native', { fold: 'memory' }),
+  delete_memory: plain('native', { fold: 'memory' }),
   add_redaction_rule: plain('native'),
-  list_redaction_rules: plain('native'),
+  list_redaction_rules: plain('native', { fold: 'context' }),
   remove_redaction_rule: plain('native'),
-  read_app_logs: plain('native'),
+  read_app_logs: plain('native', { fold: 'context' }),
   // A background command's log, its stop and the list: lines the backend
   // writes, a status line then the output.
-  read_background_output: plain('native', { ident: text('task_id') }),
+  read_background_output: plain('native', { ident: text('task_id'), fold: 'context' }),
   stop_background_task: plain('native', { ident: text('task_id') }),
-  list_background_tasks: plain('native'),
-  conversation_usage: plain('native'),
-  read_conversation: plain('native'),
+  list_background_tasks: plain('native', { fold: 'context' }),
+  conversation_usage: plain('native', { fold: 'context' }),
+  read_conversation: plain('native', { fold: 'context' }),
 
   // ---- stickers and voice: JSON answers ----
-  list_stickers: { side: 'native', args: 'fields', result: 'structured' },
+  list_stickers: { side: 'native', args: 'fields', result: 'structured', fold: 'context' },
   send_sticker: { side: 'native', args: 'fields', result: 'structured', ident: text('query', 'sticker_id') },
   send_voice: { side: 'native', args: 'fields', result: 'structured' },
 

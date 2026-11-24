@@ -156,7 +156,7 @@ describe('StickerImage', () => {
     // Playing says nothing about the still frame under it; freezing shows
     // that frame, so it has to have been drawn first.
     await waitFor(() =>
-      expect(container.querySelector('[data-slot="sticker-thumb-still"]')).not.toHaveClass('invisible'),
+      expect(container.querySelector('[data-slot="sticker-thumb-still"]')).not.toHaveAttribute('data-hidden'),
     )
 
     vi.useFakeTimers()

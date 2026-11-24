@@ -1,0 +1,48 @@
+@layer components {
+  .m-sub-agent-sheet__title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-sub-agent-sheet__kind {
+    display: block;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-sub-agent-sheet__body {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    margin: calc(-1 * var(--space-3)) calc(-1 * var(--ui-drawer-padding)) calc(-1 * var(--ui-drawer-padding));
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-sub-agent-sheet__error {
+    margin: var(--space-4) var(--space-4) 0;
+  }
+
+  .m-sub-agent-sheet__empty {
+    margin: 0;
+    padding: var(--space-8) var(--space-6);
+    text-align: center;
+    font: var(--text-body);
+    color: var(--text-secondary);
+  }
+
+  .m-sub-agent-sheet__loading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-6);
+  }
+
+  .m-sub-agent-sheet__outgoing-placeholder {
+    align-self: end;
+    width: 75%;
+  }
+}

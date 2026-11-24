@@ -1,4 +1,4 @@
-import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
+import { ThinkingState } from '@/components/yuerchu-ui/components/thinking-state/thinking-state'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
@@ -20,11 +20,12 @@ import { PlanCardSections } from './agent-plan'
 export default function Agent() {
   return (
     <>
-      <Section title="AgentThinking / 等待指示">
-        <div className="flex flex-wrap gap-6">
-          {(['wave', 'spin', 'stars', 'infinity'] as const).map((variant) => (
-            <AgentThinking key={variant} variant={variant} label={variant} showTimer />
-          ))}
+      <Section title="ThinkingState / 思考状态（库）">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+          <ThinkingState status="thinking">正在分析上下文与依赖关系…</ThinkingState>
+          <ThinkingState status="done" duration={1.4}>
+            已完成工具调用与方案整理。
+          </ThinkingState>
         </div>
       </Section>
       <Section title="ToolCallBlock / run_agent">

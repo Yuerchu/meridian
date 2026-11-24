@@ -1,0 +1,366 @@
+/* ---------------------------------------------------------------------------
+ * @yuerchu/ui tokens —— 规范见 docs/design/DESIGN.md 第 4、5 节
+ *
+ * 分层：
+ *   基础色板（--neutral-* --blue-* …）  Tailwind v4.3.3 默认值，原样抄录
+ *   语义层（--surface --accent …）      组件只引用这一层
+ *   组件层（--ui-<组件>-*）            写在各组件自己的 .css 里，默认值引用语义层
+ *
+ * 这个文件也是文档站 token 页的数据来源（docgen 解析）。行尾注释会显示在文档里。
+ * ------------------------------------------------------------------------- */
+
+@layer theme {
+  :root {
+    /* ---------- 基础色板 ---------- */
+    --neutral-50: oklch(98.5% 0 0);
+    --neutral-100: oklch(97% 0 0);
+    --neutral-200: oklch(92.2% 0 0);
+    --neutral-300: oklch(87% 0 0);
+    --neutral-400: oklch(70.8% 0 0);
+    --neutral-500: oklch(55.6% 0 0);
+    --neutral-550: oklch(52% 0 0); /* 不在 Tailwind 色阶上：次要文字在 neutral-100 和各种状态浅底上也要 4.5 */
+    --neutral-600: oklch(43.9% 0 0);
+    --neutral-700: oklch(37.1% 0 0);
+    --neutral-800: oklch(26.9% 0 0);
+    --neutral-900: oklch(20.5% 0 0);
+    --neutral-950: oklch(14.5% 0 0);
+
+    --blue-300: oklch(80.9% 0.105 251.813);
+    --blue-400: oklch(70.7% 0.165 254.624);
+    --blue-500: oklch(62.3% 0.214 259.815);
+    --blue-600: oklch(54.6% 0.245 262.881);
+    --blue-700: oklch(48.8% 0.243 264.376);
+
+    --green-300: oklch(87.1% 0.15 154.449);
+    --green-400: oklch(79.2% 0.209 151.711);
+    --green-500: oklch(72.3% 0.219 149.579);
+    --green-800: oklch(44.8% 0.119 151.328);
+
+    --amber-300: oklch(87.9% 0.169 91.605);
+    --amber-400: oklch(82.8% 0.189 84.429);
+    --amber-500: oklch(76.9% 0.188 70.08);
+    --amber-700: oklch(55.5% 0.163 48.998);
+    --amber-800: oklch(47.3% 0.137 46.201);
+
+    --red-300: oklch(80.8% 0.114 19.571);
+    --red-400: oklch(70.4% 0.191 22.216);
+    --red-500: oklch(63.7% 0.237 25.331);
+    --red-600: oklch(57.7% 0.245 27.325);
+    --red-700: oklch(50.5% 0.213 27.518);
+
+    /* 图表配色专用（--series-*），不用在界面上；数值经过 dataviz 校验器检查，见 DESIGN.md §4.10 */
+    --orange-600: oklch(63.4% 0.184 39.9);
+    --emerald-600: oklch(59.3% 0.125 164.8);
+    --violet-400: oklch(67% 0.145 286.8);
+    --violet-500: oklch(58.9% 0.224 286.6);
+
+    --white: oklch(100% 0 0);
+
+    /* ---------- 语义色：亮色 ---------- */
+    color-scheme: light;
+    --background: var(--white); /* 页面底色 */
+    --surface: var(--white); /* 卡片、弹层 */
+    --surface-muted: var(--neutral-100); /* 悬停、分段控件底 */
+    --surface-inset: oklch(0% 0 0 / 0.04); /* 沉进表面的槽：托盘壳、卡片和对话框的底栏。叠在任何表面上都更暗（不用 muted：暗色里 muted 更浅） */
+    --surface-sunken: var(--neutral-50); /* 侧边栏、凹陷区域 */
+    --border: var(--neutral-200); /* 默认边框、分隔线 */
+    --border-strong: var(--neutral-300); /* 次按钮、标签等装饰性轮廓（不承担可辨识度） */
+    --border-hover: var(--neutral-400); /* --border-strong 的悬停 */
+    --border-control: var(--neutral-500); /* 输入框、Select、勾选框、单选、开关关闭态：边框就是控件的轮廓，需要 3:1 */
+    --border-control-hover: var(--neutral-600); /* --border-control 的悬停：比它更显眼 */
+    --scrollbar-thumb: var(--border-hover); /* 滚动条滑块（全站统一，规则在 base.css）；跟着 --border-hover 切换亮暗 */
+    --text: var(--neutral-950); /* 正文 */
+    --text-secondary: var(--neutral-550); /* 次要文字 */
+    --text-muted: var(--neutral-400); /* 仅限禁用态（占位符用 --text-secondary） */
+
+    --ink: var(--neutral-950); /* 主按钮、选中态、控件开启态 */
+    --ink-hover: var(--neutral-800);
+    --ink-active: var(--neutral-700);
+    --ink-fg: var(--white); /* Ink 上的文字 */
+
+    --accent: var(--blue-500); /* 图形标记：焦点环、进度、指示条 */
+    --accent-strong: var(--blue-700); /* 强调文字 */
+    --accent-subtle: color-mix(in srgb, var(--blue-500) 12%, transparent); /* 浅蓝底 */
+    --accent-fg: var(--white); /* 实心强调色块上的文字 */
+    --accent-glint: var(--white); /* 强调色块上的高光（亮色、暗色都是白）：Slider 最后一档的浪头、刻度 */
+    --accent-solid: var(--blue-600); /* 带文字的实心强调色块（accent 控件的开启态）：白字在 blue-500 上只有 3.7 */
+    --accent-solid-hover: var(--blue-700);
+
+    --info-bg: var(--neutral-100); /* info 用中性灰 */
+    --info-fg: var(--neutral-600);
+    --success-bg: color-mix(in srgb, var(--green-500) 12%, transparent);
+    --success-fg: var(--green-800);
+    --warning-bg: color-mix(in srgb, var(--amber-500) 12%, transparent);
+    --warning-fg: var(--amber-800); /* amber-700 在白底浅底上只有 4.6，放进选中的行（灰底）就不到 4.5 */
+    --danger: var(--red-600); /* 错误边框、图形 */
+    --danger-bg: color-mix(in srgb, var(--red-500) 12%, transparent);
+    --danger-fg: var(--red-700);
+
+    --control-track: var(--neutral-200); /* 开关、滑块轨道 */
+    --control-off: var(--neutral-500); /* 开关关闭态的圆点：画在轨道上，靠它表示状态，需要 3:1 */
+    --control-on: var(--ink); /* 勾选框、开关、单选的开启态；区域上写 data-control="accent" 时换成 accent（规则在 base.css） */
+    --control-on-hover: var(--ink-hover);
+    --control-on-fg: var(--ink-fg); /* 开启态上的勾、开关圆点 */
+
+    /* 图表的分类配色：按顺序分配，不循环；第 1 组就是 accent 蓝。规则见 DESIGN.md §4.10 */
+    --series-1: var(--blue-500);
+    --series-2: var(--orange-600);
+    --series-3: var(--emerald-600);
+    --series-4: var(--violet-500);
+
+    --shadow-resting: 0 1px 2px oklch(0% 0 0 / 0.05);
+    --shadow-raised: 0 6px 18px oklch(0% 0 0 / 0.07), 0 1px 3px oklch(0% 0 0 / 0.04);
+    --shadow-floating: 0 16px 40px oklch(0% 0 0 / 0.12), 0 2px 8px oklch(0% 0 0 / 0.05);
+    --overlay: oklch(0% 0 0 / 0.32); /* 对话框背后的遮罩 */
+
+    /* ---------- 圆角（圆润档） ---------- */
+    --radius-control: 14px; /* md 按钮、输入框；sm −2px，lg +2px */
+    --radius-item: 10px; /* 列表行、步骤行 */
+    --radius-panel: 20px; /* 卡片、弹层、菜单 */
+    --radius-surface: 28px; /* 对话框、抽屉 */
+    --radius-pill: 999px; /* 徽章、标签 */
+
+    /* ---------- 控件高度（紧凑档） ---------- */
+    --control-sm: 28px;
+    --control-md: 32px;
+    --control-lg: 40px;
+
+    /* ---------- 间距 ---------- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+
+    /* ---------- 页面区块（官网、落地页这类长页面；block 的 CSS 只用这些，不写字面数值） ---------- */
+    --section-sm: clamp(40px, 5vw + 20px, 64px); /* 区块上下留白：紧凑（相邻的小区块） */
+    --section-md: clamp(56px, 7vw + 28px, 96px); /* 区块上下留白：默认 */
+    --section-lg: clamp(72px, 9vw + 36px, 128px); /* 区块上下留白：首屏、收尾的行动号召 */
+    --page-gutter: clamp(16px, 4vw, 32px); /* 内容到视口左右边缘的最小距离 */
+    --content-prose: 680px; /* 正文、常见问题这类长文字的最大宽度（一行约 40 个汉字） */
+    --content-default: 1120px; /* 大多数区块的内容宽度 */
+    --content-wide: 1280px; /* 功能网格、定价对比这类需要更宽的区块 */
+
+    /* ---------- 字体与字号 ---------- */
+    --font-sans: "Noto Sans SC Variable", system-ui, sans-serif;
+    --font-mono: "Maple Mono", "Noto Sans SC Variable", ui-monospace, monospace;
+
+    --text-hero: 600 clamp(36px, 3vw + 24px, 64px) / 1.2 var(--font-sans); /* 官网首屏大标题，随视口缩放，一页最多一个 */
+    --text-section: 600 clamp(28px, 1.5vw + 22px, 40px) / 1.25 var(--font-sans); /* 官网区块标题，随视口缩放 */
+    --text-lead: 400 clamp(16px, 0.25vw + 15px, 18px) / 1.65 var(--font-sans); /* 官网标题下面的引导段落 */
+    --text-display: 600 36px/44px var(--font-sans); /* 页面级大标题，一页最多一个 */
+    --text-title-1: 600 28px/36px var(--font-sans); /* 页面标题 */
+    --text-title-2: 600 22px/30px var(--font-sans); /* 区块标题 */
+    --text-title-3: 600 18px/26px var(--font-sans); /* 卡片、对话框标题 */
+    --text-headline: 500 16px/24px var(--font-sans); /* 列表项标题 */
+    --text-body: 400 14px/22px var(--font-sans); /* 正文、表单、菜单 */
+    --text-body-lg: 400 16px/24px var(--font-sans); /* 触屏上的输入框（iOS 小于 16px 会在聚焦时放大页面） */
+    --text-body-medium: 500 14px/22px var(--font-sans); /* 按钮、字段标签 */
+    --text-small: 400 13px/20px var(--font-sans); /* 次要信息、表格 */
+    --text-small-medium: 500 13px/20px var(--font-sans); /* sm 按钮、紧凑标签 */
+    --text-caption: 400 12px/18px var(--font-sans); /* 说明文字、徽章、时间 */
+    --text-label: 500 11px/16px var(--font-sans); /* 全大写分组标签 */
+    --text-code: 400 13px/20px var(--font-mono); /* 代码块 */
+    /* 系统表情字形，不下载字体 */
+    --text-emoji: 400 22px/30px "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", emoji, sans-serif;
+    --tracking-tight: -0.012em; /* 只用于 22px 以上的标题 */
+    --tracking-label: 0.06em; /* 全大写标签 */
+    --text-code-scale: 0.92em; /* 行内代码相对周围文字 */
+
+    --icon-sm: 14px;
+    --icon-md: 16px;
+    --icon-lg: 18px;
+
+    /* ---------- 动效 ---------- */
+    /* 这一段和下面两份减弱动效由 packages/ui/src/lib/motion-tokens.ts 生成（pnpm docgen），不要手改 */
+    /* @generated motion */
+    --dur-instant: 120ms; /* 按下 */
+    --dur-fast: 160ms; /* 悬停颜色、退场 */
+    --dur-standard: 240ms; /* 进场 */
+    --dur-considered: 480ms; /* 宽高变化 */
+    --dur-spin: 800ms; /* 加载图标转一圈；减弱模式下放慢，但不停（它表示进度，属于必要动效） */
+    --dur-shimmer: 1600ms; /* 骨架屏的闪光走一遍；纯装饰，减弱模式下为 0（停止） */
+    --dur-linger: 1200ms; /* 变化提示（数字旁边浮出的 +18）停留多久；要留时间读，减弱模式下也不变 */
+    --dur-marquee: 40000ms; /* 标志墙这类横向滚动走一圈；纯装饰，减弱模式下为 0（不滚） */
+    --dur-carousel: 5000ms; /* 轮播自动翻页的默认间隔；减弱模式为 0，关闭自动翻页 */
+    --dur-spring: 650ms; /* 弹簧（visualDuration 0.35s，bounce 0）的总时长，配合 --ease-spring */
+    --ease-standard: cubic-bezier(0.22, 1, 0.36, 1); /* 已经在屏幕上的东西变化：颜色、位置 */
+    --ease-enter: cubic-bezier(0.16, 1, 0.3, 1); /* 进场：先快后慢 */
+    --ease-exit: cubic-bezier(0.7, 0, 0.84, 0); /* 退场：先慢后快 */
+    --ease-linear: linear; /* 只用于循环动画 */
+    --ease-spring: linear(0, 0.0792, 0.2371, 0.4044, 0.5525, 0.6726, 0.7652, 0.8341, 0.8842, 0.9199, 0.9451, 0.9626, 0.9747, 0.9829, 0.9886, 0.9924, 0.9949, 0.9966, 0.9978, 0.9985, 0.999, 1); /* 弹簧（visualDuration 0.35s，bounce 0）的采样 */
+    --press-scale: 0.97; /* 按下时缩小到的比例 */
+    --enter-distance: 4px; /* 弹层进场时从触发器方向移动的距离 */
+    --enter-scale: 0.98; /* 弹层进场时的起始缩放 */
+    --swap-blur: 4px; /* 内容替换（文字、图标换成别的）时新旧内容的模糊半径 */
+    --swap-distance: 4px; /* 内容替换时新内容从下方升起、旧内容向上离开的距离 */
+    --swap-scale: 0.6; /* 内容替换时图标的起始缩放（新图标从这里放大到 1，旧图标缩到这里消失） */
+    /* @end motion */
+
+    /* ---------- 焦点 ---------- */
+    --focus-ring-width: 2px;
+    --focus-ring-offset: 2px; /* 画在元素外面；会被裁切的容器里写 calc(-1 * var(--focus-ring-width))，画在里面 */
+    --focus-ring: var(--focus-ring-width) solid var(--accent); /* 只在键盘焦点（data-focus-visible）时画 */
+    --focus-glow: 0 0 0 3px var(--accent-subtle); /* 输入框聚焦：边框换成 accent，加这圈外发光 */
+
+    /* ---------- 层级 ---------- */
+    --z-sticky: 10; /* 吸顶的表头、侧边栏里吸附的元素 */
+    --z-overlay: 100; /* 对话框、命令面板、抽屉和它们的遮罩 */
+    --z-toast: 200; /* Toast：在对话框上面，打开对话框时也能看到 */
+
+    /* ---------- 安全区 ----------
+       默认读系统 inset。WebView 里 env() 常为 0，宿主把真实 inset 写进这四个变量即可，不用改组件选择器。 */
+    --ui-safe-top: env(safe-area-inset-top, 0px);
+    --ui-safe-right: env(safe-area-inset-right, 0px);
+    --ui-safe-bottom: env(safe-area-inset-bottom, 0px);
+    --ui-safe-left: env(safe-area-inset-left, 0px);
+    /* 浮层离屏幕边缘的距离。写在根上，使用方覆盖根变量即可，不用选中库的类。 */
+    --ui-toast-top: max(var(--space-4), var(--ui-safe-top));
+    --ui-toast-bottom: max(var(--space-4), var(--ui-safe-bottom));
+    --ui-notification-top: max(var(--space-4), var(--ui-safe-top));
+    --ui-notification-bottom: max(var(--space-4), var(--ui-safe-bottom));
+  }
+
+  /* ---------- 语义色：暗色 ----------
+   * 显式 data-theme="dark"，或没设置 data-theme 且系统偏好暗色 */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --background: var(--neutral-950);
+    --surface: var(--neutral-900);
+    --surface-muted: var(--neutral-800);
+    --surface-inset: oklch(0% 0 0 / 0.3);
+    --surface-sunken: oklch(17% 0 0);
+    --border: var(--neutral-800);
+    --border-strong: var(--neutral-700);
+    --border-hover: var(--neutral-600);
+    --border-control: var(--neutral-500);
+    --border-control-hover: var(--neutral-400);
+    --text: var(--neutral-50);
+    --text-secondary: var(--neutral-400);
+    --text-muted: var(--neutral-500);
+    --ink: var(--neutral-50);
+    --ink-hover: var(--neutral-200);
+    --ink-active: var(--neutral-300);
+    --ink-fg: var(--neutral-950);
+    --accent: var(--blue-400);
+    --accent-strong: var(--blue-300);
+    --accent-subtle: color-mix(in srgb, var(--blue-400) 16%, transparent);
+    --accent-fg: var(--neutral-950);
+    --accent-solid: var(--blue-400);
+    --accent-solid-hover: var(--blue-300);
+    --info-bg: var(--neutral-800);
+    --info-fg: var(--neutral-300);
+    --success-bg: color-mix(in srgb, var(--green-400) 16%, transparent);
+    --success-fg: var(--green-300);
+    --warning-bg: color-mix(in srgb, var(--amber-400) 16%, transparent);
+    --warning-fg: var(--amber-300);
+    --danger: var(--red-400);
+    --danger-bg: color-mix(in srgb, var(--red-400) 16%, transparent);
+    --danger-fg: var(--red-300);
+    --control-track: var(--neutral-700);
+    --control-off: var(--neutral-400);
+    --series-4: var(--violet-400); /* 暗色背景上 violet-500 不到 3:1 */
+    --shadow-resting: 0 1px 2px oklch(0% 0 0 / 0.3);
+    --shadow-raised: 0 8px 22px oklch(0% 0 0 / 0.4);
+    --shadow-floating: 0 18px 44px oklch(0% 0 0 / 0.5), 0 0 0 1px var(--border);
+    --overlay: oklch(0% 0 0 / 0.6);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --background: var(--neutral-950);
+      --surface: var(--neutral-900);
+      --surface-muted: var(--neutral-800);
+      --surface-inset: oklch(0% 0 0 / 0.3);
+      --surface-sunken: oklch(17% 0 0);
+      --border: var(--neutral-800);
+      --border-strong: var(--neutral-700);
+      --border-hover: var(--neutral-600);
+      --border-control: var(--neutral-500);
+      --border-control-hover: var(--neutral-400);
+      --text: var(--neutral-50);
+      --text-secondary: var(--neutral-400);
+      --text-muted: var(--neutral-500);
+      --ink: var(--neutral-50);
+      --ink-hover: var(--neutral-200);
+      --ink-active: var(--neutral-300);
+      --ink-fg: var(--neutral-950);
+      --accent: var(--blue-400);
+      --accent-strong: var(--blue-300);
+      --accent-subtle: color-mix(in srgb, var(--blue-400) 16%, transparent);
+      --accent-fg: var(--neutral-950);
+      --accent-solid: var(--blue-400);
+      --accent-solid-hover: var(--blue-300);
+      --info-bg: var(--neutral-800);
+      --info-fg: var(--neutral-300);
+      --success-bg: color-mix(in srgb, var(--green-400) 16%, transparent);
+      --success-fg: var(--green-300);
+      --warning-bg: color-mix(in srgb, var(--amber-400) 16%, transparent);
+      --warning-fg: var(--amber-300);
+      --danger: var(--red-400);
+      --danger-bg: color-mix(in srgb, var(--red-400) 16%, transparent);
+      --danger-fg: var(--red-300);
+      --control-track: var(--neutral-700);
+      --control-off: var(--neutral-400);
+      --series-4: var(--violet-400); /* 暗色背景上 violet-500 不到 3:1 */
+      --shadow-resting: 0 1px 2px oklch(0% 0 0 / 0.3);
+      --shadow-raised: 0 8px 22px oklch(0% 0 0 / 0.4);
+      --shadow-floating: 0 18px 44px oklch(0% 0 0 / 0.5), 0 0 0 1px var(--border);
+      --overlay: oklch(0% 0 0 / 0.6);
+    }
+  }
+
+  /* ---------- 触屏自动加高 ---------- */
+  @media (pointer: coarse) {
+    :root {
+      --control-sm: 36px;
+      --control-md: 40px;
+    }
+  }
+
+  /* ---------- 减弱动效 ----------
+   * 显式 data-motion="reduced"，或没设置 data-motion 且系统偏好减弱 */
+  :root[data-motion="reduced"] {
+    /* @generated motion-reduced */
+    --press-scale: 1;
+    --dur-standard: 0ms;
+    --dur-considered: 0ms;
+    --dur-spin: 1600ms;
+    --dur-shimmer: 0ms;
+    --dur-marquee: 0ms;
+    --dur-carousel: 0ms;
+    --dur-spring: 0ms;
+    --enter-distance: 0px;
+    --enter-scale: 1;
+    --swap-blur: 0px;
+    --swap-distance: 0px;
+    --swap-scale: 1;
+    /* @end motion-reduced */
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion="standard"]) {
+      /* @generated motion-reduced */
+      --press-scale: 1;
+      --dur-standard: 0ms;
+      --dur-considered: 0ms;
+      --dur-spin: 1600ms;
+      --dur-shimmer: 0ms;
+      --dur-marquee: 0ms;
+      --dur-carousel: 0ms;
+      --dur-spring: 0ms;
+      --enter-distance: 0px;
+      --enter-scale: 1;
+      --swap-blur: 0px;
+      --swap-distance: 0px;
+      --swap-scale: 1;
+      /* @end motion-reduced */
+    }
+  }
+}

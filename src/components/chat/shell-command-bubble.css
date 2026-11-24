@@ -1,0 +1,186 @@
+@layer components {
+  .m-shell-command-bubble {
+    width: 100%;
+    max-width: 85%;
+  }
+
+  .m-shell-command-bubble__content {
+    width: 100%;
+  }
+
+  .m-shell-command-bubble__head {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-shell-command-bubble__terminal {
+    width: 0.875rem;
+    height: 0.875rem;
+    flex-shrink: 0;
+    opacity: 0.7;
+  }
+
+  .m-shell-command-bubble__command {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+  }
+
+  .m-shell-command-bubble__outcome {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+    font: var(--text-caption);
+  }
+
+  .m-shell-command-bubble__outcome[data-command-outcome='success'] {
+    opacity: 0.7;
+  }
+
+  .m-shell-command-bubble__outcome[data-command-outcome='failure'] {
+    color: var(--danger-fg);
+  }
+
+  .m-shell-command-bubble__status-icon {
+    width: 0.875rem;
+    height: 0.875rem;
+  }
+
+  .m-shell-command-bubble__status-icon[data-tone='success'] {
+    color: var(--success-fg);
+  }
+
+  .m-shell-command-bubble__status-icon[data-tone='warning'] {
+    color: var(--warning-fg);
+  }
+
+  .m-shell-command-bubble__status-icon[data-tone='danger'] {
+    color: var(--danger-fg);
+  }
+
+  .m-shell-command-bubble__exit-code {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-shell-command-bubble__foot {
+    margin-block-start: 0.375rem;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-shell-command-bubble__chevron {
+    width: 0.75rem;
+    height: 0.75rem;
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-shell-command-bubble__chevron[data-expanded] {
+    transform: rotate(180deg);
+  }
+
+  .m-shell-command-bubble__time {
+    opacity: 0.7;
+  }
+
+  .m-shell-command-bubble__panel {
+    width: 100%;
+    font: var(--text-caption);
+  }
+
+  .m-shell-command-bubble__panel[data-failed] {
+    box-shadow:
+      var(--ui-bubble-shadow, none),
+      inset 0 0 0 1px color-mix(in oklch, var(--danger) 40%, transparent);
+  }
+
+  .m-shell-command-bubble__meta {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1) var(--space-3);
+    padding: var(--space-2) var(--space-3) 0;
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+  }
+
+  .m-shell-command-bubble__cwd {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-shell-command-bubble__host {
+    flex-shrink: 0;
+  }
+
+  .m-shell-command-bubble__duration {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-shell-command-bubble__truncated {
+    flex-shrink: 0;
+    color: var(--warning-fg);
+  }
+
+  .m-shell-command-bubble__copy {
+    margin-inline-start: auto;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: calc(var(--radius-item) - var(--space-1));
+  }
+
+  .m-shell-command-bubble__output {
+    margin: 0;
+    max-height: 20rem;
+    min-height: 2.5rem;
+    overflow: auto;
+    padding: 0.625rem var(--space-3);
+    font: var(--text-code);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text);
+  }
+
+  .m-shell-command-bubble__output[data-empty] {
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+
+  .m-shell-command-bubble__unavailable {
+    margin: 0;
+    padding: var(--space-3);
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-shell-command-bubble__error {
+    margin: 0;
+    padding: var(--space-3);
+    font: var(--text-caption);
+    overflow-wrap: anywhere;
+    color: var(--danger-fg);
+  }
+
+  :root[data-motion='reduced'] .m-shell-command-bubble__chevron {
+    transition: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-motion='standard']) .m-shell-command-bubble__chevron {
+      transition: none;
+    }
+  }
+}

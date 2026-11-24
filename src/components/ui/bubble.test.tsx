@@ -1,20 +1,20 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
-import { Bubble, BubbleContent, BUBBLE_BLOCK } from './bubble'
-import { BubbleBlockButton } from './bubble-block'
-import { ChatTool, ChatToolPresentationProvider, ChatToolTrigger } from './chat-tool'
+import {
+  Bubble,
+  BubbleBlockButton,
+  BubbleContent,
+  BUBBLE_BLOCK,
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import {
+  ChatTool,
+  ChatToolPresentationProvider,
+  ChatToolTrigger,
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 
-/**
- * What a block is, as one rule rather than five copies of it.
- *
- * These assert on class names, which is usually a way of testing the
- * implementation rather than the behaviour — but here the class *is* the
- * contract. jsdom does no cascade, so the only way to catch a block that has
- * drifted away from the shared source is to look at what it was given.
- */
-
-/** Every block declares its own fill, so it survives being wrapped. */
-const FILL = 'bg-[var(--bubble-fill,var(--bubble-assistant))]'
+const bubbleCss = readFileSync(resolve(__dirname, '../yuerchu-ui/components/chat-bubble/chat-bubble.css'), 'utf8')
 
 function blocks(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>('[data-bubble-block]'))
@@ -36,28 +36,28 @@ describe('a bubble block', () => {
     const found = blocks(container)
     expect(found).toHaveLength(3)
     for (const block of found) {
-      // The radius, the clip and the fill come from one place; drifting from it
-      // is what left a tool card invisible in the dark theme before.
-      expect(block.className).toContain('rounded-2xl')
-      expect(block.className).toContain('overflow-hidden')
-      expect(block.className).toContain(FILL)
+      expect(block).toHaveClass(BUBBLE_BLOCK)
     }
+    expect(bubbleCss).toMatch(/\.ui-chat-bubble__block\s*\{[^}]*border-radius:\s*var\(--ui-bubble-radius/)
+    expect(bubbleCss).toMatch(/\.ui-chat-bubble__block\s*\{[^}]*overflow:\s*hidden/)
+    expect(bubbleCss).toMatch(
+      /\.ui-chat-bubble__block\s*\{[^}]*background-color:\s*var\(--ui-bubble-fill,\s*var\(--surface-muted\)\)/,
+    )
   })
 
   it('takes its colour by inheritance, not by being a direct child', () => {
-    // The fill is declared on the block and resolved from a custom property the
-    // bubble sets, so nothing about it depends on where the block sits. The
-    // corner rules are the only part that does — see the next test.
-    for (const rule of BUBBLE_BLOCK) {
-      expect(rule).not.toContain('&>')
-    }
+    expect(bubbleCss).not.toMatch(/\.ui-chat-bubble\s*>\s*\.ui-chat-bubble__block/)
     const { container } = render(
       <Bubble variant="user" align="end" position="first">
         <BubbleContent>asked</BubbleContent>
       </Bubble>,
     )
-    expect(container.querySelector('[data-slot="bubble"]')!.className).toContain('[--bubble-fill:var(--bubble-user)]')
-    expect(blocks(container)[0].className).toContain(FILL)
+    const bubble = container.querySelector('[data-slot="bubble"]')!
+    expect(bubble).toHaveAttribute('data-variant', 'user')
+    expect(bubbleCss).toMatch(
+      /\.ui-chat-bubble\[data-variant="user"\]\s*\{[^}]*--ui-bubble-fill:\s*var\(--ui-bubble-user\)/,
+    )
+    expect(blocks(container)[0]).toHaveClass(BUBBLE_BLOCK)
   })
 
   it('tightens a corner for a neighbour above and one below, on the speaker’s side only', () => {
@@ -67,18 +67,16 @@ describe('a bubble block', () => {
       </Bubble>,
     )
     const bubble = container.querySelector('[data-slot="bubble"]')!
-    // Two triggers per corner: another block in this bubble, or another bubble
-    // in this run. `position` carries the second, which is why it selects
-    // nothing on its own.
-    expect(bubble.className).toContain('[&>[data-bubble-block]~[data-bubble-block]]:rounded-tl-md')
-    expect(bubble.className).toContain('[&>[data-bubble-block]:has(~[data-bubble-block])]:rounded-bl-md')
-    expect(bubble.className).toContain(
-      '[&:is([data-position=middle],[data-position=last])>[data-bubble-block]]:rounded-tl-md',
-    )
+    expect(bubble).toHaveAttribute('data-align', 'start')
     expect(bubble).toHaveAttribute('data-position', 'middle')
-    // The far side is never touched.
-    expect(bubble.className).not.toContain('rounded-tr-md')
-    expect(bubble.className).not.toContain('rounded-br-md')
+    expect(bubbleCss).toContain('.ui-chat-bubble[data-align="start"] > [data-bubble-block] ~ [data-bubble-block]')
+    expect(bubbleCss).toContain('.ui-chat-bubble[data-align="start"] > [data-bubble-block]:has(~ [data-bubble-block])')
+    expect(bubbleCss).toContain(
+      '.ui-chat-bubble[data-align="start"]:is([data-position="middle"], [data-position="last"]) > [data-bubble-block]',
+    )
+    expect(bubbleCss).toContain(
+      '.ui-chat-bubble[data-align="start"]:is([data-position="first"], [data-position="middle"]) > [data-bubble-block]',
+    )
   })
 
   it('says so when a block has been buried under a wrapper', () => {

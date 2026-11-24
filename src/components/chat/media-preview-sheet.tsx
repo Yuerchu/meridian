@@ -1,10 +1,14 @@
+import './media-preview-sheet.css'
 import * as React from 'react'
 import { Download } from '@keyline-icons/react/two-tone'
 import { save } from '@tauri-apps/plugin-dialog'
 import { useTranslation } from 'react-i18next'
 
 import { api } from '@/api'
-import { Button, Sheet } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { ImageViewer, type ImageViewerImage } from '@/components/yuerchu-ui/components/image-viewer/image-viewer'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { assetSrc } from '@/lib/asset-src'
 import { can } from '@/lib/capabilities'
 import type { ToolMediaResponse } from '@/types'
@@ -21,18 +25,23 @@ function suggestedName(media: ToolMediaResponse): string {
   }
 }
 
-/** A file a tool returned, opened on its own: the picture at full size, and a
- *  way to keep it. The file lives on the machine that ran the tool, so saving
- *  is offered only where that machine is this one. */
+/** A file a tool returned, opened on its own: the picture in the image viewer
+ *  (or a drawer for other files), and a way to keep it. The file lives on
+ *  the machine that ran the tool, so saving is offered only where that machine
+ *  is this one. */
 export function MediaPreviewSheet({
   conversationId,
   media,
   name,
+  images,
+  onSelectMedia,
   onOpenChange,
 }: {
   conversationId: string | null
   media: ToolMediaResponse
   name: string
+  images?: readonly { media: ToolMediaResponse; name: string }[]
+  onSelectMedia?: (media: ToolMediaResponse) => void
   onOpenChange: (open: boolean) => void
 }) {
   const { t } = useTranslation()
@@ -40,6 +49,14 @@ export function MediaPreviewSheet({
   const [saved, setSaved] = React.useState(false)
   const [saveError, setSaveError] = React.useState<string | null>(null)
   const canSave = can.exportToDisk && conversationId !== null
+
+  // Neither ImageViewer nor Drawer knows about the back gesture.
+  useHistoryLevel(true, () => onOpenChange(false))
+
+  React.useEffect(() => {
+    setSaved(false)
+    setSaveError(null)
+  }, [media.url])
 
   const saveToDisk = React.useCallback(async () => {
     if (conversationId === null) return
@@ -59,60 +76,82 @@ export function MediaPreviewSheet({
     }
   }, [conversationId, media])
 
-  return (
-    <Sheet isOpen placement="right" onOpenChange={onOpenChange} isDismissable>
-      <Sheet.Backdrop>
-        <Sheet.Content className="w-full sm:max-w-2xl">
-          <Sheet.Dialog className="flex h-full min-h-0 flex-col">
-            <Sheet.Header className="pe-14">
-              <Sheet.Heading className="truncate">{name}</Sheet.Heading>
-              <p className="mt-1 truncate font-mono text-caption-1-regular text-text-secondary">{media.mime_type}</p>
-              <Sheet.CloseTrigger aria-label={t('common.close')} />
-            </Sheet.Header>
-
-            <Sheet.Body data-sheet-no-drag className="min-h-0 flex-1 overflow-auto p-0">
-              {media.kind === 'image' ? (
-                <div data-slot="media-preview-image" className="flex min-h-full items-center justify-center p-4">
-                  <img src={assetSrc(media.url)} alt={name} className="block h-auto max-w-full object-contain" />
-                </div>
-              ) : (
-                <div
-                  data-slot="media-preview-none"
-                  className="flex h-full items-center justify-center p-6 text-center text-body-regular text-text-secondary"
-                >
-                  {t('chat.media.noPreview')}
-                </div>
-              )}
-            </Sheet.Body>
-
-            <Sheet.Footer className="flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-              <div
-                data-slot="media-preview-status"
-                className="min-w-0 flex-1 text-caption-1-regular text-text-secondary"
+  if (media.kind === 'image') {
+    const entries = images && images.length > 0 ? images : [{ media, name }]
+    const viewerImages: ImageViewerImage[] = entries.map((entry) => ({
+      id: entry.media.url,
+      src: assetSrc(entry.media.url) ?? '',
+      alt: entry.name,
+      title: entry.name,
+    }))
+    return (
+      <ImageViewer
+        isOpen
+        onOpenChange={onOpenChange}
+        images={viewerImages}
+        selectedKey={media.url}
+        onSelectionChange={(key) => {
+          const next = entries.find((entry) => entry.media.url === key)
+          if (next) onSelectMedia?.(next.media)
+        }}
+        actions={() => (
+          <div className="m-media-preview-sheet__viewer-actions">
+            {saveError !== null && (
+              <span role="alert" className="m-media-preview-sheet__error">
+                {t('chat.media.saveFailed', { error: saveError })}
+              </span>
+            )}
+            {canSave ? (
+              <Button
+                icon={<Download />}
+                variant="secondary"
+                size="sm"
+                onPress={() => void saveToDisk()}
+                isPending={saving}
               >
-                {!can.exportToDisk && t('capability.exportToDisk')}
-                {saveError !== null && (
-                  <p role="alert" className="text-status-danger wrap-break-word">
-                    {t('chat.media.saveFailed', { error: saveError })}
-                  </p>
-                )}
-              </div>
-              {canSave && (
-                <div data-slot="media-preview-actions" className="flex shrink-0 justify-end gap-2">
-                  <Button
-                    leadingIcon={Download}
-                    variant="secondary"
-                    onPress={() => void saveToDisk()}
-                    isPending={saving}
-                  >
-                    {t(saved ? 'chat.media.saved' : 'chat.media.save')}
-                  </Button>
-                </div>
-              )}
-            </Sheet.Footer>
-          </Sheet.Dialog>
-        </Sheet.Content>
-      </Sheet.Backdrop>
-    </Sheet>
+                {t(saved ? 'chat.media.saved' : 'chat.media.save')}
+              </Button>
+            ) : (
+              <span className="m-media-preview-sheet__status">{t('capability.exportToDisk')}</span>
+            )}
+          </div>
+        )}
+      />
+    )
+  }
+
+  return (
+    <Drawer
+      isOpen
+      side="right"
+      size="lg"
+      onOpenChange={onOpenChange}
+      isDismissable
+      heading={<span className="m-media-preview-sheet__heading">{name}</span>}
+      description={<span className="m-media-preview-sheet__mime">{media.mime_type}</span>}
+      footer={
+        <div className="m-media-preview-sheet__footer">
+          <div data-slot="media-preview-status" className="m-media-preview-sheet__status">
+            {!can.exportToDisk && t('capability.exportToDisk')}
+            {saveError !== null && (
+              <p role="alert" className="m-media-preview-sheet__error">
+                {t('chat.media.saveFailed', { error: saveError })}
+              </p>
+            )}
+          </div>
+          {canSave && (
+            <div data-slot="media-preview-actions" className="m-media-preview-sheet__actions">
+              <Button icon={<Download />} variant="secondary" onPress={() => void saveToDisk()} isPending={saving}>
+                {t(saved ? 'chat.media.saved' : 'chat.media.save')}
+              </Button>
+            </div>
+          )}
+        </div>
+      }
+    >
+      <div data-slot="media-preview-none" className="m-media-preview-sheet__none">
+        {t('chat.media.noPreview')}
+      </div>
+    </Drawer>
   )
 }

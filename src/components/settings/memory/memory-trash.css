@@ -1,0 +1,61 @@
+@layer components {
+  .ui-drawer.m-memory-trash {
+    padding-block-end: var(--safe-bottom);
+    padding-inline-end: var(--safe-right);
+  }
+
+  .m-memory-trash__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-memory-trash__loading {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-6);
+  }
+
+  .m-memory-trash__row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface-muted);
+  }
+
+  .m-memory-trash__row-header {
+    display: flex;
+    min-width: 0;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-memory-trash__row-key {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+    font: var(--text-body);
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  .m-memory-trash__row-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-1);
+    margin-inline-start: auto;
+  }
+
+  .m-memory-trash__content {
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    white-space: pre-wrap;
+  }
+}

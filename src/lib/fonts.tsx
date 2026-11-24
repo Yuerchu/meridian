@@ -24,12 +24,12 @@ export function asStoredFamily(raw: string | null): string | null {
 }
 
 export function cssStack(slot: FontSlot, family: string): string {
-  const fallback = slot === 'sans' ? '--font-inter-fallback' : '--font-mono-source-fallback'
+  const fallback = slot === 'sans' ? '--font-sans-fallback' : '--font-mono-fallback'
   return `"${family}", var(${fallback})`
 }
 
 export function applySlot(slot: FontSlot, family: string | null): void {
-  const prop = slot === 'sans' ? '--font-inter' : '--font-mono-source'
+  const prop = slot === 'sans' ? '--font-sans' : '--font-mono'
   if (family === null) {
     document.documentElement.style.removeProperty(prop)
     return

@@ -1,0 +1,61 @@
+@layer components {
+  .m-dev-sticker-lab {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  .m-dev-sticker-lab__header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-6);
+  }
+
+  .m-dev-sticker-lab__title {
+    margin: 0;
+    font: var(--text-headline);
+    font-weight: 600;
+  }
+
+  .m-dev-sticker-lab__scroller {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    padding-inline: var(--space-6);
+  }
+
+  .m-dev-sticker-lab__row {
+    display: flex;
+    padding-block: var(--space-2);
+  }
+
+  .m-dev-sticker-lab__row[data-align='start'] {
+    justify-content: flex-start;
+  }
+
+  .m-dev-sticker-lab__row[data-align='end'] {
+    justify-content: flex-end;
+  }
+
+  .m-dev-sticker-lab__gated {
+    flex-shrink: 0;
+    width: 8rem;
+    height: 8rem;
+  }
+
+  .m-dev-sticker-lab__markdown {
+    max-width: 28rem;
+    border-radius: var(--radius-panel);
+    background: var(--surface-muted);
+    padding: var(--space-2) var(--space-4);
+  }
+
+  .m-dev-sticker-lab__legacy {
+    width: 8rem;
+    height: 8rem;
+    object-fit: contain;
+  }
+}

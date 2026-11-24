@@ -1472,8 +1472,6 @@ export type PlanReviewStatus = 'pending' | 'approved' | 'changes_requested' | 'o
 export type PlanRevisionAuthorKind = 'assistant' | 'user_suggestion' | 'legacy'
 export type PlanReviewDraftMode = 'rich' | 'source'
 export type PlanCommentState = 'draft' | 'active' | 'orphaned' | 'submitted' | 'deleted'
-export type PlanReviewDeliveryTarget = 'native' | 'acp'
-export type PlanReviewDeliveryState = 'queued' | 'dispatched' | 'acknowledged' | 'held' | 'in_doubt'
 export type PlanFileSyncState = 'pending' | 'applied' | 'conflict'
 
 export interface PlanProseMirrorRange {
@@ -1551,9 +1549,6 @@ export interface PlanReviewSummaryInfoResponse {
   provider_call_id: string
   turn_id: string
   status: PlanReviewStatus
-  /** Latest continuation delivery. A settled review remains a conversation
-   *  barrier until this reaches `acknowledged`. */
-  delivery_state: PlanReviewDeliveryState | null
   lock_version: number
 }
 
@@ -1591,17 +1586,6 @@ export interface PlanCommentInfoResponse {
 
 export type PlanCommentListResponse = PlanCommentInfoResponse[]
 
-export interface PlanReviewDeliveryInfoResponse {
-  id: string
-  review_id: string
-  target: PlanReviewDeliveryTarget
-  state: PlanReviewDeliveryState
-  payload: JsonValue
-  error: string | null
-  created_at: number
-  updated_at: number
-}
-
 export interface PlanReviewInfoResponse {
   document: PlanDocumentInfoResponse
   review: PlanReviewSessionInfoResponse
@@ -1609,7 +1593,6 @@ export interface PlanReviewInfoResponse {
   parent_revision: PlanRevisionInfoResponse | null
   draft: PlanReviewDraftInfoResponse
   comments: PlanCommentListResponse
-  delivery: PlanReviewDeliveryInfoResponse | null
 }
 
 export interface PlanReviewReadRequest {
@@ -1660,6 +1643,7 @@ export interface PlanReviewDraftDiscardRequest {
 }
 
 export type PlanReviewDecisionAction = 'approve' | 'request_changes'
+export type PlanApprovalMode = 'default' | 'accept_edits'
 
 export interface PlanReviewDecisionRequest {
   reviewId: string
@@ -1667,21 +1651,13 @@ export interface PlanReviewDecisionRequest {
   expectedGeneration: number
   expectedDraftHash: string
   action: PlanReviewDecisionAction
+  approvalMode: PlanApprovalMode | null
+  clearContext: boolean
 }
 
 export interface PlanReviewDecisionResponse {
   review_id: string
   state: PlanReviewStatus
-  delivery_state: PlanReviewDeliveryState | null
-  continuation_turn_id: string | null
-}
-
-export interface PlanReviewDeliveryReadRequest {
-  reviewId: string
-}
-
-export interface PlanReviewDeliveryContinueRequest {
-  deliveryId: string
 }
 
 export interface PlanFileConflictResolveRequest {
@@ -1702,9 +1678,6 @@ export interface ConversationSnapshotResponse {
   /** Plan reviews on the active transcript path, including settled reviews so
    *  historical cards remain navigable after a reload. */
   plan_reviews: PlanReviewSummaryListResponse
-  /** Conversation-wide hard barrier. This remains true even if no plan review
-   *  card is visible on the active transcript path. */
-  plan_review_barrier: boolean
   /** Empty for every conversation that has never delegated. */
   sub_agent_runs: SubAgentRunListResponse
   /** What a hosted Claude Code session reported about itself — failures and

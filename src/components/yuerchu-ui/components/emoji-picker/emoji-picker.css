@@ -1,0 +1,135 @@
+@layer components {
+  .ui-emoji-picker {
+    display: grid;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    width: 22rem;
+    max-width: 100%;
+    min-width: 0;
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .ui-emoji-picker__tools {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .ui-emoji-picker__recent {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .ui-emoji-picker__recent-label {
+    flex-basis: 100%;
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .ui-emoji-picker__viewport {
+    height: min(16rem, 48dvh);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .ui-emoji-picker [frimousse-category-header] {
+    box-sizing: border-box;
+    padding: var(--space-1) var(--space-2);
+    background: var(--surface);
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .ui-emoji-picker__cell {
+    display: grid;
+    flex: none;
+    place-items: center;
+    box-sizing: border-box;
+    width: calc(100% / var(--frimousse-list-columns));
+    min-width: 0;
+    height: var(--control-lg);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    background: transparent;
+    color: var(--text);
+    font: var(--text-emoji);
+    cursor: pointer;
+  }
+
+  .ui-emoji-picker__cell[data-active] {
+    border-color: var(--border-strong);
+    background: var(--surface-muted);
+  }
+
+  .ui-emoji-picker__glyph {
+    font: var(--text-emoji);
+  }
+
+  .ui-emoji-picker__state {
+    display: grid;
+    place-items: center;
+    min-height: var(--control-lg);
+    padding: var(--space-4);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    text-align: center;
+  }
+
+  @media (forced-colors: active) {
+    .ui-emoji-picker__cell[data-active] {
+      outline: var(--focus-ring-width) solid Highlight;
+      outline-offset: calc(-1 * var(--focus-ring-width));
+    }
+  }
+
+  /* 有自定义包时，外层是分组，里面每一包一个 pane */
+  .ui-emoji-picker__pane {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-emoji-picker__packs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .ui-emoji-picker__packs .ui-button[aria-pressed="true"] {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-emoji-picker__pack-grid {
+    display: grid;
+    gap: var(--space-1);
+    padding-block: var(--space-1);
+  }
+
+  .ui-emoji-picker__pack-cell {
+    width: 100%;
+  }
+
+  /* 焦点总在活动格上（roving tabindex），活动格本身已有描边和底色，不再另画焦点环 */
+
+  .ui-emoji-picker__pack-grid[data-kind="sticker"] .ui-emoji-picker__pack-cell {
+    height: calc(var(--control-lg) * 2);
+  }
+
+  .ui-emoji-picker__image {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .ui-emoji-picker__pack-grid[data-kind="sticker"] .ui-emoji-picker__image {
+    width: 100%;
+    height: 100%;
+  }
+}

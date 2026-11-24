@@ -1,0 +1,113 @@
+@layer components {
+  .ui-attachment-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .ui-attachment-list > li {
+    display: flex;
+    min-width: 0;
+  }
+
+  /* ---------- 卡片：缩略图 / 图标 + 文件名和说明 + 移除 ---------- */
+  .ui-attachment {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: 260px;
+    max-width: 100%;
+    padding: var(--space-2);
+    padding-inline-end: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+  }
+
+  .ui-attachment[data-status="error"] {
+    border-color: var(--danger);
+  }
+
+  .ui-attachment__thumb,
+  .ui-attachment__icon {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--control-lg);
+    height: var(--control-lg);
+    overflow: hidden;
+    border-radius: calc(var(--radius-item) - var(--space-1));
+    background: var(--surface-muted);
+  }
+
+  .ui-attachment__thumb {
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    cursor: zoom-in;
+  }
+
+  .ui-attachment__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .ui-attachment__thumb[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-attachment__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-attachment__name {
+    overflow: hidden;
+    font: var(--text-small-medium);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-attachment__meta {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-attachment[data-status="error"] .ui-attachment__meta {
+    color: var(--danger-fg);
+  }
+
+  .ui-attachment__meta svg {
+    flex: none;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-attachment__remove {
+    flex: none;
+    align-self: flex-start;
+  }
+
+  /* ---------- 大图 ---------- */
+  .ui-attachment__full {
+    display: block;
+    max-width: 100%;
+    max-height: 70dvh;
+    margin-inline: auto;
+    border-radius: var(--radius-item);
+  }
+}

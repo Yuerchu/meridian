@@ -1,0 +1,151 @@
+@layer components {
+  .ui-segmented-control {
+    --ui-segmented-height: var(--control-md);
+    --ui-segmented-pad: var(--space-1);
+    --ui-segmented-fade: var(--space-6);
+
+    position: relative;
+    display: inline-flex;
+    box-sizing: border-box;
+    max-width: 100%;
+    /* 放不下时在控件里横向滚动，不撑出容器（选项多于五个或文字很长时应该用 Select，这里只是兜底）。
+       两端渐隐提示还有选项；出现滚动条时控件往下多占滚动条的高度（所以高度是 min-height） */
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    min-height: var(--ui-segmented-height);
+    padding: var(--ui-segmented-pad);
+    border: 1px solid transparent; /* 高对比度模式下显示边界 */
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+  }
+
+  /* 两端渐隐（data-overflow-* 由 lib/scroll-edges 写）；宽度和 segmented-control.tsx 的 FADE 一致 */
+  .ui-segmented-control[data-overflow-end] {
+    mask-image: linear-gradient(to right, black calc(100% - var(--ui-segmented-fade)), transparent);
+  }
+
+  .ui-segmented-control[data-overflow-start] {
+    mask-image: linear-gradient(to right, transparent, black var(--ui-segmented-fade));
+  }
+
+  .ui-segmented-control[data-overflow-start][data-overflow-end] {
+    mask-image: linear-gradient(to right, transparent, black var(--ui-segmented-fade), black calc(100% - var(--ui-segmented-fade)), transparent);
+  }
+
+  .ui-segmented-control[data-overflow-end]:dir(rtl) {
+    mask-image: linear-gradient(to left, black calc(100% - var(--ui-segmented-fade)), transparent);
+  }
+
+  .ui-segmented-control[data-overflow-start]:dir(rtl) {
+    mask-image: linear-gradient(to left, transparent, black var(--ui-segmented-fade));
+  }
+
+  .ui-segmented-control[data-overflow-start][data-overflow-end]:dir(rtl) {
+    mask-image: linear-gradient(to left, transparent, black var(--ui-segmented-fade), black calc(100% - var(--ui-segmented-fade)), transparent);
+  }
+
+  .ui-segmented-control[data-size="sm"] {
+    --ui-segmented-height: var(--control-sm);
+    --ui-segmented-pad: calc(var(--space-1) - 1px);
+
+    border-radius: calc(var(--radius-control) - 2px);
+  }
+
+  /* ---------- 选项 ---------- */
+  .ui-segment {
+    position: relative; /* 画在指示块上面 */
+    display: inline-flex;
+    flex: 1 0 auto;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    box-sizing: border-box;
+    min-width: calc(var(--ui-segmented-height) - 2 * var(--ui-segmented-pad));
+    /* 控件的高度减去内边距和边框：控件高度改成 min-height 后，选项自己撑出原来的高度 */
+    min-height: calc(var(--ui-segmented-height) - 2 * var(--ui-segmented-pad) - 2px);
+    padding: 0 var(--space-3);
+    margin: 0;
+    border: 1px solid transparent;
+    /* 同心圆角：外层圆角 − 内边距 */
+    border-radius: calc(var(--radius-control) - var(--ui-segmented-pad));
+    background: transparent;
+    color: var(--text-secondary);
+    font: var(--text-body-medium);
+    white-space: nowrap;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-segmented-control[data-size="sm"] .ui-segment {
+    padding: 0 var(--space-2);
+    font: var(--text-small-medium);
+  }
+
+  .ui-segment[data-hovered]:not([data-disabled], [data-selected]) {
+    color: var(--text);
+  }
+
+  /* 选中项是浮起的表面色块（同 Tabs pill），不用 Ink：选中回答“我在哪”，不该和主操作一样重（#456） */
+  .ui-segment[data-selected] {
+    color: var(--text);
+  }
+
+  /* 指示块要等页面脚本运行后才定位（服务端渲染的 HTML、水合之前它是 hidden）。
+     这段时间里选中项自己画选中块 */
+  .ui-segmented-control:has(> .ui-segmented-control__indicator[hidden]) .ui-segment[data-selected] {
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+  }
+
+  .ui-segment[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-segment__icon {
+    display: inline-flex;
+  }
+
+  .ui-segment__icon svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  /* ---------- 选中块：位置由 useSlidingIndicator 写进 --ui-indicator-*，切换时滑过去 ---------- */
+  .ui-segmented-control__indicator {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    box-sizing: border-box;
+    width: var(--ui-indicator-w);
+    height: var(--ui-indicator-h);
+    translate: var(--ui-indicator-x) var(--ui-indicator-y);
+    border: 1px solid transparent; /* 高对比度模式下显示选中块的边界 */
+    border-radius: calc(var(--radius-control) - var(--ui-segmented-pad));
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    pointer-events: none;
+  }
+
+  .ui-segmented-control[data-indicator-ready] .ui-segmented-control__indicator {
+    transition:
+      translate var(--dur-considered) var(--ease-spring),
+      width var(--dur-considered) var(--ease-spring);
+  }
+
+  @media (forced-colors: active) {
+    .ui-segmented-control__indicator {
+      background: Highlight;
+    }
+
+    .ui-segment[data-selected] {
+      color: HighlightText;
+    }
+
+    .ui-segment[data-disabled] {
+      color: GrayText;
+    }
+  }
+}

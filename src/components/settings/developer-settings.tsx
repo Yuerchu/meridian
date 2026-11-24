@@ -1,11 +1,12 @@
+import './developer-settings.css'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleX, Play } from '@keyline-icons/react/two-tone'
-import { Button, Card, Meter } from '@/components/base'
-
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Meter } from '@/components/yuerchu-ui/components/meter/meter'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { cx } from '@/utils/cx'
 import { encodePcm16Base64, openCapture } from '@/lib/web-audio-capture'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -275,87 +276,81 @@ export function DeveloperSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
-      <div data-slot="developer-mic-probe" className="space-y-1.5">
-        {/* Names the section, not a control — there is no field under it, only a
-            card that titles itself. It was a `<label>` pointing at nothing. */}
-        <p data-slot="developer-section-label" className="text-caption-1-medium text-text-secondary">
-          {t('settings.developer.micProbe')}
-        </p>
-        <Card>
-          <Card.Header>
-            <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>
-            <Card.Description>{t('settings.developer.micProbeHint')}</Card.Description>
-          </Card.Header>
-          {/* `.card__footer` is a flex row that does not wrap, and the third
-              button here is the Android-only one — so the case with the most
-              buttons is also the narrowest screen they ever appear on. */}
-          <Card.Footer className="flex-wrap gap-2">
-            <Button leadingIcon={Play} variant="secondary" size="small" onPress={() => record(true)} isDisabled={busy}>
-              {t('settings.developer.probe.runWorklet')}
-            </Button>
-            <Button variant="secondary" size="small" onPress={() => record(false)} isDisabled={busy}>
-              {t('settings.developer.probe.runScriptProcessor')}
-            </Button>
-            {/* Android only: the desktop transcribes from a Rust-side recording
-                session, and reaches it through the composer's own button. */}
-            {isAndroid && (
-              <Button variant="secondary" size="small" onPress={transcribe} isDisabled={busy}>
-                {t('settings.developer.probe.runTranscribe')}
+      <div data-slot="developer-mic-probe">
+        <SettingsGroup
+          heading={<span data-slot="developer-section-label">{t('settings.developer.micProbe')}</span>}
+          headingLevel={3}
+        >
+          <SettingsRow
+            layout="stacked"
+            label={t('settings.developer.micProbeTitle')}
+            description={t('settings.developer.micProbeHint')}
+          >
+            {/* The third button is Android-only, and that is also the narrowest
+                screen these buttons appear on, so the row wraps. */}
+            <div className="m-developer__actions">
+              <Button icon={<Play />} variant="secondary" size="sm" onPress={() => record(true)} isDisabled={busy}>
+                {t('settings.developer.probe.runWorklet')}
               </Button>
-            )}
-          </Card.Footer>
+              <Button variant="secondary" size="sm" onPress={() => record(false)} isDisabled={busy}>
+                {t('settings.developer.probe.runScriptProcessor')}
+              </Button>
+              {/* Android only: the desktop transcribes from a Rust-side recording
+                  session, and reaches it through the composer's own button. */}
+              {isAndroid && (
+                <Button variant="secondary" size="sm" onPress={transcribe} isDisabled={busy}>
+                  {t('settings.developer.probe.runTranscribe')}
+                </Button>
+              )}
+            </div>
+          </SettingsRow>
 
-          {recording && (
-            <div data-slot="mic-probe-level" className="space-y-1">
-              <p data-slot="mic-probe-speak-now" className="text-caption-1-regular text-status-danger">
-                {t('settings.developer.probe.speakNow')}
-              </p>
-              {/* A meter, not a progress bar: this is a level within a known
-                  range, not a task advancing towards completion. The bare div
-                  it replaces reported nothing at all to a screen reader. */}
-              <Meter
-                aria-label={t('settings.developer.probe.level')}
-                value={Math.min(100, peak * 140)}
-                className="w-full"
-              >
-                <Meter.Track className="h-2 rounded-full bg-background-secondary-default">
-                  <Meter.Fill className="bg-status-success transition-[width] duration-75" />
-                </Meter.Track>
-              </Meter>
+          {(recording || lines.length > 0) && (
+            <div className="m-developer__output">
+              {recording && (
+                <div data-slot="mic-probe-level" className="m-developer__level">
+                  <p data-slot="mic-probe-speak-now" className="m-developer__speak">
+                    {t('settings.developer.probe.speakNow')}
+                  </p>
+                  {/* A meter, not a progress bar: this is a level within a known
+                      range, not a task advancing towards completion. The bare div
+                      it replaces reported nothing at all to a screen reader. */}
+                  <Meter
+                    aria-label={t('settings.developer.probe.level')}
+                    value={Math.min(100, peak * 140)}
+                    showValueLabel={false}
+                  />
+                </div>
+              )}
+
+              {lines.length > 0 && (
+                <ul data-slot="mic-probe-lines" className="m-developer__lines">
+                  {lines.map((l) => (
+                    <li key={l.id} data-slot="mic-probe-line" data-verdict={l.verdict} className="m-developer__line">
+                      {l.verdict === 'pass' ? (
+                        <CircleCheck size={14} aria-hidden />
+                      ) : l.verdict === 'fail' ? (
+                        <CircleX size={14} aria-hidden />
+                      ) : (
+                        <span data-slot="mic-probe-pending-mark" className="m-developer__pending" aria-hidden>
+                          ·
+                        </span>
+                      )}
+                      <span data-slot="mic-probe-line-text" className="m-developer__line-text">
+                        <span data-slot="mic-probe-line-label">{l.label}</span>
+                        {l.detail && (
+                          <span data-slot="mic-probe-line-detail" className="m-developer__detail">
+                            — {l.detail}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
-
-          {lines.length > 0 && (
-            <ul data-slot="mic-probe-lines" className="space-y-1.5 text-caption-1-regular">
-              {lines.map((l) => (
-                <li key={l.id} data-slot="mic-probe-line" className="flex items-start gap-2">
-                  {l.verdict === 'pass' ? (
-                    <CircleCheck className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-success" />
-                  ) : l.verdict === 'fail' ? (
-                    <CircleX className="mt-0.5 w-3.5 h-3.5 shrink-0 text-status-danger" />
-                  ) : (
-                    <span
-                      data-slot="mic-probe-pending-mark"
-                      className="mt-0.5 w-3.5 shrink-0 text-center text-text-secondary"
-                    >
-                      ·
-                    </span>
-                  )}
-                  <span data-slot="mic-probe-line-text" className="min-w-0">
-                    <span data-slot="mic-probe-line-label" className={cx(l.verdict === 'fail' && 'text-status-danger')}>
-                      {l.label}
-                    </span>
-                    {l.detail && (
-                      <span data-slot="mic-probe-line-detail" className="ml-1 break-all text-text-secondary">
-                        — {l.detail}
-                      </span>
-                    )}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
+        </SettingsGroup>
       </div>
     </SettingsPane>
   )

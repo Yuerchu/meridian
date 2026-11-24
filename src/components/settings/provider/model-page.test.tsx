@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
@@ -121,6 +121,9 @@ describe('ModelPage', () => {
     expect(onDeleted).not.toHaveBeenCalled()
   })
 
+  // The number field takes no letters at all, so "unreadable" can no longer be
+  // typed; what has to hold is that the field left empty is refused, not saved
+  // as a default window.
   it('refuses an unreadable context window instead of saving a default', async () => {
     const user = userEvent.setup()
     renderPage()
@@ -128,10 +131,11 @@ describe('ModelPage', () => {
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
     await user.clear(ctx)
     await user.type(ctx, 'abc')
+    expect(ctx).toHaveValue('')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
-      i18n.t('settings.model.limitInvalidError', { field: i18n.t('settings.model.contextWindow') }),
+      i18n.t('settings.model.limitRequiredError', { field: i18n.t('settings.model.contextWindow') }),
     )
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
   })
@@ -166,11 +170,11 @@ describe('ModelPage', () => {
     renderPage()
 
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
-    await waitFor(() => expect(ctx).toHaveValue('64000'))
+    await waitFor(() => expect(ctx).toHaveValue('64,000'))
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') })).toHaveValue(
-      String(safeThreshold(64000, 8000)),
+      safeThreshold(64000, 8000).toLocaleString('en-US'),
     )
-    expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('8000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.maxOutput') })).toHaveValue('8,000')
   })
 
   it('suggests no threshold when the output ceiling is unknown', async () => {
@@ -184,10 +188,10 @@ describe('ModelPage', () => {
     renderPage()
 
     const ctx = await screen.findByRole('textbox', { name: i18n.t('settings.model.contextWindow') })
-    await waitFor(() => expect(ctx).toHaveValue('64000'))
+    await waitFor(() => expect(ctx).toHaveValue('64,000'))
     // A reserve of nothing would be a threshold for a zero-token reply.
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') })).toHaveValue('')
-    expect(screen.getByLabelText(i18n.t('settings.model.maxOutput'))).toHaveValue('')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.maxOutput') })).toHaveValue('')
   })
 
   it('says it saved', async () => {
@@ -198,6 +202,25 @@ describe('ModelPage', () => {
     await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
     expect(mockApi.saveModelConfig.mock.calls[0][0].profile.context_window).toBe(200000)
     expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('common.saved'))
+  })
+
+  it('keeps a stored provider tool the provider no longer offers when another is ticked', async () => {
+    const user = userEvent.setup()
+    mockApi.getModelConfig.mockResolvedValue({ ...(EXISTING as object), server_tools: ['code_execution'] } as never)
+    mockApi.getProviderCapabilities.mockResolvedValue({
+      max_context_tokens: null,
+      max_output_tokens: null,
+      supported_efforts: [],
+      server_tools: ['web_search', 'x_search'],
+    } as never)
+    renderPage()
+
+    const group = await screen.findByRole('group', { name: i18n.t('settings.model.serverTools') })
+    await user.click(within(group).getByRole('checkbox', { name: i18n.t('settings.model.serverTool.x_search') }))
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+
+    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
+    expect(mockApi.saveModelConfig.mock.calls[0][0].server_tools).toEqual(['code_execution', 'x_search'])
   })
 
   it('blocks a local save until both capability reads succeed, then permits it', async () => {

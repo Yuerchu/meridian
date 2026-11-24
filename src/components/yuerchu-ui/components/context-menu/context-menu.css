@@ -1,0 +1,7 @@
+@layer components {
+  /* 菜单的外观沿用 Menu。目标元素上长按时不要选中文字、不要弹出系统的放大镜和菜单 */
+  .ui-context-menu-target {
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+}

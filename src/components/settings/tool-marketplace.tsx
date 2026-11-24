@@ -1,26 +1,22 @@
+import './tool-marketplace.css'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bin, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  Card,
-  Chip,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { Bin, ChevronRight, Plus, Terminal, Wrench } from '@keyline-icons/react/two-tone'
+import { Button as AriaButton, Disclosure, DisclosureGroup, DisclosurePanel, Heading } from 'react-aria-components'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolPresetInfoResponse } from '@/types'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -122,101 +118,100 @@ function CustomToolEditor({
   return (
     <form
       data-slot="custom-tool-editor"
-      className="space-y-3"
+      className="m-tools__editor"
       onSubmit={(event) => {
         event.preventDefault()
         void handleSave()
       }}
     >
-      <div data-slot="custom-tool-fields" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
-        <TextField isInvalid={invalid.has('name')}>
-          <Label>{t('settings.tools.name')}</Label>
-          <Input
+      <SettingsGroup>
+        <SettingsRow label={t('settings.tools.name')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('name')}
             ref={nameRef}
             name="customToolName"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={setName}
             placeholder="my_tool"
-            className="font-mono text-caption-1-regular"
           />
-        </TextField>
-        <SettingsSelect
-          label={t('settings.tools.permission')}
-          value={permission}
-          options={permissionOptions}
-          onChange={setPermission}
-        />
-      </div>
-      <TextField isInvalid={invalid.has('description')}>
-        <Label>{t('settings.tools.description')}</Label>
-        <Input
-          ref={descriptionRef}
-          name="customToolDescription"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-      </TextField>
-      <TextField isInvalid={invalid.has('command')}>
-        <Label>{t('settings.tools.command')}</Label>
-        <Input
-          ref={commandRef}
-          name="customToolCommand"
-          value={command}
-          onChange={(e) => setCommand(e.target.value)}
-          placeholder="python script.py"
-          className="font-mono text-caption-1-regular"
-        />
-      </TextField>
-      <TextField>
-        <Label>{t('settings.tools.argsTemplate')}</Label>
-        <Input
-          name="customToolArgs"
-          value={argsTemplate}
-          onChange={(e) => setArgsTemplate(e.target.value)}
-          placeholder="--input {{input}} --output {{output}}"
-          className="font-mono text-caption-1-regular"
-        />
-        <Description>{t('settings.tools.argsTemplateHint')}</Description>
-      </TextField>
-      <TextField type="number" isInvalid={invalid.has('timeout')}>
-        <Label>{t('settings.tools.timeout')}</Label>
-        <Input
-          ref={timeoutRef}
-          name="customToolTimeout"
-          inputMode="numeric"
-          min={1}
-          value={timeoutMs}
-          onChange={(e) => setTimeoutMs(e.target.value)}
-          className="w-32"
-        />
-      </TextField>
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.permission')}>
+          <div className="m-tools__select">
+            <SettingsSelect
+              ariaLabel={t('settings.tools.permission')}
+              value={permission}
+              options={permissionOptions}
+              onChange={setPermission}
+            />
+          </div>
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.description')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('description')}
+            ref={descriptionRef}
+            name="customToolDescription"
+            value={description}
+            onChange={setDescription}
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.command')} layout="stacked">
+          <TextField
+            isInvalid={invalid.has('command')}
+            ref={commandRef}
+            name="customToolCommand"
+            value={command}
+            onChange={setCommand}
+            placeholder="python script.py"
+          />
+        </SettingsRow>
+        <SettingsRow
+          label={t('settings.tools.argsTemplate')}
+          description={t('settings.tools.argsTemplateHint')}
+          layout="stacked"
+        >
+          <TextField
+            name="customToolArgs"
+            value={argsTemplate}
+            onChange={setArgsTemplate}
+            placeholder="--input {{input}} --output {{output}}"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.timeout')}>
+          <div className="m-tools__compact-field">
+            <NumberField
+              isInvalid={invalid.has('timeout')}
+              value={draftToNumber(timeoutMs)}
+              onChange={(value) => setTimeoutMs(numberToDraft(value))}
+              ref={timeoutRef}
+              name="customToolTimeout"
+              minValue={1}
+              formatOptions={PLAIN_INTEGER}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
       {invalid.size > 0 && (
-        <p data-slot="custom-tool-validation" role="alert" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="custom-tool-validation" tone="danger" shouldAnnounce>
           {invalid.has('timeout') ? t('settings.tools.invalidTimeout') : t('settings.tools.requiredFields')}
-        </p>
+        </Alert>
       )}
       {saveError && (
-        <p
-          data-slot="custom-tool-save-error"
-          role="alert"
-          className="text-caption-1-regular text-status-danger break-all"
-        >
+        <Alert data-slot="custom-tool-save-error" tone="danger" shouldAnnounce>
           {saveError}
-        </p>
+        </Alert>
       )}
-      <div data-slot="custom-tool-actions" className="flex items-center gap-2">
+      <div data-slot="custom-tool-actions" className="m-tools__actions">
         <Button type="submit">{t('common.save')}</Button>
         {saved && <SavedHint />}
         {onDelete && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
               type="button"
-              iconOnly
-              leadingIcon={Bin}
-              size="small"
-              variant="neutral"
+              icon={<Bin />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.tools.delete')}
-              className="ml-auto hover:text-status-danger"
+              className="m-tools__aside"
               onPress={onDelete}
             />
             <Tooltip>{t('settings.tools.delete')}</Tooltip>
@@ -269,14 +264,16 @@ export function ToolMarketplace() {
       <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
 
       {loadError && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{t('settings.tools.loadError')}</Alert.Description>
-            <Button size="small" variant="secondary" onPress={() => void refresh()}>
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          actions={
+            <Button size="sm" variant="secondary" onPress={() => void refresh()}>
               {t('settings.tools.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {t('settings.tools.loadError')}
         </Alert>
       )}
 
@@ -284,29 +281,27 @@ export function ToolMarketplace() {
         title={t('settings.tools.builtinSection')}
         summary={builtinTools.filter((tool) => tool.source === 'builtin').length}
       >
-        <div data-slot="builtin-tool-list" className="grid grid-cols-1 gap-1">
-          {builtinTools
-            .filter((t) => t.source === 'builtin')
-            .map((tool) => (
-              <div
-                key={tool.name}
-                data-slot="builtin-tool-row"
-                className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
-              >
-                <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
-                <span data-slot="builtin-tool-name" className="font-mono flex-1">
-                  {tool.name}
-                </span>
-                <span
-                  data-slot="builtin-tool-description"
-                  onPointerEnter={titleIfTruncated}
-                  className="text-text-secondary truncate max-w-48"
-                >
-                  {tool.description}
-                </span>
-              </div>
-            ))}
-        </div>
+        <SettingsGroup>
+          <div data-slot="builtin-tool-list" className="m-tools__list">
+            {builtinTools
+              .filter((t) => t.source === 'builtin')
+              .map((tool) => (
+                <div key={tool.name} data-slot="builtin-tool-row" className="m-tools__line">
+                  <Wrench size={14} aria-hidden />
+                  <span data-slot="builtin-tool-name" className="m-tools__mono">
+                    {tool.name}
+                  </span>
+                  <span
+                    data-slot="builtin-tool-description"
+                    onPointerEnter={titleIfTruncated}
+                    className="m-tools__desc"
+                  >
+                    {tool.description}
+                  </span>
+                </div>
+              ))}
+          </div>
+        </SettingsGroup>
       </SettingsDrilldown>
 
       {builtinTools.some((tool) => tool.source === 'onebot') && (
@@ -314,175 +309,131 @@ export function ToolMarketplace() {
           title={t('settings.tools.onebotSection')}
           summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
         >
-          <p data-slot="onebot-tool-hint" className="text-caption-1-regular text-text-secondary">
-            {t('settings.tools.onebotHint')}
-          </p>
-          <div data-slot="onebot-tool-list" className="grid grid-cols-1 gap-1">
-            {builtinTools
-              .filter((tool) => tool.source === 'onebot')
-              .map((tool) => (
-                <div
-                  key={tool.name}
-                  data-slot="onebot-tool-row"
-                  className="flex items-center gap-2 px-3 py-1.5 text-caption-1-regular border border-border-button-default rounded-lg"
-                >
-                  <Wrench className="w-3.5 h-3.5 text-text-secondary flex-shrink-0" />
-                  <span data-slot="onebot-tool-name" className="font-mono flex-1">
-                    {tool.name}
-                  </span>
-                  <span data-slot="onebot-tool-description" className="text-text-secondary truncate max-w-40">
-                    {t(`settings.tools.qq.${tool.name}`)}
-                  </span>
-                  {tool.scope === 'group' && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqGroupOnly')}</Chip>
-                  )}
-                  {tool.scope === 'private' && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqPrivateOnly')}</Chip>
-                  )}
-                  {tool.admin_only === true && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqAdminOnly')}</Chip>
-                  )}
-                  {tool.needs_approval === true && (
-                    <Chip className="text-text-secondary">{t('settings.tools.qqApproval')}</Chip>
-                  )}
-                </div>
-              ))}
-          </div>
+          <SettingsGroup description={t('settings.tools.onebotHint')}>
+            <div data-slot="onebot-tool-list" className="m-tools__list">
+              {builtinTools
+                .filter((tool) => tool.source === 'onebot')
+                .map((tool) => (
+                  <div key={tool.name} data-slot="onebot-tool-row" className="m-tools__line">
+                    <Wrench size={14} aria-hidden />
+                    <span data-slot="onebot-tool-name" className="m-tools__mono">
+                      {tool.name}
+                    </span>
+                    <span data-slot="onebot-tool-description" className="m-tools__desc">
+                      {t(`settings.tools.qq.${tool.name}`)}
+                    </span>
+                    {tool.scope === 'group' && <Badge>{t('settings.tools.qqGroupOnly')}</Badge>}
+                    {tool.scope === 'private' && <Badge>{t('settings.tools.qqPrivateOnly')}</Badge>}
+                    {tool.admin_only === true && <Badge>{t('settings.tools.qqAdminOnly')}</Badge>}
+                    {tool.needs_approval === true && <Badge>{t('settings.tools.qqApproval')}</Badge>}
+                  </div>
+                ))}
+            </div>
+          </SettingsGroup>
         </SettingsDrilldown>
       )}
 
-      <div data-slot="custom-tools">
-        <div data-slot="custom-tools-header" className="flex items-center justify-between mb-2">
-          <h3 data-slot="custom-tools-title" className="text-body-medium">
+      <div data-slot="custom-tools" className="m-tools__section">
+        <div data-slot="custom-tools-header" className="m-tools__header">
+          <h3 data-slot="custom-tools-title" className="m-tools__title">
             {t('settings.tools.customSection')}
           </h3>
-          <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
+          <Button icon={<Plus />} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
             {t('settings.tools.new')}
           </Button>
         </div>
 
         {showCreate && (
-          <Card variant="secondary" className="mb-3">
+          <div className="m-tools__create">
             <CustomToolEditor
               onSave={() => {
                 setShowCreate(false)
                 refresh()
               }}
             />
-          </Card>
+          </div>
         )}
 
         {/* One open at a time is the group's own default
             (`allowsMultipleExpanded` is off), so the single-open rule lives in
             the primitive rather than in the click handler. */}
-        <DisclosureGroup
-          className="flex flex-col gap-1"
-          expandedKeys={expandedToolId ? [expandedToolId] : []}
-          onExpandedChange={(keys) => setExpandedToolId(([...keys][0] as string | undefined) ?? null)}
-        >
-          {customTools.map((ct) => {
-            const isExpanded = expandedToolId === ct.id
-            return (
-              <Disclosure
-                key={ct.id}
-                id={ct.id}
-                className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
-              >
-                <Disclosure.Heading>
-                  {/* `flex` is not optional: Disclosure.Indicator carries
-                      `shrink-0`, which only means something inside a
-                      flex container. `text-start` undoes the button element's
-                      centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
-                    <Terminal className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
-                    <span
-                      data-slot="custom-tool-name"
-                      onPointerEnter={titleIfTruncated}
-                      className="font-mono min-w-0 flex-1 truncate"
-                    >
-                      {ct.name}
-                    </span>
-                    <span
-                      data-slot="custom-tool-command"
-                      onPointerEnter={titleIfTruncated}
-                      className="text-text-secondary truncate"
-                    >
-                      {ct.command}
-                    </span>
-                    {!ct.is_enabled && (
-                      <Chip className="shrink-0 text-text-secondary">{t('settings.tools.disabled')}</Chip>
-                    )}
-                    <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
-                  </Disclosure.Trigger>
-                </Disclosure.Heading>
-                {/* `min-h-0` is load-bearing: the card is a flex column, and a
-                    flex item's default `min-height: auto` floors it at its
-                    content height. */}
-                <Disclosure.Content className="min-h-0 w-full">
-                  {/* Body, not a plain wrapper: it is what keeps the panel
-                      measurable, so without it the editor never collapses. The
-                      padding is the editor's own former `p-3`, moved out here
-                      now that the row is the only box around it. */}
-                  <Disclosure.Body className="p-3">
-                    {/* A collapsed panel is only hidden, not unmounted, so the
-                        editor is still gated on the open row. */}
-                    {isExpanded && (
-                      <CustomToolEditor
-                        tool={ct}
-                        onSave={refresh}
-                        onDelete={async () => {
-                          if (
-                            !(await confirm({
-                              body: t('settings.confirmDelete.customTool'),
-                              confirmLabel: t('common.delete'),
-                            }))
-                          )
-                            return
-                          await api.deleteCustomTool(ct.id)
-                          setExpandedToolId(null)
-                          refresh()
-                        }}
-                      />
-                    )}
-                  </Disclosure.Body>
-                </Disclosure.Content>
-              </Disclosure>
-            )
-          })}
-          {customTools.length === 0 && !showCreate && (
-            <EmptyState size="sm">
-              <EmptyState.Header>
-                <EmptyState.Title>{t('settings.tools.noCustom')}</EmptyState.Title>
-              </EmptyState.Header>
-            </EmptyState>
-          )}
-        </DisclosureGroup>
+        <SettingsGroup>
+          <DisclosureGroup
+            className="m-tools__folds"
+            expandedKeys={expandedToolId ? [expandedToolId] : []}
+            onExpandedChange={(keys) => setExpandedToolId(([...keys][0] as string | undefined) ?? null)}
+          >
+            {customTools.map((ct) => {
+              const isExpanded = expandedToolId === ct.id
+              return (
+                <Disclosure key={ct.id} id={ct.id} className="m-tools__fold">
+                  <Heading className="m-tools__fold-heading">
+                    <AriaButton slot="trigger" className="m-tools__trigger">
+                      <Terminal size={14} aria-hidden />
+                      <span data-slot="custom-tool-name" onPointerEnter={titleIfTruncated} className="m-tools__mono">
+                        {ct.name}
+                      </span>
+                      <span data-slot="custom-tool-command" onPointerEnter={titleIfTruncated} className="m-tools__desc">
+                        {ct.command}
+                      </span>
+                      {!ct.is_enabled && <Badge>{t('settings.tools.disabled')}</Badge>}
+                      <ChevronRight size={14} aria-hidden className="m-tools__chevron" />
+                    </AriaButton>
+                  </Heading>
+                  <DisclosurePanel className="m-tools__panel">
+                    <div className="m-tools__body">
+                      {/* A collapsed panel is only hidden, not unmounted, so the
+                          editor is still gated on the open row. */}
+                      {isExpanded && (
+                        <CustomToolEditor
+                          tool={ct}
+                          onSave={refresh}
+                          onDelete={async () => {
+                            if (
+                              !(await confirm({
+                                description: t('settings.confirmDelete.customTool'),
+                                confirmLabel: t('common.delete'),
+                                tone: 'danger',
+                              }))
+                            )
+                              return
+                            await api.deleteCustomTool(ct.id)
+                            setExpandedToolId(null)
+                            refresh()
+                          }}
+                        />
+                      )}
+                    </div>
+                  </DisclosurePanel>
+                </Disclosure>
+              )
+            })}
+            {customTools.length === 0 && !showCreate && (
+              <EmptyState heading={t('settings.tools.noCustom')} headingLevel={3} size="sm" />
+            )}
+          </DisclosureGroup>
+        </SettingsGroup>
       </div>
 
       <div data-slot="tool-presets">
-        <h3 data-slot="tool-presets-title" className="text-body-medium mb-2">
-          {t('settings.tools.presetsSection')}
-        </h3>
-        <div data-slot="tool-preset-list" className="space-y-1">
-          {presets.map((preset) => {
-            const toolNames = preset.tool_names
-            return (
-              <div
-                key={preset.id}
-                data-slot="tool-preset-row"
-                className="flex items-center gap-2 px-3 py-2 text-caption-1-regular border border-border-button-default rounded-lg"
-              >
-                <span data-slot="tool-preset-name" className="text-caption-1-medium flex-1">
-                  {preset.name}
-                </span>
-                <span data-slot="tool-preset-count" className="text-text-secondary">
-                  {t('settings.tools.presetCount', { count: toolNames.length })}
-                </span>
-                {preset.is_builtin && <Chip className="text-text-secondary">{t('settings.template.builtin')}</Chip>}
-              </div>
-            )
-          })}
-        </div>
+        <SettingsGroup heading={t('settings.tools.presetsSection')} headingLevel={3}>
+          <div data-slot="tool-preset-list" className="m-tools__list">
+            {presets.map((preset) => {
+              const toolNames = preset.tool_names
+              return (
+                <div key={preset.id} data-slot="tool-preset-row" className="m-tools__line">
+                  <span data-slot="tool-preset-name" className="m-tools__preset-name">
+                    {preset.name}
+                  </span>
+                  <span data-slot="tool-preset-count" className="m-tools__hint">
+                    {t('settings.tools.presetCount', { count: toolNames.length })}
+                  </span>
+                  {preset.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
+                </div>
+              )
+            })}
+          </div>
+        </SettingsGroup>
       </div>
       {confirmDialog}
     </SettingsPane>

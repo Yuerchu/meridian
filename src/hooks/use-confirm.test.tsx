@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
 import { useHistoryStore } from '@/stores/history-store'
 import { attachHistory } from '@/lib/history-bridge'
-import { resizeViewportTo } from '@/test/viewport'
 import { useConfirm } from './use-confirm'
 
 /**
@@ -16,7 +15,7 @@ type Ask = (body?: string) => Promise<boolean>
 
 function Harness({ onAnswer, askRef }: { onAnswer: (ok: boolean) => void; askRef?: { current: Ask | null } }) {
   const { confirm, confirmDialog } = useConfirm()
-  const ask: Ask = (body = 'Sure?') => confirm({ body, confirmLabel: 'Do it' })
+  const ask: Ask = (body = 'Sure?') => confirm({ description: body, confirmLabel: 'Do it', tone: 'danger' })
   if (askRef) askRef.current = ask
   return (
     <>
@@ -28,51 +27,7 @@ function Harness({ onAnswer, askRef }: { onAnswer: (ok: boolean) => void; askRef
 
 const click = (name: string) => userEvent.click(screen.getByRole('button', { name }))
 
-const sheet = () => document.querySelector('[data-slot="sheet-content"][data-placement="bottom"]')
-const centred = () => document.querySelector('[data-slot="alert-dialog"]')
-
 describe('useConfirm', () => {
-  afterEach(() => resizeViewportTo(1024))
-
-  /**
-   * A question reaches for the bottom edge on a phone and the middle of the
-   * screen on a desktop, and is the same question either way: same role, same
-   * two buttons, same answer on a dismissal.
-   */
-  it('rises from the bottom edge on a phone and sits centred elsewhere', async () => {
-    resizeViewportTo(500)
-    const answer = vi.fn()
-    render(<Harness onAnswer={answer} />)
-    await click('ask')
-
-    expect(sheet()).not.toBeNull()
-    expect(centred()).toBeNull()
-    expect(screen.getByRole('alertdialog')).toBeInTheDocument()
-
-    await click(i18n.t('common.cancel'))
-    expect(answer).toHaveBeenCalledWith(false)
-  })
-
-  it('stays centred on a phone when the asker says so', async () => {
-    resizeViewportTo(500)
-    function Centred() {
-      const { confirm, confirmDialog } = useConfirm()
-      return (
-        <>
-          <button onClick={() => void confirm({ body: 'Sure?', confirmLabel: 'Do it', presentation: 'center' })}>
-            ask
-          </button>
-          {confirmDialog}
-        </>
-      )
-    }
-    render(<Centred />)
-    await click('ask')
-
-    expect(centred()).not.toBeNull()
-    expect(sheet()).toBeNull()
-  })
-
   it('renders nothing until something is asked', () => {
     const { container } = render(<Harness onAnswer={() => {}} />)
     expect(container.textContent).toBe('ask')
@@ -84,6 +39,7 @@ describe('useConfirm', () => {
     render(<Harness onAnswer={answer} />)
 
     await click('ask')
+    expect(screen.getByRole('alertdialog')).toHaveTextContent('Sure?')
     await click('Do it')
     expect(answer).toHaveBeenCalledWith(true)
 
@@ -166,26 +122,6 @@ describe('useConfirm', () => {
       detach()
       useHistoryStore.setState({ enabled: false, levels: [] })
       vi.unstubAllGlobals()
-    }
-  })
-
-  /**
-   * One question, one press of the back key.
-   *
-   * On a phone the dialog *is* a `Sheet`, which claims a level of its own. A
-   * second claim beside it would leave the first press appearing to do nothing.
-   */
-  it('costs one history level as a sheet, the same as centred', async () => {
-    resizeViewportTo(500)
-    useHistoryStore.setState({ enabled: true, levels: [] })
-    try {
-      render(<Harness onAnswer={() => {}} />)
-      await click('ask')
-      await act(async () => {})
-      expect(sheet()).not.toBeNull()
-      expect(useHistoryStore.getState().levels).toHaveLength(1)
-    } finally {
-      useHistoryStore.setState({ enabled: false, levels: [] })
     }
   })
 })

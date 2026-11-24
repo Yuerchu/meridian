@@ -1,0 +1,73 @@
+@layer components {
+  /* 底色 --surface-muted，一道稍亮的光从左到右扫过；减弱模式下 --dur-shimmer 为 0，动画不生效，只剩底色。
+     多行文字的外层（[data-lines]）只负责排列，不画占位块 */
+  .ui-skeleton:not([data-lines]),
+  .ui-skeleton__line {
+    display: block;
+    box-sizing: border-box;
+    border: 1px solid transparent; /* 高对比度模式下背景被去掉，靠边框显示占位块 */
+    background: linear-gradient(
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--text) 6%, transparent) 50%,
+        transparent 100%
+      )
+      no-repeat,
+      var(--surface-muted);
+    background-size:
+      50% 100%,
+      100% 100%;
+    animation: ui-skeleton-shimmer var(--dur-shimmer) var(--ease-linear) infinite;
+    /* 多行时每行落后一点（--ui-skeleton-lag），用负的延迟从周期中间开始，不会先停在起点；
+       --ui-skeleton-phase 把动画拨到页面时间对应的位置，页面上所有骨架一起扫（skeleton.tsx 挂载时写） */
+    animation-delay: calc(var(--ui-skeleton-lag, 0ms) - var(--ui-skeleton-phase, 0ms) - var(--dur-shimmer));
+  }
+
+  @keyframes ui-skeleton-shimmer {
+    from {
+      background-position:
+        -100% 0,
+        0 0;
+    }
+
+    to {
+      background-position:
+        200% 0,
+        0 0;
+    }
+  }
+
+  /* ---------- 文字：占一整行的高度（和真实文字一样，加载完不跳动），上下裁掉行距，只留字号那么高 ---------- */
+  .ui-skeleton[data-shape="text"]:not([data-lines]),
+  .ui-skeleton__line {
+    width: var(--ui-skeleton-width, 100%);
+    height: 1lh;
+    clip-path: inset(0.2lh 0 round calc(var(--radius-item) / 2));
+  }
+
+  .ui-skeleton[data-lines] {
+    display: block;
+    width: var(--ui-skeleton-width, 100%);
+  }
+
+  .ui-skeleton[data-lines] .ui-skeleton__line {
+    width: 100%;
+  }
+
+  .ui-skeleton[data-lines] .ui-skeleton__line:last-child {
+    width: 60%;
+  }
+
+  /* ---------- 块和圆 ---------- */
+  .ui-skeleton[data-shape="rect"] {
+    width: var(--ui-skeleton-width, 100%);
+    height: var(--ui-skeleton-height, 120px);
+    border-radius: var(--ui-skeleton-radius, var(--radius-item));
+  }
+
+  .ui-skeleton[data-shape="circle"] {
+    width: var(--ui-skeleton-width, 40px);
+    height: var(--ui-skeleton-height, var(--ui-skeleton-width, 40px));
+    border-radius: var(--radius-pill);
+  }
+}

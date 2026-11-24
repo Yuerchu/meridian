@@ -1,0 +1,42 @@
+@layer components {
+  /* 三种状态的图标、文字各自叠在同一个格子里：格子按最宽的那个撑开，切换时宽度不变 */
+  .ui-copy-button__icons,
+  .ui-copy-button__labels {
+    display: inline-grid;
+  }
+
+  .ui-copy-button__icons > *,
+  .ui-copy-button__labels > * {
+    grid-area: 1 / 1;
+    opacity: 0;
+    transition:
+      opacity var(--dur-fast) var(--ease-standard),
+      scale var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-copy-button__labels > * {
+    white-space: nowrap;
+  }
+
+  .ui-copy-button__icons > :not([data-show]) {
+    scale: var(--enter-scale);
+  }
+
+  .ui-copy-button__icons > [data-show],
+  .ui-copy-button__labels > [data-show] {
+    opacity: 1;
+  }
+
+  /* 有文字时文字靠左：叠放的格子按最宽的撑开，较短的文字不要居中漂着 */
+  .ui-copy-button__labels {
+    justify-items: start;
+  }
+
+  .ui-copy-button[data-state="copied"] .ui-copy-button__icons {
+    color: var(--success-fg);
+  }
+
+  .ui-copy-button[data-state="error"] .ui-copy-button__icons {
+    color: var(--danger-fg);
+  }
+}

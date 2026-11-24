@@ -1,0 +1,176 @@
+@layer components {
+  /* 全屏：遮罩本身就是灯箱的外框，不留边距 */
+  .ui-image-viewer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--visual-viewport-height, 100dvh);
+    background: var(--overlay);
+  }
+
+  .ui-image-viewer-overlay[data-entering] {
+    animation: ui-image-viewer-fade var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-image-viewer-overlay[data-exiting] {
+    animation: ui-image-viewer-fade var(--dur-fast) var(--ease-exit) reverse forwards;
+  }
+
+  @keyframes ui-image-viewer-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  .ui-image-viewer,
+  .ui-image-viewer__keys,
+  .ui-image-viewer__dialog,
+  .ui-image-viewer__frame {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    outline: 1px solid transparent;
+  }
+
+  .ui-image-viewer {
+    background: var(--background);
+    color: var(--text);
+  }
+
+  .ui-image-viewer__frame {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ui-image-viewer__header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ui-image-viewer__heading {
+    display: flex;
+    flex: 1 1 12rem;
+    gap: var(--space-3);
+    align-items: baseline;
+    min-width: 0;
+  }
+
+  .ui-image-viewer__title {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font: var(--text-title-3);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-image-viewer__counter {
+    flex: none;
+    font: var(--text-body);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  .ui-image-viewer__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .ui-image-viewer .ui-image-viewer__reset {
+    min-width: 4.5em;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-image-viewer__stage {
+    position: relative;
+    display: grid;
+    flex: 1 1 auto;
+    place-items: center;
+    width: 100%;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--surface-sunken);
+    cursor: default;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .ui-image-viewer__stage[data-zoomed] {
+    cursor: grab;
+  }
+
+  .ui-image-viewer__stage[data-dragging] {
+    cursor: grabbing;
+  }
+
+  /* 绝对定位：百分比最大尺寸相对舞台计算（网格自动行的高度不确定，max-height: 100% 会失效），inset 0 + margin auto 居中 */
+  .ui-image-viewer__image {
+    position: absolute;
+    inset: 0;
+    max-width: 100%;
+    max-height: 100%;
+    margin: auto;
+    transition: transform var(--dur-fast) var(--ease-standard);
+    -webkit-user-drag: none;
+  }
+
+  .ui-image-viewer__stage[data-dragging] .ui-image-viewer__image {
+    transition: none;
+  }
+
+  .ui-image-viewer__image:not([data-state="loaded"]) {
+    visibility: hidden;
+  }
+
+  .ui-image-viewer__spinner,
+  .ui-image-viewer__message {
+    grid-area: 1 / 1;
+  }
+
+  .ui-image-viewer__message {
+    margin: 0;
+    padding: var(--space-4);
+    font: var(--text-body);
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  .ui-image-viewer .ui-image-viewer__previous,
+  .ui-image-viewer .ui-image-viewer__next {
+    position: absolute;
+    inset-block-start: 50%;
+    translate: 0 -50%;
+  }
+
+  .ui-image-viewer .ui-image-viewer__previous {
+    inset-inline-start: var(--space-4);
+  }
+
+  .ui-image-viewer .ui-image-viewer__next {
+    inset-inline-end: var(--space-4);
+  }
+
+  .ui-image-viewer__stage:dir(rtl) .ui-image-viewer__previous svg,
+  .ui-image-viewer__stage:dir(rtl) .ui-image-viewer__next svg {
+    scale: -1 1;
+  }
+
+  .ui-image-viewer__preload {
+    display: none;
+  }
+}

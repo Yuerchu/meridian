@@ -1,0 +1,58 @@
+@layer components {
+  .m-voice-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .m-voice-button__elapsed {
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    color: var(--danger-fg);
+    user-select: none;
+  }
+
+  .m-voice-button .ui-button {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-bg-hovered: var(--border);
+    --ui-button-bg-pressed: var(--border-strong);
+    --ui-button-fg: var(--text);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+    --ui-button-height: 36px;
+    --ui-button-radius: var(--radius-pill);
+    --icon-size: 20px;
+
+    touch-action: none;
+    user-select: none;
+  }
+
+  .m-voice-button[data-state='starting'] .ui-button {
+    --ui-button-fg: var(--text-secondary);
+  }
+
+  .m-voice-button[data-recording] .ui-button {
+    --ui-button-bg: var(--danger);
+    --ui-button-bg-hovered: var(--danger);
+    --ui-button-bg-pressed: var(--danger);
+    --ui-button-fg: var(--accent-fg);
+  }
+
+  .m-voice-button .ui-button[data-disabled]:not([data-pending]) {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-fg: var(--text);
+    opacity: 0.4;
+  }
+
+  @media (any-pointer: coarse) {
+    .m-voice-button .ui-button {
+      overflow: visible;
+    }
+
+    .m-voice-button .ui-button::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+}

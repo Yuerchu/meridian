@@ -13,7 +13,7 @@ use meridian_core::db::entity::assistant;
 use meridian_core::db::entity::message_context_item;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
-use meridian_core::db::sea::ops::{conversation as conversation_ops, plan_review as plan_review_ops};
+use meridian_core::db::sea::ops::conversation as conversation_ops;
 use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
 use meridian_core::util::now_ms;
@@ -41,9 +41,6 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
         .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
-    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
-        return Err(PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.into());
-    }
     let secrets = services.secrets.clone();
 
     let (assistant, keep_recent) = services
@@ -296,10 +293,7 @@ pub struct ConversationProjectUpdateRequest {
     pub project_id: RequiredNullable<String>,
 }
 
-const PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER: &str = "This conversation is waiting for plan review or its continuation. Finish it before changing its transcript or project.";
-
-/// The per-conversation settings a turn reads, each written only while no
-/// plan review holds the conversation.
+/// The per-conversation settings a turn reads.
 #[derive(Debug)]
 enum ConversationSetting {
     Assistant(Option<String>),
@@ -311,18 +305,12 @@ enum ConversationSetting {
     Project(Option<String>),
 }
 
-/// Writes `setting` unless a plan review or its continuation holds the
-/// conversation; `false` when it does. The check and the write share one
-/// write, so a review that lands in between cannot be written past.
 async fn write_setting_unless_plan_barrier(
     tx: &WriteTx,
     conversation_id: &str,
     setting: ConversationSetting,
     now: i64,
 ) -> Result<bool, DbErr> {
-    if plan_review_ops::has_conversation_barrier(tx, conversation_id).await? {
-        return Ok(false);
-    }
     match setting {
         ConversationSetting::Assistant(assistant_id) => {
             conversation_ops::update_assistant(tx, conversation_id, assistant_id, now).await?
@@ -345,9 +333,8 @@ async fn write_setting_unless_plan_barrier(
 async fn set_unless_plan_barrier(db: &Db, conversation_id: &str, setting: ConversationSetting) -> Result<(), String> {
     db.write(async |tx| write_setting_unless_plan_barrier(tx, conversation_id, setting, now_ms()).await)
         .await
-        .map_err(|e| e.to_string())?
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -942,7 +929,7 @@ mod tests {
     use meridian_core::db::entity::project::{self as project_entity, ProjectSource};
 
     #[tokio::test]
-    async fn a_pending_plan_review_prevents_changing_the_conversations_settings() {
+    async fn conversation_settings_update_cleanly() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             for (id, path) in [("project-a", "A"), ("project-b", "B")] {
@@ -962,63 +949,32 @@ mod tests {
                 )
                 .await?;
             }
-            for id in ["conversation-1", "conversation-2"] {
-                conversation_ops::create_conversation(tx, id, None, None, Some("project-a"), 1).await?;
-            }
-            db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                "conversation-1",
-                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-a", "A"))),
-            )
-            .await
-            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            conversation_ops::create_conversation(tx, "conversation-1", None, None, Some("project-a"), 1).await?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let settings = || {
-            [
-                ConversationSetting::Assistant(None),
-                ConversationSetting::ReasoningPrefs {
-                    thinking_level: Some("high".into()),
-                    fast_mode: true,
-                },
-                ConversationSetting::AcceptEdits(true),
-                ConversationSetting::Project(Some("project-b".into())),
-            ]
-        };
-        for setting in settings() {
-            let refused = set_unless_plan_barrier(&sea, "conversation-1", setting)
-                .await
-                .unwrap_err();
-            assert_eq!(refused, PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER);
+        let settings = [
+            ConversationSetting::Assistant(None),
+            ConversationSetting::ReasoningPrefs {
+                thinking_level: Some("high".into()),
+                fast_mode: true,
+            },
+            ConversationSetting::AcceptEdits(true),
+            ConversationSetting::Project(Some("project-b".into())),
+        ];
+        for setting in settings {
+            set_unless_plan_barrier(&sea, "conversation-1", setting).await.unwrap();
         }
-        let held = conversation_ops::get_conversation(&sea, "conversation-1")
+        let updated = conversation_ops::get_conversation(&sea, "conversation-1")
             .await
             .unwrap()
             .unwrap();
         assert_eq!(
             (
-                held.project_id.as_deref(),
-                held.accept_edits.get(),
-                held.fast_mode.get()
-            ),
-            (Some("project-a"), false, false)
-        );
-
-        // The conversation next to it has no review and takes every setting.
-        for setting in settings() {
-            set_unless_plan_barrier(&sea, "conversation-2", setting).await.unwrap();
-        }
-        let free = conversation_ops::get_conversation(&sea, "conversation-2")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            (
-                free.project_id.as_deref(),
-                free.accept_edits.get(),
-                free.thinking_level.as_deref()
+                updated.project_id.as_deref(),
+                updated.accept_edits.get(),
+                updated.thinking_level.as_deref()
             ),
             (Some("project-b"), true, Some("high"))
         );

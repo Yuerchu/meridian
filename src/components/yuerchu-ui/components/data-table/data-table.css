@@ -1,0 +1,163 @@
+@layer components {
+  .ui-data-table {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 勾选框列：窄，居中 */
+  .ui-data-table .ui-data-table__select {
+    width: var(--space-10);
+    padding-inline: var(--space-3) 0;
+  }
+
+  /* 固定第一列时，勾选列和第一个数据列一起固定：数据列贴在勾选列后面 */
+  .ui-table__container[data-sticky-column-active] :is(.ui-table__column, .ui-table__cell).ui-data-table__select + :is(.ui-table__column, .ui-table__cell) {
+    position: sticky;
+    inset-inline-start: var(--ui-table-frozen-first, 0); /* 勾选列的宽度，由 Table 量出来写进去 */
+    z-index: 1;
+    background: var(--ui-table-row-bg, var(--ui-table-bg, var(--background)));
+  }
+
+  .ui-table__container[data-sticky-column-active] .ui-table__column.ui-data-table__select + .ui-table__column {
+    z-index: var(--z-sticky);
+  }
+
+  /* 有勾选列时，滚动后的分隔线画在数据列边上，不画在勾选列边上 */
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__cell.ui-data-table__select {
+    box-shadow: none;
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__column.ui-data-table__select {
+    box-shadow: inset 0 -1px 0 var(--border-strong);
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__cell.ui-data-table__select + .ui-table__cell {
+    box-shadow: inset -1px 0 0 var(--border-strong);
+  }
+
+  .ui-table__container[data-sticky-column-active][data-scrolled-start] .ui-table__column.ui-data-table__select + .ui-table__column {
+    box-shadow:
+      inset -1px 0 0 var(--border-strong),
+      inset 0 -1px 0 var(--border-strong);
+  }
+
+  /* 数字、金额右对齐（DESIGN.md：等宽数字） */
+  .ui-data-table [data-align="end"] {
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .ui-data-table .ui-table__column[data-align="end"] .ui-table__column-label {
+    flex-direction: row-reverse;
+  }
+
+  /* 可编辑的右对齐单元格：文字和输入框里的数字也靠右 */
+  .ui-data-table [data-align="end"] .ui-inline-edit {
+    justify-content: flex-end;
+  }
+
+  .ui-data-table [data-align="end"] .ui-inline-edit input {
+    text-align: end;
+  }
+
+  /* ---------- 虚拟滚动：表格本身是滚动容器，高度由 virtualized.height 决定 ---------- */
+  .ui-data-table .ui-data-table__virtual {
+    display: block;
+    overflow: auto;
+    border-block-end: 1px solid var(--border);
+  }
+
+  /* ---------- 批量操作栏：位置一直留着；提示和退场中的 SelectionBar 叠在同一格 ---------- */
+  .ui-data-table__bulk-slot {
+    display: grid;
+    min-height: var(--control-lg);
+  }
+
+  .ui-data-table__bulk-slot > * {
+    grid-area: 1 / 1;
+  }
+
+  .ui-data-table__bulk-hint {
+    display: flex;
+    align-items: center;
+    padding-inline: var(--space-3);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    animation: ui-data-table-bulk-in var(--dur-fast) var(--ease-standard);
+  }
+
+  @keyframes ui-data-table-bulk-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  /* ---------- 加载中、出错、加载更多 ---------- */
+  .ui-data-table__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    padding: var(--space-3);
+  }
+
+  .ui-data-table__skeleton[data-waiting] {
+    visibility: hidden;
+  }
+
+  .ui-data-table__error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-6) var(--space-3);
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  .ui-data-table__error-icon {
+    display: inline-flex;
+    color: var(--danger-fg);
+  }
+
+  .ui-data-table__error-icon svg {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+  }
+
+  .ui-data-table__load-more td {
+    padding: var(--space-3);
+    text-align: center;
+  }
+
+  /* ---------- 底部：已选 / 总数 + 分页 ---------- */
+  .ui-data-table__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .ui-data-table__status {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-data-table__footer .ui-pagination {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ui-data-table__footer .ui-pagination__list {
+    justify-content: flex-end;
+  }
+}

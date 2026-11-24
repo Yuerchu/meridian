@@ -1696,11 +1696,13 @@ const RAW_TABLES: RawTable[] = [
       ['sort_order', 'INTEGER', ['NN'], '0', ''],
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
+      ['execution', 'TEXT', ['NULL'], 'NULL', '结构化执行定义 JSON，替代旧的命令行模板'],
     ],
     rels: ['<code>tool_categories</code>（SET NULL）。'],
     rules: [
       '<code>name</code> 会与内置工具、MCP 工具处在同一命名空间，重名的解析顺序由注册表决定。',
       '<code>parameters_schema</code> 必须是合法 JSON Schema，写入时校验，数据库不管。',
+      '<code>execution</code> 为 NULL 表示旧的命令行模板，迁移时已禁用，需要作者提供结构化定义后重新启用。',
     ],
   },
   {

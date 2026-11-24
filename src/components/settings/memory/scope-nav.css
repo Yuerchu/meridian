@@ -1,0 +1,73 @@
+@layer components {
+  .m-scope-nav {
+    display: flex;
+    width: 100%;
+    flex-shrink: 0;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-scope-nav__title {
+    padding: 0 var(--space-2) var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-scope-nav .m-settings-nav-row[data-indent] {
+    padding-inline-start: var(--space-6);
+  }
+
+  .m-scope-nav__more {
+    margin: var(--space-1) 0 var(--space-1) var(--space-6);
+  }
+
+  .m-scope-nav__person-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-block-start: var(--space-3);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface-muted);
+  }
+
+  .m-scope-nav__person-header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-scope-nav__person-title,
+  .m-scope-nav__person-description {
+    margin: 0;
+  }
+
+  .m-scope-nav__person-title {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-scope-nav__person-description {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-scope-nav__opted-out {
+    color: var(--warning-fg);
+    font: var(--text-caption);
+  }
+
+  .m-scope-nav__subject-id {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  @container pane (width >= 560px) {
+    .m-scope-nav {
+      width: 14rem;
+    }
+  }
+}

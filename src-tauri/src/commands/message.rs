@@ -1242,9 +1242,6 @@ pub struct ConversationSnapshotResponse {
     pub turns: TurnListResponse,
     pub pending_approvals: crate::commands::approval::PendingApprovalListResponse,
     pub plan_reviews: crate::commands::plan_review::PlanReviewSummaryListResponse,
-    /// Durable conversation-wide gate. Unlike `plan_reviews`, this does not
-    /// depend on which transcript branch is currently visible.
-    pub plan_review_barrier: bool,
     /// Empty for every conversation that has never delegated.
     pub sub_agent_runs: SubAgentRunListResponse,
     /// What a hosted Claude Code session reported about itself — failures and
@@ -1327,7 +1324,7 @@ pub async fn conversation_snapshot(
         );
     }
 
-    let (conversation, tree, turns, sub_agent_runs, plan_reviews, plan_review_barrier, acp_notices) = match settled {
+    let (conversation, tree, turns, sub_agent_runs, plan_reviews, acp_notices) = match settled {
         Some(read) => read,
         // Turns are starting and stopping faster than the conversation can be
         // read. Rather than pick one of the passes and hope, this one refuses to
@@ -1350,7 +1347,6 @@ pub async fn conversation_snapshot(
         turns,
         pending_approvals,
         plan_reviews,
-        plan_review_barrier,
         sub_agent_runs,
         acp_notices,
     })
@@ -1369,7 +1365,6 @@ type SnapshotRead = (
     Vec<TurnInfoResponse>,
     Vec<SubAgentRunInfoResponse>,
     crate::commands::plan_review::PlanReviewSummaryListResponse,
-    bool,
     AcpSessionNoticeListResponse,
 );
 
@@ -1481,7 +1476,6 @@ async fn read_snapshot(db: &impl Snapshot, conversation_id: &str, live: &OwnedLi
     let visible_message_ids = tree.messages.iter().map(|message| message.id.as_str()).collect();
     let plan_reviews =
         crate::commands::plan_review::summaries_for_conversation(db, conversation_id, &visible_message_ids).await?;
-    let plan_review_barrier = db::sea::ops::plan_review::has_conversation_barrier(db, conversation_id).await?;
     // In the same snapshot as the turns, so an incident filed against a turn
     // is never read beside a turn list that lacks it.
     let acp_notices = db::sea::ops::acp_session_notice::list_for_conversation(db, conversation_id)
@@ -1489,15 +1483,7 @@ async fn read_snapshot(db: &impl Snapshot, conversation_id: &str, live: &OwnedLi
         .into_iter()
         .map(AcpSessionNoticeInfoResponse::try_from)
         .collect::<Result<Vec<_>, String>>()?;
-    Ok((
-        conversation,
-        tree,
-        turns,
-        sub_agent_runs,
-        plan_reviews,
-        plan_review_barrier,
-        acp_notices,
-    ))
+    Ok((conversation, tree, turns, sub_agent_runs, plan_reviews, acp_notices))
 }
 
 /// What the row says, unless the coordinator says otherwise.
@@ -1516,47 +1502,26 @@ fn effective_status(turn: &db::entity::turn::Model, live: &OwnedLive) -> Result<
 // all three together. `conversation_snapshot` is the only way in now, and a
 // second entrance that answers a third of the question is how the two drift.
 
-/// The barrier check and the switch in the caller's one IMMEDIATE write.
 async fn switch_branch_unless_plan_barrier(
     tx: &WriteTx,
     conversation_id: &str,
     message_id: &str,
 ) -> Result<bool, DbErr> {
-    if db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
-        return Ok(false);
-    }
     message_ops::switch_branch(tx, conversation_id, message_id)
         .await
         .map(|_| true)
 }
 
-/// The barrier check and the delete in the caller's one IMMEDIATE write.
 async fn delete_message_unless_plan_barrier(
     tx: &WriteTx,
     conversation_id: &str,
     message_id: &str,
 ) -> Result<bool, DbErr> {
-    if db::sea::ops::plan_review::has_conversation_barrier(tx, conversation_id).await? {
-        return Ok(false);
-    }
     message_ops::delete_subtree(tx, conversation_id, message_id)
         .await
         .map(|_| true)
 }
 
-const PLAN_REVIEW_MUTATION_BARRIER: &str =
-    "This conversation is waiting for plan review or its continuation. Finish it before changing transcript branches.";
-
-/// Make `message_id`'s branch the active one, landing on its most recent tip.
-///
-/// Refused while a turn is running: the head this moves is the same one the
-/// turn's next `append_message` sets, so the switch would be silently undone a
-/// moment later.
-///
-/// Returns nothing. It used to hand back the new tree, which the caller then
-/// threw away — a conversation is read with `conversation_snapshot` now, and a
-/// tree without the turns and approvals that belong to it is exactly the
-/// half-answer that command exists to replace.
 #[tauri::command]
 pub async fn switch_branch(app: tauri::AppHandle, request: MessageBranchSwitchRequest) -> Result<(), String> {
     let MessageBranchSwitchRequest {
@@ -1569,39 +1534,14 @@ pub async fn switch_branch(app: tauri::AppHandle, request: MessageBranchSwitchRe
         .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
-    let changed = services
+    services
         .db
         .write(async |tx| switch_branch_unless_plan_barrier(tx, &conversation_id, &message_id).await)
         .await
-        .map_err(|e| e.to_string())?;
-    changed
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
-// `update_message_content` was here. It took only a message id, so it could not
-// name the conversation it was about to rewrite — and therefore could not take
-// a mutation lease before doing it. That made it the one write path left that
-// could edit a row out from under a running turn. Nothing called it, so it is
-// gone rather than fixed; anything that needs it back has to arrive with a
-// conversation id and take a lease like every other writer.
-
-/// Delete a message together with everything that followed from it.
-///
-/// Replaces the single-row delete, which could not be made safe: dropping an
-/// assistant row left its tool results behind, and dropping a question left the
-/// model reading an answer to nothing.
-///
-/// Refused while a turn is running, and this is the dangerous one. The row it
-/// removes may be the very one the turn's `parent_cursor` points at; `parent_id`
-/// carries no foreign key (migration 21), so the next append succeeds and hangs
-/// the rest of the turn off a node that no longer exists. `path_to_head` stops
-/// at the missing id, and the turn's entire output — still in the table —
-/// becomes unreachable.
-///
-/// Returns nothing, like `switch_branch` and for the same reason: the tree it
-/// used to hand back was thrown away by its only caller, and a tree on its own
-/// is not a state anything can be drawn from.
 #[tauri::command]
 pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest) -> Result<(), String> {
     let MessageDeleteRequest { conversation_id, id } = request;
@@ -1611,14 +1551,12 @@ pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest
         .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
-    let changed = services
+    services
         .db
         .write(async |tx| delete_message_unless_plan_barrier(tx, &conversation_id, &id).await)
         .await
-        .map_err(|e| e.to_string())?;
-    changed
-        .then_some(())
-        .ok_or_else(|| PLAN_REVIEW_MUTATION_BARRIER.to_string())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -2152,19 +2090,6 @@ mod tests {
             .unwrap();
     }
 
-    fn native_plan_runtime() -> db::models::plan_review::NativePlanReviewRuntimeConfig {
-        db::models::plan_review::NativePlanReviewRuntimeConfig {
-            provider_id: "provider-test".into(),
-            model: "model-test".into(),
-            assistant_id: None,
-            thinking_level: None,
-            fast: false,
-            project_id: None,
-            project_path: None,
-            accept_edits: false,
-        }
-    }
-
     async fn seed_pending_plan_review(db: &Db) {
         use db::sea::ops::plan_review as plan_ops;
         db.write(async |tx| {
@@ -2186,7 +2111,7 @@ mod tests {
             .await?;
             plan_ops::mark_materialization_applied(tx, &appended.materialization.id, 4).await?;
             turn::begin(tx, "turn-1", "c1", TurnOrigin::Desktop, None, 5).await?;
-            plan_ops::submit_native_head_for_review(
+            plan_ops::submit_head_for_review(
                 tx,
                 &plan_ops::PlanReviewSubmit {
                     document_id: &document.id,
@@ -2198,7 +2123,6 @@ mod tests {
                     provider_kind: db::models::plan_review::PlanReviewProviderKind::Native,
                     now: 6,
                 },
-                &native_plan_runtime(),
             )
             .await
         })
@@ -2262,7 +2186,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn snapshot_and_transcript_mutations_use_the_conversation_wide_plan_barrier() {
+    async fn snapshot_surfaces_active_plan_review_even_off_visible_branch() {
         let db = sea_test_db().await;
         seed(&db).await;
         seed_pending_plan_review(&db).await;
@@ -2273,17 +2197,6 @@ mod tests {
             1,
             "an active review remains recoverable even when its tool card is off the visible branch"
         );
-        assert!(snapshot.5, "the snapshot still exposes the conversation-wide barrier");
-        let refused = db
-            .write(async |tx| {
-                Ok::<_, DbErr>((
-                    switch_branch_unless_plan_barrier(tx, "c1", "missing-message").await?,
-                    delete_message_unless_plan_barrier(tx, "c1", "missing-message").await?,
-                ))
-            })
-            .await
-            .unwrap();
-        assert_eq!(refused, (false, false));
     }
 
     #[test]
@@ -2847,8 +2760,7 @@ mod tests {
         .await
         .unwrap();
 
-        let (conv, tree, turns, runs, plan_reviews, plan_review_barrier, acp_notices) =
-            read(&db, &holding("c1", Some("t1"))).await.unwrap();
+        let (conv, tree, turns, runs, plan_reviews, acp_notices) = read(&db, &holding("c1", Some("t1"))).await.unwrap();
         assert!(acp_notices.is_empty(), "a native conversation reports no incidents");
 
         assert_eq!(conv.id, "c1");
@@ -2869,7 +2781,6 @@ mod tests {
             plan_reviews.is_empty(),
             "a conversation without plan reviews has no review cards"
         );
-        assert!(!plan_review_barrier);
     }
 
     /// A sub-agent occupies its own conversation, so the parent's revision does

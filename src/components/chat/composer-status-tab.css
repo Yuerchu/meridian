@@ -1,0 +1,69 @@
+@layer components {
+  .m-composer-status-tab {
+    display: flex;
+    height: 34px;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    margin-inline: 28px;
+    padding: var(--space-1) var(--space-2);
+    border-start-start-radius: var(--radius-panel);
+    border-start-end-radius: var(--radius-panel);
+    background: var(--surface-muted);
+  }
+
+  .m-composer-status-tab__start {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .m-composer-status-tab__end {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+  }
+
+  .m-composer-status-tab__branch {
+    display: flex;
+    height: var(--control-sm);
+    min-width: 0;
+    align-items: center;
+    gap: calc(var(--space-1) * 1.5);
+    padding-inline: calc(var(--space-1) * 1.5);
+    font: var(--text-small-medium);
+    color: var(--text-secondary);
+  }
+
+  .m-composer-status-tab__branch-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+  }
+
+  .m-composer-status-tab__branch-name {
+    min-width: 0;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-composer-status-tab__branch-name[data-mono] {
+    font-family: var(--font-mono);
+  }
+
+  .m-composer-status-tab__sr {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

@@ -1,0 +1,329 @@
+@layer components {
+  .ui-chart {
+    /* 画在系列上面的描边（圆点外圈）用图表所在的底色，放在卡片里时改成 --surface */
+    --ui-chart-bg: var(--background);
+    /* 悬停图例 / 键盘选中一个系列时，其他系列的透明度 */
+    --ui-chart-dim: 0.2;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    width: 100%;
+    min-width: 0;
+    margin: 0;
+  }
+
+  /* ---------- 标题 + 视图切换 ---------- */
+  .ui-chart__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .ui-chart__titles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-chart__title {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .ui-chart__description {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* ---------- 图例：每项是一个开关 ---------- */
+  .ui-chart__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .ui-chart__legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-sm);
+    padding-inline: var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    background: transparent;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    cursor: default;
+    transition: background-color var(--dur-fast) var(--ease-standard), color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-chart__legend-item[data-selected] {
+    color: var(--text);
+  }
+
+  .ui-chart__legend-item[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .ui-chart__legend-item[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* 隐藏的系列：色块变空心，不只靠颜色深浅 */
+  .ui-chart__legend-item:not([data-selected]) .ui-chart__swatch {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px currentcolor;
+  }
+
+  .ui-chart__swatch {
+    flex: none;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-pill);
+    background: currentcolor;
+  }
+
+  .ui-chart__swatch[data-none] {
+    visibility: hidden;
+  }
+
+  /* ---------- 绘图区 ---------- */
+  .ui-chart__body {
+    position: relative;
+    min-width: 0;
+  }
+
+  .ui-chart__plot {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: var(--radius-item);
+    touch-action: pan-y;
+  }
+
+  .ui-chart__plot[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-chart__svg {
+    display: block;
+    /* 服务端按 initialWidth 出的图比容器宽时（挂载后量到真实宽度之前）等比缩小，不撑宽页面；量到以后宽度一致，不缩放 */
+    max-width: 100%;
+    height: auto;
+    overflow: visible;
+  }
+
+  .ui-chart__tick {
+    fill: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-chart__grid {
+    stroke: var(--border);
+    stroke-width: 1;
+    shape-rendering: crispedges;
+  }
+
+  .ui-chart__grid[data-zero] {
+    stroke: var(--border-strong);
+  }
+
+  .ui-chart__series {
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-chart__series[data-dimmed] {
+    opacity: var(--ui-chart-dim);
+  }
+
+  .ui-chart__line {
+    fill: none;
+    stroke: currentcolor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .ui-chart__area {
+    fill: currentcolor;
+    fill-opacity: 0.12;
+    stroke: none;
+  }
+
+  .ui-chart__area[data-stacked] {
+    fill-opacity: 0.32;
+  }
+
+  .ui-chart__bar {
+    fill: currentcolor;
+  }
+
+  /* 堆叠的段之间留 2px 底色缝（描边两边各 1px） */
+  .ui-chart[data-stacked] .ui-chart__bar {
+    stroke: var(--ui-chart-bg);
+    stroke-width: 1;
+  }
+
+  .ui-chart__slice {
+    fill: currentcolor;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-chart__slice[data-dimmed] {
+    opacity: var(--ui-chart-dim);
+  }
+
+  .ui-chart__total-label {
+    fill: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-chart__total {
+    fill: var(--text);
+    font: var(--text-title-3);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 悬停 / 键盘选中的类别 */
+  .ui-chart__band {
+    fill: var(--surface-muted);
+  }
+
+  .ui-chart__dot,
+  .ui-chart__marker {
+    fill: currentcolor;
+    stroke: var(--ui-chart-bg);
+    stroke-width: 2;
+  }
+
+  /* 散点：一圈底色，重叠的点也看得出是几个 */
+  .ui-chart__point {
+    fill: currentcolor;
+    stroke: var(--ui-chart-bg);
+    stroke-width: 2;
+  }
+
+  .ui-chart__axis-title {
+    fill: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-chart__crosshair {
+    stroke: var(--border-strong);
+    stroke-width: 1;
+    shape-rendering: crispedges;
+  }
+
+  /* ---------- 缩放 ---------- */
+  .ui-chart__plot[data-zoomable] {
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  /* 刷选的一段：浅底，两边一条线 */
+  .ui-chart__brush {
+    position: absolute;
+    border-inline: 1px solid var(--border-strong);
+    background: var(--surface-inset);
+    pointer-events: none;
+  }
+
+  .ui-chart__actions {
+    display: flex;
+    flex: none;
+    gap: var(--space-1);
+    margin-inline-start: auto;
+  }
+
+  /* ---------- 提示框 ---------- */
+  .ui-chart__tooltip {
+    position: absolute;
+    z-index: var(--z-sticky);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 128px;
+    max-width: 240px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    box-shadow: var(--shadow-raised);
+    color: var(--text);
+    font: var(--text-small);
+    pointer-events: none;
+  }
+
+  .ui-chart__tooltip-title {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-chart__tooltip-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .ui-chart__tooltip-row[data-active] {
+    font: var(--text-small-medium);
+  }
+
+  .ui-chart__tooltip-label {
+    flex: 1;
+    min-width: 0;
+    color: var(--text-secondary);
+  }
+
+  .ui-chart__tooltip-row[data-active] .ui-chart__tooltip-label {
+    color: var(--text);
+  }
+
+  .ui-chart__tooltip-value {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 加载中 / 空 ---------- */
+  .ui-chart__overlay {
+    display: grid;
+    place-items: center;
+    height: 100%;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-panel);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* 加载很快时不闪一下转圈：等待阶段（useLoadingPhase）转圈不可见，出现时淡入 */
+  .ui-chart__overlay[data-status="loading"]:not([data-waiting]) > * {
+    animation: ui-chart-fade-in var(--dur-fast) var(--ease-standard) both;
+  }
+
+  .ui-chart__overlay[data-waiting] > * {
+    visibility: hidden;
+  }
+
+  .ui-chart__table {
+    height: 100%;
+  }
+
+  .ui-chart__number {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+
+  @keyframes ui-chart-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}

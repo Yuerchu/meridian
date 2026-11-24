@@ -1,11 +1,17 @@
+import './onebot-settings.css'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Alert, Button, Description, Input, Label, TextArea, TextField } from '@/components/base'
-import { CellSwitch } from '@/components/base'
-import { ItemCard } from '@/components/base'
-import { cx } from '@/utils/cx'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
+
 import type {
   AssistantInfoResponse,
   OneBotConfigInfoResponse,
@@ -14,7 +20,10 @@ import type {
   ReplyBank,
   ReplySeeds,
 } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
 const EMPTY_REPLIES: ReplyBank = {
@@ -314,15 +323,15 @@ export function OneBotSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.onebot.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.onebot.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.onebot.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData()
@@ -330,7 +339,9 @@ export function OneBotSettings() {
             >
               {t('settings.onebot.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -340,234 +351,241 @@ export function OneBotSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.onebot.title')} />
 
-      <div data-slot="onebot-enable" className="space-y-1.5">
-        <CellSwitch
-          aria-label={t('settings.onebot.enable')}
-          aria-describedby="onebot-enabled-hint"
-          isSelected={config.enabled}
-          onChange={(selected) => setConfig({ ...config, enabled: selected })}
-        >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.onebot.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p
-          id="onebot-enabled-hint"
-          data-slot="onebot-enable-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
-          {t('settings.onebot.enableHint')}
-        </p>
+      <div data-slot="onebot-enable">
+        <SettingsGroup>
+          <SettingsRow
+            label={t('settings.onebot.enable')}
+            description={<span data-slot="onebot-enable-hint">{t('settings.onebot.enableHint')}</span>}
+          >
+            <Switch isSelected={config.enabled} onChange={(selected) => setConfig({ ...config, enabled: selected })} />
+          </SettingsRow>
+        </SettingsGroup>
       </div>
 
-      <div data-slot="onebot-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.onebot.host')}</Label>
-          <Input
-            name="onebotHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="127.0.0.1"
-          />
-        </TextField>
-        <TextField type="number">
-          <Label>{t('settings.onebot.port')}</Label>
-          <Input
-            name="onebotPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="6700"
-          />
-        </TextField>
-      </div>
-
-      <TextField type="password">
-        <Label>{t('settings.onebot.accessToken')}</Label>
-        <Input
-          name="onebotAccessToken"
-          autoComplete="off"
-          value={config.access_token ?? ''}
-          onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
-          placeholder={t('settings.onebot.accessTokenPlaceholder')}
-        />
-      </TextField>
-
-      <SettingsSelect
-        label={t('settings.onebot.assistant')}
-        value={config.assistant_id ?? '_default'}
-        options={assistantOptions}
-        onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
-        description={t('settings.onebot.assistantHint')}
-      />
-
-      <TextField>
-        <Label>{t('settings.onebot.adminUsers')}</Label>
-        <Input
-          name="onebotAdminUsers"
-          value={adminInput}
-          onChange={(e) => setAdminInput(e.target.value)}
-          placeholder="12345, 67890"
-        />
-        <Description>{t('settings.onebot.adminUsersHint')}</Description>
-      </TextField>
-
-      <div className="space-y-3">
-        <div className="space-y-1">
-          <p className="text-body-medium text-text-primary">{t('settings.onebot.replies.title')}</p>
-          <p className="text-caption-1-regular text-text-secondary">{t('settings.onebot.replies.hint')}</p>
+      <SettingsGroup>
+        <div data-slot="onebot-endpoint" className="m-onebot__group-rows">
+          <SettingsRow layout="stacked" label={t('settings.onebot.host')}>
+            <TextField
+              name="onebotHost"
+              value={config.host}
+              onChange={(e) => setConfig({ ...config, host: e })}
+              placeholder="127.0.0.1"
+            />
+          </SettingsRow>
+          <SettingsRow label={t('settings.onebot.port')}>
+            <NumberField
+              value={draftToNumber(portInput)}
+              onChange={(value) => setPortInput(numberToDraft(value))}
+              name="onebotPort"
+              minValue={1}
+              maxValue={65535}
+              placeholder="6700"
+              formatOptions={PLAIN_INTEGER}
+            />
+          </SettingsRow>
         </div>
+
+        <SettingsRow layout="stacked" label={t('settings.onebot.accessToken')}>
+          <PasswordField
+            name="onebotAccessToken"
+            // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+            autoComplete="current-password"
+            value={config.access_token ?? ''}
+            onChange={(value) => setConfig({ ...config, access_token: value || null })}
+            placeholder={t('settings.onebot.accessTokenPlaceholder')}
+          />
+        </SettingsRow>
+
+        <SettingsRow label={t('settings.onebot.assistant')} description={t('settings.onebot.assistantHint')}>
+          <div className="m-onebot__select">
+            <Select
+              selectedKey={config.assistant_id ?? '_default'}
+              onSelectionChange={(key) =>
+                typeof key === 'string' && setConfig({ ...config, assistant_id: key === '_default' ? null : key })
+              }
+            >
+              {assistantOptions.map((opt) => (
+                <ListBoxItem key={opt.value} id={opt.value} textValue={opt.label}>
+                  {opt.label}
+                </ListBoxItem>
+              ))}
+            </Select>
+          </div>
+        </SettingsRow>
+
+        <SettingsRow
+          layout="stacked"
+          label={t('settings.onebot.adminUsers')}
+          description={t('settings.onebot.adminUsersHint')}
+        >
+          <TextField name="onebotAdminUsers" value={adminInput} onChange={setAdminInput} placeholder="12345, 67890" />
+        </SettingsRow>
+
+        <SettingsRow
+          layout="stacked"
+          label={t('settings.onebot.ackEmoji')}
+          description={t('settings.onebot.ackEmojiHint')}
+        >
+          <TextField
+            name="onebotAckEmoji"
+            value={config.ack_emoji_id}
+            onChange={(e) => setConfig({ ...config, ack_emoji_id: e })}
+            placeholder="76"
+          />
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup
+        heading={t('settings.onebot.replies.title')}
+        description={t('settings.onebot.replies.hint')}
+        headingLevel={3}
+      >
         {REPLY_SLOTS.map((slot) => (
-          <TextField key={slot}>
-            <Label>{t(`settings.onebot.replies.${slot}`)}</Label>
+          <SettingsRow
+            key={slot}
+            layout="stacked"
+            label={t(`settings.onebot.replies.${slot}`)}
+            description={t('settings.onebot.replies.lineHint')}
+          >
             <TextArea
               rows={3}
               value={replyDrafts[slot]}
               placeholder={config.reply_seeds[slot]}
-              onChange={(e) => setReplyDrafts({ ...replyDrafts, [slot]: e.target.value })}
+              onChange={(e) => setReplyDrafts({ ...replyDrafts, [slot]: e })}
             />
-            <Description>{t('settings.onebot.replies.lineHint')}</Description>
-          </TextField>
+          </SettingsRow>
         ))}
-      </div>
+      </SettingsGroup>
 
-      <TextField>
-        <Label>{t('settings.onebot.voiceCapture')}</Label>
-        <Input
-          name="onebotVoiceCapture"
-          value={voiceCaptureInput}
-          onChange={(e) => setVoiceCaptureInput(e.target.value)}
-          placeholder="10001@group:123, 10001@private:456"
-        />
-        <Description>{t('settings.onebot.voiceCaptureHint')}</Description>
-      </TextField>
+      <SettingsGroup>
+        <SettingsRow
+          layout="stacked"
+          label={t('settings.onebot.voiceCapture')}
+          description={t('settings.onebot.voiceCaptureHint')}
+        >
+          <TextField
+            name="onebotVoiceCapture"
+            value={voiceCaptureInput}
+            onChange={setVoiceCaptureInput}
+            placeholder="10001@group:123, 10001@private:456"
+          />
+        </SettingsRow>
 
-      <div data-slot="onebot-voice-send" className="space-y-1.5">
-        <CellSwitch
-          aria-label={t('settings.onebot.voiceSend')}
-          aria-describedby="onebot-voice-send-hint"
-          isSelected={config.voice_send_enabled}
-          onChange={(selected) => setConfig({ ...config, voice_send_enabled: selected })}
-        >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.onebot.voiceSend')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p
-          id="onebot-voice-send-hint"
-          data-slot="onebot-voice-send-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
-          {t('settings.onebot.voiceSendHint')}
+        <div data-slot="onebot-voice-send" className="m-onebot__group-rows">
+          <SettingsRow
+            label={t('settings.onebot.voiceSend')}
+            description={<span data-slot="onebot-voice-send-hint">{t('settings.onebot.voiceSendHint')}</span>}
+          >
+            <Switch
+              isSelected={config.voice_send_enabled}
+              onChange={(selected) => setConfig({ ...config, voice_send_enabled: selected })}
+            />
+          </SettingsRow>
+        </div>
+
+        {config.voice_send_enabled && (
+          <>
+            <SettingsRow
+              layout="stacked"
+              label={t('settings.onebot.voiceSendGroups')}
+              description={t('settings.onebot.voiceSendGroupsHint')}
+            >
+              <TextField
+                name="onebotVoiceSendGroups"
+                value={voiceSendInput}
+                onChange={setVoiceSendInput}
+                placeholder="10001@group:123"
+              />
+            </SettingsRow>
+
+            <div data-slot="onebot-voice-tts" className="m-onebot__group-rows">
+              <SettingsRow
+                layout="stacked"
+                label={t('settings.onebot.voiceTtsModel')}
+                description={t('settings.onebot.voiceTtsModelHint')}
+              >
+                <TextField
+                  name="onebotVoiceModel"
+                  value={config.voice_tts_model}
+                  onChange={(e) => setConfig({ ...config, voice_tts_model: e })}
+                  placeholder="s2.1-pro-free"
+                />
+              </SettingsRow>
+              <SettingsRow
+                layout="stacked"
+                label={t('settings.onebot.voiceTtsVoice')}
+                description={t('settings.onebot.voiceTtsVoiceHint')}
+              >
+                <TextField
+                  name="onebotVoiceReference"
+                  value={config.voice_tts_reference_id}
+                  onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e })}
+                  placeholder="9a9cf477…"
+                />
+              </SettingsRow>
+            </div>
+
+            {/* A key already in the keychain is drawn as saved, not as dots in the
+                placeholder: the field stays empty (an empty draft keeps the stored
+                key), and typing anything starts a new one. */}
+            <SettingsRow
+              layout="stacked"
+              label={t('settings.onebot.fishKey')}
+              description={t('settings.onebot.fishKeyHint')}
+            >
+              <PasswordField
+                name="onebotFishAudioKey"
+                // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                autoComplete="current-password"
+                value={fishKey}
+                onChange={setFishKey}
+                hasSavedPassword={fishKeySet && fishKey === ''}
+              />
+            </SettingsRow>
+          </>
+        )}
+      </SettingsGroup>
+
+      {/* The one failure this feature has that announces itself nowhere.
+          Four things have to be present or `send_voice` is withheld from
+          the model in all three places it could appear — and because the
+          model cannot see the tool either, asking it produces "I have no
+          voice tool" rather than anything about a setting. A placeholder
+          that reads like a value (`s2.1-pro-free` in the model box) is all
+          it takes. Reported from the backend rather than derived here,
+          because one of the four is a keychain entry this page never
+          sees. */}
+      {config.voice_send_enabled && voiceReady && !voiceReady.ready && (
+        <p data-slot="onebot-voice-not-ready" role="status" className="m-onebot__warning">
+          {t('settings.onebot.voiceNotReady', {
+            missing: [
+              !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
+              !voiceReady.has_reference_id && t('settings.onebot.voiceTtsVoice'),
+              !voiceReady.has_api_key && t('settings.onebot.fishKey'),
+            ]
+              .filter(Boolean)
+              .join(t('common.listSeparator')),
+          })}
         </p>
-      </div>
-
-      {config.voice_send_enabled && (
-        <>
-          <TextField>
-            <Label>{t('settings.onebot.voiceSendGroups')}</Label>
-            <Input
-              name="onebotVoiceSendGroups"
-              value={voiceSendInput}
-              onChange={(e) => setVoiceSendInput(e.target.value)}
-              placeholder="10001@group:123"
-            />
-            <Description>{t('settings.onebot.voiceSendGroupsHint')}</Description>
-          </TextField>
-
-          <div data-slot="onebot-voice-tts" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-            <TextField>
-              <Label>{t('settings.onebot.voiceTtsModel')}</Label>
-              <Input
-                name="onebotVoiceModel"
-                value={config.voice_tts_model}
-                onChange={(e) => setConfig({ ...config, voice_tts_model: e.target.value })}
-                placeholder="s2.1-pro-free"
-              />
-              <Description>{t('settings.onebot.voiceTtsModelHint')}</Description>
-            </TextField>
-            <TextField>
-              <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
-              <Input
-                name="onebotVoiceReference"
-                value={config.voice_tts_reference_id}
-                onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e.target.value })}
-                placeholder="9a9cf477…"
-              />
-              <Description>{t('settings.onebot.voiceTtsVoiceHint')}</Description>
-            </TextField>
-          </div>
-
-          <TextField>
-            <Label>{t('settings.onebot.fishKey')}</Label>
-            <Input
-              type="password"
-              name="onebotFishAudioKey"
-              autoComplete="off"
-              value={fishKey}
-              onChange={(e) => setFishKey(e.target.value)}
-              placeholder={fishKeySet ? '••••••••' : ''}
-            />
-            <Description>{t('settings.onebot.fishKeyHint')}</Description>
-          </TextField>
-
-          {/* The one failure this feature has that announces itself nowhere.
-              Four things have to be present or `send_voice` is withheld from
-              the model in all three places it could appear — and because the
-              model cannot see the tool either, asking it produces "I have no
-              voice tool" rather than anything about a setting. A placeholder
-              that reads like a value (`s2.1-pro-free` in the model box) is all
-              it takes. Reported from the backend rather than derived here,
-              because one of the four is a keychain entry this page never
-              sees. */}
-          {voiceReady && !voiceReady.ready && (
-            <p data-slot="onebot-voice-not-ready" role="status" className="text-caption-1-regular text-status-warning">
-              {t('settings.onebot.voiceNotReady', {
-                missing: [
-                  !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
-                  !voiceReady.has_reference_id && t('settings.onebot.voiceTtsVoice'),
-                  !voiceReady.has_api_key && t('settings.onebot.fishKey'),
-                ]
-                  .filter(Boolean)
-                  .join(t('common.listSeparator')),
-              })}
-            </p>
-          )}
-        </>
       )}
-
-      <TextField>
-        <Label>{t('settings.onebot.ackEmoji')}</Label>
-        <Input
-          name="onebotAckEmoji"
-          value={config.ack_emoji_id}
-          onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
-          placeholder="76"
-        />
-        <Description>{t('settings.onebot.ackEmojiHint')}</Description>
-      </TextField>
 
       {error && (
-        <p data-slot="onebot-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="onebot-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="onebot-actions" className="flex items-center gap-3 pt-2">
+      <div data-slot="onebot-actions" className="m-onebot__actions">
         <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="onebot-saved" role="status" className="sr-only">
+          <span data-slot="onebot-saved" role="status" className="m-onebot__saved">
             {t('common.saved')}
           </span>
         )}
         {running ? (
-          <Button variant="danger" onPress={handleStop}>
+          <Button variant="destructive" onPress={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (
@@ -576,30 +594,25 @@ export function OneBotSettings() {
       </div>
 
       {status && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state it stands for is spelled out beside it,
-                so announcing the dot too would only say it twice. */}
-              <span
-                data-slot="onebot-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  running ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
-            </ItemCard.Title>
-            {running && (
-              <ItemCard.Description className="w-full whitespace-normal">
-                {t('settings.onebot.clients', { count: status.connected_clients })}
-                {' · '}
-                {status.host}:{status.port}
-              </ItemCard.Description>
-            )}
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-onebot__status">
+          <p className="m-onebot__status-title">
+            {/* Decoration: the state it stands for is spelled out beside it. */}
+            <span
+              data-slot="onebot-status-dot"
+              data-running={running || undefined}
+              aria-hidden
+              className="m-onebot__dot"
+            />
+            {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
+          </p>
+          {running && (
+            <p className="m-onebot__hint">
+              {t('settings.onebot.clients', { count: status.connected_clients })}
+              {' · '}
+              {status.host}:{status.port}
+            </p>
+          )}
+        </div>
       )}
     </SettingsPane>
   )

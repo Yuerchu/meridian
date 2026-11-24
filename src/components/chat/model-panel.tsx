@@ -1,3 +1,6 @@
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
+import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
@@ -10,23 +13,16 @@ import {
 } from 'react-aria-components'
 import { Bot, Check, ChevronDown } from '@keyline-icons/react/two-tone'
 
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  DropdownTrigger,
-  Popover,
-  SearchField,
-  Spinner,
-  Slider,
-  Switch,
-} from '@/components/base'
+import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { useProviderModels } from '@/hooks/use-provider-models'
 import { currentValueName, knobName, knobValueName } from '@/lib/acp-knob-names'
 import { EFFORT_LADDER, allowedEfforts } from '@/lib/thinking'
-import { cx } from '@/utils/cx'
+import './model-panel.css'
 import type {
   AcpConfigOptionInfoResponse,
   AssistantInfoResponse,
@@ -61,13 +57,6 @@ interface EffortChoice {
   description?: string
 }
 
-const TRIGGER = cx(
-  'group inline-flex h-8 min-w-0 max-w-56 shrink items-center gap-0.5 rounded-xl ps-2 pe-1',
-  'text-body-medium text-text-secondary transition-colors duration-150',
-  'data-[hovered]:bg-background-primary-hover data-[pressed]:bg-background-primary-hover aria-expanded:bg-background-primary-hover',
-  'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40',
-)
-
 function PanelTrigger({
   model,
   effort,
@@ -80,22 +69,24 @@ function PanelTrigger({
   isDisabled?: boolean
 }) {
   return (
-    <Popover.Trigger data-slot="model-panel-trigger" aria-label={label} isDisabled={isDisabled} className={TRIGGER}>
-      <span data-slot="model-panel-trigger-model" className="truncate px-0.5">
+    <PopoverButton
+      data-slot="model-panel-trigger"
+      aria-label={label}
+      isDisabled={isDisabled}
+      className="m-model-panel__trigger"
+    >
+      <span data-slot="model-panel-trigger-model" className="m-model-panel__trigger-model">
         {model}
       </span>
       {/* Off its default only, and dropped on a narrow composer: a standing
           "· default" is noise, and its width is the width Send needs. */}
       {effort && (
-        <span data-slot="model-panel-trigger-effort" className="shrink-0 @max-[400px]/composer:hidden">
+        <span data-slot="model-panel-trigger-effort" className="m-model-panel__trigger-effort">
           · {effort}
         </span>
       )}
-      <ChevronDown
-        aria-hidden
-        className="size-[18px] shrink-0 transition-transform duration-200 group-aria-expanded:rotate-180 motion-reduce:transition-none"
-      />
-    </Popover.Trigger>
+      <ChevronDown aria-hidden className="m-model-panel__trigger-chevron" />
+    </PopoverButton>
   )
 }
 
@@ -153,10 +144,10 @@ function EffortSlider({
   const current = following ? choices.find((c) => c.id === 'default') : steps[index]
 
   return (
-    <div data-slot="effort-slider" className="flex flex-col gap-2 p-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <p aria-live="polite" className="min-w-0 truncate text-body-2-medium text-text-secondary">
-          {label} · <span className="text-text-primary">{current?.label ?? selected}</span>
+    <div data-slot="effort-slider" className="m-model-panel__effort-slider">
+      <div className="m-model-panel__effort-heading">
+        <p aria-live="polite" className="m-model-panel__effort-label">
+          {label} · <span className="m-model-panel__effort-value">{current?.label ?? selected}</span>
         </p>
         {followable && (
           <Switch
@@ -164,22 +155,22 @@ function EffortSlider({
             isSelected={following}
             isDisabled={isDisabled}
             onChange={(on) => onSelect(on ? 'default' : (steps[restingStep]?.id ?? 'default'))}
-            className="shrink-0"
+            className="m-model-panel__fixed"
           >
-            <span className="text-caption-1-medium text-text-secondary">{followLabel}</span>
+            <span className="m-model-panel__follow-label">{followLabel}</span>
           </Switch>
         )}
       </div>
       {current?.description && (
-        <p data-slot="effort-slider-description" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="effort-slider-description" className="m-model-panel__description">
           {current.description}
         </p>
       )}
       {steps.length > 1 && (
         <>
           <Slider
-            thumbLabel={label}
-            showTooltip={false}
+            aria-label={label}
+            showValue={false}
             minValue={0}
             maxValue={steps.length - 1}
             step={1}
@@ -192,7 +183,7 @@ function EffortSlider({
               if (next && next.id !== selected) onSelect(next.id)
             }}
           />
-          <div aria-hidden className="flex justify-between text-caption-1-regular text-text-secondary">
+          <div aria-hidden className="m-model-panel__effort-scale">
             <span>{t('composer.effortFaster')}</span>
             <span>{t('composer.effortDeeper')}</span>
           </div>
@@ -220,35 +211,33 @@ function EffortChip({
 }) {
   const current = choices.find((c) => c.id === selected)
   return (
-    <Popover>
+    <DialogTrigger>
       <AriaButton
         data-slot="effort-chip"
         aria-label={`${label}: ${current?.label ?? selected}`}
         isDisabled={isDisabled}
-        className={cx(
-          'inline-flex shrink-0 items-center gap-0.5 rounded-full bg-background-tertiary-default py-0.5 ps-2 pe-1',
-          'text-body-2-medium text-text-secondary outline-none transition-colors duration-150',
-          'data-[hovered]:bg-background-tertiary-hover data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-        )}
+        className="m-model-panel__chip"
       >
         {current?.label ?? selected}
-        <ChevronDown aria-hidden className="size-4 -rotate-90" />
+        <ChevronDown aria-hidden className="m-model-panel__chip-chevron" />
       </AriaButton>
-      <Popover.Content placement="bottom end" className="w-[266px] p-1">
-        <Popover.Dialog aria-label={label}>
-          <EffortSlider
-            label={label}
-            followLabel={followLabel}
-            choices={choices}
-            selected={selected}
-            onSelect={onSelect}
-            // Already open when a write starts: the chip's own disabling does
-            // not reach in here, and a second change would race the first.
-            isDisabled={isDisabled}
-          />
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+      <Popover offset={8} placement="bottom end" className="m-model-panel__effort-popover">
+        <PopoverDialog aria-label={label}>
+          <div className="m-model-panel__effort-content">
+            <EffortSlider
+              label={label}
+              followLabel={followLabel}
+              choices={choices}
+              selected={selected}
+              onSelect={onSelect}
+              // Already open when a write starts: the chip's own disabling does
+              // not reach in here, and a second change would race the first.
+              isDisabled={isDisabled}
+            />
+          </div>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }
 
@@ -287,7 +276,7 @@ function ModelList({
         if (next !== undefined) onSelect(String(next))
       }}
       renderEmptyState={() => empty}
-      className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto pb-1 outline-none scrollbar-none"
+      className="m-model-panel__list"
     >
       {rows.map((row) => {
         const selected = row.key === selectedKey
@@ -296,23 +285,15 @@ function ModelList({
             key={row.key}
             id={row.key}
             textValue={row.provider ? `${row.name} ${row.provider}` : row.name}
-            className={cx(
-              'flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-2lg px-2 outline-none transition-colors duration-150',
-              'data-[hovered]:bg-background-primary-hover data-[selected]:bg-background-primary-hover',
-              'data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
-            )}
+            className="m-model-panel__row"
           >
-            <ModelIcon model={row.modelId} size={16} className="shrink-0" />
-            <span
-              data-slot="model-panel-row-name"
-              title={row.name}
-              className="min-w-0 flex-1 truncate text-body-medium text-text-primary"
-            >
+            <ModelIcon model={row.modelId} size={16} className="m-model-panel__fixed" />
+            <span data-slot="model-panel-row-name" title={row.name} className="m-model-panel__row-name">
               {row.name}
-              {row.provider && <span className="ms-1.5 text-text-secondary">{row.provider}</span>}
+              {row.provider && <span className="m-model-panel__row-provider">{row.provider}</span>}
             </span>
             {selected && extra}
-            {selected && <Check aria-hidden className="size-4 shrink-0 text-text-secondary" />}
+            {selected && <Check aria-hidden className="m-model-panel__check" />}
           </GridListItem>
         )
       })}
@@ -339,13 +320,12 @@ function PanelSearch({ search }: { search: ReturnType<typeof useQuickSearch> }) 
   const { t } = useTranslation()
   return (
     <div ref={search.box}>
-      <SearchField aria-label={t('composer.searchModels')} value={search.query} onChange={search.setQuery}>
-        <SearchField.Group className="h-8 bg-background-secondary-default">
-          <SearchField.SearchIcon />
-          <SearchField.Input placeholder={t('composer.searchModels')} />
-          <SearchField.ClearButton />
-        </SearchField.Group>
-      </SearchField>
+      <SearchField
+        aria-label={t('composer.searchModels')}
+        value={search.query}
+        onChange={search.setQuery}
+        placeholder={t('composer.searchModels')}
+      />
     </div>
   )
 }
@@ -412,11 +392,11 @@ export function ModelPanel(props: ModelPanelProps) {
 
   const empty =
     models.state === 'loading' || models.state === 'idle' ? (
-      <div className="flex justify-center py-6">
+      <div className="m-model-panel__loading">
         <Spinner size="sm" />
       </div>
     ) : (
-      <p data-slot="model-panel-empty" className="px-2 py-6 text-center text-caption-1-regular text-text-secondary">
+      <p data-slot="model-panel-empty" className="m-model-panel__empty">
         {query
           ? t('composer.noModelsMatch')
           : models.state === 'failed'
@@ -432,7 +412,7 @@ export function ModelPanel(props: ModelPanelProps) {
     supportsThinking && props.thinkingLevel !== 'default' ? t(`toolbar.thinking.${props.thinkingLevel}`) : null
 
   return (
-    <Popover
+    <DialogTrigger
       isOpen={open}
       onOpenChange={(next) => {
         setOpen(next)
@@ -445,11 +425,11 @@ export function ModelPanel(props: ModelPanelProps) {
         effort={effortLabel}
         label={`${t('composer.modelPanel')}: ${props.currentModelId ?? t('toolbar.selectModel')}${effortLabel ? ` · ${effortLabel}` : ''}`}
       />
-      <Popover.Content placement="top end" className="w-[341px] p-0.5">
-        <Popover.Dialog aria-label={t('composer.modelPanel')}>
+      <Popover offset={8} placement="top end" className="m-model-panel__popover">
+        <PopoverDialog aria-label={t('composer.modelPanel')}>
           {/* The keyboard shortcuts for the search listen here, inside the panel
               only: `/` in the field is a slash command and must stay one. */}
-          <div onKeyDown={search.onKeyDown} className="flex h-[min(18rem,calc(100dvh-6rem))] gap-2">
+          <div onKeyDown={search.onKeyDown} className="m-model-panel__body">
             {groups.length > 1 && !query && (
               <AriaListBox
                 data-slot="model-panel-rail"
@@ -461,7 +441,7 @@ export function ModelPanel(props: ModelPanelProps) {
                   const next = [...(keys as Set<Key>)][0]
                   if (next !== undefined) setRailChoice(String(next))
                 }}
-                className="flex w-[42px] shrink-0 flex-col items-center gap-1.5 overflow-y-auto rounded-2xl bg-composer-panel-rail-background p-[3px] outline-none scrollbar-none"
+                className="m-model-panel__rail"
               >
                 {groups.map(({ provider }) => (
                   <AriaListBoxItem
@@ -469,13 +449,9 @@ export function ModelPanel(props: ModelPanelProps) {
                     id={provider.id}
                     textValue={provider.name}
                     aria-label={provider.name}
-                    className={cx(
-                      'flex h-[30px] w-9 shrink-0 cursor-pointer items-center justify-center rounded-full outline-none transition-colors duration-150',
-                      'data-[hovered]:bg-background-tertiary-default data-[selected]:bg-background-tertiary-default',
-                      'data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-                    )}
+                    className="m-model-panel__provider"
                   >
-                    <span title={provider.name} className="flex">
+                    <span title={provider.name} className="m-model-panel__provider-mark">
                       <ProviderMark
                         icon={provider.icon}
                         catalogId={provider.catalog_id}
@@ -487,7 +463,7 @@ export function ModelPanel(props: ModelPanelProps) {
                 ))}
               </AriaListBox>
             )}
-            <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-1.5 pe-1.5">
+            <div className="m-model-panel__main">
               <PanelSearch search={search} />
               <ModelList
                 label={t('toolbar.models')}
@@ -510,21 +486,20 @@ export function ModelPanel(props: ModelPanelProps) {
                   ) : null
                 }
               />
-              <div
-                data-slot="model-panel-footer"
-                className="flex items-center justify-between gap-2 border-t border-separator-border pt-1.5"
-              >
+              <div data-slot="model-panel-footer" className="m-model-panel__footer">
                 {props.assistants.length > 0 ? (
-                  <Dropdown>
-                    <DropdownTrigger
+                  <MenuTrigger>
+                    <AriaButton
                       data-slot="model-panel-assistant"
                       aria-label={`${t('toolbar.assistant')}: ${currentAssistant?.name ?? t('toolbar.noAssistant')}`}
-                      className="inline-flex min-w-0 items-center gap-1 rounded-lg px-1.5 py-1 text-body-2-medium text-text-secondary transition-colors duration-150 data-[hovered]:bg-background-primary-hover"
+                      className="m-model-panel__assistant"
                     >
-                      <Bot aria-hidden className="size-4 shrink-0" />
-                      <span className="truncate">{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
-                    </DropdownTrigger>
-                    <DropdownPopover
+                      <Bot aria-hidden className="m-model-panel__assistant-icon" />
+                      <span className="m-model-panel__assistant-name">
+                        {currentAssistant?.name ?? t('toolbar.noAssistant')}
+                      </span>
+                    </AriaButton>
+                    <Menu
                       aria-label={t('toolbar.assistant')}
                       placement="top start"
                       selectionMode="single"
@@ -533,26 +508,31 @@ export function ModelPanel(props: ModelPanelProps) {
                       onAction={(key: Key) => props.onSelectAssistant(String(key))}
                     >
                       {props.assistants.map((a) => (
-                        <DropdownItem key={a.id} id={a.id} textValue={a.name}>
-                          <span className="min-w-0 flex-1 truncate text-body-medium">{a.name}</span>
-                        </DropdownItem>
+                        <MenuItem key={a.id} id={a.id} textValue={a.name}>
+                          <span className="m-model-panel__assistant-option">{a.name}</span>
+                        </MenuItem>
                       ))}
-                    </DropdownPopover>
-                  </Dropdown>
+                    </Menu>
+                  </MenuTrigger>
                 ) : (
                   <span />
                 )}
                 {props.capabilities?.supports_fast === true && (
-                  <Switch size="sm" isSelected={props.fastMode} onChange={props.onToggleFast} className="shrink-0">
-                    <span className="text-body-2-medium text-text-secondary">{t('toolbar.fast')}</span>
+                  <Switch
+                    size="sm"
+                    isSelected={props.fastMode}
+                    onChange={props.onToggleFast}
+                    className="m-model-panel__fixed"
+                  >
+                    <span className="m-model-panel__fast-label">{t('toolbar.fast')}</span>
                   </Switch>
                 )}
               </div>
             </div>
           </div>
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }
 
@@ -596,53 +576,56 @@ export function HostedModelPanel({
   // setting the trigger shows could not be changed at all.
   const effortOnRow = rows.some((row) => row.key === selectedKey)
   return (
-    <Popover>
+    <DialogTrigger>
       <PanelTrigger
         model={modelName ?? effortName ?? label}
         effort={modelName ? effortName : null}
         label={`${label}: ${[modelName, effortName].filter(Boolean).join(' · ')}`}
         isDisabled={busy}
       />
-      <Popover.Content placement="top end" className="w-[341px] p-1.5">
-        <Popover.Dialog aria-label={label} className="flex max-h-[min(18rem,calc(100dvh-6rem))] flex-col">
-          {rows.length > 0 && (
-            <ModelList
-              label={label}
-              rows={rows}
-              selectedKey={selectedKey}
-              onSelect={(value) => model && value !== model.currentValue && onSet(model.id, value)}
-              empty={null}
-              extra={
-                effort ? (
-                  <EffortChip
-                    label={effortLabel}
-                    followLabel={t('composer.effortFollowDefault')}
-                    choices={effortChoices}
-                    selected={effortSelected}
-                    onSelect={(value) => onSet(effort.id, value)}
-                    isDisabled={busy}
-                  />
-                ) : null
-              }
-            />
-          )}
-          {effort && !effortOnRow && (
-            <div
-              data-slot="model-panel-effort"
-              className={cx(rows.length > 0 && 'border-t border-separator-border pt-1.5')}
-            >
-              <EffortSlider
-                label={effortLabel}
-                followLabel={t('composer.effortFollowDefault')}
-                choices={effortChoices}
-                selected={effortSelected}
-                onSelect={(value) => onSet(effort.id, value)}
-                isDisabled={busy}
+      <Popover offset={8} placement="top end" className="m-model-panel__hosted-popover">
+        <PopoverDialog aria-label={label}>
+          <div className="m-model-panel__hosted-content">
+            {rows.length > 0 && (
+              <ModelList
+                label={label}
+                rows={rows}
+                selectedKey={selectedKey}
+                onSelect={(value) => model && value !== model.currentValue && onSet(model.id, value)}
+                empty={null}
+                extra={
+                  effort ? (
+                    <EffortChip
+                      label={effortLabel}
+                      followLabel={t('composer.effortFollowDefault')}
+                      choices={effortChoices}
+                      selected={effortSelected}
+                      onSelect={(value) => onSet(effort.id, value)}
+                      isDisabled={busy}
+                    />
+                  ) : null
+                }
               />
-            </div>
-          )}
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+            )}
+            {effort && !effortOnRow && (
+              <div
+                data-slot="model-panel-effort"
+                className="m-model-panel__standalone-effort"
+                data-separated={rows.length > 0 || null}
+              >
+                <EffortSlider
+                  label={effortLabel}
+                  followLabel={t('composer.effortFollowDefault')}
+                  choices={effortChoices}
+                  selected={effortSelected}
+                  onSelect={(value) => onSet(effort.id, value)}
+                  isDisabled={busy}
+                />
+              </div>
+            )}
+          </div>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }

@@ -1,0 +1,22 @@
+@layer components {
+  .m-board-masonry {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+  }
+
+  .m-board-masonry__empty {
+    padding: var(--space-3) var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-weight: 500;
+  }
+
+  .m-board-masonry__lane {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: calc(var(--space-1) + 2px);
+    min-width: 0;
+  }
+}

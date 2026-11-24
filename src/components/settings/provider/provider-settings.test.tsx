@@ -221,13 +221,17 @@ async function openModel(user: ReturnType<typeof userEvent.setup>, name: string 
  * with its window blank and required: the form no longer invents 128000, so
  * somebody has to type it — and so do these tests.
  */
+// A number field commits what was typed when it loses focus, as a person
+// leaving it would; a change event alone leaves the value uncommitted.
 function fillLimits() {
-  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') }), {
-    target: { value: '128000' },
-  })
-  fireEvent.change(screen.getByRole('textbox', { name: i18n.t('settings.model.compactThreshold') }), {
-    target: { value: '100000' },
-  })
+  for (const [name, value] of [
+    ['settings.model.contextWindow', '128000'],
+    ['settings.model.compactThreshold', '100000'],
+  ] as const) {
+    const field = screen.getByRole('textbox', { name: i18n.t(name) })
+    fireEvent.change(field, { target: { value } })
+    fireEvent.blur(field)
+  }
 }
 
 describe('ProviderSettings list/detail navigation', () => {
@@ -356,7 +360,8 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await screen.findByRole('button', { name: 'Provider One' })
     const list = container.querySelector<HTMLElement>('[data-slot="provider-list"]')!
-    const rows = list.querySelectorAll<HTMLElement>('[data-slot="settings-link-row"]')
+    const card = list.querySelector<HTMLElement>('.ui-settings-group__rows')!
+    const rows = card.querySelectorAll<HTMLElement>('[data-slot="settings-link-row"]')
     expect(rows).toHaveLength(2)
     // What the stack's focus return finds the row by.
     expect(rows[0]).toHaveAttribute('data-key', 'p1')
@@ -366,7 +371,7 @@ describe('ProviderSettings list/detail navigation', () => {
     const icon = rows[0].querySelector('[data-slot="settings-link-row-icon"]')!
     expect(icon.nextElementSibling).toHaveAttribute('data-slot', 'settings-link-row-text')
     // Adding is the card's last row.
-    expect(list.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
+    expect(card.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
     expect(within(list).getByRole('button', { name: i18n.t('settings.provider.addProvider') })).toBeInTheDocument()
 
     await waitFor(() => {
@@ -546,7 +551,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await openModel(user, 'gpt-5.6')
     expect(await screen.findByRole('heading', { name: 'gpt-5.6' })).toBeInTheDocument()
-    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('128,000')
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
@@ -737,7 +742,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('option', { name: 'Claude Sonnet 5' }))
 
     // The window came from the description rather than from the catalog.
-    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('200000')
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).toHaveValue('200,000')
     expect(screen.getByRole('textbox', { name: i18n.t('settings.model.inputPrice') })).toHaveValue('3')
     // And it says how far an edit here reaches.
     expect(screen.getByText(i18n.t('settings.model.sharedBy', { count: 2 }))).toBeInTheDocument()
@@ -865,6 +870,31 @@ describe('ProviderSettings list/detail navigation', () => {
 
     expect(await screen.findByRole('heading', { name: 'gpt-6-preview' })).toBeInTheDocument()
     expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+  })
+
+  it('asks before dismissing a dirty add-model drawer and resets draft after discard', async () => {
+    const user = userEvent.setup()
+    render(<ProviderSettings />)
+    await openFirstProvider(user)
+
+    await user.click(await screen.findByRole('button', { name: i18n.t('settings.provider.addModel') }))
+    const input = await screen.findByRole('textbox', { name: i18n.t('settings.provider.modelId') })
+    await user.type(input, 'draft-model')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
+    const alertDialog = await screen.findByRole('alertdialog', { name: i18n.t('sheet.discard.title') })
+    await user.click(within(alertDialog).getByRole('button', { name: i18n.t('common.cancel') }))
+    expect(screen.getByRole('textbox', { name: i18n.t('settings.provider.modelId') })).toHaveValue('draft-model')
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
+    const discardDialog = await screen.findByRole('alertdialog', { name: i18n.t('sheet.discard.title') })
+    await user.click(within(discardDialog).getByRole('button', { name: i18n.t('sheet.discard.confirm') }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: i18n.t('settings.provider.addModel') })).not.toBeInTheDocument(),
+    )
+
+    await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.addModel') }))
+    expect(await screen.findByRole('textbox', { name: i18n.t('settings.provider.modelId') })).toHaveValue('')
   })
 
   /**
@@ -1358,10 +1388,9 @@ describe('ProviderPage failure paths and cached models', () => {
     expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
   })
 
-  // The page is rows in cards now (the MCP server page's grammar), where a
-  // row's label is a <p> and cannot name anything: each control has to be
-  // named through the row's ids, or it is a field a screen reader calls
-  // "edit text" and nothing else.
+  // The page is rows in cards now (the MCP server page's grammar). The row
+  // names each control through React Aria context rather than leaving a screen
+  // reader with an anonymous "edit text".
   it('draws the editor as rows whose controls are named by their labels', async () => {
     const user = userEvent.setup()
     render(<ProviderSettings />)
@@ -1372,7 +1401,7 @@ describe('ProviderPage failure paths and cached models', () => {
       if (!card) throw new Error('no identity card')
       return card
     })
-    expect(identity.querySelectorAll('[data-slot="settings-row"]').length).toBeGreaterThanOrEqual(4)
+    expect(identity.querySelectorAll('.ui-settings-row').length).toBeGreaterThanOrEqual(4)
     expect(within(identity).getByRole('textbox', { name: i18n.t('settings.provider.name') })).toHaveValue(
       'Provider One',
     )

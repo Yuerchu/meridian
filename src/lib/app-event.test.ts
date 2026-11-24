@@ -222,7 +222,6 @@ describe('closed first-party event contracts', () => {
       revision_id: 'revision-1',
       turn_id: 'turn-1',
       status: 'pending',
-      delivery_state: null,
       lock_version: 0,
     }
     expect(parsePlanReviewEvent(event)).toEqual(event)
@@ -230,13 +229,7 @@ describe('closed first-party event contracts', () => {
       review_id: 'review-1',
       status: 'approved',
     })
-    expect(parsePlanReviewEvent({ ...event, status: 'approved', delivery_state: 'queued' })).toMatchObject({
-      status: 'approved',
-      delivery_state: 'queued',
-    })
-    const { delivery_state: _deliveryState, ...missingDelivery } = event
-    expect(() => parsePlanReviewEvent(missingDelivery)).toThrow('must contain exactly')
-    expect(() => parsePlanReviewEvent({ ...event, delivery_state: 'future' })).toThrow('delivery_state must be one of')
+    expect(() => parsePlanReviewEvent({ ...event, delivery_state: 'queued' })).toThrow('must contain exactly')
     expect(() => parsePlanReviewEvent({ ...event, status: 'future' })).toThrow('status must be one of')
   })
 

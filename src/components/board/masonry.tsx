@@ -8,12 +8,11 @@
 // Lanes are dealt by position (i % n), not to the shortest lane: shortest-lane
 // would re-deal whenever a card changes height, which is exactly the movement
 // under the pointer this exists to remove. Changing the lane count remounts a
-// card (it moves to another `CardList`); composer text is therefore kept in
+// card (it moves to another lane); composer text is therefore kept in
 // the board store, not in the card.
+import './masonry.css'
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-
-import { Kanban } from '@/components/base'
 
 const GAP = 8
 
@@ -49,18 +48,20 @@ export function Masonry<T>({
   items.forEach((item, i) => dealt[i % lanes].push(item))
 
   return (
-    <div ref={ref} data-slot="board-masonry" className="flex items-start gap-2">
+    <div ref={ref} data-slot="board-masonry" className="m-board-masonry">
       {items.length === 0 ? (
-        <div className="px-2 py-3 text-caption-1-medium text-text-secondary">{empty}</div>
+        <div className="m-board-masonry__empty">{empty}</div>
       ) : (
         dealt.map((lane, i) => (
-          <Kanban.CardList
+          <div
             key={i}
+            role="list"
+            data-slot="board-masonry-lane"
             aria-label={lanes > 1 ? t('board.column.lane', { label, n: i + 1 }) : label}
-            className="min-w-0 flex-1"
+            className="m-board-masonry__lane"
           >
             {lane.map(render)}
-          </Kanban.CardList>
+          </div>
         ))
       )}
     </div>

@@ -1,0 +1,135 @@
+@layer components {
+  .ui-avatar {
+    --ui-avatar-size: 32px;
+
+    position: relative;
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-avatar-size);
+    height: var(--ui-avatar-size);
+    overflow: hidden;
+    /* 高对比度模式下显示轮廓。用 outline 不用 border：border 占 1px，图片铺不满，会露出一圈灰底 */
+    outline: 1px solid transparent;
+    outline-offset: -1px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+    /* 一圈内描边：头像放在同样是 --surface-muted 的底上（选中的列表行、悬停）时也看得出轮廓。图片会盖住它 */
+    box-shadow: inset 0 0 0 1px var(--border);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    vertical-align: middle;
+    user-select: none;
+  }
+
+  .ui-avatar[data-size="sm"] {
+    --ui-avatar-size: 24px;
+  }
+
+  .ui-avatar[data-size="lg"] {
+    --ui-avatar-size: 40px;
+
+    font: var(--text-small);
+  }
+
+  /* 个人主页头部这类大头像 */
+  .ui-avatar[data-size="xl"] {
+    --ui-avatar-size: 80px;
+
+    font: var(--text-title-2);
+  }
+
+  /* 组织、项目、机器人：圆角方形，圆角按尺寸比例 */
+  .ui-avatar[data-shape="square"] {
+    border-radius: calc(var(--ui-avatar-size) * 0.25);
+  }
+
+  .ui-avatar[data-decorated] {
+    overflow: visible;
+  }
+
+  /* 只有图片和缩写裁切为圆形/圆角方形，框和角标可以超出头像边界。 */
+  .ui-avatar__picture {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: inherit;
+  }
+
+  .ui-avatar__frame {
+    position: absolute;
+    inset: calc(var(--ui-avatar-size) * -0.125);
+    display: grid;
+    pointer-events: none;
+  }
+
+  .ui-avatar__frame > * {
+    width: 100%;
+    height: 100%;
+  }
+
+  .ui-avatar__badge {
+    position: absolute;
+    inset-inline-end: calc(var(--ui-avatar-size) * -0.05);
+    inset-block-end: calc(var(--ui-avatar-size) * -0.05);
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: calc(var(--ui-avatar-size) * 0.4);
+    height: calc(var(--ui-avatar-size) * 0.4);
+    overflow: hidden;
+    border: 2px solid var(--surface);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--ink);
+    pointer-events: none;
+  }
+
+  .ui-avatar__badge > * {
+    width: 100%;
+    height: 100%;
+  }
+
+  .ui-avatar__initials {
+    white-space: nowrap;
+  }
+
+  .ui-avatar__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  /* ---------- 一组：互相叠一点，每个头像带一圈和底色相同的描边，分隔开。
+     描边默认是 --surface（头像组通常放在卡片、面板上）；直接放在页面底色上时，在外层设 --ui-avatar-ring: var(--background) ---------- */
+  .ui-avatar-group {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .ui-avatar-group > .ui-avatar {
+    box-shadow:
+      inset 0 0 0 1px var(--border),
+      0 0 0 2px var(--ui-avatar-ring, var(--surface));
+  }
+
+  .ui-avatar-group > .ui-avatar + .ui-avatar {
+    margin-inline-start: calc(-1 * var(--space-2));
+  }
+
+  .ui-avatar-group__more {
+    color: var(--text);
+  }
+
+  /* 加载中：占位铺满头像，跟着头像的圆形或圆角方形（选择器比 Skeleton 自己的高，不靠 CSS 加载顺序） */
+  .ui-avatar[data-loading] .ui-avatar__skeleton {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+  }
+}

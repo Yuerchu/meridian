@@ -1,0 +1,3 @@
+/* 应用入口只需要导入这一个文件；组件样式由各组件自己导入 */
+@import "./base.css";
+@import "./tokens.css";

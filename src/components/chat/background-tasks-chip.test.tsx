@@ -1,11 +1,14 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
+import { api } from '@/api'
 import i18n from '@/i18n'
 import { elapsedLabel } from '@/lib/elapsed'
 import type { BackgroundTaskInfoResponse } from '@/types'
 import { BackgroundTasksChip } from './background-tasks-chip'
 import { ComposerStatusTab } from './composer-status-tab'
+
+vi.mock('@/api', () => ({ api: { readBackgroundTaskOutput: vi.fn() } }))
 
 beforeAll(() => {
   void i18n.changeLanguage('en')
@@ -52,6 +55,32 @@ describe('BackgroundTasksChip', () => {
 
     await userEvent.click(within(dialog).getAllByRole('button', { name: 'Stop' })[1])
     expect(stopped).toEqual(['b3'])
+  })
+})
+
+describe('the output drawer', () => {
+  it('opens on the output of a task, titled and described by what it is running', async () => {
+    vi.mocked(api.readBackgroundTaskOutput).mockResolvedValue({
+      content: 'compiled 12 modules',
+      total_bytes: 19,
+      task: task({ id: 'b1', description: 'Dev server', state: 'running' }),
+    } as never)
+    render(
+      <BackgroundTasksChip
+        conversationId="c1"
+        tasks={[task({ id: 'b1', description: 'Dev server', command: 'npm run dev' })]}
+        onStop={vi.fn()}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: '1 background command running' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Show output' }))
+
+    const drawer = await screen.findByRole('dialog', { name: 'Dev server' })
+    await waitFor(() => expect(within(drawer).getByText('compiled 12 modules')).toBeInTheDocument())
+    expect(drawer).toHaveAccessibleDescription(/npm run dev/)
+
+    await userEvent.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Dev server' })).not.toBeInTheDocument())
   })
 })
 

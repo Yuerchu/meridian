@@ -1,7 +1,9 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock, identifyingArg, toolLabel } from './tool-call-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -198,9 +200,9 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const { container } = render(<ToolCallBlock data={toolCall('write_file', { path: 'notes/large.txt', content })} />)
 
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(300)
-    await userEvent.click(screen.getByRole('link', { name: 'Show all lines' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(container.querySelectorAll('[data-slot="file-diff-line"]')).toHaveLength(320)
-    expect(screen.getByRole('link', { name: 'Show fewer lines' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {
@@ -243,7 +245,6 @@ describe('durable plan review transcript entry', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
@@ -259,7 +260,7 @@ describe('durable plan review transcript entry', () => {
     const { container } = render(<ToolCallBlock data={data} />)
     expect(container.querySelector('[data-slot="plan-review-entry"]')).not.toBeNull()
     expect(container.textContent).not.toContain('A very long plan body')
-    await userEvent.click(screen.getByRole('button', { name: 'Review plan' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Review & annotate' }))
     expect(usePlanReviewStore.getState().activeReviewId).toBe('review-1')
   })
 })
@@ -276,7 +277,7 @@ describe('large tool results', () => {
     await userEvent.click(trigger)
 
     expect(container.textContent).not.toContain(tail)
-    await userEvent.click(screen.getByRole('button', { name: 'Show full result' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show all' }))
     expect(container.textContent).toContain(tail)
     expect(screen.getByRole('button', { name: 'Show less' })).toBeVisible()
   })
@@ -294,7 +295,7 @@ describe('large tool results', () => {
     const { container } = render(<ToolCallBlock data={data} />)
     await userEvent.click(container.querySelector('[data-slot="chat-tool-trigger"]')!)
 
-    const toggle = screen.getByRole('button', { name: 'Show full result' })
+    const toggle = screen.getByRole('button', { name: 'Show all' })
     expect(screen.queryByRole('link', { name: /Show/ })).toBeNull()
 
     toggle.focus()
@@ -369,9 +370,12 @@ describe('the interactive cards say what became of them', () => {
   it.each(['enter_plan', 'exit_plan'])('%s only rings while it is waiting', (name) => {
     const args = name === 'enter_plan' ? { reason: 'r' } : { plan: '# p' }
     const slot = name === 'enter_plan' ? 'enter-plan' : 'exit-plan'
+    const css = readFileSync(resolve(process.cwd(), 'src/components/chat/tool-call-block.css'), 'utf8')
+    expect(css).toMatch(/\.m-tool-call-block__card\[data-status='pending'\]\s*\{[^}]*box-shadow:[^}]*var\(--accent\)/s)
     const ringed = (status: ToolCallDisplay['status']) => {
       const { container, unmount } = render(<ToolCallBlock data={toolCall(name, args, status)} />)
-      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-status-info')
+      const card = container.querySelector(`[data-slot="${slot}"]`)!
+      const on = card.classList.contains('m-tool-call-block__card') && card.getAttribute('data-status') === 'pending'
       unmount()
       return on
     }
@@ -397,7 +401,7 @@ describe('the interactive cards say what became of them', () => {
       }[name]!
       const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
       expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
-      expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(0)
+      expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(0)
     },
   )
 
@@ -486,12 +490,21 @@ describe('the interactive cards say what became of them', () => {
     expect(alert).toHaveTextContent('the turn has already ended')
   })
 
+  it('removes the native running indicator when a tool completes', () => {
+    const call = toolCall('run_command', { command: 'ls' }, 'running')
+    const { container, rerender } = render(<ToolCallBlock data={call} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(1)
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    rerender(<ToolCallBlock data={{ ...call, status: 'completed', result: 'ok' }} />)
+    expect(container.querySelectorAll('.ui-spinner')).toHaveLength(0)
+  })
+
   /// Two spinners side by side read as two things happening at once.
   it('does not spin twice over one running question', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
-    expect(container.querySelectorAll('.animate-spin, [data-slot="spinner"]')).toHaveLength(1)
+    expect(container.querySelectorAll('.ui-spinner, [data-slot="spinner"]')).toHaveLength(1)
   })
 
   it('does not deny a tool while Enter is confirming IME composition', async () => {
@@ -597,6 +610,26 @@ describe('web search sources', () => {
     expect(event.defaultPrevented).toBe(true)
     expect(shellOpen).toHaveBeenCalledWith('https://example.com/docs')
   })
+
+  it('parses hosted WebSearch Links into structured sources plus summary', async () => {
+    render(
+      <ChatToolPresentationProvider value="bubble">
+        <ToolCallBlock
+          data={{
+            ...toolCall('WebSearch', { query: 'react aria' }, 'completed'),
+            result:
+              'Web search results for query: "react aria"\n\nLinks: [{"title":"Disclosure – React Aria","url":"https://react-spectrum.adobe.com/react-aria/Disclosure.html"}]\n\nAccessible disclosure primitives.',
+          }}
+        />
+      </ChatToolPresentationProvider>,
+    )
+    const trigger = screen.getByRole('button', { name: /react aria/ })
+    expect(trigger).toHaveTextContent(/1 source/)
+    await userEvent.click(trigger)
+    expect(screen.getByText('Disclosure – React Aria')).toBeInTheDocument()
+    expect(screen.getByText('react-spectrum.adobe.com')).toBeInTheDocument()
+    expect(screen.getByText('Accessible disclosure primitives.')).toBeInTheDocument()
+  })
 })
 
 /**
@@ -682,16 +715,24 @@ describe('the summary lines beside the tool name', () => {
   })
 
   /**
-   * The bare id, not a guess. Anything from MCP or the custom registry has a
-   * schema this cannot know, and `toolLabel` deliberately hands back the key it
-   * was given when no translation exists.
+   * Third-party MCP tools keep no guessed identifying arg, while splitting the
+   * `mcp__<server>__<action>` prefix into a readable server badge + action name.
    */
-  it('says nothing about a tool it has no schema for', () => {
+  it('formats an MCP tool name without guessing unknown schema arguments', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('mcp__linear__list_issues', { teamId: 'abc' }, 'completed')} />,
     )
     expect(summary(container)).toBeNull()
-    expect(screen.getByText('mcp__linear__list_issues')).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="tool-mcp-server"]')).toHaveTextContent('linear')
+    expect(container.querySelector('[data-slot="tool-mcp-action"]')).toHaveTextContent('list_issues')
+  })
+
+  it.each([
+    ['delete_file', { path: 'src/old.ts' }, 'src/old.ts'],
+    ['move_file', { from: 'src/a.ts', to: 'src/b.ts' }, 'src/a.ts'],
+  ])('names the target file for %s on the trigger', (name, args, expected) => {
+    const { container } = render(<ToolCallBlock data={toolCall(name, args, 'completed')} />)
+    expect(summary(container)).toBe(expected)
   })
 
   it('translates a hosted tool rather than showing its bare id', () => {
@@ -798,6 +839,46 @@ describe('a hosted agent asks with the same cards', () => {
     expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
   })
 
+  it('selects radio cards with arrows and separates their names, descriptions and numeric hints', async () => {
+    waiting('appr-1', {
+      questions: [
+        {
+          id: 'scope',
+          question: 'Which one?',
+          accepts_text: false,
+          options: [
+            { label: 'A', description: 'First option' },
+            { label: 'B', description: 'Second option' },
+          ],
+        },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const first = screen.getByRole('radio', { name: 'A', exact: true })
+    const second = screen.getByRole('radio', { name: 'B', exact: true })
+    expect(first).toHaveAccessibleDescription('First option')
+    expect(second).toHaveAccessibleDescription('Second option')
+    act(() => first.focus())
+    await userEvent.keyboard('{ArrowDown}')
+    expect(second).toHaveFocus()
+    expect(second).toBeChecked()
+    expect(first).not.toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
+  })
+
+  it.each(['Alt', 'Control', 'Meta'])('does not consume a number with %s held', async (modifier) => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const first = screen.getByRole('radio', { name: 'A' })
+    act(() => first.focus())
+    await userEvent.keyboard(`{${modifier}>}2{/${modifier}}`)
+    expect(first).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'B' })).not.toBeChecked()
+  })
+
   it('leaves a digit typed into the notes as a digit', async () => {
     waiting('appr-1', {
       questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
@@ -827,7 +908,6 @@ describe('a hosted agent asks with the same cards', () => {
 
     expect(submit).toHaveAttribute('aria-disabled', 'true')
     expect(submit.closest('form')).toHaveAttribute('aria-busy', 'true')
-    expect(submit.querySelector('[data-slot="spinner"]')).not.toBeNull()
     finish()
   })
 
@@ -909,7 +989,15 @@ describe('a hosted agent asks with the same cards', () => {
     expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
     expect(api.respondToAsk).not.toHaveBeenCalled()
 
+    const group = !multi ? screen.getByRole('radiogroup') : null
+    if (group) {
+      expect(group).toHaveAttribute('aria-invalid', 'true')
+      const error = screen.getByText(i18n.t('chat.tool.answerRequired'))
+      expect(group.getAttribute('aria-describedby')?.split(' ')).toContain(error.id)
+    }
+
     await userEvent.click(screen.getByRole(multi ? 'checkbox' : 'radio', { name: 'A' }))
+    if (group) expect(group).not.toHaveAttribute('aria-invalid', 'true')
     await userEvent.click(submit())
     // One string for two actions, which is what `formatAnswer` sends. That it
     // is *accepted* rather than declined is the other half of this and cannot
@@ -929,6 +1017,35 @@ describe('a hosted agent asks with the same cards', () => {
    * not merely go nowhere, since `formatAnswer` folds a note into the selection
    * it sits beside, turning a valid choice into an unplaceable string.
    */
+  it('submits keyboard-selected checkbox cards with separately associated descriptions', async () => {
+    waiting('appr-1', {
+      questions: [
+        {
+          id: 'tools',
+          question: 'Which tools?',
+          multi_select: true,
+          accepts_text: false,
+          options: [{ label: 'Read', description: 'Inspect workspace files' }, { label: 'Write' }],
+        },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const group = screen.getByRole('group', { name: 'Which tools?' })
+    const read = within(group).getByRole('checkbox', { name: 'Read', exact: true })
+    expect(read).toHaveAccessibleDescription('Inspect workspace files')
+    act(() => read.focus())
+    await userEvent.keyboard(' ')
+    await userEvent.tab()
+    await userEvent.keyboard(' ')
+    expect(read).toBeChecked()
+    expect(within(group).getByRole('checkbox', { name: 'Write' })).toBeChecked()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+    expect(api.respondToAsk).toHaveBeenCalledWith({
+      approvalId: 'appr-1',
+      response: JSON.stringify({ tools: 'Read, Write' }),
+    })
+  })
+
   it('offers no free-text box for a question that cannot carry one', () => {
     waiting('appr-1', {
       questions: [
@@ -1002,6 +1119,13 @@ describe('as bubble blocks', () => {
   /// rests on is the exact path, and a decision made about a truncated one is
   /// a decision about something the reader could not see.
   it('gives a call waiting on a decision the whole column, path and description both on the head', () => {
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
+    expect(chatToolCss).toMatch(
+      /\.ui-chat-tool\[data-presentation="bubble"\]\[data-expanded\],\s*\.ui-chat-tool\[data-presentation="bubble"\]\[data-state="requires-action"\]\s*\{[^}]*width:\s*100%/s,
+    )
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('write_file', {
@@ -1012,7 +1136,10 @@ describe('as bubble blocks', () => {
       />,
     )
     const key = keyOf(container)
-    expect(blockOf(container)).toHaveClass('w-full')
+    const block = blockOf(container)
+    expect(block).toHaveClass('ui-chat-tool')
+    expect(block).toHaveAttribute('data-presentation', 'bubble')
+    expect(block).toHaveAttribute('data-state', 'requires-action')
     expect(key.querySelector('[data-slot="tool-arg"]')).toHaveTextContent('/home/me/.ssh/config')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toHaveTextContent('Add the jump host')
     expectExpanded(key)
@@ -1021,13 +1148,22 @@ describe('as bubble blocks', () => {
   })
 
   it('keeps an ordinary block as wide as its label, with the description as a tooltip', async () => {
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
+    expect(chatToolCss).toMatch(/\.ui-chat-tool\[data-presentation="bubble"\]\s*\{[^}]*width:\s*fit-content/s)
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('Bash', { command: 'git log --oneline', description: 'Recent history' }, 'completed')}
       />,
     )
     const key = keyOf(container)
-    expect(blockOf(container)).not.toHaveClass('w-full')
+    const block = blockOf(container)
+    expect(block).toHaveClass('ui-chat-tool')
+    expect(block).toHaveAttribute('data-presentation', 'bubble')
+    expect(block).not.toHaveAttribute('data-expanded')
+    expect(block).not.toHaveAttribute('data-state', 'requires-action')
     expect(key.querySelector('[data-slot="chat-tool-subtitle"]')).toBeNull()
     // Tooltip, not the browser's: nothing on the key carries `title`.
     expect(container.querySelector('[title]')).toBeNull()
@@ -1035,7 +1171,7 @@ describe('as bubble blocks', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Recent history')
   })
 
-  it('asks a question from a panel, open while it waits', () => {
+  it('renders a pending ask_user as a standalone prompt without a collapsible bubble header', () => {
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('ask_user', {
@@ -1043,12 +1179,11 @@ describe('as bubble blocks', () => {
         })}
       />,
     )
-    const key = keyOf(container)
-    expect(key).toHaveTextContent('Question')
-    expectExpanded(key)
-    const panel = document.getElementById(key.getAttribute('aria-controls')!)!
-    expect(within(panel).getByText('Which one?')).toBeVisible()
-    expect(within(panel).getByRole('button', { name: /Submit/ })).toBeVisible()
+    const prompt = container.querySelector<HTMLElement>('[data-slot="ask-user-prompt"]')!
+    expect(prompt).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="chat-tool-trigger"]')).toBeNull()
+    expect(within(prompt).getByText('Which one?')).toBeVisible()
+    expect(within(prompt).getByRole('button', { name: /Submit/ })).toBeVisible()
   })
 
   it('makes the plan review a key that goes to the review', async () => {
@@ -1064,7 +1199,6 @@ describe('as bubble blocks', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
@@ -1085,7 +1219,7 @@ describe('as bubble blocks', () => {
     const block = container.querySelector<HTMLElement>('[data-slot="plan-review-entry"]')!
     expect(block).toHaveAttribute('data-bubble-block')
     expect(container.textContent).not.toContain('A very long plan body')
-    await userEvent.click(within(block).getByRole('button', { name: 'Review plan' }))
+    await userEvent.click(within(block).getByRole('button', { name: 'Review & annotate' }))
     expect(usePlanReviewStore.getState().activeReviewId).toBe('review-2')
   })
 

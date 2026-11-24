@@ -1,0 +1,110 @@
+@layer components {
+  /* 按自己的宽度切换：放在窄的卡片、侧栏里也能变成紧凑模式，不只看视口 */
+  .ui-pagination {
+    --ui-pagination-size: var(--control-md);
+
+    container-type: inline-size;
+    /* 尺寸容器的宽度不能由内容撑开（放在 flex 行里会缩成 0），所以占满一行 */
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-pagination__list {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* ---------- 页码和上一页、下一页 ---------- */
+  .ui-pagination__page,
+  .ui-pagination__step {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-width: var(--ui-pagination-size);
+    height: var(--ui-pagination-size);
+    padding: 0 var(--space-2);
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-control) - 2px);
+    background: transparent;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      scale var(--dur-instant) var(--ease-standard);
+  }
+
+  .ui-pagination__step svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  :is(.ui-pagination__page, .ui-pagination__step)[data-hovered]:not([data-disabled], [data-current]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  :is(.ui-pagination__page, .ui-pagination__step)[data-pressed]:not([data-disabled]) {
+    scale: var(--press-scale);
+  }
+
+  /* 当前页：浅灰底、正文色、加粗。不用 Ink（选中回答“我在哪”，不该和主操作一样重）；
+     也不用分段控件那种白块：分页没有底槽，白块在白底上看不出来（#456） */
+  .ui-pagination__page[data-current] {
+    background: var(--surface-muted);
+    color: var(--text);
+    font: var(--text-small-medium);
+    cursor: default;
+  }
+
+  .ui-pagination__step[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-pagination__gap {
+    display: inline-grid;
+    place-items: center;
+    min-width: var(--space-6);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .ui-pagination__compact {
+    display: none;
+    padding: 0 var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* ---------- 窄：只留上一页、"3 / 20 页"、下一页 ---------- */
+  @container (width < 400px) {
+    .ui-pagination__page-item,
+    .ui-pagination__gap {
+      display: none;
+    }
+
+    .ui-pagination__compact {
+      display: block;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-pagination__page[data-current] {
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
+    }
+  }
+}

@@ -1,0 +1,16 @@
+@layer components {
+  .m-transcript-status__notice-row {
+    padding-inline-start: var(--space-10);
+  }
+
+  .m-transcript-status__redaction {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-transcript-status__compacting {
+    display: flex;
+    justify-content: center;
+    padding-block: var(--space-3);
+  }
+}

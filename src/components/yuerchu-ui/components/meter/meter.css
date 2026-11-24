@@ -1,0 +1,64 @@
+@layer components {
+  .ui-meter {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-meter__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font: var(--text-small);
+  }
+
+  .ui-meter__label {
+    color: var(--text);
+  }
+
+  .ui-meter__value {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-meter__value[data-tone="warning"] {
+    color: var(--warning-fg);
+  }
+
+  .ui-meter__value[data-tone="danger"] {
+    color: var(--danger-fg);
+  }
+
+  .ui-meter__track {
+    height: 6px;
+    overflow: hidden;
+    border: 1px solid transparent; /* 高对比度模式下显示轨道边界 */
+    border-radius: var(--radius-pill);
+    background: var(--control-track);
+  }
+
+  .ui-meter__fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--control-on);
+    transition:
+      width var(--dur-considered) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-meter__fill[data-tone="warning"] {
+    background: var(--warning-fg);
+  }
+
+  .ui-meter__fill[data-tone="danger"] {
+    background: var(--danger);
+  }
+
+  @media (forced-colors: active) {
+    .ui-meter__fill {
+      background: Highlight;
+    }
+  }
+}

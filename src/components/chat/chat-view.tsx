@@ -2,10 +2,11 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
-import { Button, Chip, Tooltip, TooltipTrigger } from '@/components/base'
-import { Messages, X } from '@keyline-icons/react/two-tone'
+import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
+import './chat-view.css'
+import { Messages } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
-import { EmptyState as ProEmptyState } from '@/components/base'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
 import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
@@ -31,7 +32,6 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
 import { useComposerDraft, type ComposerConversationRef, type ComposerDraftState } from '@/hooks/use-composer-draft'
 import { useConversationStore } from '@/stores/conversation-store'
-import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { parseComposerIntent, selectExistingReferences } from '@/lib/composer-intent'
 import { findComposerCommand } from '@/lib/composer-commands'
 import { buildMessageContent } from '@/lib/message-content'
@@ -75,8 +75,6 @@ function ChatViewInner({
   onOpenSettingsTab?: (tab: SettingsTab) => void
 }) {
   const session = useConversationStore((s) => s.sessions[conversationId])
-  const planReviewSummaries = usePlanReviewStore((state) => state.summaries)
-  const openPlanReview = usePlanReviewStore((state) => state.openReview)
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
@@ -114,20 +112,6 @@ function ChatViewInner({
   const redactionNotice = session?.redactionNotice ?? null
   const acpNotices = session?.acpNotices ?? NO_NOTICES
   const activeTodos = session?.activeTodos ?? null
-  const pendingPlanReview = useMemo(
-    () =>
-      Object.values(planReviewSummaries).find(
-        (review) =>
-          review.conversation_id === conversationId &&
-          (review.status === 'pending' ||
-            review.delivery_state === 'queued' ||
-            review.delivery_state === 'dispatched' ||
-            review.delivery_state === 'held' ||
-            review.delivery_state === 'in_doubt'),
-      ) ?? null,
-    [conversationId, planReviewSummaries],
-  )
-  const reviewBlocked = (session?.planReviewBarrier ?? false) || pendingPlanReview !== null
 
   const [input, setInput] = useState('')
   const [commandPending, setCommandPending] = useState(false)
@@ -177,21 +161,6 @@ function ChatViewInner({
   }, [isOneBot, messages])
   const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
-  // What the barrier is waiting on. A decision already made is not a review
-  // still owed: after Approve the turn is held until the agent has read the
-  // decision, and telling the person to go and review it again is wrong twice.
-  const reviewBlockedMessage =
-    pendingPlanReview === null || pendingPlanReview.status === 'pending'
-      ? t('chat.plan.reviewBlocked')
-      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
-        ? t('chat.plan.deliveryAttention')
-        : t('chat.plan.deliveryPending')
-  const reviewBlockedAction =
-    pendingPlanReview === null || pendingPlanReview.status === 'pending'
-      ? t('chat.plan.review')
-      : pendingPlanReview.delivery_state === 'held' || pendingPlanReview.delivery_state === 'in_doubt'
-        ? t('chat.plan.resolveDelivery')
-        : t('chat.plan.viewDelivery')
   const { confirm, confirmDialog } = useConfirm()
 
   const clearShellRetry = useCallback((turnId: string) => {
@@ -580,37 +549,33 @@ function ChatViewInner({
           // it runs could not be read and nothing ran at all.
           const unread = result.status === 'settings_unreadable'
           const approved = await confirm({
-            status: 'warning',
-            title: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
-            body: (
-              <div data-slot="shell-retry-body" className="space-y-3">
+            heading: t(unread ? 'chat.shell.unreadableTitle' : 'chat.shell.retryTitle'),
+            description: (
+              <div data-slot="shell-retry-body" className="m-chat-view__retry">
                 <p data-slot="shell-retry-text">{t(unread ? 'chat.shell.unreadableBody' : 'chat.shell.retryBody')}</p>
-                <dl
-                  data-slot="shell-retry-details"
-                  className="space-y-2 rounded-xl bg-background-secondary-default p-3 text-caption-1-regular"
-                >
+                <dl data-slot="shell-retry-details" className="m-chat-view__retry-list">
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                       {t('chat.shell.commandLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                    <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                       {command}
                     </dd>
                   </div>
                   <div data-slot="shell-retry-detail">
-                    <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                    <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                       {t('chat.shell.cwdLabel')}
                     </dt>
-                    <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                    <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                       {result.cwd}
                     </dd>
                   </div>
                   {unread && result.error && (
                     <div data-slot="shell-retry-detail">
-                      <dt data-slot="shell-retry-detail-label" className="text-caption-1-medium text-text-secondary">
+                      <dt data-slot="shell-retry-detail-label" className="m-chat-view__retry-label">
                         {t('chat.shell.errorLabel')}
                       </dt>
-                      <dd data-slot="shell-retry-detail-value" className="mt-0.5 break-all font-mono text-text-primary">
+                      <dd data-slot="shell-retry-detail-value" className="m-chat-view__retry-value">
                         {result.error}
                       </dd>
                     </div>
@@ -699,7 +664,6 @@ function ChatViewInner({
   // because they were typed on the empty screen.
   useEffect(() => {
     if (!initialDraft || initialDraftSent.current === conversationId) return
-    if (reviewBlocked) return
     initialDraftSent.current = conversationId
     if (initialDraft.remainingComposer) {
       setInput(initialDraft.remainingComposer.text)
@@ -749,7 +713,6 @@ function ChatViewInner({
     probeReference,
     sendMessage,
     storeSetError,
-    reviewBlocked,
   ])
 
   /**
@@ -863,11 +826,6 @@ function ChatViewInner({
   )
 
   const handleSubmit = useCallback(() => {
-    if (reviewBlocked) {
-      storeSetError(conversationId, reviewBlockedMessage)
-      if (pendingPlanReview) openPlanReview(pendingPlanReview.review_id)
-      return
-    }
     if (commandPendingRef.current) {
       storeSetError(conversationId, t('chat.command.busy'))
       return
@@ -933,10 +891,6 @@ function ChatViewInner({
     probeReference,
     submitPrompt,
     t,
-    reviewBlocked,
-    reviewBlockedMessage,
-    pendingPlanReview,
-    openPlanReview,
   ])
 
   return (
@@ -951,7 +905,7 @@ function ChatViewInner({
         aria-label={t('chat.convRef.dropLabel')}
         getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
         onDrop={(e) => void handleConversationDrop(e.items)}
-        className="flex flex-col h-full data-[drop-target]:ring-2 data-[drop-target]:ring-accent-500 data-[drop-target]:ring-inset"
+        className="m-chat-view"
       >
         <AcpNoticeActionsContext.Provider value={acpNoticeActions}>
           <ChatTranscript
@@ -1010,18 +964,16 @@ function ChatViewInner({
               // conversation that could not be loaded tells the reader it is
               // empty, which is the one thing nobody knows.
               messages.length === 0 && !error && !loadError ? (
-                <ProEmptyState size="md" className="flex-1 justify-center px-4 py-10">
-                  <ProEmptyState.Header>
-                    <ProEmptyState.Title>{t('chat.empty.subtitle')}</ProEmptyState.Title>
-                    <ProEmptyState.Description>{t('chat.startHint')}</ProEmptyState.Description>
-                  </ProEmptyState.Header>
-                  <ProEmptyState.Content className="w-full max-w-2xl">
-                    <StarterPrompts
-                      disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
-                      onSelect={setInput}
-                    />
-                  </ProEmptyState.Content>
-                </ProEmptyState>
+                <div className="m-chat-view__empty">
+                  <EmptyState
+                    heading={t('chat.empty.subtitle')}
+                    headingLevel={3}
+                    description={t('chat.startHint')}
+                    actions={
+                      <StarterPrompts disabled={streaming || !!shellTurnId || commandPending} onSelect={setInput} />
+                    }
+                  />
+                </div>
               ) : null
             }
             scrollToBottomLabel={t('chat.scrollToBottom')}
@@ -1032,57 +984,31 @@ function ChatViewInner({
           rows are: they belong to the next message, not to the one being
           typed. Pressing a chip removes it. */}
         {conversationRefs.length > 0 && (
-          <div
-            data-slot="conversation-refs-pending"
-            role="group"
-            aria-label={t('chat.convRef.pending')}
-            className="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-border-button-default px-4 py-2"
-          >
-            {conversationRefs.map((ref) => {
-              // A restored draft can cite a conversation deleted since.
-              const name = ref.missing ? t('chat.draft.deletedConversation') : ref.title
-              return (
-                <Chip key={ref.id} size="sm" variant="soft" className="pr-0.5">
-                  <Messages className="size-3.5" aria-hidden />
-                  <span
-                    data-slot="conversation-ref-title"
-                    onPointerEnter={titleIfTruncated}
-                    data-missing={ref.missing ? '' : undefined}
-                    className="max-w-48 truncate data-[missing]:text-status-danger"
-                  >
-                    {name}
-                  </span>
-                  <TooltipTrigger delay={0}>
-                    <Button
-                      iconOnly
-                      leadingIcon={X}
-                      size="xs"
-                      variant="neutral"
-                      aria-label={t('chat.convRef.remove', { name })}
-                      onPress={() => setConversationRefs((prev) => prev.filter((r) => r.id !== ref.id))}
-                      className="touch-hitbox size-5 min-w-0 rounded-full"
-                    />
-                    <Tooltip>{t('chat.convRef.remove', { name })}</Tooltip>
-                  </TooltipTrigger>
-                </Chip>
-              )
-            })}
-          </div>
-        )}
-
-        {reviewBlocked && (
-          <div
-            data-slot="review-blocked-notice"
-            className="flex shrink-0 items-center gap-3 border-t border-border-button-default bg-button-ghost-background px-4 py-2 text-caption-1-regular text-button-ghost-foreground"
-          >
-            <p data-slot="review-blocked-message" className="min-w-0 flex-1">
-              {reviewBlockedMessage}
-            </p>
-            {pendingPlanReview && (
-              <Button size="small" variant="secondary" onPress={() => openPlanReview(pendingPlanReview.review_id)}>
-                {reviewBlockedAction}
-              </Button>
-            )}
+          <div data-slot="conversation-refs-pending" className="m-chat-view__references">
+            <TagGroup
+              aria-label={t('chat.convRef.pending')}
+              size="sm"
+              onRemove={(keys) => setConversationRefs((prev) => prev.filter((ref) => !keys.has(ref.id)))}
+            >
+              {conversationRefs.map((ref) => {
+                const name = ref.missing ? t('chat.draft.deletedConversation') : ref.title
+                return (
+                  <Tag key={ref.id} id={ref.id} textValue={name}>
+                    <span className="m-chat-view__reference-content">
+                      <Messages className="m-chat-view__reference-icon" aria-hidden />
+                      <span
+                        data-slot="conversation-ref-title"
+                        onPointerEnter={titleIfTruncated}
+                        data-missing={ref.missing ? 'true' : 'false'}
+                        className="m-chat-view__reference-title"
+                      >
+                        {name}
+                      </span>
+                    </span>
+                  </Tag>
+                )
+              })}
+            </TagGroup>
           </div>
         )}
 
@@ -1090,7 +1016,7 @@ function ChatViewInner({
             inside `PromptQueue`, which draws nothing when the list is empty —
             and an empty list is exactly what a failed first read looks like. */}
         {background.error && (
-          <div data-slot="background-tasks-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="background-tasks-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(background.error.kind === 'load' ? 'chat.background.loadFailed' : 'chat.background.stopFailed')}
               message={background.error.message}
@@ -1100,7 +1026,7 @@ function ChatViewInner({
         )}
 
         {queue.error && (
-          <div data-slot="prompt-queue-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="prompt-queue-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(queue.error.kind === 'load' ? 'chat.queue.loadFailed' : 'chat.queue.actionFailed')}
               message={queue.error.message}
@@ -1111,7 +1037,7 @@ function ChatViewInner({
         )}
 
         {composerDraft.error && (
-          <div data-slot="composer-draft-error" className="shrink-0 px-4 pt-2">
+          <div data-slot="composer-draft-error" className="m-chat-view__alert">
             <ErrorAlert
               title={t(composerDraft.error.kind === 'load' ? 'chat.draft.loadFailed' : 'chat.draft.saveFailedTitle')}
               message={composerDraft.error.message}
@@ -1129,7 +1055,7 @@ function ChatViewInner({
           onSubmit={handleSubmit}
           onVoiceSend={handleVoiceSend}
           onStop={handleStop}
-          disabled={streaming || !!shellTurnId || commandPending || reviewBlocked}
+          disabled={streaming || !!shellTurnId || commandPending}
           streaming={streaming || !!shellTurnId}
           steerable={shellTurnId ? false : steerable}
           queueing={queueing}

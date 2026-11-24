@@ -189,7 +189,7 @@ describe('TurnItem', () => {
     const { container } = render(<TurnItem turn={turn} conversationId={CONV} questionPosition="last" />)
     const bubble = container.querySelector('[data-slot="bubble"][data-variant="user"]')
     expect(bubble).toHaveAttribute('data-position', 'last')
-    expect(container.querySelector('[data-slot="turn-question"]')?.className.split(' ')).toContain('-mt-5.5')
+    expect(container.querySelector('[data-slot="turn-question"]')).toHaveAttribute('data-continues-run', 'true')
   })
 
   it('renders a headless turn without a question bubble', () => {

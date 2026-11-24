@@ -1,14 +1,15 @@
-import { useMemo, useState, type ComponentType } from 'react'
+import './changes-panel.css'
+import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
-import { TreeView, TreeViewItem } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Tree, TreeItem } from '@/components/yuerchu-ui/components/tree/tree'
 import { X } from '@keyline-icons/react/two-tone'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
 import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
-import { cx } from '@/utils/cx'
 
 /** Every directory in the tree, so a new one arrives already open. */
 function branchIds(nodes: FileNode[], out: string[] = []): string[] {
@@ -18,12 +19,6 @@ function branchIds(nodes: FileNode[], out: string[] = []): string[] {
     branchIds(node.children, out)
   }
   return out
-}
-
-const OP_CLASS: Record<TouchedOp, string> = {
-  create: 'text-status-success-soft-foreground',
-  modify: 'text-status-info-soft-foreground',
-  delete: 'text-status-danger-soft-foreground',
 }
 
 /** A, M, D — the letters every diff viewer uses, so nothing has to explain them. */
@@ -66,38 +61,24 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
   const expandedKeys = useMemo(() => branches.filter((id) => !collapsed.has(id)), [branches, collapsed])
 
   return (
-    <div data-slot="changes-panel" className="flex h-full flex-col overflow-hidden">
-      <header
-        data-slot="changes-panel-header"
-        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2"
-      >
-        <span data-slot="changes-panel-title" className="min-w-0 flex-1 truncate text-body-medium">
+    <div data-slot="changes-panel" className="m-changes">
+      <header data-slot="changes-panel-header" className="m-changes__header">
+        <span data-slot="changes-panel-title" className="m-changes__title">
           {t('chat.changes.title')}
         </span>
-        <span
-          data-slot="changes-panel-count"
-          className="shrink-0 text-caption-1-regular tabular-nums text-text-secondary"
-        >
+        <span data-slot="changes-panel-count" className="m-changes__count">
           {files.length}
         </span>
-        <TooltipTrigger delay={0}>
-          <Button
-            iconOnly
-            leadingIcon={X}
-            variant="neutral"
-            size="small"
-            aria-label={t('common.close')}
-            onPress={onClose}
-            className="shrink-0"
-          />
+        <TooltipTrigger>
+          <Button icon={<X />} variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose} />
           <Tooltip>{t('common.close')}</Tooltip>
         </TooltipTrigger>
       </header>
 
-      {/* The registry tree grows with its content and leaves scrolling to its
-          container; it is a card on its own, and here it is the panel's body. */}
-      <div data-slot="changes-panel-body" className="min-h-0 flex-1 overflow-y-auto">
-        <TreeView
+      {/* The tree grows with its content and leaves scrolling to its
+          container: here it is the panel's body. */}
+      <div data-slot="changes-panel-body" className="m-changes__body">
+        <Tree
           aria-label={t('chat.changes.title')}
           size="sm"
           selectionMode="none"
@@ -106,42 +87,27 @@ export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onC
             const open = new Set([...keys].map(String))
             setCollapsed(new Set(branches.filter((id) => !open.has(id))))
           }}
-          renderEmptyState={() => t('chat.changes.empty')}
-          className="rounded-none border-0 bg-transparent"
+          renderEmptyState={() => <div className="m-changes__empty">{t('chat.changes.empty')}</div>}
         >
           {tree.map((node) => renderNode(node, t))}
-        </TreeView>
+        </Tree>
       </div>
 
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
           right. */}
-      <p
-        data-slot="changes-panel-caveat"
-        className="shrink-0 border-t border-border-button-default px-3 py-2 text-caption-1-regular text-text-secondary"
-      >
+      <p data-slot="changes-panel-caveat" className="m-changes__caveat">
         {t('chat.changes.caveat')}
       </p>
     </div>
   )
 }
 
-type Glyph = ComponentType<{ className?: string }>
-
-const glyphs = new Map<string, Glyph>()
-
-/** The language icon where there is one; `undefined` leaves the tree its plain
- *  file icon, since `fileIconUrl` returns nothing for an extension it does not
- *  know. One component per icon, so a re-render does not remount every image. */
-function fileGlyph(name: string): Glyph | undefined {
+/** The language icon where there is one; a file the icon set does not know
+ *  gets none, and the tree keeps the column so the labels still line up. */
+function fileGlyph(name: string) {
   const url = fileIconUrl(name)
-  if (!url) return undefined
-  let glyph = glyphs.get(url)
-  if (!glyph) {
-    glyph = ({ className }) => <img data-slot="changes-file-glyph" src={url} alt="" className={className} />
-    glyphs.set(url, glyph)
-  }
-  return glyph
+  return url ? <img data-slot="changes-file-glyph" src={url} alt="" className="m-changes__glyph" /> : undefined
 }
 
 function renderNode(node: FileNode, t: TFunction) {
@@ -149,23 +115,24 @@ function renderNode(node: FileNode, t: TFunction) {
   const count = node.file?.count ?? 0
   const accessibleName = op ? `${node.name}, ${t(OP_LABEL[op])}` : node.name
   return (
-    <TreeViewItem
+    <TreeItem
       key={node.id}
       id={node.id}
       label={node.name}
       aria-label={accessibleName}
       textValue={accessibleName}
       icon={node.children ? undefined : fileGlyph(node.name)}
-      trailingContent={
+      // The tree's only trailing slot, used here for text rather than controls.
+      actions={
         count > 1 || op ? (
-          <span data-slot="changes-node-meta" className="flex items-center gap-2">
+          <span data-slot="changes-node-meta" className="m-changes__meta">
             {count > 1 && (
-              <span data-slot="changes-node-count" className="tabular-nums">
+              <span data-slot="changes-node-count" className="m-changes__multiplier">
                 ×{count}
               </span>
             )}
             {op && (
-              <span data-slot="changes-node-op" aria-hidden="true" className={cx('font-mono', OP_CLASS[op])}>
+              <span data-slot="changes-node-op" aria-hidden="true" className="m-changes__op" data-op={op}>
                 {OP_LETTER[op]}
               </span>
             )}
@@ -174,6 +141,6 @@ function renderNode(node: FileNode, t: TFunction) {
       }
     >
       {node.children?.map((child) => renderNode(child, t))}
-    </TreeViewItem>
+    </TreeItem>
   )
 }

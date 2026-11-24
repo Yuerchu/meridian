@@ -1,0 +1,6 @@
+@layer components {
+  .m-agent-icon {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+}

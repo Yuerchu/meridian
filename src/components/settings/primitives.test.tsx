@@ -1,10 +1,11 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
-import { Switch } from '@/components/base'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { SettingsNavRow, SettingsPane, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
+import { SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsNavRow, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsPage } from './settings-page'
 
 type Level = 'all' | 'warn' | 'error'
@@ -29,52 +30,90 @@ describe('SettingsNavRow', () => {
 })
 
 describe('SettingsRow', () => {
-  /**
-   * The label is a `<p>`, so it names nothing on its own. A row whose control
-   * does not take the ids — or carry its own `aria-label` — is a switch a
-   * screen reader announces as "switch", with no indication of what it turns
-   * on. The function child is the mechanism, so this pins that it is wired.
-   */
-  it('lends its label and description to a control that asks for them', () => {
+  it('names and describes its control through React Aria context', () => {
     render(
       <SettingsRow label="Auto-connect" description="Reconnects on launch">
-        {({ labelId, descriptionId }) => (
-          <Switch aria-labelledby={labelId} aria-describedby={descriptionId} isSelected={false} onChange={() => {}} />
-        )}
+        <Switch isSelected={false} onChange={() => {}} />
       </SettingsRow>,
     )
     const control = screen.getByRole('switch', { name: 'Auto-connect' })
     expect(control).toHaveAccessibleDescription('Reconnects on launch')
   })
 
-  it('offers no description id when there is no description', () => {
-    const seen: Array<string | undefined> = []
+  it('leaves the control without a description when the row has none', () => {
     render(
       <SettingsRow label="Shell">
-        {({ descriptionId }) => {
-          seen.push(descriptionId)
-          return <span>bash</span>
-        }}
+        <Switch isSelected={false} onChange={() => {}} />
       </SettingsRow>,
     )
-    expect(seen).toEqual([undefined])
-  })
-
-  /** A field that cannot shrink drops under its label on a narrow pane. */
-  it('stacks only when asked', () => {
-    const { container, rerender } = render(<SettingsRow label="Base URL">field</SettingsRow>)
-    expect(container.querySelector('[data-slot="settings-row"]')).not.toHaveClass('flex-col')
-
-    rerender(
-      <SettingsRow label="Base URL" stacked>
-        field
-      </SettingsRow>,
-    )
-    expect(container.querySelector('[data-slot="settings-row"]')).toHaveClass('flex-col')
+    expect(screen.getByRole('switch', { name: 'Shell' })).not.toHaveAttribute('aria-describedby')
   })
 })
 
 describe('SettingsSelect', () => {
+  it('preserves descriptions, external names and disabled settings', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <>
+        <span id="level-label">Log level</span>
+        <SettingsSelect
+          ariaLabelledBy="level-label"
+          description="Only affects displayed logs"
+          value="all"
+          options={OPTIONS}
+          onChange={onChange}
+          disabled
+        />
+      </>,
+    )
+    const trigger = screen.getByRole('button', { name: /Log level/ })
+    expect(trigger).toBeDisabled()
+    expect(trigger).toHaveAccessibleDescription('Only affects displayed logs')
+    await user.click(trigger)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('dismisses with Escape and outside press without changing the selection', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(<SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={onChange} />)
+    const trigger = screen.getByRole('button', { name: /Level/ })
+    await user.click(trigger)
+    expect(await screen.findByRole('listbox')).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    await waitFor(() => expect(trigger).toHaveFocus())
+    await user.click(trigger)
+    await user.click(document.body)
+    expect(screen.queryByRole('listbox')).not.toBeInTheDocument()
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('keeps the none sentinel selectable and cannot clear with Delete', async () => {
+    const user = userEvent.setup()
+    const onChange = vi.fn()
+    render(
+      <SettingsSelect
+        ariaLabel="Provider"
+        value="provider"
+        options={[
+          { value: '_none', label: 'None' },
+          { value: 'provider', label: 'Provider A' },
+        ]}
+        onChange={onChange}
+      />,
+    )
+    const trigger = screen.getByRole('button', { name: /Provider/ })
+    trigger.focus()
+    await user.keyboard('{Delete}')
+    expect(onChange).not.toHaveBeenCalled()
+    await user.click(trigger)
+    await user.click(await screen.findByRole('option', { name: 'None' }))
+    expect(onChange).toHaveBeenCalledExactlyOnceWith('_none')
+  })
+
   it('hands the caller its own value type back, never a key or null', async () => {
     const user = userEvent.setup()
     // Typed as the union rather than `string`: if the component widened what it
@@ -119,9 +158,20 @@ describe('SettingsSelect', () => {
 // pages used to pick from three (lg, 3xl, 4xl), so moving between sections
 // moved the column under the reader.
 describe('the settings width', () => {
+  it('names the loading region once and hides its placeholder shapes', () => {
+    const { container } = render(<SettingsSkeleton rows={3} />)
+    const status = screen.getByRole('status')
+    expect(status).toHaveAccessibleName()
+    expect(status).toHaveAttribute('aria-busy', 'true')
+    expect(screen.getAllByRole('status')).toHaveLength(1)
+    const shapes = container.querySelectorAll('.ui-skeleton')
+    expect(shapes).toHaveLength(5)
+    for (const shape of shapes) expect(shape).toHaveAttribute('aria-hidden', 'true')
+  })
+
   it('is the registry settings-modal content pane, 532px', () => {
     const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
-    expect(css).toMatch(/--container-settings:\s*33\.25rem;/)
+    expect(css).toMatch(/--content-settings:\s*33\.25rem;/)
   })
 
   it('is the width of every page shell, and of the skeleton that stands in for one', () => {
@@ -132,11 +182,16 @@ describe('the settings width', () => {
         <SettingsPage title="Page" />
       </>,
     )
-    for (const slot of ['settings-pane', 'settings-skeleton', 'settings-page']) {
+    const shells = [
+      { slot: 'settings-pane', className: 'm-settings-pane', stylesheet: 'primitives.css' },
+      { slot: 'settings-skeleton', className: 'm-settings-skeleton', stylesheet: 'primitives.css' },
+      { slot: 'settings-page', className: 'm-settings-page', stylesheet: 'settings-page.css' },
+    ]
+    for (const { slot, className, stylesheet } of shells) {
       const el = container.querySelector(`[data-slot="${slot}"]`)
-      expect(el, slot).not.toBeNull()
-      expect(el?.className, slot).toMatch(/(^|\s)max-w-settings(\s|$)/)
-      expect(el?.className, slot).not.toMatch(/(^|\s)max-w-(?!settings)/)
+      expect(el, slot).toHaveClass(className)
+      const css = readFileSync(resolve(__dirname, stylesheet), 'utf8')
+      expect(css, slot).toMatch(/max-width:\s*var\(--content-settings\)/)
     }
   })
 })

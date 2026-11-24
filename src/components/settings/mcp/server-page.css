@@ -1,0 +1,9 @@
+@layer components {
+  .m-mcp-server-page__tool-name {
+    display: block;
+    overflow: hidden;
+    font: var(--text-code);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

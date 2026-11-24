@@ -6,6 +6,7 @@
 //
 // 节点全字段展开,不折叠:一张表要么值得画出来,要么不该在图上。折叠起来的字段
 // 等于让人在图和文档之间来回跳,而这张图存在的理由就是不用跳。
+import './schema-lab.css'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Moon, Sun, X } from '@keyline-icons/react/two-tone'
 import {
@@ -24,9 +25,14 @@ import {
   type NodeProps,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { ToggleButton } from 'react-aria-components'
 
-import { Button, Chip, Input, ListBox, ToggleButton, Tooltip, TooltipTrigger } from '@/components/base'
-import { cx } from '@/utils/cx'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { useAppTheme } from '@/lib/theme'
 import {
   EDGES,
@@ -69,15 +75,11 @@ function richText(source: string): ReactNode[] {
     const inner = unescape(m[2])
     out.push(
       m[1] === 'code' ? (
-        <code
-          key={key++}
-          data-slot="schema-rich-code"
-          className="rounded-md bg-background-secondary-default px-1 py-0.5 font-mono text-caption-1-regular wrap-anywhere"
-        >
+        <code key={key++} data-slot="schema-rich-code" className="m-dev-schema-rich__code">
           {inner}
         </code>
       ) : (
-        <b key={key++} data-slot="schema-rich-strong" className="text-caption-1-semibold text-text-primary">
+        <b key={key++} data-slot="schema-rich-strong" className="m-dev-schema-rich__strong">
           {inner}
         </b>
       ),
@@ -98,6 +100,8 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
   const mark = EDGE_COLUMNS.get(`${table.name}.${column.name}`)
   const isSoft = mark === 'soft'
   const isFk = !isSoft && column.flags.includes('FK')
+  const kind = isPk ? 'pk' : isFk ? 'fk' : isSoft ? 'soft' : 'plain'
+  const role = isPk ? 'pk' : keyed ? 'keyed' : 'normal'
 
   // 一列的两侧各挂一对 handle。边往哪边走由两张表的相对位置决定,所以两侧都得备着。
   const handles = (['l', 'r'] as const).map((side) => {
@@ -121,33 +125,13 @@ function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: Schem
   })
 
   return (
-    <div
-      data-slot="schema-column"
-      className="relative flex items-center gap-2 px-3 hover:bg-background-primary-hover/60"
-      style={{ height: ROW_HEIGHT }}
-    >
+    <div data-slot="schema-column" className="m-dev-schema-col" style={{ height: ROW_HEIGHT }}>
       {handles}
-      <span
-        data-slot="schema-column-mark"
-        aria-hidden
-        className={cx(
-          'size-1.5 shrink-0 rounded-full',
-          isPk && 'bg-status-warning',
-          isFk && 'bg-status-success',
-          isSoft && 'bg-status-warning-soft ring-1 ring-status-warning/60',
-          !isPk && !isFk && !isSoft && 'bg-border-button-default',
-        )}
-      />
-      <span
-        data-slot="schema-column-name"
-        className={cx(
-          'truncate font-mono text-caption-1-regular',
-          isPk ? 'text-status-warning' : keyed ? 'text-text-primary' : 'text-text-secondary',
-        )}
-      >
+      <span data-slot="schema-column-mark" aria-hidden className="m-dev-schema-col__mark" data-kind={kind} />
+      <span data-slot="schema-column-name" className="m-dev-schema-col__name" data-role={role}>
         {column.name}
       </span>
-      <span data-slot="schema-column-type" className="ml-auto font-mono text-caption-1-regular text-text-secondary/60">
+      <span data-slot="schema-column-type" className="m-dev-schema-col__type">
         {column.type}
       </span>
     </div>
@@ -162,46 +146,35 @@ function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
   return (
     <div
       data-slot="schema-table"
-      className={cx(
-        'overflow-hidden rounded-xl border bg-background-primary-default shadow-card transition-opacity',
-        selected ? 'border-accent-500 ring-1 ring-accent-500' : 'border-border-button-default',
-        hit && !selected && 'border-status-warning',
-        dimmed && 'opacity-25',
-      )}
+      className="m-dev-schema-table"
+      data-selected={selected || undefined}
+      data-hit={hit && !selected ? true : undefined}
+      data-dimmed={dimmed || undefined}
       style={{ width: NODE_WIDTH }}
     >
-      <div
-        data-slot="schema-table-header"
-        className="flex items-center gap-2 border-b border-border-button-default bg-background-secondary-default/50 px-3 py-2"
-      >
+      <div data-slot="schema-table-header" className="m-dev-schema-table__header">
         <span
           data-slot="schema-table-swatch"
           aria-hidden
-          className="size-4 shrink-0 rounded-md"
+          className="m-dev-schema-table__swatch"
           style={{ background: group?.color }}
         />
-        <span data-slot="schema-table-name" className="font-mono text-body-semibold">
+        <span data-slot="schema-table-name" className="m-dev-schema-table__name">
           {table.name}
         </span>
-        <span
-          data-slot="schema-table-migration"
-          className="ml-auto font-mono text-caption-1-regular text-text-secondary/70"
-        >
+        <span data-slot="schema-table-migration" className="m-dev-schema-table__migration">
           迁移 {table.mig}
         </span>
       </div>
-      <div
-        data-slot="schema-table-subtitle"
-        className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-caption-1-regular text-text-secondary"
-      >
-        <span data-slot="schema-table-title" className="truncate">
+      <div data-slot="schema-table-subtitle" className="m-dev-schema-table__subtitle">
+        <span data-slot="schema-table-title" className="m-dev-schema-table__title">
           {table.title}
         </span>
-        <span data-slot="schema-table-count" className="ml-auto shrink-0 font-mono text-text-secondary/60">
+        <span data-slot="schema-table-count" className="m-dev-schema-table__count">
           {table.columns.length} 列
         </span>
       </div>
-      <div data-slot="schema-table-columns" className="py-1">
+      <div data-slot="schema-table-columns" className="m-dev-schema-table__columns">
         {table.columns.map((c) => (
           <ColumnRow key={c.name} table={table} column={c} keyed={keyed.has(c.name)} />
         ))}
@@ -229,11 +202,13 @@ function buildEdges(showSoft: boolean, selected: string | null): Edge[] {
       sourceHandle: `${e.col}__${side}s`,
       targetHandle: `${e.toCol}__${side === 'r' ? 'l' : 'r'}t`,
       type: e.self ? 'smoothstep' : 'default',
-      className: cx(
+      className: [
         e.kind === 'soft' && 'schema-edge-soft',
         related && 'schema-edge-hl',
         selected !== null && !related && 'schema-edge-dim',
-      ),
+      ]
+        .filter(Boolean)
+        .join(' '),
       // 全部边都挂标签会糊成一片:外键常驻(它标的是删除行为,是这张图的重点),
       // 逻辑引用只在选中相关表时才说话。
       label: e.kind === 'fk' ? e.act : related ? e.act : undefined,
@@ -333,7 +308,7 @@ function Canvas({
         zoomable
         nodeColor={(n) => {
           const t = TABLE_BY_NAME.get(n.id)
-          return t ? (GROUP_BY_ID.get(t.group)?.color ?? 'var(--color-text-secondary)') : 'var(--color-text-secondary)'
+          return t ? (GROUP_BY_ID.get(t.group)?.color ?? 'var(--text-secondary)') : 'var(--text-secondary)'
         }}
         nodeStrokeWidth={0}
       />
@@ -344,11 +319,11 @@ function Canvas({
 // ── 详情面板 ──────────────────────────────────────────────────────────────
 
 function FlagChip({ flag }: { flag: string }) {
-  const color = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'default'
+  const tone = flag === 'PK' ? 'warning' : flag === 'FK' ? 'success' : 'neutral'
   return (
-    <Chip size="sm" variant="soft" color={color} className={cx('font-mono', flag === 'UQ' && 'text-status-info')}>
+    <Badge size="sm" tone={tone}>
       {flag}
-    </Chip>
+    </Badge>
   )
 }
 
@@ -371,47 +346,40 @@ function EdgeList({
   return (
     <>
       <SectionTitle>{title}</SectionTitle>
-      <ListBox
-        aria-label={title}
-        onAction={(key) => {
-          const edge = edges[Number(key)]
-          if (edge) onJump(dir === 'out' ? edge.to : edge.from)
-        }}
-        className="px-2"
-      >
-        {edges.map((edge, i) => (
-          <ListBox.Item
-            key={i}
-            id={i}
-            textValue={edgeText(edge, dir)}
-            className="flex-wrap gap-x-2 gap-y-0.5 rounded-lg px-2 py-1"
-          >
-            <span
-              data-slot="schema-edge-path"
-              className={cx(
-                'font-mono text-caption-1-regular wrap-anywhere',
-                edge.kind === 'soft' ? 'text-status-warning' : 'text-text-primary',
-              )}
+      <div className="m-dev-schema-edge-list">
+        <ListBox
+          aria-label={title}
+          onAction={(key) => {
+            const edge = edges[Number(key)]
+            if (edge) onJump(dir === 'out' ? edge.to : edge.from)
+          }}
+        >
+          {edges.map((edge, i) => (
+            <ListBoxItem
+              key={i}
+              id={i}
+              textValue={edgeText(edge, dir)}
+              description={
+                <span data-slot="schema-edge-action" className="m-dev-schema-edge__action">
+                  {edge.kind === 'soft' ? '逻辑 · ' : ''}
+                  {edge.act}
+                </span>
+              }
             >
-              {edgeText(edge, dir)}
-            </span>
-            <span
-              data-slot="schema-edge-action"
-              className="ml-auto font-mono text-caption-1-regular text-text-secondary wrap-anywhere"
-            >
-              {edge.kind === 'soft' ? '逻辑 · ' : ''}
-              {edge.act}
-            </span>
-          </ListBox.Item>
-        ))}
-      </ListBox>
+              <span data-slot="schema-edge-path" className="m-dev-schema-edge__path" data-kind={edge.kind}>
+                {edgeText(edge, dir)}
+              </span>
+            </ListBoxItem>
+          ))}
+        </ListBox>
+      </div>
     </>
   )
 }
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h3 data-slot="schema-section-title" className="px-4 pt-4 pb-1 text-caption-1-semibold text-text-secondary">
+    <h3 data-slot="schema-section-title" className="m-dev-schema-detail__section-title">
       {children}
     </h3>
   )
@@ -428,13 +396,12 @@ function DetailPanel({
 }) {
   if (!name) {
     return (
-      <aside
-        data-slot="schema-detail-empty"
-        className="flex w-[420px] shrink-0 items-center justify-center border-l border-border-button-default bg-background-primary-default p-8 text-center text-body-regular text-text-secondary"
-      >
-        <div data-slot="schema-detail-empty-body" className="space-y-2">
-          <p data-slot="schema-detail-empty-hint">点一个表看它的全部字段、跨字段约束与关联关系</p>
-          <p data-slot="schema-detail-empty-tips" className="text-caption-1-regular">
+      <aside data-slot="schema-detail-empty" className="m-dev-schema-detail-empty">
+        <div data-slot="schema-detail-empty-body" className="m-dev-schema-detail-empty__body">
+          <p data-slot="schema-detail-empty-hint" className="m-dev-schema-detail-empty__hint">
+            点一个表看它的全部字段、跨字段约束与关联关系
+          </p>
+          <p data-slot="schema-detail-empty-tips" className="m-dev-schema-detail-empty__tips">
             拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来
           </p>
         </div>
@@ -449,50 +416,36 @@ function DetailPanel({
   const inc = EDGES.filter((e) => e.to === name)
 
   return (
-    <aside
-      data-slot="schema-detail"
-      className="flex w-[420px] shrink-0 flex-col border-l border-border-button-default bg-background-primary-default"
-    >
-      <header data-slot="schema-detail-header" className="border-b border-border-button-default px-4 py-3">
-        <div data-slot="schema-detail-heading" className="flex items-start gap-2">
-          <div data-slot="schema-detail-identity" className="min-w-0">
-            <h2 data-slot="schema-detail-name" className="font-mono text-headline-semibold">
+    <aside data-slot="schema-detail" className="m-dev-schema-detail">
+      <header data-slot="schema-detail-header" className="m-dev-schema-detail__header">
+        <div data-slot="schema-detail-heading" className="m-dev-schema-detail__heading">
+          <div data-slot="schema-detail-identity" className="m-dev-schema-detail__identity">
+            <h2 data-slot="schema-detail-name" className="m-dev-schema-detail__name">
               {table.name}
             </h2>
-            <p data-slot="schema-detail-meta" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="schema-detail-meta" className="m-dev-schema-detail__meta">
               {table.title} · {group?.title} · 迁移 {table.mig}
             </p>
           </div>
-          <TooltipTrigger delay={0}>
-            <Button
-              iconOnly
-              leadingIcon={X}
-              aria-label="关闭详情"
-              variant="neutral"
-              size="small"
-              className="ml-auto"
-              onPress={onClose}
-            />
+          <TooltipTrigger>
+            <Button icon={<X />} aria-label="关闭详情" variant="ghost" size="sm" onPress={onClose} />
             <Tooltip placement="left">关闭</Tooltip>
           </TooltipTrigger>
         </div>
         {table.tags && table.tags.length > 0 && (
-          <div data-slot="schema-detail-tags" className="mt-2 flex flex-wrap gap-1.5">
+          <div data-slot="schema-detail-tags" className="m-dev-schema-detail__tags">
             {table.tags.map((tag) => (
-              <Chip key={tag} size="sm" variant="secondary" className="font-mono text-text-secondary">
+              <Badge key={tag} size="sm">
                 {tag}
-              </Chip>
+              </Badge>
             ))}
           </div>
         )}
       </header>
 
-      <div data-slot="schema-detail-body" className="min-h-0 flex-1 overflow-y-auto pb-10">
+      <div data-slot="schema-detail-body" className="m-dev-schema-detail__body">
         {table.note && (
-          <p
-            data-slot="schema-detail-note"
-            className="border-b border-border-button-default bg-background-secondary-default/40 px-4 py-3 text-caption-1-regular leading-relaxed text-text-secondary"
-          >
+          <p data-slot="schema-detail-note" className="m-dev-schema-detail__note">
             {richText(table.note)}
           </p>
         )}
@@ -500,42 +453,29 @@ function DetailPanel({
         <SectionTitle>字段 · {table.columns.length} 列</SectionTitle>
         {/* 一列一块,不是表格:说明里带着 `messages.compact_anchor_id` 这种长标识符,
             在 420px 宽的面板里排成三栏会把最后一栏顶出可视区。 */}
-        <ul data-slot="schema-detail-columns">
+        <ul data-slot="schema-detail-columns" className="m-dev-schema-detail__columns">
           {table.columns.map((c) => (
-            <li
-              data-slot="schema-detail-column"
-              key={c.name}
-              className="border-b border-border-button-default/50 px-4 py-2 hover:bg-background-primary-hover/40"
-            >
-              <div data-slot="schema-detail-column-heading" className="flex items-baseline gap-2">
-                <span data-slot="schema-detail-column-name" className="font-mono text-caption-1-regular break-all">
+            <li data-slot="schema-detail-column" key={c.name} className="m-dev-schema-detail__column">
+              <div data-slot="schema-detail-column-heading" className="m-dev-schema-detail__column-heading">
+                <span data-slot="schema-detail-column-name" className="m-dev-schema-detail__column-name">
                   {c.name}
                 </span>
-                <span
-                  data-slot="schema-detail-column-type"
-                  className="ml-auto shrink-0 font-mono text-caption-1-regular text-status-info"
-                >
+                <span data-slot="schema-detail-column-type" className="m-dev-schema-detail__column-type">
                   {c.type}
                 </span>
               </div>
-              <div data-slot="schema-detail-column-flags" className="mt-1 flex flex-wrap items-center gap-1">
+              <div data-slot="schema-detail-column-flags" className="m-dev-schema-detail__column-flags">
                 {c.flags.map((f) => (
                   <FlagChip key={f} flag={f} />
                 ))}
                 {c.def !== '—' && (
-                  <span
-                    data-slot="schema-detail-column-default"
-                    className="font-mono text-caption-1-regular text-text-secondary/70"
-                  >
+                  <span data-slot="schema-detail-column-default" className="m-dev-schema-detail__column-default">
                     默认 {c.def}
                   </span>
                 )}
               </div>
               {c.desc && (
-                <p
-                  data-slot="schema-detail-column-desc"
-                  className="mt-1 text-caption-1-regular leading-relaxed break-words text-text-secondary"
-                >
+                <p data-slot="schema-detail-column-desc" className="m-dev-schema-detail__column-desc">
                   {richText(c.desc)}
                 </p>
               )}
@@ -550,12 +490,9 @@ function DetailPanel({
         {table.rels && table.rels.length > 0 && (
           <>
             <SectionTitle>关联关系</SectionTitle>
-            <ul
-              data-slot="schema-detail-rels"
-              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
-            >
+            <ul data-slot="schema-detail-rels" className="m-dev-schema-detail__list">
               {table.rels.map((r, i) => (
-                <li data-slot="schema-detail-rel" key={i} className="list-disc">
+                <li data-slot="schema-detail-rel" key={i}>
                   {richText(r)}
                 </li>
               ))}
@@ -566,12 +503,9 @@ function DetailPanel({
         {table.rules && table.rules.length > 0 && (
           <>
             <SectionTitle>跨字段约束与不变式</SectionTitle>
-            <ul
-              data-slot="schema-detail-rules"
-              className="space-y-2 px-4 pl-8 text-caption-1-regular leading-relaxed text-text-secondary"
-            >
+            <ul data-slot="schema-detail-rules" className="m-dev-schema-detail__list">
               {table.rules.map((r, i) => (
-                <li data-slot="schema-detail-rule" key={i} className="list-disc">
+                <li data-slot="schema-detail-rule" key={i}>
                   {richText(r)}
                 </li>
               ))}
@@ -615,72 +549,62 @@ function Lab() {
     })
 
   return (
-    <div data-slot="schema-lab" className="flex h-full flex-col bg-background-full text-text-primary">
-      <header
-        data-slot="schema-lab-header"
-        className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border-button-default px-4 py-2"
-      >
-        <h1 data-slot="schema-lab-title" className="text-body-semibold whitespace-nowrap">
+    <div data-slot="schema-lab" className="m-dev-schema-lab">
+      <header data-slot="schema-lab-header" className="m-dev-schema-lab__header">
+        <h1 data-slot="schema-lab-title" className="m-dev-schema-lab__title">
           数据库模型
         </h1>
-        <span
-          data-slot="schema-lab-stats"
-          className="font-mono text-caption-1-regular whitespace-nowrap text-text-secondary"
-        >
+        <span data-slot="schema-lab-stats" className="m-dev-schema-lab__stats">
           {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
         </span>
-        <Input
-          type="search"
+        <TextField
           aria-label="搜索表名或字段"
           placeholder="搜表名 / 字段，回车跳转"
+          size="sm"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => setQuery(e)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return
             const q = query.trim().toLowerCase()
             const found = TABLES.find((t) => t.name.toLowerCase().includes(q))
             if (found) jump(found.name)
           }}
-          className="w-56"
         />
-        <ToggleButton size="small" isSelected={showSoft} onChange={setShowSoft}>
+        <Switch size="sm" isSelected={showSoft} onChange={setShowSoft}>
           逻辑引用
-        </ToggleButton>
-        <Button variant="secondary" size="small" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+        </Switch>
+        <Button variant="secondary" size="sm" onPress={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
           适应画布
         </Button>
 
-        <div data-slot="schema-lab-groups" className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div data-slot="schema-lab-groups" className="m-dev-schema-lab__groups">
           {GROUPS.map((g) => {
             const off = hiddenGroups.has(g.id)
             return (
               <TooltipTrigger key={g.id} delay={300}>
-                <Button
-                  variant="secondary"
-                  size="small"
-                  onPress={() => toggleGroup(g.id)}
-                  aria-pressed={!off}
-                  className={cx('h-7 gap-1.5 rounded-full px-2.5 text-caption-1-regular', off && 'opacity-40')}
+                <ToggleButton
+                  isSelected={!off}
+                  onChange={() => toggleGroup(g.id)}
+                  className="m-dev-schema-lab__group-toggle"
                 >
                   <span
                     data-slot="schema-lab-group-swatch"
                     aria-hidden
-                    className="size-2 rounded-sm"
+                    className="m-dev-schema-lab__group-swatch"
                     style={{ background: g.color }}
                   />
                   {g.title}
-                </Button>
+                </ToggleButton>
                 <Tooltip placement="bottom">{g.desc}</Tooltip>
               </TooltipTrigger>
             )
           })}
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              leadingIcon={resolvedTheme === 'dark' ? Sun : Moon}
+              icon={resolvedTheme === 'dark' ? <Sun /> : <Moon />}
               aria-label="切换主题"
               variant="secondary"
-              size="small"
+              size="sm"
               onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             />
             <Tooltip placement="bottom">切换主题</Tooltip>
@@ -688,8 +612,8 @@ function Lab() {
         </div>
       </header>
 
-      <div data-slot="schema-lab-body" className="flex min-h-0 flex-1">
-        <div data-slot="schema-lab-canvas" className="relative min-w-0 flex-1">
+      <div data-slot="schema-lab-body" className="m-dev-schema-lab__body">
+        <div data-slot="schema-lab-canvas" className="m-dev-schema-lab__canvas">
           <Canvas
             query={query}
             hiddenGroups={hiddenGroups}
@@ -697,10 +621,7 @@ function Lab() {
             selected={selected}
             onSelect={setSelected}
           />
-          <p
-            data-slot="schema-lab-legend"
-            className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border-button-default bg-background-full/80 px-2.5 py-1 text-caption-1-regular text-text-secondary backdrop-blur-sm"
-          >
+          <p data-slot="schema-lab-legend" className="m-dev-schema-lab__legend">
             实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键
           </p>
         </div>
@@ -713,19 +634,6 @@ function Lab() {
 export default function SchemaLab() {
   return (
     <ReactFlowProvider>
-      {/* React Flow 的连线颜色只能从它自己的类名上改;这几条是这个预览页独有的
-          语义(外键 / 逻辑引用 / 选中相关 / 被压暗),不值得进 index.css。 */}
-      <style data-slot="schema-lab-style">{`
-        /* 连线用 --muted 而不是 --border:border 是给分隔线用的,在浅色主题下淡到
-           看不出走向,而这张图上的线本身就是内容。 */
-        .react-flow__edge-path { stroke: var(--color-muted); stroke-width: 1.4px; opacity: .55; }
-        .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
-        .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
-        .schema-edge-dim { opacity: .12; }
-        .react-flow__edge-text { fill: var(--color-muted); font-size: var(--text-caption-1-regular); }
-        .react-flow__edge-textbg { fill: var(--color-background); opacity: .85; }
-        .react-flow__handle { opacity: 0; min-width: 6px; min-height: 6px; width: 6px; height: 6px; border: 0; }
-      `}</style>
       <Lab />
     </ReactFlowProvider>
   )

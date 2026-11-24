@@ -1,13 +1,17 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { useState } from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
 import { Composer } from './composer'
 
+const COMPOSER_CSS = readFileSync(resolve(__dirname, './composer.css'), 'utf8')
+
 /**
- * The composer's run state, as the registry's agent-composer draws it: while a
- * turn runs the send button is the grey stop (not the primary pill) and
- * composer-loader's light is up behind a shell that has stepped aside.
+ * The composer's run state: while a turn runs the send button is the secondary
+ * round stop (not the primary pill) and composer-loader's light is up behind a
+ * shell that has stepped aside.
  */
 function renderComposer(streaming: boolean) {
   return render(
@@ -27,15 +31,17 @@ beforeAll(async () => {
 })
 
 describe('Composer run state', () => {
-  it('draws Stop as the grey round button and lights the loader while a turn runs', () => {
+  it('draws Stop as the secondary round button and lights the loader while a turn runs', () => {
     const { container } = renderComposer(true)
     const send = container.querySelector<HTMLElement>('[data-slot="prompt-input-send"]')!
-    expect(send.className).toContain('bg-background-secondary-default')
-    expect(send.className).not.toContain('bg-button-primary')
-    expect(send.className).toContain('rounded-full')
+    expect(send).toHaveAttribute('data-variant', 'secondary')
+    expect(send).toHaveAttribute('data-running', 'true')
+    expect(COMPOSER_CSS).toMatch(/\.m-composer__send\[data-mode='stop'\]\s+\.ui-button/)
+    expect(COMPOSER_CSS).toMatch(/--ui-button-radius:\s*var\(--radius-pill\)/)
 
     const shell = container.querySelector<HTMLElement>('[data-slot="prompt-input-shell"]')!
-    expect(shell.className).toContain('bg-transparent')
+    expect(shell).toHaveAttribute('data-running', 'true')
+    expect(COMPOSER_CSS).toMatch(/\.m-composer__shell\[data-running\]\s*\{[^}]*background:\s*transparent/s)
     // composer-loader's light layer: the clip span whose opacity it fades.
     const light = [...container.querySelectorAll<HTMLElement>('span[aria-hidden]')].find((s) => s.querySelector('svg'))!
     expect(light.style.opacity).toBe('1')
@@ -44,7 +50,8 @@ describe('Composer run state', () => {
   it('is the primary send and an unlit loader when idle', () => {
     const { container } = renderComposer(false)
     const send = container.querySelector<HTMLElement>('[data-slot="prompt-input-send"]')!
-    expect(send.className).toContain('bg-button-primary')
+    expect(send).toHaveAttribute('data-variant', 'primary')
+    expect(send).not.toHaveAttribute('data-running')
     const light = [...container.querySelectorAll<HTMLElement>('span[aria-hidden]')].find((s) => s.querySelector('svg'))!
     expect(light.style.opacity).toBe('0')
   })

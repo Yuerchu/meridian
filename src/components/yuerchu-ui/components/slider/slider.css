@@ -1,0 +1,468 @@
+@layer components {
+  .ui-slider {
+    --ui-slider-thumb: 18px;
+    --ui-slider-rail: 4px;
+    /* 拖过头时滑块最多多走多远。跟 --enter-distance 走：减弱动效时为 0 */
+    --ui-slider-stretch: calc(var(--enter-distance) * 2);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (pointer: coarse) {
+    .ui-slider {
+      --ui-slider-thumb: 24px;
+    }
+  }
+
+  .ui-slider__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .ui-slider__output {
+    color: var(--text-secondary);
+    font: var(--text-body);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 轨道：整个高度都能点，左右留出半个滑块，滑块不会超出 ---------- */
+  .ui-slider__track {
+    position: relative;
+    height: var(--ui-slider-thumb);
+    margin-inline: calc(var(--ui-slider-thumb) / 2);
+    cursor: pointer;
+    touch-action: none;
+  }
+
+  .ui-slider__rail,
+  .ui-slider__fill::before {
+    position: absolute;
+    top: 50%;
+    height: var(--ui-slider-rail);
+    translate: 0 -50%;
+    border-radius: var(--radius-pill);
+  }
+
+  /* 轨道和可拖动范围一样长：两端的滑块各有一半伸出轨道，单值滑块的填充从轨道最左端开始 */
+  .ui-slider__rail {
+    inset-inline: 0;
+    border: 1px solid transparent; /* 高对比度模式下显示轨道 */
+    background: var(--control-track);
+  }
+
+  /* React Aria 给填充写了行内的 height: 100%（占满轨道高度）：填充本身透明，细条用伪元素画 */
+  .ui-slider__fill::before {
+    inset-inline: 0;
+    background: var(--control-on);
+    content: "";
+  }
+
+  /* ---------- 滑块 ---------- */
+  .ui-slider__thumb {
+    top: 50%;
+    box-sizing: border-box;
+    width: var(--ui-slider-thumb);
+    height: var(--ui-slider-thumb);
+    border: 2px solid var(--control-on);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    /* React Aria 用行内的 transform: translate(-50%, -50%) 把滑块中心对到数值上。scale 在 transform 之后生效，
+       缩放原点按"平移之前"的盒子算：平移后滑块中心在 0 0，不是默认的 50% 50%（否则缩放时往左上偏） */
+    transform-origin: 0 0;
+    /* 拖过头的位移用 translate 属性：和 React Aria 行内的 transform、上面的 scale 各管各的 */
+    --ui-slider-shift: calc(var(--ui-slider-over, 0) * var(--ui-slider-stretch));
+
+    translate: var(--ui-slider-shift) 0;
+    transition:
+      scale var(--dur-spring) var(--ease-spring),
+      translate var(--dur-spring) var(--ease-spring),
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 悬停只浮起，不放大（DESIGN.md §4.11） */
+  .ui-slider__thumb[data-hovered]:not([data-disabled]) {
+    box-shadow: var(--shadow-raised);
+  }
+
+  .ui-slider__thumb[data-dragging] {
+    scale: var(--press-scale);
+    cursor: grabbing;
+  }
+
+  /* 拖到头还往外拖：滑块不变形，带着阻力多走一小段（--ui-slider-over -1~1 由 JS 写，正的是往右 / 往下；最多走 --ui-slider-stretch）。
+     跟手，位移不加过渡；松手后按上面的弹簧过渡回到原位。填充不跟着走。减弱动效时 --ui-slider-stretch 为 0，不动 */
+  .ui-slider__thumb[data-over] {
+    transition:
+      scale var(--dur-spring) var(--ease-spring),
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-slider[data-orientation="vertical"] .ui-slider__thumb {
+    translate: 0 var(--ui-slider-shift);
+  }
+
+  /* 焦点在滑块里隐藏的 input 上，滑块本身不是焦点：焦点环由这里画（base.css 只给自己就是焦点的元素画） */
+  .ui-slider__thumb[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* ---------- 数值气泡（showValue="thumb"）：滑块正上方，带一个朝下的小尖角 ---------- */
+  .ui-slider[data-value-display="thumb"] .ui-slider__track {
+    /* 给气泡留出位置 */
+    margin-block-start: calc(var(--control-sm) + var(--space-2));
+  }
+
+  .ui-slider__bubble {
+    position: absolute;
+    bottom: calc(100% + var(--space-1));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-width: var(--control-sm);
+    height: var(--control-sm);
+    padding-inline: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    color: var(--text);
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    /* 滑块拖过头多走的那一段，气泡跟着走 */
+    --ui-slider-shift: calc(var(--ui-slider-over, 0) * var(--ui-slider-stretch));
+
+    translate: calc(-50% + var(--ui-slider-shift)) 0;
+    transition:
+      translate var(--dur-spring) var(--ease-spring),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-slider__bubble:dir(rtl) {
+    translate: calc(50% + var(--ui-slider-shift)) 0;
+  }
+
+  .ui-slider__bubble[data-over] {
+    transition: box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 尖角：一个转 45° 的小方块，只画下面两条边 */
+  .ui-slider__bubble::after {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: var(--space-2);
+    height: var(--space-2);
+    border-inline-end: 1px solid var(--border);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+    content: "";
+    translate: -50% -50%;
+    rotate: 45deg;
+  }
+
+  /* 拖动、聚焦时往上浮一点、阴影加深 */
+  .ui-slider__bubble[data-active] {
+    box-shadow: var(--shadow-raised);
+    translate: calc(-50% + var(--ui-slider-shift)) calc(-1 * var(--enter-distance) / 2);
+  }
+
+  .ui-slider__bubble[data-active]:dir(rtl) {
+    translate: calc(50% + var(--ui-slider-shift)) calc(-1 * var(--enter-distance) / 2);
+  }
+
+  /* ---------- 档位（stops）：粗轨道，滑块在轨道里面，每一档一个刻度 ---------- */
+  .ui-slider[data-stops] {
+    --ui-slider-thumb: calc(var(--control-sm) - 4px);
+    --ui-slider-rail: var(--control-sm);
+    /* 轨道比滑块能走的范围每头多出半个滑块再加 2px：滑块到头时离轨道边缘 2px */
+    --ui-slider-pad: calc(var(--ui-slider-thumb) / 2 + 2px);
+    /* 滑块在轨道里面：拖过头时少走一些，只探出轨道一点 */
+    --ui-slider-stretch: var(--enter-distance);
+  }
+
+  .ui-slider[data-stops] .ui-slider__track {
+    height: var(--ui-slider-rail);
+    margin-inline: var(--ui-slider-pad);
+  }
+
+  .ui-slider[data-stops] .ui-slider__rail,
+  .ui-slider[data-stops] .ui-slider__fill::before {
+    inset-inline: calc(-1 * var(--ui-slider-pad));
+  }
+
+  /* 填充是一层淡淡的 --control-on，刻度透得过来；滑块是白底带阴影，没有边框 */
+  .ui-slider[data-stops] .ui-slider__fill::before {
+    background: color-mix(in srgb, var(--control-on) 14%, transparent);
+  }
+
+  .ui-slider[data-stops] .ui-slider__thumb {
+    border-color: transparent;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .ui-slider__stops {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .ui-slider__tick {
+    position: absolute;
+    top: 50%;
+    width: 2px;
+    height: var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--text-secondary);
+    opacity: 0.35;
+    translate: -50% -50%;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-slider__tick:dir(rtl) {
+    translate: 50% -50%;
+  }
+
+  .ui-slider__ends {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  /* 说明一直占一行：换档时下面的内容不跳 */
+  .ui-slider__description {
+    min-height: 1lh;
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  /* ---------- 最后一档的强调（emphasizeLast）：水从滑块漫过整条轨道，越来越慢；之后不时有一道浪头扫过 ----------
+     水和浪头放在和轨道一样大的 .ui-slider__sea 里（裁掉圆角外面的部分）。距离都从滑块那头往起点量：
+     --ui-slider-flood 是水的前沿，--ui-slider-sweep 是浪头的前沿。时长跟 --dur-shimmer 走：减弱动效时为 0，直接是漫完的样子，浪头不出现 */
+  @property --ui-slider-flood {
+    syntax: "<length-percentage>";
+    inherits: false;
+    initial-value: 0px;
+  }
+
+  @property --ui-slider-sweep {
+    syntax: "<length-percentage>";
+    inherits: false;
+    initial-value: 0px;
+  }
+
+  @property --ui-slider-roll {
+    syntax: "<length>";
+    inherits: false;
+    initial-value: 0px;
+  }
+
+  .ui-slider__sea {
+    position: absolute;
+    inset-block: 0;
+    inset-inline: calc(-1 * var(--ui-slider-pad));
+    overflow: hidden;
+    border-radius: var(--radius-pill);
+  }
+
+  .ui-slider__water {
+    --ui-slider-flood: calc(100% + 72px);
+
+    position: absolute;
+    inset: 0;
+    background: var(--accent);
+    opacity: 0;
+    mask: linear-gradient(to left, #000 calc(var(--ui-slider-flood) - 10px), transparent var(--ui-slider-flood));
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-slider__water:dir(rtl) {
+    mask: linear-gradient(to right, #000 calc(var(--ui-slider-flood) - 10px), transparent var(--ui-slider-flood));
+  }
+
+  /* 浪头：72px 宽，最前面一条亮边，往后化进水里，后面跟几粒泡沫；前沿是一道竖着的浅浪纹，走的时候往下滚 */
+  .ui-slider__crest {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: calc(var(--ui-slider-sweep) - 72px);
+    width: 72px;
+    background:
+      radial-gradient(circle 1.2px at 15px 30%, color-mix(in srgb, var(--accent-glint) 70%, transparent) 99%, transparent),
+      radial-gradient(circle 1px at 22px 68%, color-mix(in srgb, var(--accent-glint) 55%, transparent) 99%, transparent),
+      radial-gradient(circle 0.9px at 31px 40%, color-mix(in srgb, var(--accent-glint) 40%, transparent) 99%, transparent),
+      radial-gradient(circle 0.8px at 40px 78%, color-mix(in srgb, var(--accent-glint) 30%, transparent) 99%, transparent),
+      linear-gradient(
+        to right,
+        var(--accent-glint) 0 3px,
+        color-mix(in srgb, var(--accent-glint) 60%, transparent) 7px,
+        color-mix(in srgb, var(--accent-glint) 22%, transparent) 26px,
+        transparent 72px
+      );
+    opacity: 0;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 14' preserveAspectRatio='none'%3E%3Cpath d='M72 0H6C4 1.5 3.5 2.5 3.5 3.5S4 5.5 6 7s2.5 2.5 2.5 3.5S8 12.5 6 14H72Z'/%3E%3C/svg%3E") 0 var(--ui-slider-roll) / 72px 14px repeat-y;
+    filter: blur(0.3px);
+  }
+
+  .ui-slider__crest:dir(rtl) {
+    scale: -1 1;
+  }
+
+  .ui-slider__stops[data-emphasized] .ui-slider__water {
+    opacity: 1;
+  }
+
+  .ui-slider__stops[data-emphasized] .ui-slider__tick {
+    background: var(--accent-glint);
+    opacity: 0.5;
+  }
+
+  /* 停在最后一档：填充让给水 */
+  .ui-slider__track:has(.ui-slider__stops[data-emphasized]) .ui-slider__fill::before {
+    opacity: 0;
+  }
+
+  .ui-slider:has(.ui-slider__stops[data-emphasized]) .ui-slider__output {
+    color: var(--accent-strong);
+  }
+
+  /* 刚拖到最后一档：水一口气漫完（--ease-enter，越来越慢），浪头跟着前沿走 */
+  .ui-slider__stops[data-entering] .ui-slider__water {
+    animation: ui-slider-flood var(--dur-shimmer) var(--ease-enter) both;
+  }
+
+  .ui-slider__stops[data-emphasized] .ui-slider__crest {
+    animation:
+      ui-slider-sweep calc(var(--dur-shimmer) * 1.5) var(--ease-standard) calc(var(--dur-shimmer) * 0.6) infinite,
+      ui-slider-roll calc(var(--dur-shimmer) * 0.5) var(--ease-linear) infinite;
+  }
+
+  .ui-slider__stops[data-entering] .ui-slider__crest {
+    animation:
+      ui-slider-crest var(--dur-shimmer) var(--ease-enter) both,
+      ui-slider-sweep calc(var(--dur-shimmer) * 1.5) var(--ease-standard) calc(var(--dur-shimmer) * 0.6) infinite,
+      ui-slider-roll calc(var(--dur-shimmer) * 0.5) var(--ease-linear) infinite;
+  }
+
+  @keyframes ui-slider-flood {
+    from {
+      --ui-slider-flood: 0px;
+    }
+
+    to {
+      --ui-slider-flood: calc(100% + 72px);
+    }
+  }
+
+  @keyframes ui-slider-crest {
+    from {
+      --ui-slider-sweep: 0px;
+
+      opacity: 1;
+    }
+
+    85% {
+      opacity: 1;
+    }
+
+    to {
+      --ui-slider-sweep: calc(100% + 72px);
+
+      opacity: 0;
+    }
+  }
+
+  /* 循环的浪头：越走越慢，也越走越淡，走完歇一会儿再来 */
+  @keyframes ui-slider-sweep {
+    0% {
+      --ui-slider-sweep: 0px;
+
+      opacity: 0.9;
+      animation-timing-function: var(--ease-enter);
+    }
+
+    70% {
+      --ui-slider-sweep: calc(100% + 72px);
+
+      opacity: 0.35;
+    }
+
+    100% {
+      --ui-slider-sweep: calc(100% + 72px);
+
+      opacity: 0;
+    }
+  }
+
+  @keyframes ui-slider-roll {
+    to {
+      --ui-slider-roll: 14px;
+    }
+  }
+
+  .ui-slider[data-disabled] .ui-slider__bubble {
+    color: var(--text-muted);
+    box-shadow: none;
+  }
+
+  .ui-slider[data-disabled] .ui-slider__track {
+    cursor: not-allowed;
+  }
+
+  .ui-slider[data-disabled] .ui-slider__fill::before {
+    background: var(--text-muted);
+  }
+
+  .ui-slider[data-disabled] .ui-slider__thumb {
+    border-color: var(--text-muted);
+    box-shadow: none;
+  }
+
+  @media (forced-colors: active) {
+    .ui-slider__rail {
+      border-color: CanvasText;
+    }
+
+    .ui-slider__fill::before,
+    .ui-slider__thumb {
+      border-color: Highlight;
+      background: Highlight;
+    }
+
+    .ui-slider__thumb[data-focus-visible] {
+      outline-color: CanvasText;
+    }
+
+    .ui-slider__tick {
+      background: CanvasText;
+      opacity: 1;
+    }
+
+    .ui-slider__water {
+      background: Highlight;
+    }
+
+    .ui-slider__crest {
+      display: none;
+    }
+
+    .ui-slider__stops[data-emphasized] .ui-slider__tick {
+      background: HighlightText;
+    }
+  }
+}

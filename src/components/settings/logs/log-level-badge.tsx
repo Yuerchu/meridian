@@ -1,56 +1,24 @@
-import { tv, type VariantProps } from '@/components/base'
-import { cx } from '@/utils/cx'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import type { LogRecordLevel } from '@/types'
 
-const levelBadgeVariants = tv({
-  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-caption-1-regular tabular-nums',
-  variants: {
-    level: {
-      error: 'text-status-danger',
-      warn: 'text-status-warning-soft-foreground',
-      info: 'text-status-info-soft-foreground',
-      muted: 'text-text-secondary',
-    },
-  },
-  defaultVariants: { level: 'muted' },
-})
-
-const dotVariants = tv({
-  base: 'size-1.5 shrink-0 rounded-full',
-  variants: {
-    level: {
-      error: 'bg-status-danger',
-      warn: 'bg-status-warning',
-      info: 'bg-status-info',
-      muted: 'bg-background-secondary-default',
-    },
-  },
-  defaultVariants: { level: 'muted' },
-})
-
-type Tone = NonNullable<VariantProps<typeof levelBadgeVariants>['level']>
-
-/** Levels below info and anything unrecognised share the muted tone: they are
- *  context, not something to draw the eye. */
-export function toneFor(level: LogRecordLevel): Tone {
+/** Levels below info share the neutral tone: they are context, and info is grey,
+ *  not accent (DESIGN §4.3). The level word is the status; the badge does not
+ *  add a second signal. */
+export function toneFor(level: LogRecordLevel): 'danger' | 'warning' | 'neutral' {
   switch (level) {
     case 'ERROR':
-      return 'error'
+      return 'danger'
     case 'WARN':
-      return 'warn'
-    case 'INFO':
-      return 'info'
+      return 'warning'
     default:
-      return 'muted'
+      return 'neutral'
   }
 }
 
-export function LogLevelBadge({ level, className }: { level: LogRecordLevel; className?: string }) {
-  const tone = toneFor(level)
+export function LogLevelBadge({ level }: { level: LogRecordLevel }) {
   return (
-    <span data-slot="log-level-badge" className={cx(levelBadgeVariants({ level: tone }), className)}>
-      <span data-slot="log-level-dot" className={dotVariants({ level: tone })} />
+    <Badge data-slot="log-level-badge" tone={toneFor(level)} size="sm">
       {level}
-    </span>
+    </Badge>
   )
 }

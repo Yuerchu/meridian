@@ -1,7 +1,9 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { TurnItem } from '@/components/chat/turn-item'
-import { BUBBLE_RUN_GAP } from '@/components/ui/bubble'
+import { BUBBLE_RUN_GAP } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { buildTurns } from '@/lib/turns'
 import i18n from '@/i18n'
 import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
@@ -94,7 +96,7 @@ function mixedTurn() {
 }
 
 const GAP = /^(?:[a-z-]+:)*gap-/
-const VERTICAL_MARGIN = /^(?:[a-z-]+:)*-?(?:m|my|mt|mb)-/
+const VERTICAL_MARGIN = /^(?:[a-z-]+:)*-?(?:m|my|mt|mb)-(?:\d|auto|px|\[)/
 
 function classes(el: Element): string[] {
   return (el.getAttribute('class') ?? '').split(/\s+/).filter(Boolean)
@@ -116,10 +118,12 @@ describe('spacing inside a run', () => {
     expect(stacks.length).toBeGreaterThan(5)
     expect(container.querySelector('[data-slot="bubble"][data-variant="tools-only"]')).not.toBeNull()
     for (const stack of stacks) {
-      const gaps = classes(stack).filter((c) => GAP.test(c))
-      expect({ slot: stack.getAttribute('data-slot'), gaps }).toEqual({
+      const cls = classes(stack)
+      const gaps = cls.filter((c) => GAP.test(c))
+      expect({ slot: stack.getAttribute('data-slot'), hasRunGap: cls.includes(BUBBLE_RUN_GAP), gaps }).toEqual({
         slot: stack.getAttribute('data-slot'),
-        gaps: [BUBBLE_RUN_GAP],
+        hasRunGap: true,
+        gaps: [],
       })
     }
   })
@@ -140,15 +144,27 @@ describe('spacing inside a run', () => {
   })
 
   it('closes a run of questions up to the same gap', () => {
-    // `space-y-6` (24px) between the parts of a turn, `-mt-5.5` (22px) taken
-    // back for a continuing question: 2px, which is `gap-0.5`.
+    // `--space-6` (24px) between the parts of a turn, `-22px` taken
+    // back for a continuing question: 2px, matching `.m-bubble-run-gap`.
     const turn = buildTurns([msg('user', { content: 'again' })])[0]
     const { container } = render(<TurnItem turn={turn} conversationId="c" questionPosition="last" />)
     const question = container.querySelector('[data-slot="turn-question"]')
     const turnRoot = container.querySelector('[data-slot="turn"]')
-    const px = (cls: string) => Number(/(\d+(?:\.\d+)?)$/.exec(cls)?.[1]) * 4
-    const spacing = classes(turnRoot!).find((c) => c.startsWith('space-y-'))!
-    const pull = classes(question!).find((c) => c.startsWith('-mt-'))!
-    expect(px(spacing) - px(pull)).toBe(px(BUBBLE_RUN_GAP))
+    expect(turnRoot).toHaveClass('m-turn')
+    expect(question).toHaveClass('m-turn__question')
+    expect(question).toHaveAttribute('data-continues-run', 'true')
+
+    const tokensCss = readFileSync(resolve(__dirname, '../yuerchu-ui/styles/tokens.css'), 'utf8')
+    const space1Match = /--space-1:\s*(\d+)px/.exec(tokensCss)
+    const space6Match = /--space-6:\s*(\d+)px/.exec(tokensCss)
+    expect(space1Match).not.toBeNull()
+    expect(space6Match).not.toBeNull()
+    const turnCss = readFileSync(resolve(__dirname, '../chat/turn-item.css'), 'utf8')
+    expect(turnCss).toMatch(/\.m-turn\s*\{[^}]*gap:\s*var\(--space-6\)/)
+    const pullMatch = /\.m-turn__question\[data-continues-run='true'\]\s*\{[^}]*margin-top:\s*-(\d+)px/.exec(turnCss)
+    expect(pullMatch).not.toBeNull()
+    const bubbleCss = readFileSync(resolve(__dirname, '../yuerchu-ui/components/chat-bubble/chat-bubble.css'), 'utf8')
+    expect(bubbleCss).toMatch(new RegExp(`\\.${BUBBLE_RUN_GAP}\\s*\\{[^}]*gap:\\s*calc\\(var\\(--space-1\\) / 2\\)`))
+    expect(Number(space6Match![1]) - Number(pullMatch![1])).toBe(Number(space1Match![1]) / 2)
   })
 })

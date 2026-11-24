@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { AttachmentTiles } from '@/components/chat/attachment-tiles'
 import { Composer } from '@/components/chat/composer'
 import { ComposerMenu } from '@/components/chat/composer-menu'
@@ -8,13 +8,11 @@ import { ComposerStatusTab, ProjectBranchChip } from '@/components/chat/composer
 import { ModeChip } from '@/components/chat/mode-chip'
 import { ModelPanel } from '@/components/chat/model-panel'
 import { PromptQueue } from '@/components/chat/prompt-queue'
-import { StickerGrid } from '@/components/chat/sticker-grid'
 import { TodoProgressChip } from '@/components/chat/todo-progress-chip'
 import { BackgroundTasksChip } from '@/components/chat/background-tasks-chip'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
-import { cx } from '@/utils/cx'
 import type { BackgroundTaskInfoResponse, ChatMode, ThinkingLevel } from '@/types'
-import { PG_STICKERS, TODO_NO_CURRENT, TODO_RUNNING, TODO_SINGLE, caps, noop, queued } from './fixtures'
+import { TODO_NO_CURRENT, TODO_RUNNING, TODO_SINGLE, caps, queued } from './fixtures'
 import { Section } from './shell'
 import { BranchChipSection } from './agent-plan'
 
@@ -109,22 +107,6 @@ export default function ChatComposer() {
           <ComposerMenuCase label="谋定" mode="plan" acceptEdits={false} />
         </div>
       </Section>
-      <Section title="StickerGrid / 贴纸选择器网格">
-        <div data-slot="gallery-sticker-grids" className="flex flex-wrap items-start gap-4">
-          {(['w-[24rem]', 'w-[20rem]'] as const).map((width) => (
-            <div
-              key={width}
-              data-slot="gallery-sticker-grid"
-              className={cx(
-                '@container/stickers rounded-2xl border border-border-button-default bg-background-primary-default',
-                width,
-              )}
-            >
-              <StickerGrid items={PG_STICKERS} loading={false} empty={null} onAction={noop} />
-            </div>
-          ))}
-        </div>
-      </Section>
       <Section title="AttachmentTiles / 附件方块">
         <div data-slot="gallery-attachment-tiles">
           <AttachmentTilesCase />
@@ -217,7 +199,7 @@ export default function ChatComposer() {
         <div data-slot="gallery-voice-buttons" className="flex flex-wrap items-center gap-6">
           {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
             <div data-slot="gallery-voice-button" key={s} className="flex flex-col items-center gap-1">
-              <TooltipTrigger delay={0}>
+              <TooltipTrigger>
                 <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
                 <Tooltip>语音输入</Tooltip>
               </TooltipTrigger>

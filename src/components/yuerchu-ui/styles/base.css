@@ -1,0 +1,110 @@
+/* ---------------------------------------------------------------------------
+ * 全局规则：层叠顺序、焦点、选区、正文字体、滚动条
+ * 规范见 docs/design/DESIGN.md 第 6.1、8 节
+ * ------------------------------------------------------------------------- */
+
+/* 和 Tailwind v4 的层名一致：项目里的 Tailwind 工具类（utilities）能直接覆盖组件样式 */
+@layer theme, base, components, utilities;
+
+@layer base {
+  html {
+    background: var(--background);
+    color: var(--text);
+    font: var(--text-body);
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    /* 长网址、长英文单词换行，不撑破 Toast、Alert、对话框；break-word 不影响最小宽度计算，全局加是安全的 */
+    overflow-wrap: break-word;
+  }
+
+  body {
+    margin: 0;
+  }
+
+  /* 滚动条：全站统一用细滚动条 + --scrollbar-thumb，包括整页和所有 overflow: auto 的容器。
+     scrollbar-color 会继承，写在根上；scrollbar-width 不继承，给每个元素。
+     其他地方不要再写 scrollbar-* 或 ::-webkit-scrollbar（ui/css-scrollbar），也不要隐藏滚动条（A11Y.md） */
+  :root {
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  :where(*) {
+    scrollbar-width: thin;
+  }
+
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+
+  /* 焦点：只在键盘操作时显示。用 outline，高对比度模式下不会消失。
+     输入框除外：点击输入框也会触发 :focus-visible，它们用边框 + 光晕表示聚焦（由组件自己处理） */
+  :focus {
+    outline: none;
+  }
+
+  /* 只给"自己就是焦点"的元素画焦点环（[data-focus-visible]:focus）。
+     React Aria 也会给包含焦点的容器（Select、Tabs 的根，勾选框的 label）加 data-focus-visible，
+     它们不是焦点本身，不画；勾选框、开关这类组件由自己的 CSS 把焦点环画在方框、轨道上。
+     React Aria 组件（带 data-rac）只认它给的 data-focus-visible：菜单这类组件会在悬停时用脚本移动焦点，
+     浏览器自己的 :focus-visible 会把这种焦点也当成键盘焦点，鼠标一悬停就出现焦点环 */
+  :focus-visible:not(input, textarea, [contenteditable], [data-rac]),
+  [data-focus-visible]:focus:not(input, textarea, [contenteditable]) {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* 控件开启态的颜色：默认 Ink；单个控件或一个区域写 data-control="accent" 换成蓝色，嵌套区域可以用 "ink" 换回来。
+     靠自定义属性继承生效，组件里统一用 --control-on 系列 */
+  [data-control="accent"] {
+    --control-on: var(--accent-solid);
+    --control-on-hover: var(--accent-solid-hover);
+    --control-on-fg: var(--accent-fg);
+  }
+
+  [data-control="ink"] {
+    --control-on: var(--ink);
+    --control-on-hover: var(--ink-hover);
+    --control-on-fg: var(--ink-fg);
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  [data-ligatures] {
+    font-variant-ligatures: normal;
+  }
+
+  @media (forced-colors: active) {
+    :focus-visible:not(input, textarea, [contenteditable], [data-rac]),
+    [data-focus-visible]:focus:not(input, textarea, [contenteditable]) {
+      outline-color: Highlight;
+    }
+
+    /* 高对比度模式下光晕（box-shadow）会消失，输入框改用 outline 表示聚焦 */
+    input[data-focused],
+    textarea[data-focused] {
+      outline: 2px solid Highlight;
+    }
+  }
+
+  /* lib/text-morph（文字的逐字增量替换）：每个字画在 ::before 里，DOM 里的真文字只有视觉上隐藏的那一份，
+     textContent 不会重复。inline-block 才能做位移；pre 保住空格的宽度。
+     容器保持 inline，外层的省略号照常生效；它也是离开的字（绝对定位）的定位上下文 */
+  .ui-text-morph {
+    position: relative;
+  }
+
+  .ui-text-morph__char {
+    display: inline-block;
+    white-space: pre;
+  }
+
+  .ui-text-morph__char::before {
+    content: attr(data-char);
+  }
+}

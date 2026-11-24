@@ -148,7 +148,7 @@ type OpenBubble = Extract<BubbleModel, { kind: 'text' | 'tools-only' }>
  * nothing from MCP or the custom registry, whose names say nothing about what
  * they do.
  */
-const FOLD_ORDER: FoldKind[] = ['commands', 'files', 'searches']
+const FOLD_ORDER: FoldKind[] = ['commands', 'files', 'searches', 'skills', 'memory', 'context']
 
 /** A call that needs nothing more from anyone is folded; every other state —
  *  waiting, running, refused, failed, cut off — is a key, because each of
@@ -269,6 +269,27 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
         continue
       }
       if (block.type === 'tool_call') {
+        const queued = nextQueued()
+        // An active question is an interactive form, not a tool key stitched
+        // onto a chat bubble — give it its own standalone entry in the run.
+        const standaloneAsk = toolUi(block.data.tool_name)?.ask === true && block.data.status === 'pending'
+        if (standaloneAsk) {
+          close()
+          g.bubbles.push({
+            kind: 'tools-only',
+            key: keyFor(),
+            messageId: m.id,
+            thinking: pendingThinking,
+            tools: [block.data],
+            queued: [queued],
+            folded: [],
+            createdAt: m.created_at,
+            position: 'single',
+            isStreaming: false,
+          })
+          pendingThinking = []
+          continue
+        }
         if (!open) {
           open = {
             kind: 'tools-only',
@@ -286,7 +307,7 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
           g.bubbles.push(open)
         }
         open.tools.push(block.data)
-        open.queued.push(nextQueued())
+        open.queued.push(queued)
         continue
       }
       if (block.type === 'sticker') {
@@ -403,6 +424,14 @@ function foldBubbles(bubbles: BubbleModel[]): BubbleModel[] {
 
     const bare = b.kind === 'tools-only' && b.tools.length === 0 && b.thinking.length === 0 && b.folded.length > 0
     if (!bare) {
+      // A leading summary of background setup calls (e.g. loading a skill or
+      // reading files before speaking) attaches into the reply bubble that
+      // immediately follows rather than standing alone as an empty bubble.
+      const prev = out[out.length - 1]
+      if (b.kind === 'text' && prev?.kind === 'summary') {
+        out.pop()
+        b.folded = mergeFolded(prev.folded, b.folded)
+      }
       out.push(b)
       continue
     }

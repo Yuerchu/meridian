@@ -1,0 +1,71 @@
+@layer components {
+  /* Below the frame's header (12px frame inset + 48px header + a 12px gap), not
+     over it: at the library's default the stack covered the conversation title
+     and the header's controls. `--safe-top` is the native inset, which an
+     Android WebView's `env()` does not carry. */
+  .ui-notification-dock[data-placement='top'] {
+    --ui-notification-top: calc(var(--safe-top, 0px) + 4.5rem);
+  }
+
+  /* What a row says about a question — shared by the floating stack and the
+     inbox, so a call reads the same wherever it is offered. */
+  .m-attention__call {
+    display: flex;
+    min-width: 0;
+    align-items: flex-start;
+    gap: var(--space-1);
+  }
+
+  .m-attention__tool {
+    flex-shrink: 0;
+    font: var(--text-small-medium);
+  }
+
+  .m-attention__args {
+    min-width: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .m-attention__call[data-clamped] .m-attention__args {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .m-attention__description,
+  .m-attention__scope,
+  .m-attention__note {
+    display: block;
+    margin-block-start: var(--space-1);
+    font: var(--text-caption);
+  }
+
+  .m-attention__description {
+    overflow-wrap: break-word;
+  }
+
+  .m-attention__description[data-clamped] {
+    display: -webkit-box;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .m-attention__scope {
+    font-family: var(--font-mono);
+  }
+
+  .m-attention__scope-arg {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .m-attention__scope-key {
+    color: var(--text-secondary);
+  }
+}
