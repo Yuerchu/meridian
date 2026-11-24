@@ -15,7 +15,10 @@ import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceFilterLevel, VoiceModelStatusInfoResponse } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsHeader, SettingsPane } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -164,10 +167,7 @@ export function VoiceSettings() {
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div data-slot="voice-model" className="m-voice__section">
-        <p data-slot="voice-section-label" className="m-voice__label">
-          {t('settings.voice.model')}
-        </p>
-        <div className="m-voice__card">
+        <SettingsGroup heading={t('settings.voice.model')} headingLevel={3}>
           {statusLoading ? (
             <div
               data-slot="voice-model-loading"
@@ -181,24 +181,27 @@ export function VoiceSettings() {
               {t('common.loading')}
             </div>
           ) : status?.installed ? (
-            <div data-slot="voice-model-installed" className="m-voice__installed">
-              <div className="m-voice__copy">
-                <p className="m-voice__title">{t('settings.voice.modelInstalled')}</p>
-                <p className="m-voice__meta" onPointerEnter={titleIfTruncated}>
-                  {formatSize(status.size_bytes, sizeNumber)} · {status.path}
-                </p>
-              </div>
-              <TooltipTrigger>
-                <Button
-                  icon={<Bin />}
-                  size="sm"
-                  variant="ghost"
-                  aria-label={t('settings.voice.deleteModel')}
-                  onPress={handleDelete}
-                  isDisabled={downloading}
-                />
-                <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
-              </TooltipTrigger>
+            <div data-slot="voice-model-installed">
+              <SettingsRow
+                label={t('settings.voice.modelInstalled')}
+                description={
+                  <span className="m-voice__meta" onPointerEnter={titleIfTruncated}>
+                    {formatSize(status.size_bytes, sizeNumber)} · {status.path}
+                  </span>
+                }
+              >
+                <TooltipTrigger>
+                  <Button
+                    icon={<Bin />}
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('settings.voice.deleteModel')}
+                    onPress={handleDelete}
+                    isDisabled={downloading}
+                  />
+                  <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
+                </TooltipTrigger>
+              </SettingsRow>
             </div>
           ) : downloading ? (
             <div data-slot="voice-model-download" className="m-voice__download">
@@ -218,11 +221,11 @@ export function VoiceSettings() {
               </Button>
             </div>
           ) : (
-            <>
-              <div className="m-voice__copy">
-                <p className="m-voice__title">{t('settings.voice.modelMissing')}</p>
-                <p className="m-voice__meta">{t('settings.voice.modelHint')}</p>
-              </div>
+            <SettingsRow
+              layout="stacked"
+              label={t('settings.voice.modelMissing')}
+              description={t('settings.voice.modelHint')}
+            >
               <div className="m-voice__footer">
                 <div data-slot="voice-model-actions" className="m-voice__actions">
                   <Button size="sm" onPress={handleDownload}>
@@ -248,37 +251,48 @@ export function VoiceSettings() {
                   </p>
                 )}
               </div>
-            </>
+            </SettingsRow>
           )}
-          {error && (
-            <Alert data-slot="voice-error" tone="danger" shouldAnnounce>
-              {error}
-            </Alert>
-          )}
-        </div>
+        </SettingsGroup>
+        {error && (
+          <Alert data-slot="voice-error" tone="danger" shouldAnnounce>
+            {error}
+          </Alert>
+        )}
       </div>
 
-      <TextField
-        type="url"
-        label={t('settings.voice.mirror')}
-        value={mirrorUrl}
-        name="voiceDownloadUrl"
-        inputMode="url"
-        spellCheck="false"
-        onChange={handleMirrorChange}
-        onBlur={persistMirror}
-        placeholder={t('settings.voice.mirrorPlaceholder')}
-        isDisabled={downloading}
-        description={t('settings.voice.mirrorHint')}
-      />
-
-      <SettingsSelect
-        label={t('settings.voice.filterLevel')}
-        value={filterLevel}
-        options={filterOptions}
-        onChange={handleFilterChange}
-        description={t('settings.voice.filterHint')}
-      />
+      <SettingsGroup>
+        <SettingsRow layout="stacked" label={t('settings.voice.mirror')} description={t('settings.voice.mirrorHint')}>
+          <TextField
+            type="url"
+            value={mirrorUrl}
+            name="voiceDownloadUrl"
+            inputMode="url"
+            spellCheck="false"
+            onChange={handleMirrorChange}
+            onBlur={persistMirror}
+            placeholder={t('settings.voice.mirrorPlaceholder')}
+            isDisabled={downloading}
+            className="m-voice__field"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.voice.filterLevel')} description={t('settings.voice.filterHint')}>
+          <div className="m-voice__select">
+            <Select
+              selectedKey={filterLevel}
+              onSelectionChange={(key) => {
+                if (key != null) handleFilterChange(String(key) as VoiceFilterLevel)
+              }}
+            >
+              {filterOptions.map((option) => (
+                <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
+                  {option.label}
+                </ListBoxItem>
+              ))}
+            </Select>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
       {confirmDialog}
     </SettingsPane>
   )

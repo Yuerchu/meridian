@@ -12,6 +12,7 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { api } from '@/api'
 import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
 import { usePointerPlay, useStickerPlayback } from '@/components/chat/sticker-playback'
@@ -668,39 +669,45 @@ export function EmojiSettings() {
       <EmojiSuggestSettings />
       <EmojiEmbedderSettings />
 
-      <div data-slot="pack-create" className="m-emoji__create">
-        <div className="m-emoji__field">
-          <TextField
-            value={newPackName}
-            onChange={(e) => setNewPackName(e)}
-            placeholder={t('settings.emoji.packName')}
-            onKeyDown={(e) => {
-              if (e.nativeEvent.isComposing) return
-              if (e.key === 'Enter') handleCreate()
-            }}
-          />
-        </div>
-        <Button icon={<Plus />} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
-          {t('settings.emoji.newPack')}
-        </Button>
-      </div>
+      <SettingsGroup>
+        <SettingsRow layout="stacked" label={t('settings.emoji.newPack')}>
+          <div data-slot="pack-create" className="m-emoji__create">
+            <div className="m-emoji__field">
+              <TextField
+                value={newPackName}
+                onChange={(e) => setNewPackName(e)}
+                placeholder={t('settings.emoji.packName')}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return
+                  if (e.key === 'Enter') handleCreate()
+                }}
+              />
+            </div>
+            <Button icon={<Plus />} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
+              {t('settings.emoji.newPack')}
+            </Button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
-      <div data-slot="pack-list" className="m-emoji__list">
-        {details.map((d) => (
-          <PackCard
-            key={d.pack.id}
-            detail={d}
-            selectedKeys={selection?.packId === d.pack.id ? selection.keys : NO_SELECTION}
-            onSelectionChange={(keys) => setSelection(keys.size > 0 ? { packId: d.pack.id, keys } : null)}
-            onDelete={() => handleDelete(d.pack.id)}
-            onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
-            onDeleteEmoji={handleDeleteEmoji}
-            onSaveSemantics={handleSaveSemantics}
-            onSuggest={handleSuggest}
-          />
-        ))}
-        {details.length === 0 && <EmptyState heading={t('settings.emoji.noPacks')} headingLevel={3} size="sm" />}
-      </div>
+      <SettingsGroup>
+        <div data-slot="pack-list" className="m-emoji__list">
+          {details.map((d) => (
+            <PackCard
+              key={d.pack.id}
+              detail={d}
+              selectedKeys={selection?.packId === d.pack.id ? selection.keys : NO_SELECTION}
+              onSelectionChange={(keys) => setSelection(keys.size > 0 ? { packId: d.pack.id, keys } : null)}
+              onDelete={() => handleDelete(d.pack.id)}
+              onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
+              onDeleteEmoji={handleDeleteEmoji}
+              onSaveSemantics={handleSaveSemantics}
+              onSuggest={handleSuggest}
+            />
+          ))}
+          {details.length === 0 && <EmptyState heading={t('settings.emoji.noPacks')} headingLevel={3} size="sm" />}
+        </div>
+      </SettingsGroup>
 
       {/* The library's bulk bar, not a hand-fixed one: it keeps its own height in
           the flow, so it needs no portal out of this query container, and it

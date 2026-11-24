@@ -1,14 +1,19 @@
 @layer components {
   .m-voice-corpus__notice,
+  .m-voice-corpus__empty,
   .m-voice-corpus__loading,
   .m-voice-corpus__summary {
     margin: 0;
     color: var(--text-secondary);
-    font: var(--text-body);
+    font: var(--text-small);
+  }
+
+  .m-voice-corpus__empty,
+  .m-voice-corpus__loading {
+    padding: var(--space-3) var(--space-4);
   }
 
   .m-voice-corpus__loading,
-  .m-voice-corpus__row,
   .m-voice-corpus__forget {
     display: flex;
     align-items: center;
@@ -16,40 +21,18 @@
   }
 
   .m-voice-corpus__forget {
-    align-items: flex-start;
+    width: 100%;
   }
 
-  .m-voice-corpus__list,
   .m-voice-corpus__export {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
-  }
-
-  .m-voice-corpus__list {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
-  .m-voice-corpus__row {
     padding: var(--space-3) var(--space-4);
-    border-block-end: 1px solid var(--border);
-  }
-
-  .m-voice-corpus__row:last-child {
-    border-block-end: none;
-  }
-
-  .m-voice-corpus__text {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
   }
 
   .m-voice-corpus__title {
+    display: block;
     overflow: hidden;
     font-family: var(--font-mono);
     font-variant-ligatures: none;
@@ -58,7 +41,6 @@
   }
 
   .m-voice-corpus__summary {
-    font: var(--text-caption);
     white-space: normal;
   }
 

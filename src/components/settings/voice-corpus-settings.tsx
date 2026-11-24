@@ -12,6 +12,7 @@ import { TextField } from '@/components/yuerchu-ui/components/text-field/text-fi
 import { api } from '@/api'
 import type { VoiceCorpusDeleteResponse, VoiceCorpusSessionInfoResponse } from '@/types'
 import { can } from '@/lib/capabilities'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -147,30 +148,33 @@ export function VoiceCorpusSettings() {
         </p>
       )}
 
-      {loading ? (
-        <div
-          data-slot="voice-corpus-loading"
-          role="status"
-          aria-label={t('common.loading')}
-          className="m-voice-corpus__loading"
-        >
-          <span aria-hidden>
-            <Spinner size="sm" />
-          </span>
-          {t('common.loading')}
-        </div>
-      ) : sessions.length === 0 ? (
-        <p data-slot="voice-corpus-empty" className="m-voice-corpus__notice">
-          {t('settings.voiceCorpus.empty')}
-        </p>
-      ) : (
-        <div className="m-voice-corpus__list">
-          {sessions.map((session) => (
-            <div key={session.handle} className="m-voice-corpus__row">
-              <span className="m-voice-corpus__text">
+      <SettingsGroup>
+        {loading ? (
+          <div
+            data-slot="voice-corpus-loading"
+            role="status"
+            aria-label={t('common.loading')}
+            className="m-voice-corpus__loading"
+          >
+            <span aria-hidden>
+              <Spinner size="sm" />
+            </span>
+            {t('common.loading')}
+          </div>
+        ) : sessions.length === 0 ? (
+          <p data-slot="voice-corpus-empty" className="m-voice-corpus__empty">
+            {t('settings.voiceCorpus.empty')}
+          </p>
+        ) : (
+          sessions.map((session) => (
+            <SettingsRow
+              key={session.handle}
+              label={
                 <span className="m-voice-corpus__title" onPointerEnter={titleIfTruncated}>
                   {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
                 </span>
+              }
+              description={
                 <span className="m-voice-corpus__summary">
                   {t('settings.voiceCorpus.summary', {
                     clips: session.clips,
@@ -178,7 +182,8 @@ export function VoiceCorpusSettings() {
                     untranscribed: session.untranscribed,
                   })}
                 </span>
-              </span>
+              }
+            >
               <TooltipTrigger>
                 <Button
                   icon={<Bin />}
@@ -190,40 +195,50 @@ export function VoiceCorpusSettings() {
                 />
                 <Tooltip>{t('settings.voiceCorpus.deleteSession')}</Tooltip>
               </TooltipTrigger>
-            </div>
-          ))}
-        </div>
-      )}
+            </SettingsRow>
+          ))
+        )}
+      </SettingsGroup>
 
-      <div data-slot="voice-corpus-forget-row" className="m-voice-corpus__forget">
-        <TextField
+      <SettingsGroup>
+        <SettingsRow
+          layout="stacked"
           label={t('settings.voiceCorpus.forgetSender')}
           description={t('settings.voiceCorpus.forgetSenderHint')}
-          value={senderInput}
-          onChange={setSenderInput}
-          placeholder="12345"
-          className="m-voice-corpus__sender"
-        />
-        <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
-          {t('settings.voiceCorpus.forget')}
-        </Button>
-      </div>
+        >
+          <div data-slot="voice-corpus-forget-row" className="m-voice-corpus__forget">
+            <TextField
+              value={senderInput}
+              onChange={setSenderInput}
+              placeholder="12345"
+              className="m-voice-corpus__sender"
+            />
+            <Button variant="secondary" isDisabled={busy || !senderInput.trim()} onPress={forgetSender}>
+              {t('settings.voiceCorpus.forget')}
+            </Button>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
       {can.exportToDisk && (
-        <div data-slot="voice-corpus-export" className="m-voice-corpus__export">
-          <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
-            {t('settings.voiceCorpus.includeUntranscribed')}
-          </Checkbox>
-          <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
-            {t('settings.voiceCorpus.includeSender')}
-          </Checkbox>
-          <p data-slot="voice-corpus-export-hint" className="m-voice-corpus__notice">
-            {t('settings.voiceCorpus.exportHint')}
-          </p>
-          <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
-            {t('settings.voiceCorpus.export')}
-          </Button>
-        </div>
+        <SettingsGroup>
+          <div data-slot="voice-corpus-export" className="m-voice-corpus__export">
+            <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
+              {t('settings.voiceCorpus.includeUntranscribed')}
+            </Checkbox>
+            <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
+              {t('settings.voiceCorpus.includeSender')}
+            </Checkbox>
+            <p data-slot="voice-corpus-export-hint" className="m-voice-corpus__notice">
+              {t('settings.voiceCorpus.exportHint')}
+            </p>
+            <div>
+              <Button variant="secondary" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>
+                {t('settings.voiceCorpus.export')}
+              </Button>
+            </div>
+          </div>
+        </SettingsGroup>
       )}
       {confirmDialog}
     </SettingsPane>
