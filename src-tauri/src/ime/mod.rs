@@ -24,6 +24,7 @@ pub(crate) mod dictionary;
 pub(crate) mod hints;
 #[cfg(windows)]
 pub(crate) mod host_process;
+pub(crate) mod learn_zip;
 pub(crate) mod learning;
 pub(crate) mod models;
 #[cfg(windows)]
@@ -161,6 +162,7 @@ pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> Ap
     }
     // Left behind by a run that ended mid-way; nothing of this run is there yet.
     archive::sweep_scratch(&bridge.dirs);
+    learn_zip::sweep_staging(&bridge.dirs);
     let swept = models::sweep_unfinished_installs(&bridge.dirs);
     if swept > 0 {
         tracing::info!(swept, "removed unfinished model installs");

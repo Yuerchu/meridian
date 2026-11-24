@@ -208,6 +208,42 @@ impl UserNgram {
             .map(|((p2, p, w), c)| (p2.as_str(), p.as_str(), w.as_str(), *c))
     }
 
+    /// Adds `other`'s in-memory counts onto this table. Bigram maps are the
+    /// full counts (a trigram already included); combining them first and
+    /// rebuilding like [`erase`] is what stops the trigram share being added
+    /// twice. Caps once at the end.
+    pub fn absorb(&mut self, other: &UserNgram) {
+        if other.is_empty() {
+            return;
+        }
+        let mut bigram = self.bigram.clone();
+        for (key, c) in &other.bigram {
+            let slot = bigram.entry(key.clone()).or_default();
+            *slot = slot.saturating_add(*c);
+        }
+        let mut trigram = self.trigram.clone();
+        for (key, c) in &other.trigram {
+            let slot = trigram.entry(key.clone()).or_default();
+            *slot = slot.saturating_add(*c);
+        }
+        let mut fresh = UserNgram::default();
+        for ((p, w), c) in &bigram {
+            if *c > 0 {
+                fresh.record(Context::after(p), w, *c);
+            }
+        }
+        for ((p2, p, w), c) in &trigram {
+            if *c > 0 {
+                fresh.record(Context::of(Some(p2), p), w, *c);
+                fresh.unrecord_bigram_only(p, w, *c);
+            }
+        }
+        while fresh.len() > MAX_TRANSITIONS {
+            fresh.halve();
+        }
+        *self = fresh;
+    }
+
     /// Drops every row `text` is in, in any position, and keeps the rest as
     /// they were. Rebuilt rather than patched, like [`Self::halve`]: the
     /// totals, the trigram contexts and the followers all derive from the
@@ -364,5 +400,33 @@ mod tests {
         }
         assert!(n.len() <= MAX_TRANSITIONS);
         assert!(n.bigram_count("p0", "w") < 4, "surviving rows were halved");
+    }
+
+    #[test]
+    fn absorb_adds_full_counts_without_doubling_a_trigram_share() {
+        let mut a = UserNgram::new();
+        a.record(Context::of(Some("我"), "也"), "想", 2);
+        let mut b = UserNgram::new();
+        b.record(Context::of(Some("我"), "也"), "想", 3);
+        a.absorb(&b);
+        assert_eq!(a.trigram_count("我", "也", "想"), 5);
+        assert_eq!(
+            a.bigram_count("也", "想"),
+            5,
+            "the trigram share is in the bigram once, not twice"
+        );
+        let empty = UserNgram::new();
+        a.absorb(&empty);
+        assert_eq!(a.trigram_count("我", "也", "想"), 5, "nothing incoming changes nothing");
+    }
+
+    #[test]
+    fn absorb_saturates_instead_of_wrapping() {
+        let mut a = UserNgram::new();
+        a.record(Context::after("去"), "香港", u32::MAX);
+        let mut b = UserNgram::new();
+        b.record(Context::after("去"), "香港", 1);
+        a.absorb(&b);
+        assert_eq!(a.bigram_count("去", "香港"), u32::MAX);
     }
 }

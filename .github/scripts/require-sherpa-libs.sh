@@ -14,42 +14,42 @@
 #
 # — or, on Windows, our own build script panicking over the DLLs it stages.
 #
-# So check the pairing the crate assumes and never verifies: if Cargo thinks
-# the script has run, the libraries have to be there. When they are not, remove
-# both halves so the script runs again and downloads afresh.
+# CI on 2026-11-04 (Windows, restore-key prefix match) printed "nothing built
+# yet" because this script only looked for `sherpa-onnx-sys-*` directories, then
+# `cargo test` compiled `sherpa-onnx` and `meridian` without compiling
+# `sherpa-onnx-sys` — the rlib/fingerprint survived, the DLLs did not. The
+# runtime library itself is the pairing: if it is missing, clear everything
+# cargo could use to skip the download, including `cargo clean -p`.
 set -euo pipefail
 
-target="src-tauri/target"
+target="${SHERPA_TARGET_DIR:-src-tauri/target}"
 [ -d "$target" ] || { echo "no target directory yet"; exit 0; }
 
-# The crate caches under the nearest ancestor of OUT_DIR named `target`, so the
-# unpack is at target/sherpa-onnx-prebuilt whatever `--target` says; matched at
-# any depth anyway rather than assumed. Desktop archives unpack to
-# <stem>/lib/, the Android one (no top-level directory) to jniLibs/<abi>/.
-libs() {
-  find "$target" -maxdepth 5 -type f \
-    \( -path '*/sherpa-onnx-prebuilt/*/lib/*' -o -path '*/sherpa-onnx-prebuilt/jniLibs/*' \) \
-    -print -quit 2>/dev/null
+# The file meridian's build.rs and the Unix linker actually need. Do not treat
+# an empty `lib/` directory, a leftover Android jniLibs tree, or a fingerprint
+# directory as "the libraries are here".
+runtime_lib() {
+  find "$target" -type f \( \
+    -name 'sherpa-onnx-c-api.dll' -o \
+    -name 'libsherpa-onnx-c-api.so' -o \
+    -name 'libsherpa-onnx-c-api.dylib' \
+  \) 2>/dev/null | head -n 1
 }
 
-# Cargo splits its record in two — the fingerprint that decides whether to
-# re-run, and the recorded output of the last run. Both are keyed per crate,
-# and both sit under a profile directory whose depth varies with --target.
-records() {
-  find "$target" -type d -name 'sherpa-onnx-sys-*' -print -quit 2>/dev/null
-}
-
-if [ -n "$(libs)" ]; then
-  echo "sherpa-onnx libraries present, leaving the cache alone"
+if [ -n "$(runtime_lib)" ]; then
+  echo "sherpa-onnx runtime library present, leaving the cache alone"
   exit 0
 fi
 
-if [ -z "$(records)" ]; then
-  echo "nothing built yet; the build script will download on its own"
-  exit 0
-fi
+echo "sherpa-onnx runtime library missing — clearing fingerprints so cargo re-downloads"
+# find -delete errors if a parent is removed first; ignore that.
+find "$target" -maxdepth 2 -type d -name sherpa-onnx-prebuilt -prune -exec rm -rf {} + 2>/dev/null || true
+find "$target" \( -name 'sherpa-onnx-sys-*' -o -name 'sherpa_onnx_sys-*' \) -prune -exec rm -rf {} + 2>/dev/null || true
 
-echo "cargo has a record of the build script but the libraries are gone — clearing both"
-find "$target" -maxdepth 2 -type d -name sherpa-onnx-prebuilt -print0 2>/dev/null | xargs -0 -r rm -rf
-find "$target" -type d -name 'sherpa-onnx-sys-*' -print0 2>/dev/null | xargs -0 -r rm -rf
+# A deps/*.rlib can keep the crate "fresh" even after the build-script
+# directory is gone. Skip in fixture tests (SHERPA_TARGET_DIR) so they do not
+# touch the real workspace.
+if [ -z "${SHERPA_TARGET_DIR:-}" ] && [ -f src-tauri/Cargo.toml ]; then
+  cargo clean -p sherpa-onnx-sys --manifest-path src-tauri/Cargo.toml || true
+fi
 echo "cleared"

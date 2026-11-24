@@ -6,6 +6,7 @@ import {
   defaultUrlFor,
   entryByType,
   entryForRow,
+  typeSelectOptions,
   formatsFor,
   parseProviderApiFormat,
   requireProviderType,
@@ -60,6 +61,14 @@ const CATALOG = [
  * a key at an endpoint its operator never published.
  */
 describe('catalog lookups', () => {
+  it('lists each adapter family once in the type select', () => {
+    expect(typeSelectOptions(CATALOG, 'openai')).toEqual([
+      { value: 'openai', label: 'OpenAI' },
+      { value: 'anthropic', label: 'Anthropic' },
+    ])
+    expect(typeSelectOptions([], 'google')).toEqual([{ value: 'google', label: 'google' }])
+  })
+
   it('describes a row by its own vendor, and falls back to the type for the rest', () => {
     expect(entryForRow(CATALOG, 'moonshot', 'openai')?.name).toBe('Moonshot')
     // No id: the type's first entry is a good enough source of dialects and

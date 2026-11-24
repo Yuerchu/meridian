@@ -467,3 +467,27 @@ export function formatDuration(ms: number): string {
   const restMinutes = minutes % 60
   return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`
 }
+
+/** Last model round on the active path: TTFT / generation live on that row. */
+export function lastRoundTiming(turn: Turn): {
+  ttftMs: number | null
+  generationMs: number | null
+  outputTokens: number | null
+} | null {
+  const last = turn.assistantMessages[turn.assistantMessages.length - 1]
+  if (!last) return null
+  return { ttftMs: last.ttft_ms, generationMs: last.generation_ms, outputTokens: last.output_tokens }
+}
+
+/** Tokens per second of the generation stretch. Null when either side is missing
+ *  or generation lasted under a millisecond — dividing would invent a rate. */
+export function tokensPerSecond(outputTokens: number | null, generationMs: number | null): number | null {
+  if (outputTokens == null || generationMs == null || generationMs <= 0) return null
+  return (outputTokens * 1000) / generationMs
+}
+
+export function formatTps(tps: number): string {
+  const rounded = tps >= 10 ? Math.round(tps) : Math.round(tps * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return `${text}/s`
+}

@@ -48,15 +48,18 @@ name = "meridian"
 path = "src/main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "~2.7", features = [] }
 litert-lm = { path = "crates/litert-lm" }
+# Same crate as [dependencies]: cargo runs a `links` build script before this
+# package's, so the DLLs exist when `stage_sherpa_runtime` looks for them.
+sherpa-onnx-sys = { version = "1.13.8", default-features = false, features = ["shared"] }
 
 [dependencies]
 meridian-core = { path = "crates/core" }
-tauri = { version = "2", features = ["tray-icon", "image-png", "protocol-asset"] }
-tauri-plugin-shell = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-notification = "2"
+tauri = { version = "~2.12", features = ["tray-icon", "image-png", "protocol-asset"] }
+tauri-plugin-shell = "~2.5"
+tauri-plugin-dialog = "~2.8"
+tauri-plugin-notification = "~2.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }

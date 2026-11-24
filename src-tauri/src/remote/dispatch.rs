@@ -333,6 +333,8 @@ mod tests {
             // Where every later summary, and so the whole transcript, is sent.
             "auxiliary.model",
             "sandbox.enabled",
+            "emoji.embedder",
+            "emoji.suggest.model",
         ] {
             let args = serde_json::json!({ "request": { "key": key } });
             assert!(
@@ -636,6 +638,10 @@ mod tests {
             "get_ime_learning",
             "forget_ime_learned_word",
             "forget_all_ime_learning",
+            // A dest on this machine, or a content:// document this process
+            // can write; a phone's save picker is not a path here.
+            "export_ime_learning",
+            "import_ime_learning",
             "start_ime_host",
             "stop_ime_host",
             "set_ime_profile_enabled",

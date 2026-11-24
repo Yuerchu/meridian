@@ -620,6 +620,14 @@ macro_rules! with_all_commands {
             #[cfg(any(windows, target_os = "android"))]
             local commands::ime => forget_all_ime_learning(),
             #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => export_ime_learning(
+                request: $crate::commands::ime::ImeLearningExportRequest,
+            ),
+            #[cfg(any(windows, target_os = "android"))]
+            local commands::ime => import_ime_learning(
+                request: $crate::commands::ime::ImeLearningImportRequest,
+            ),
+            #[cfg(any(windows, target_os = "android"))]
             local commands::ime => remove_ime_dictionary(
                 request: $crate::commands::ime::ImeDictionaryRemoveRequest,
             ),

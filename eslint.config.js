@@ -18,6 +18,17 @@ import meridianUi from './scripts/eslint-rules/index.mjs'
 const PALETTE_PREFIX = '(?:text|bg|border|ring|fill|stroke|from|via|to|divide|outline|decoration|accent|caret)'
 const PALETTE_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-[0-9]{2,3}|(?:white|black)\\b)`
 
+// The @lobehub/icons barrel re-exports ModelTag/ProviderCombine, which import
+// Tag/Divider from @lobehub/ui/base-ui. Those names are missing from the ui
+// version the set currently resolves, and Rolldown fails the production build
+// on the unused re-export. Feature modules (ModelIcon, ProviderIcon,
+// providerEnum) and named glyphs (agent-icon.tsx) do not pull those two.
+const LOBEHUB_ICONS_BARREL = {
+  name: '@lobehub/icons',
+  message:
+    "The @lobehub/icons barrel re-exports ModelTag/ProviderCombine, which import Tag/Divider from @lobehub/ui/base-ui and fail the production build. Import ModelIcon from '@lobehub/icons/es/features/ModelIcon', ProviderIcon from '@lobehub/icons/es/features/ProviderIcon', ModelProvider from '@lobehub/icons/es/features/providerEnum', or a named glyph (see agent-icon.tsx).",
+}
+
 // A class that is wrong wherever it appears: matched in string literals and in
 // template chunks alike, so `cn()` arguments and template classNames both see
 // it. `\\b` keeps `rounded` from matching `rounded-lg`.
@@ -36,6 +47,10 @@ const LEGACY_TOKEN_RE = `(?<![\\w-])${PALETTE_PREFIX}-(?:muted|foreground|surfac
 // Enforced everywhere, including src/components/ui/. Each entry is a shape the
 // 2026-09 design audit found in the tree, with the replacement in the message.
 const styleRestrictions = [
+  {
+    selector: "ImportExpression[source.value='@lobehub/icons']",
+    message: LOBEHUB_ICONS_BARREL.message,
+  },
   ...forbiddenClass(
     PALETTE_RE,
     'Raw Tailwind palette class. Use boardui tokens (text-text-*, bg-background-*, border-border-*, accent-*) or meridian.css status tokens (status-success/-warning/-danger/-info).',
@@ -412,7 +427,21 @@ export default tseslint.config(
               message:
                 "Value import from the settings barrel pulls the lazy settings chunk into the main bundle. Import from '@/components/settings/tabs' (or the specific panel) instead.",
             },
+            LOBEHUB_ICONS_BARREL,
           ],
+        },
+      ],
+    },
+  },
+  // Settings is ignored above so it can import its own barrel; it still must
+  // not import the @lobehub/icons barrel (the icon picker lives here).
+  {
+    files: ['src/components/settings/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [LOBEHUB_ICONS_BARREL],
         },
       ],
     },

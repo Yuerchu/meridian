@@ -53,6 +53,8 @@ function msg(role: MessageViewModel['role'], over: Partial<MessageViewModel> = {
     tool_diffs: null,
     context_items: [],
     tool_media: [],
+    ttft_ms: null,
+    generation_ms: null,
     ...over,
   }
 }
@@ -254,6 +256,32 @@ describe('TurnItem', () => {
     expect(screen.queryByText(/tokens/)).toBeNull()
     const details = await openTurnInfo()
     expect(within(details).getByText('400 + 70 tokens')).toBeInTheDocument()
+  })
+
+  it('shows TTFT and tokens per second from the last round', async () => {
+    const u = msg('user', { content: 'q', created_at: 1000 })
+    const a1 = msg('assistant', {
+      _blocks: [text('step')],
+      content: 'step',
+      created_at: 3000,
+      ttft_ms: 80,
+      generation_ms: 900,
+      output_tokens: 12,
+    })
+    const a2 = msg('assistant', {
+      _blocks: [text('done')],
+      content: 'done',
+      created_at: 9000,
+      ttft_ms: 250,
+      generation_ms: 2000,
+      output_tokens: 100,
+    })
+    const turn = buildTurns([u, a1, a2])[0]
+    render(<TurnItem turn={turn} conversationId={CONV} />)
+    const details = await openTurnInfo()
+    expect(infoRow(details, 'time', 'ttft')).toHaveTextContent('250ms')
+    expect(infoRow(details, 'time', 'tps')).toHaveTextContent('50/s')
+    expect(infoRow(details, 'time', 'duration')).toHaveTextContent('8s')
   })
 
   it('keeps the backend-priced turn total and its components behind the turn details action', async () => {

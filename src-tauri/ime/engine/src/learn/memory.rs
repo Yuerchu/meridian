@@ -108,6 +108,47 @@ impl MemoryLearner {
             });
         }
     }
+
+    /// Adds `other`'s counts onto this learner. Caps run once after the maps
+    /// are merged, so a large import does not halve mid-way.
+    pub fn absorb(&mut self, other: &MemoryLearner) {
+        for (text, c) in &other.weights {
+            if *c == 0 {
+                continue;
+            }
+            let slot = self.weights.entry(text.clone()).or_default();
+            *slot = slot.saturating_add(*c);
+            self.dirty.weights = true;
+        }
+        for (key, c) in &other.choices {
+            if *c == 0 {
+                continue;
+            }
+            let slot = self.choices.entry(key.clone()).or_default();
+            *slot = slot.saturating_add(*c);
+            self.dirty.choices = true;
+        }
+        if self.dirty.choices {
+            self.cap_choices();
+        }
+        let mut changed_words = false;
+        for (key, c) in &other.words {
+            if *c == 0 {
+                continue;
+            }
+            let slot = self.words.entry(key.clone()).or_default();
+            *slot = slot.saturating_add(*c);
+            changed_words = true;
+            self.dirty.words = true;
+        }
+        if changed_words {
+            self.generation += 1;
+        }
+        if !other.ngram.is_empty() {
+            self.ngram.absorb(&other.ngram);
+            self.dirty.ngram = true;
+        }
+    }
 }
 
 impl Learner for MemoryLearner {
@@ -233,6 +274,10 @@ impl Learner for MemoryLearner {
             ngram: true,
             words: true,
         });
+    }
+
+    fn absorb(&mut self, other: &MemoryLearner) {
+        MemoryLearner::absorb(self, other);
     }
 
     fn flush(&mut self) {}

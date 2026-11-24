@@ -295,12 +295,26 @@ fn locate_dll(name: &str, profile_dir: &Path) -> Option<PathBuf> {
     if direct.exists() {
         return Some(direct);
     }
+    let staged = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").ok()?)
+        .join("resources")
+        .join(name);
+    if staged.exists() {
+        return Some(staged);
+    }
     let prebuilt = profile_dir.parent()?.join("sherpa-onnx-prebuilt");
-    // One versioned directory per release, so the name cannot be hardcoded.
-    for entry in std::fs::read_dir(prebuilt).ok()?.flatten() {
-        let candidate = entry.path().join("lib").join(name);
-        if candidate.exists() {
-            return Some(candidate);
+    find_named_file(&prebuilt, name)
+}
+
+fn find_named_file(dir: &Path, name: &str) -> Option<PathBuf> {
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.file_name().is_some_and(|n| n == name) && path.is_file() {
+            return Some(path);
+        }
+        if path.is_dir()
+            && let Some(found) = find_named_file(&path, name)
+        {
+            return Some(found);
         }
     }
     None

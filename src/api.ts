@@ -99,6 +99,9 @@ import type {
   ImeDictionaryListResponse,
   ImeDictionaryRemoveRequest,
   ImeLearnedWordForgetRequest,
+  ImeLearningExportInfoResponse,
+  ImeLearningExportRequest,
+  ImeLearningImportRequest,
   ImeLearningInfoResponse,
   ImeDictionaryToggleRequest,
   SystemNoticeDismissRequest,
@@ -923,6 +926,10 @@ export const api = {
   forgetImeLearnedWord: (request: ImeLearnedWordForgetRequest) =>
     invoke<ImeLearningInfoResponse>('forget_ime_learned_word', { request }),
   forgetAllImeLearning: () => invoke<ImeLearningInfoResponse>('forget_all_ime_learning'),
+  exportImeLearning: (request: ImeLearningExportRequest) =>
+    invoke<ImeLearningExportInfoResponse>('export_ime_learning', { request }),
+  importImeLearning: (request: ImeLearningImportRequest) =>
+    invoke<ImeLearningInfoResponse>('import_ime_learning', { request }),
   removeImeDictionary: (request: ImeDictionaryRemoveRequest) =>
     invoke<ImeDictionaryListResponse>('remove_ime_dictionary', { request }),
 

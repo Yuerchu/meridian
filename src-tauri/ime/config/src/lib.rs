@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 
 pub mod forget;
 pub use forget::{ForgetRequest, PendingForget, pending_forgets, request_forget};
+pub mod merge;
+pub use merge::{MergeKind, MergeRequest, PendingMerge, pending_merges, reject_merge, request_merge};
 
 /// Must equal `identifier` in `src-tauri/tauri.conf.json`: Tauri resolves
 /// `app_data_dir` as the platform data directory joined with it.
@@ -178,6 +180,11 @@ impl ImeDirs {
     /// Requests to forget what was learned; see [`forget`].
     pub fn forget(&self) -> PathBuf {
         self.learn().join(forget::FORGET_DIR_NAME)
+    }
+
+    /// Incoming learned tables to merge; see [`merge`].
+    pub fn merge(&self) -> PathBuf {
+        self.learn().join(merge::MERGE_DIR_NAME)
     }
 
     pub fn models(&self) -> PathBuf {
@@ -472,5 +479,7 @@ mod tests {
         assert_eq!(d.config_file(), PathBuf::from("/x").join("host.json"));
         assert_eq!(d.dicts(), PathBuf::from("/x").join("dicts"));
         assert_eq!(d.learn(), PathBuf::from("/x").join("learn"));
+        assert_eq!(d.forget(), PathBuf::from("/x").join("learn").join("forget"));
+        assert_eq!(d.merge(), PathBuf::from("/x").join("learn").join("merge"));
     }
 }

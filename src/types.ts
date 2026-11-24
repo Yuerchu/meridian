@@ -440,6 +440,8 @@ export type PreferenceKey =
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
   | 'codex.client_version'
+  | 'emoji.embedder'
+  | 'emoji.suggest.model'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -487,6 +489,16 @@ export interface PreferenceInfoValueByKey {
    * reason the override could not be used.
    */
   'codex.client_version': string | null
+  /**
+   * Absolute `.litertlm` path for on-device sticker ranking, or null to keep
+   * the lexical name/tag pick. A path on this machine.
+   */
+  'emoji.embedder': string | null
+  /**
+   * Model `suggest_sticker_semantics` uses to look at a sticker. Null follows
+   * the default assistant.
+   */
+  'emoji.suggest.model': PreferenceModelSelectionInfoResponse | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -511,6 +523,8 @@ export interface PreferenceUpdateValueByKey {
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null
+  'emoji.embedder': string | null
+  'emoji.suggest.model': PreferenceModelSelectionRequest | null
 }
 
 export type PreferenceUpdateRequest = {
@@ -2027,6 +2041,12 @@ export interface MessageInfoResponse {
   /** Pictures and other files a tool returned beside `content`, on a tool
    *  row; empty everywhere else. `content` is then only the text part. */
   tool_media: ToolMediaResponse[]
+  /** Milliseconds from the request going out to the first model token on this
+   *  row (visible text, thinking, or a tool-call start). Null until a native
+   *  stream records it. */
+  ttft_ms: number | null
+  /** Milliseconds from that first token to the stream ending. */
+  generation_ms: number | null
 }
 
 /** A transcript row after the front end has derived its renderable blocks. */
@@ -2456,6 +2476,24 @@ export interface VoiceSendReadinessInfoResponse {
   ready: boolean
 }
 
+/** Configurable QQ session copy. Empty arrays pick the matching seed. */
+export interface ReplyBank {
+  empty_reply: string[]
+  busy: string[]
+  server_error: string[]
+  ack_approved: string[]
+  ack_denied: string[]
+}
+
+/** Built-in fallbacks for each reply slot, returned on get. */
+export interface ReplySeeds {
+  empty_reply: string
+  busy: string
+  server_error: string
+  ack_approved: string
+  ack_denied: string
+}
+
 /** OneBot configuration returned by the host. */
 export interface OneBotConfigInfoResponse {
   enabled: boolean
@@ -2470,6 +2508,8 @@ export interface OneBotConfigInfoResponse {
   voice_send_groups: string[]
   voice_tts_model: string
   voice_tts_reference_id: string
+  replies: ReplyBank
+  reply_seeds: ReplySeeds
 }
 
 /** Complete OneBot settings accepted by the host. Nullable keys remain required. */
@@ -2486,6 +2526,7 @@ export interface OneBotConfigUpdateRequest {
   voice_send_groups: string[]
   voice_tts_model: string
   voice_tts_reference_id: string
+  replies: ReplyBank
 }
 
 export type EmojiPackKind = 'manual' | 'onebot'
@@ -3455,6 +3496,21 @@ export interface ImeLearningInfoResponse {
 
 export interface ImeLearnedWordForgetRequest {
   text: string
+}
+
+export interface ImeLearningExportRequest {
+  dest: string | null
+}
+
+export interface ImeLearningExportInfoResponse {
+  path: string
+}
+
+export type ImeLearningImportMode = 'add' | 'replace'
+
+export interface ImeLearningImportRequest {
+  path: string
+  mode: ImeLearningImportMode
 }
 
 export interface ImeDictionaryRemoveRequest {

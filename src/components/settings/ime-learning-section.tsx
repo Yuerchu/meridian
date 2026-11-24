@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
 import {
   Alert,
   Button,
@@ -15,8 +16,11 @@ import {
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
-import type { ImeLearnedWordInfoResponse, ImeLearningInfoResponse } from '@/types'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { usePlatform } from '@/hooks/use-platform'
+import type { ImeLearnedWordInfoResponse, ImeLearningImportMode, ImeLearningInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
 /** Rows drawn at once; the search narrows the rest. */
@@ -35,11 +39,15 @@ const SHOWN = 100
 export function ImeLearningSection() {
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
+  const platform = usePlatform()
+  const android = platform === 'android'
   const [learning, setLearning] = useState<ImeLearningInfoResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
+  const [pendingImport, setPendingImport] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +73,60 @@ export function ImeLearningSection() {
       setLearning(await api.forgetImeLearnedWord({ text: word.text }))
     } catch (err) {
       setError(String(err))
+    }
+  }
+
+  const handleExport = async () => {
+    setError(null)
+    setNotice(null)
+    setBusy(true)
+    try {
+      // Cancelling the picker rejects on Android instead of resolving to null.
+      const dest = await save({
+        defaultPath: 'meridian-ime-learn.zip',
+        filters: [{ name: 'Zip', extensions: ['zip'] }],
+      }).catch(() => null)
+      if (dest === null) return
+      const result = await api.exportImeLearning({ dest })
+      setNotice(
+        dest.startsWith('content://')
+          ? t('settings.ime.learned.exported')
+          : t('settings.ime.learned.exportedTo', { path: result.path }),
+      )
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const runImport = async (path: string, mode: ImeLearningImportMode) => {
+    setError(null)
+    setNotice(null)
+    setBusy(true)
+    try {
+      setLearning(await api.importImeLearning({ path, mode }))
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const handleImport = async () => {
+    setError(null)
+    const file = await pickPath({
+      multiple: false,
+      directory: false,
+      ...(android ? {} : { filters: [{ name: 'Zip', extensions: ['zip'] }] }),
+    }).catch(() => null)
+    if (typeof file === 'string') {
+      setPendingImport(file)
+      return
+    }
+    if (!android && can.browseForDirectory) {
+      const dir = await pickPath({ multiple: false, directory: true }).catch(() => null)
+      if (typeof dir === 'string') setPendingImport(dir)
     }
   }
 
@@ -96,10 +158,24 @@ export function ImeLearningSection() {
             ? t('settings.ime.learned.title')
             : t('settings.ime.learned.summary', { words: learning.words.length, transitions: learning.transitions })}
         </p>
-        {learning !== null && (learning.words.length > 0 || learning.transitions > 0) && (
-          <Button size="small" variant="secondary" onPress={() => setOpen(!open)}>
-            {open ? t('settings.ime.learned.close') : t('settings.ime.learned.manage')}
-          </Button>
+        {learning !== null && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {can.exportToDisk && (
+              <Button size="small" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
+                {t('settings.ime.learned.export')}
+              </Button>
+            )}
+            {can.importFromDisk && (
+              <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy}>
+                {t('settings.ime.learned.import')}
+              </Button>
+            )}
+            {(learning.words.length > 0 || learning.transitions > 0) && (
+              <Button size="small" variant="secondary" onPress={() => setOpen(!open)}>
+                {open ? t('settings.ime.learned.close') : t('settings.ime.learned.manage')}
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
@@ -114,6 +190,15 @@ export function ImeLearningSection() {
           <Alert.Indicator />
           <Alert.Content>
             <Alert.Description>{error}</Alert.Description>
+          </Alert.Content>
+        </Alert>
+      )}
+
+      {notice && (
+        <Alert status="success">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Description>{notice}</Alert.Description>
           </Alert.Content>
         </Alert>
       )}
@@ -189,6 +274,27 @@ export function ImeLearningSection() {
         </div>
       )}
       {confirmDialog}
+      <ConfirmDialog
+        isOpen={pendingImport !== null}
+        title={t('settings.ime.learned.importTitle')}
+        body={t('settings.ime.learned.importChoose')}
+        confirmLabel={t('settings.ime.learned.importAdd')}
+        altLabel={t('settings.ime.learned.importReplace')}
+        status="accent"
+        onConfirm={() => {
+          const path = pendingImport
+          setPendingImport(null)
+          if (path) void runImport(path, 'add')
+        }}
+        onAlt={() => {
+          const path = pendingImport
+          setPendingImport(null)
+          if (path) void runImport(path, 'replace')
+        }}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null)
+        }}
+      />
     </div>
   )
 }

@@ -13,7 +13,7 @@
 
 <!--
   Meridian's fork of Tauri's WiX template, taken verbatim from tauri-bundler
-  2.9.4 (the bundler inside @tauri-apps/cli 2.11.4) and used only through
+  2.10.4 (the bundler inside @tauri-apps/cli 2.12.4) and used only through
   tauri.ime.conf.json (bundle > windows > wix > template). Every change is
   marked "Meridian:" so that on a Tauri upgrade this file can be re-diffed
   against the new upstream template and the marked lines carried over:

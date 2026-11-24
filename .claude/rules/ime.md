@@ -249,6 +249,21 @@ rather than one because the boundaries are the design.
   forgotten is not listed again. `erase` removes a word from all four
   tables; the n-gram is rebuilt from the rows that do not mention it, as
   halving does, so no total is left out.
+  **Export and merge are the same kind of request.** The settings page never
+  writes the four TSVs. Export reads through `FileLearner::read`, applies
+  pending forgets and merges in memory, and writes a zip (`manifest.json`
+  `format: 1` `kind: ime-learn`, plus the four tables). A dest from the save
+  dialog on both platforms; Android's picker returns a `content://` document,
+  so the zip is written under `{ime}/exports/` and copied into it through
+  `FileBridge.contentWrite`. Import accepts that
+  zip or a directory of the four TSVs, stages it under `learn/merge/<stamp>-<pid>/`
+  with `{ "kind": "add" | "replace" }`, and `data::apply_merges` runs after
+  forgets on the same tick: `add` saturating-adds counts, `replace` is
+  `erase_all` then add. N-gram absorb rebuilds like `erase` so a trigram's
+  bigram share is not counted twice. `meridian-ime learn export|merge` is the
+  same tables without a window; `--apply true` writes them now and must not run
+  while the host holds the store. A personal ONNX bundle is still a
+  separate artefact; these tables are not training sequences.
 - **`host.json` is the one source of truth and the host polls it.** Meridian's
   settings page writes it, the host reloads it within a second, and nothing is
   mirrored into the preferences table where it could disagree. Dictionaries

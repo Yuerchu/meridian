@@ -1178,6 +1178,8 @@ mod tests {
             provider_id: None,
             model_id: None,
             response_model_id: None,
+            ttft_ms: None,
+            generation_ms: None,
             input_tokens: None,
             output_tokens: None,
             tool_calls: None,

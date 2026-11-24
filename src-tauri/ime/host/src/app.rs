@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use meridian_ime_config::{HostConfig, ImeDirs};
 use meridian_ime_host::data::{
-    Change, SharedScorer, Watch, apply_forgets, build_engine, input_scheme, load_config, load_hints, load_scorer,
-    open_learner,
+    Change, SharedScorer, Watch, apply_forgets, apply_merges, build_engine, input_scheme, load_config, load_hints,
+    load_scorer, open_learner,
 };
 use meridian_ime_proto::{ClientKind, ClientMessage, ServerMessage, pipe_name};
 use meridian_ime_session::{Router, RouterConfig};
@@ -214,6 +214,9 @@ fn serve(
             // Meridian asked for something to be forgotten: gone from the
             // tables and, as a user word, from the dictionaries typed with.
             if apply_forgets(dirs, router.learner_mut()) > 0 {
+                reload_dictionaries(dirs, router, scorer.as_ref());
+            }
+            if apply_merges(dirs, router.learner_mut()) > 0 {
                 reload_dictionaries(dirs, router, scorer.as_ref());
             }
             match watch.poll(dirs) {

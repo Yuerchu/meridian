@@ -28,7 +28,7 @@ pub mod sentence;
 pub mod storage;
 
 pub use lattice::SpanCache;
-pub use learn::{Context, FileLearner, Learner, MemoryLearner, Muted};
+pub use learn::{Context, FileLearner, Learner, MemoryLearner, Muted, TABLE_FILES};
 pub use predict::{Prediction, PredictionSource};
 pub use query::{Candidate, CandidateSource, Engine, Query, QueryContext};
 pub use scheme::grid::SpellingHabit;

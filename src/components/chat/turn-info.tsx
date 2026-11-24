@@ -4,7 +4,7 @@ import { Info } from '@keyline-icons/react/two-tone'
 import { Popover, Separator } from '@/components/base'
 import { ActionButton } from '@/components/ui/action-button'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
-import { formatDuration } from '@/lib/turns'
+import { formatDuration, formatTps, tokensPerSecond } from '@/lib/turns'
 import type { DecimalString, TurnUsageInfoResponse } from '@/types'
 import { cx } from '@/utils/cx'
 
@@ -37,6 +37,10 @@ interface TurnInfoInput {
   usage?: TurnUsageInfoResponse | null
   durationMs?: number | null
   isStreaming?: boolean
+  /** Last model round. Null when that round never recorded a first token. */
+  ttftMs?: number | null
+  generationMs?: number | null
+  lastRoundOutputTokens?: number | null
 }
 
 function tokenText(tokens: TokenTotals, t: T): string | null {
@@ -200,13 +204,26 @@ function costSection(usage: TurnUsageInfoResponse, t: T): TurnInfoSection {
  */
 function turnInfoSections(input: TurnInfoInput, t: T): TurnInfoSection[] {
   const sections: TurnInfoSection[] = []
-  if (input.durationMs != null && !input.isStreaming) {
-    sections.push({
-      id: 'time',
-      title: t('chat.turnInfo.section.time'),
-      rows: [{ id: 'duration', label: t('chat.turnInfo.duration'), value: formatDuration(input.durationMs) }],
-      notes: [],
-    })
+  if (!input.isStreaming) {
+    const rows: TurnInfoRow[] = []
+    if (input.durationMs != null) {
+      rows.push({ id: 'duration', label: t('chat.turnInfo.duration'), value: formatDuration(input.durationMs) })
+    }
+    if (input.ttftMs != null) {
+      rows.push({ id: 'ttft', label: t('chat.turnInfo.ttft'), value: formatDuration(input.ttftMs) })
+    }
+    const tps = tokensPerSecond(input.lastRoundOutputTokens ?? null, input.generationMs ?? null)
+    if (tps != null) {
+      rows.push({ id: 'tps', label: t('chat.turnInfo.tps'), value: formatTps(tps) })
+    }
+    if (rows.length > 0) {
+      sections.push({
+        id: 'time',
+        title: t('chat.turnInfo.section.time'),
+        rows,
+        notes: [],
+      })
+    }
   }
   const tokens = tokensSection(input, t)
   if (tokens) sections.push(tokens)

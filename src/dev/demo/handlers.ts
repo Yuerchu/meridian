@@ -17,6 +17,7 @@ import type {
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
   PendingApprovalInfoResponse,
+  OneBotConfigUpdateRequest,
   PreferenceKey,
   ProviderCreateRequest,
   LocalModelInspectRequest,
@@ -1332,7 +1333,8 @@ const system: Record<string, DemoHandler> = {
 const integrations: Record<string, DemoHandler> = {
   get_onebot_config: (_args, { state }) => state.onebot,
   save_onebot_config: (args, { state }) => {
-    state.onebot = { ...request<typeof state.onebot>(args) }
+    const body = request<OneBotConfigUpdateRequest>(args)
+    state.onebot = { ...body, reply_seeds: state.onebot.reply_seeds }
     return null
   },
   get_onebot_status: (_args, { state }) => ({
@@ -1398,6 +1400,8 @@ const integrations: Record<string, DemoHandler> = {
   get_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
   forget_ime_learned_word: () => ({ words: [], transitions: 0, pending: 0 }),
   forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  export_ime_learning: () => ({ path: '/tmp/meridian-ime-learn.zip' }),
+  import_ime_learning: () => ({ words: [], transitions: 0, pending: 1 }),
   // A browser is launched by nobody's keyboard.
   take_launch_request: () => null,
   cancel_staged_ime_dictionaries: () => null,

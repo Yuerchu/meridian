@@ -54,7 +54,7 @@ import { ToolCallBlock } from './tool-call-block'
 import { ThinkingRow } from './thinking-block'
 import { SubAgentGroup, delegationOf } from './sub-agent-group'
 import { renderEmojisInText, StickerImage } from './emoji-renderer'
-import type { Turn } from '@/lib/turns'
+import { lastRoundTiming, type Turn } from '@/lib/turns'
 import { bubbleCopyText } from '@/lib/message-groups'
 import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
@@ -1104,7 +1104,15 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               </>
             )}
             {canRegenerate && <ActionButton label={t('chat.regenerate')} onClick={onRegenerate} icon={RefreshCw} />}
-            <TurnInfo tokens={turn.tokens} usage={turn.usage} durationMs={turn.durationMs} isStreaming={isStreaming} />
+            <TurnInfo
+              tokens={turn.tokens}
+              usage={turn.usage}
+              durationMs={turn.durationMs}
+              isStreaming={isStreaming}
+              ttftMs={lastRoundTiming(turn)?.ttftMs}
+              generationMs={lastRoundTiming(turn)?.generationMs}
+              lastRoundOutputTokens={lastRoundTiming(turn)?.outputTokens}
+            />
             {onDelete && (
               <ActionButton
                 label={t('chat.delete')}

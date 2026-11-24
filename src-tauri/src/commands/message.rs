@@ -420,6 +420,11 @@ pub struct MessageInfoResponse {
     /// row; empty everywhere else. `content` is then only the text — the
     /// stored envelope never crosses the boundary as a string.
     pub tool_media: Vec<meridian_core::agent::tool_media::ToolMediaResponse>,
+    /// Milliseconds from the request going out to the first model token on this
+    /// row. Null until a native stream records it.
+    pub ttft_ms: Option<i64>,
+    /// Milliseconds from that first token to the stream ending.
+    pub generation_ms: Option<i64>,
 }
 
 /// One hunk of the diff a hosted agent reported. `old_text` is null for a file
@@ -463,6 +468,11 @@ impl TryFrom<message_entity::Model> for MessageInfoResponse {
             ("cache_read_tokens", row.cache_read_tokens),
             ("cache_write_tokens", row.cache_write_tokens),
         ] {
+            if value.is_some_and(|value| value < 0) {
+                return Err(format!("message {} has negative {field}", row.id));
+            }
+        }
+        for (field, value) in [("ttft_ms", row.ttft_ms), ("generation_ms", row.generation_ms)] {
             if value.is_some_and(|value| value < 0) {
                 return Err(format!("message {} has negative {field}", row.id));
             }
@@ -598,6 +608,8 @@ impl TryFrom<message_entity::Model> for MessageInfoResponse {
             tool_diffs,
             context_items: Vec::new(),
             tool_media,
+            ttft_ms: row.ttft_ms,
+            generation_ms: row.generation_ms,
         })
     }
 }
@@ -2418,6 +2430,8 @@ mod tests {
             provider_id: None,
             model_id: None,
             response_model_id: None,
+            ttft_ms: None,
+            generation_ms: None,
             input_tokens: None,
             output_tokens: None,
             tool_calls: None,

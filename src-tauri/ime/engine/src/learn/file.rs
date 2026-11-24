@@ -28,10 +28,13 @@ use super::memory::{DirtyFlags, MemoryLearner};
 use super::{Context, Learner, UserNgram};
 use crate::storage::write_atomic;
 
-const WEIGHTS_FILE: &str = "user.tsv";
-const CHOICES_FILE: &str = "user-choices.tsv";
-const WORDS_FILE: &str = "user-words.tsv";
-const NGRAM_FILE: &str = "user-ngram.tsv";
+pub const WEIGHTS_FILE: &str = "user.tsv";
+pub const CHOICES_FILE: &str = "user-choices.tsv";
+pub const WORDS_FILE: &str = "user-words.tsv";
+pub const NGRAM_FILE: &str = "user-ngram.tsv";
+
+/// The four tables, in write order.
+pub const TABLE_FILES: [&str; 4] = [WEIGHTS_FILE, CHOICES_FILE, WORDS_FILE, NGRAM_FILE];
 
 #[derive(Debug)]
 pub struct FileLearner {
@@ -140,6 +143,18 @@ impl FileLearner {
         Ok(std::mem::take(&mut opened.inner))
     }
 
+    /// Writes all four tables under `dir`, even the empty ones. Export uses
+    /// this rather than a `FileLearner` so a drop cannot flush a second copy
+    /// over the keyboard's store.
+    pub fn write_tables(dir: &Path, learner: &MemoryLearner) -> io::Result<()> {
+        std::fs::create_dir_all(dir)?;
+        write_atomic(&dir.join(WEIGHTS_FILE), |w| write_weights(w, learner.weights()))?;
+        write_atomic(&dir.join(CHOICES_FILE), |w| write_choices(w, learner.choices()))?;
+        write_atomic(&dir.join(WORDS_FILE), |w| write_words(w, learner.words()))?;
+        write_atomic(&dir.join(NGRAM_FILE), |w| write_ngram(w, learner.ngram()))?;
+        Ok(())
+    }
+
     pub fn flush_if_due(&mut self, interval: Duration) {
         if self.last_flush.elapsed() >= interval {
             Learner::flush(self);
@@ -234,6 +249,9 @@ impl Learner for FileLearner {
     }
     fn erase_all(&mut self) {
         self.inner.erase_all()
+    }
+    fn absorb(&mut self, other: &MemoryLearner) {
+        self.inner.absorb(other)
     }
     fn persists(&self) -> bool {
         true

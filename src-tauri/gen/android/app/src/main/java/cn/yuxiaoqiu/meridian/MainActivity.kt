@@ -58,6 +58,9 @@ class MainActivity : TauriActivity() {
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
+    // Before super.onCreate: bootstrap reads API keys, and Rust.onCreate
+    // (tao) claims ndk-context. initNdkContext sets the keystore builder
+    // then releases the slot so tao's initialize still sees it empty.
     initNdkContext(applicationContext)
     super.onCreate(savedInstanceState)
     instance = this

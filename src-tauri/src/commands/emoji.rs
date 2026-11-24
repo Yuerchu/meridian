@@ -228,6 +228,35 @@ pub async fn confirm_sticker_semantics(
         .map_err(|e| e.to_string())
 }
 
+/// The model that looks at a sticker for `suggest_sticker_semantics`.
+///
+/// A stored pair is used as-is; missing is the default assistant, which is
+/// what this command did before the preference existed. Set but unusable is
+/// an error, never a quiet return to the default assistant.
+async fn resolve_suggest_model(
+    secrets: &std::sync::Arc<meridian_core::secrets::SecretsManager>,
+    db: &meridian_core::db::sea::cap::Db,
+) -> Result<agent::ResolvedProvider, String> {
+    let raw = db::sea::ops::preference::get_preference(db, emoji::SUGGEST_MODEL_PREFERENCE)
+        .await
+        .map_err(|e| e.to_string())?;
+    match emoji::parse_suggest_model(raw)? {
+        Some((provider_id, model_id)) => {
+            agent::resolve_with_overrides(secrets, db, None, Some(model_id.clone()), Some(provider_id.as_str()))
+                .await
+                .map_err(|error| {
+                    format!("the sticker suggestion model `{provider_id}:{model_id}` cannot be used: {error}")
+                })
+        }
+        None => {
+            let assistant = db::sea::ops::assistant::get_default_assistant(db)
+                .await
+                .map_err(|e| e.to_string())?;
+            agent::resolve_provider_config(secrets, db, assistant.as_ref()).await
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
@@ -241,13 +270,10 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{id}` not found"))?;
     // pool-read-before-write: as above, the model call sits between this read and the write.
-    let assistant = db::sea::ops::assistant::get_default_assistant(&services.db)
-        .await
-        .map_err(|e| e.to_string())?;
     if sticker.file_name.is_empty() {
         return Err("This sticker has no cached image to inspect".into());
     }
-    let resolved = agent::resolve_provider_config(&secrets, &services.db, assistant.as_ref()).await?;
+    let resolved = resolve_suggest_model(&secrets, &services.db).await?;
     let caps = provider::registry::get_capabilities(
         &resolved.provider_type,
         &resolved.api_format,
@@ -255,7 +281,10 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         &resolved.model,
     )?;
     if !caps.reads_any_image() {
-        return Err("The default assistant's model does not support image input".into());
+        return Err(format!(
+            "The sticker suggestion model `{}` does not support image input",
+            resolved.model
+        ));
     }
     let path = emoji::emoji_path(&data_dir, &sticker.pack_id, &sticker.file_name);
     let data_uri = emoji::vision_preview_data_uri(&path)?;

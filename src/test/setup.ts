@@ -4,18 +4,21 @@ import '@testing-library/jest-dom/vitest'
 
 import { installResizeObserverStub } from './resize'
 
-// `@lobehub/icons`' entry point re-exports its doc-site components, which reach
-// `@lobehub/ui` and from there a JSON module that Node's ESM loader refuses
-// without an import attribute. Vite handles it for the browser build, but
-// running the whole icon set through that transform costs the suite ~18s — and
-// which logo a provider draws is not what any of these tests are about.
-vi.mock('@lobehub/icons', () => ({
-  ModelIcon: ({ model }: { model?: string }) =>
-    createElement('span', { 'data-slot': 'model-icon', 'data-model': model }),
-  ProviderIcon: ({ provider }: { provider?: string }) =>
+// The app imports `@lobehub/icons` feature modules, not the barrel: the barrel
+// re-exports doc-site components that reach `@lobehub/ui` and from there a JSON
+// module Node's ESM loader refuses without an import attribute. Running the
+// whole icon set through Vite's transform costs the suite ~18s — and which
+// logo a provider draws is not what any of these tests are about.
+vi.mock('@lobehub/icons/es/features/ModelIcon', () => ({
+  default: ({ model }: { model?: string }) => createElement('span', { 'data-slot': 'model-icon', 'data-model': model }),
+}))
+vi.mock('@lobehub/icons/es/features/ProviderIcon', () => ({
+  default: ({ provider }: { provider?: string }) =>
     createElement('span', { 'data-slot': 'provider-icon', 'data-provider': provider }),
-  // Three of the hundred and fifty, which is enough for the picker to have a
-  // list, a filter that excludes something, and a name to choose.
+}))
+// Three of the hundred and fifty, which is enough for the picker to have a
+// list, a filter that excludes something, and a name to choose.
+vi.mock('@lobehub/icons/es/features/providerEnum', () => ({
   ModelProvider: { Anthropic: 'anthropic', OpenAI: 'openai', VertexAI: 'vertexai' },
 }))
 

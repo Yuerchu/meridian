@@ -563,3 +563,34 @@ describe('clipboard goes through lib/clipboard', () => {
     assert.deepEqual(await messages(code, 'src/components/chat/x.tsx'), [])
   })
 })
+
+describe('lobehub/icons barrel is refused', () => {
+  const eslint = new ESLint()
+  const barrel = (m) =>
+    m.ruleId === '@typescript-eslint/no-restricted-imports' ||
+    (m.ruleId === 'no-restricted-syntax' && /es\/features\/ModelIcon/.test(m.message))
+  const messages = async (code, filePath) => (await eslint.lintText(code, { filePath }))[0].messages.filter(barrel)
+
+  it('refuses a static or dynamic import of the package entry', async () => {
+    for (const code of [`import { ModelIcon } from '@lobehub/icons'`, `void import('@lobehub/icons')`]) {
+      const found = await messages(code, 'src/components/ui/x.tsx')
+      assert.equal(found.length, 1, code)
+      assert.match(found[0].message, /es\/features\/ModelIcon/)
+    }
+  })
+
+  it('refuses the barrel from the settings picker too', async () => {
+    const found = await messages(`void import('@lobehub/icons')`, 'src/components/settings/provider/icon-picker.tsx')
+    assert.equal(found.length, 1)
+  })
+
+  it('lets a feature module and a named glyph through', async () => {
+    for (const code of [
+      `export { default as ModelIcon } from '@lobehub/icons/es/features/ModelIcon'`,
+      `import Mono from '@lobehub/icons/es/ClaudeCode/components/Mono'`,
+      `void import('@lobehub/icons/es/features/providerEnum')`,
+    ]) {
+      assert.deepEqual(await messages(code, 'src/components/ui/x.tsx'), [], code)
+    }
+  })
+})

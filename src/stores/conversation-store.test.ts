@@ -94,6 +94,8 @@ function msg(id: string, over: Partial<MessageViewModel> = {}): MessageViewModel
     tool_diffs: null,
     context_items: [],
     tool_media: [],
+    ttft_ms: null,
+    generation_ms: null,
     ...over,
   }
 }

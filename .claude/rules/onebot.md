@@ -305,12 +305,81 @@ another file here — the index in `CLAUDE.md` says which.
   "Memory is frozen into the history") is written on QQ too, after the memory row;
   a group sees only `OPEN_REGISTRY_TOOLS` and the planner is a no-op there.
 
+- **QQ withholds Interactive / ModeTransition / Delegate.** `ask_user` has nowhere
+  to draw a form, plan mode has nowhere to switch, and there is no sub-agent
+  port. `Modes::Fixed` and `sub_agents: None` already drop the last two;
+  `forbidden_effects` on `TurnConfigResolveRequest` (`QQ_FORBIDDEN_EFFECTS`)
+  strips `ask_user` after the session-tools splice so `PlanTransitions` cannot
+  put it back. MCP and custom tools stay. Desktop / hook / sub-agent rebuilds
+  pass `&[]`.
+
+- **Session copy lives in `preferences.onebot.replies`, not on the start snapshot.**
+  Host / token / `admin_users` still need a restart; the five slots
+  (`empty_reply`, `busy`, `server_error`, `ack_approved`, `ack_denied`) are
+  hot. Empty and missing slots pick the seed, so a 5xx is never silent. Corrupt
+  JSON on the send path does the same and logs; settings load and the manage
+  tool fail on invalid JSON. Session variants cannot contain `{e}` / `{error}` /
+  `{detail}`. Caps: 16 variants, 200 characters, no empty string. ≥2 variants
+  skip the last-used (process-local).
+
+- **4xx @ the speaker in a group and explain; 5xx is only the `server_error`
+  phrase in session.** The @ of `admin_users` who are in the group *is* the
+  report — the session line does not also say it was reported. `{e}` / the
+  provider body travel as an admin DM, truncated to 2000 characters. Empty
+  `admin_users` skips the DM and claims nothing. A private counterpart who is
+  an admin gets the detail in the same message and is not self-DM'd; other
+  admins still get the DM. Group 5xx does not @ the speaker unless they are
+  also an admin. Slash usage / access stay code as 4xx; slash success stays
+  `build_reply`; slash failures that used to dump `{e}` go through the 5xx
+  bank. Plan-review barriers, memory, friend-request and balance-alert copy
+  stay code. An empty model reply stays silent; `empty_reply` is empty
+  approval typed text.
+
+- **Approval cards use the Chinese `chat.tool.name.*` label, then the model's
+  `description` if present, never a wire name or JSON args.** Core's
+  `onebot/labels.rs` is gated against `zh-CN.json`. MCP / unknown tools use
+  the description as the heading, otherwise the configured name.
+
+- **QQ writes always go through auto-review**, even when the desktop toggle is
+  off (`force_review`, conversation-model fallback `{provider_id}:{effective_model}`).
+  User-asked → allow; a target nobody mentioned → deny to the model; a hang /
+  no verdict / no model falls back to a Y card (`unattended: false`).
+  `SettingsUnreadable` is still refused at `ChatApprovals` without asking.
+  `qq_manage_replies` is not `admin_only` so the assistant can maintain copy
+  on a member's turn; the reviewer is the gate (policy.md carve-out: in-role
+  voice tweak is allow, hijack / ads / error-leak is deny) and a miss is a
+  denial (`fail_closed`), because a group Y card would be the speaker
+  approving their own hijack of the bot's voice. `qq_list_replies` is a read
+  and does not ask. Card / essence / poke / like / sticker / voice still fire
+  on call.
+
 - **`send_sticker` picks by query.** The model passes a short name, tag, or mood;
   `pick_from_roster` (shared with the desktop tool) ranks exact name, then name
   contains, then a tag contains the query. `sticker_id` still works and wins when
   both are given. `list_stickers` stays for browsing. The roster does not go in
   the system prompt or the tool description — confirm/delete would bust the
   prefix cache.
+
+  **An optional on-device embedder sits on top of that floor.** `emoji.embedder`
+  is an absolute `.litertlm` path (EmbeddingGemma 2). Exact name still wins;
+  otherwise cosine among items that have a vector can pick a mood the tags never
+  named. A 740M bundle turns the vision backend on: each confirmed sticker's
+  file is one document (GIF/APNG as a PNG contact sheet, stills as the file
+  bytes) plus its name/tags in the same `compute_embedding` call, so inventory
+  without a useful name still ranks. A missing file, a failed run, or an empty
+  preference leaves the lexical pick unchanged. The engine and per-sticker
+  vectors live in a process `OnceLock`, keyed by id plus name/tags/image
+  bytes. The preference is `is_server_owned` because it is a path on this
+  machine.
+
+- **Sticker "generate suggestion" has its own model.** `emoji.suggest.model` is
+  a `provider:model` pair. Empty follows the default assistant, which is what
+  `suggest_sticker_semantics` did before. Set but unusable is an error, never a
+  quiet return to the default assistant — the point is not to spend the chat
+  model on looking at a GIF. The model must accept images. The preference is
+  `is_server_owned` because the sticker files go to that provider. The bulk
+  action on the emoji page calls the same command once per unconfirmed row
+  that has a file.
 
 - **`qq_stay_silent` drops this round's final QQ text.** Stickers, voice, poke
   and interim text already sent stay. It is not approval-gated. The flag lives

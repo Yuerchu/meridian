@@ -39,6 +39,7 @@ import {
   defaultUrlFor,
   entryByType,
   entryForRow,
+  typeSelectOptions,
   formatsFor,
   parseProviderApiFormat,
   requireProviderType,
@@ -728,10 +729,7 @@ function ProviderEditor({
   // Until the catalog is loaded this is empty, so the current value is carried
   // as a lone option; without it the select would show blank and a save would
   // write it back.
-  const typeOptions =
-    catalog.length > 0
-      ? catalog.map((e) => ({ value: e.provider_type, label: e.name }))
-      : [{ value: providerType, label: providerType }]
+  const typeOptions = typeSelectOptions(catalog, providerType)
   const formatOptions: { value: ProviderApiFormat; label: string }[] = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
