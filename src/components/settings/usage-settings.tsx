@@ -1416,11 +1416,7 @@ function BucketTable({
     (row: UsageGridRow) =>
       row.conversationCount > 1 ? (
         <span data-slot="usage-row-label-group" className="m-usage-settings__row-group">
-          <span
-            data-slot="usage-row-label"
-            onPointerEnter={titleIfTruncated}
-            className="m-usage-settings__row-label"
-          >
+          <span data-slot="usage-row-label" onPointerEnter={titleIfTruncated} className="m-usage-settings__row-label">
             {row.displayLabel}
           </span>
           <span data-slot="usage-row-label-summary" className="m-usage-settings__row-summary">
@@ -1597,10 +1593,7 @@ function BucketTable({
                       label: flatRow.item.displayLabel,
                     })}
                     icon={
-                      <span
-                        className="m-usage-settings__expand-icon"
-                        data-expanded={flatRow.expanded || undefined}
-                      >
+                      <span className="m-usage-settings__expand-icon" data-expanded={flatRow.expanded || undefined}>
                         <ChevronRight size={14} aria-hidden />
                       </span>
                     }
