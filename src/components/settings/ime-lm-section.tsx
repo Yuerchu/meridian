@@ -5,6 +5,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
@@ -112,12 +113,13 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
             {t('settings.ime.lm.empty')}
           </p>
         ) : (
-          <div className="m-ime-lm__bundles">
+          <SettingsGroup>
             {status.bundles.map((bundle) => {
               const name = bundle.id ?? bundle.dir_name
               return (
-                <div key={bundle.dir_name} className="m-ime-lm__row">
-                  <span className="m-ime-lm__text">
+                <SettingsRow
+                  key={bundle.dir_name}
+                  label={
                     <span className="m-ime-lm__title">
                       <span data-slot="ime-lm-name" onPointerEnter={titleIfTruncated} className="m-ime-lm__name">
                         {name}
@@ -129,12 +131,15 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                       )}
                       {bundle.personal && <Badge size="sm">{t('settings.ime.lm.personal')}</Badge>}
                     </span>
+                  }
+                  description={
                     <span className="m-ime-lm__detail">
                       {bundle.error
                         ? t('settings.ime.lm.broken', { error: bundle.error })
                         : t('settings.ime.lm.detail', { version: bundle.version, license: bundle.license })}
                     </span>
-                  </span>
+                  }
+                >
                   <TooltipTrigger>
                     <Button
                       icon={<Bin />}
@@ -145,10 +150,10 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
                     />
                     <Tooltip>{t('settings.ime.lm.remove', { name })}</Tooltip>
                   </TooltipTrigger>
-                </div>
+                </SettingsRow>
               )
             })}
-          </div>
+          </SettingsGroup>
         ))}
 
       <p data-slot="ime-lm-hint" className="m-ime-lm__hint">

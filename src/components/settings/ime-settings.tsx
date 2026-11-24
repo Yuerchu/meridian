@@ -27,7 +27,10 @@ import type {
   ImeScheme,
   ImeStatusInfoResponse,
 } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { ImeLearningSection } from './ime-learning-section'
 import { ImeLmSection } from './ime-lm-section'
@@ -464,125 +467,167 @@ export function ImeSettings() {
             {t('settings.ime.registerHint')}
           </p>
 
-          <div data-slot="ime-enable" className="m-ime__stack">
-            <Switch
-              variant="card"
-              aria-label={t('settings.ime.enableForUser')}
-              aria-describedby="ime-enable-hint"
-              isSelected={status?.enabled_for_user ?? false}
-              isDisabled={!registered || busy !== null}
-              onChange={(selected) => run('profile', () => api.setImeProfileEnabled({ enabled: selected }))}
-            >
-              {t('settings.ime.enableForUser')}
-            </Switch>
-            <p id="ime-enable-hint" data-slot="ime-enable-hint" className="m-ime__hint">
-              {t('settings.ime.enableForUserHint')}
-            </p>
+          <div data-slot="ime-enable">
+            <SettingsGroup>
+              <SettingsRow
+                label={t('settings.ime.enableForUser')}
+                description={<span data-slot="ime-enable-hint">{t('settings.ime.enableForUserHint')}</span>}
+              >
+                <Switch
+                  isSelected={status?.enabled_for_user ?? false}
+                  isDisabled={!registered || busy !== null}
+                  onChange={(selected) => run('profile', () => api.setImeProfileEnabled({ enabled: selected }))}
+                />
+              </SettingsRow>
+            </SettingsGroup>
           </div>
         </>
       )}
 
-      <div data-slot="ime-config" data-columns={android ? '1' : '3'} className="m-ime__config">
-        {!android && (
-          <SettingsSelect<ImeScheme>
-            label={t('settings.ime.scheme')}
-            value={config.scheme}
-            onChange={(scheme) => setConfig({ ...config, scheme })}
-            options={[
-              { value: 'pinyin', label: t('settings.ime.scheme.pinyin') },
-              { value: 'zhuyin', label: t('settings.ime.scheme.zhuyin') },
-              // The grid is a touch layout a physical keyboard cannot type, and
-              // this select is Windows' (on Android the keyboard's layer picks
-              // the scheme). Listed only when a config already names it, so
-              // the select has something to show.
-              ...(config.scheme === 'grid' ? [{ value: 'grid' as const, label: t('settings.ime.scheme.grid') }] : []),
-            ]}
-          />
-        )}
-        {/* The Windows candidate window's numbered page. The touch keyboard
-            has none: it scrolls one row and opens a grid of the lot. */}
-        {!android && (
-          <SettingsSelect<(typeof PAGE_SIZES)[number]>
-            label={t('settings.ime.pageSize')}
-            value={String(config.page_size) as (typeof PAGE_SIZES)[number]}
-            onChange={(v) => setConfig({ ...config, page_size: Number(v) })}
-            options={PAGE_SIZES.map((v) => ({ value: v, label: v }))}
-          />
-        )}
-        <SettingsSelect<ImePunctuation>
-          label={t('settings.ime.punctuation')}
-          value={config.punctuation}
-          onChange={(punctuation) => setConfig({ ...config, punctuation })}
-          options={[
-            { value: 'full_width', label: t('settings.ime.punctuation.fullWidth') },
-            { value: 'half_width', label: t('settings.ime.punctuation.halfWidth') },
-          ]}
-        />
-      </div>
-      <p data-slot="ime-scheme-hint" className="m-ime__hint">
-        {t(android ? 'settings.ime.schemeHintAndroid' : 'settings.ime.schemeHint')}
-      </p>
-
-      <div data-slot="ime-learning" className="m-ime__stack">
-        <Switch
-          variant="card"
-          aria-label={t('settings.ime.learning')}
-          aria-describedby="ime-learning-hint"
-          isSelected={config.learning}
-          onChange={(selected) => setConfig({ ...config, learning: selected })}
+      <div data-slot="ime-config">
+        <SettingsGroup
+          description={
+            <span data-slot="ime-scheme-hint">
+              {t(android ? 'settings.ime.schemeHintAndroid' : 'settings.ime.schemeHint')}
+            </span>
+          }
         >
-          {t('settings.ime.learning')}
-        </Switch>
-        <p id="ime-learning-hint" data-slot="ime-learning-hint" className="m-ime__hint">
-          {t('settings.ime.learningHint')}
-        </p>
+          {!android && (
+            <SettingsRow label={t('settings.ime.scheme')}>
+              <div className="m-ime__select">
+                <Select
+                  selectedKey={config.scheme}
+                  onSelectionChange={(key) =>
+                    typeof key === 'string' && setConfig({ ...config, scheme: key as ImeScheme })
+                  }
+                >
+                  <ListBoxItem id="pinyin" textValue={t('settings.ime.scheme.pinyin')}>
+                    {t('settings.ime.scheme.pinyin')}
+                  </ListBoxItem>
+                  <ListBoxItem id="zhuyin" textValue={t('settings.ime.scheme.zhuyin')}>
+                    {t('settings.ime.scheme.zhuyin')}
+                  </ListBoxItem>
+                  {/* The grid is a touch layout a physical keyboard cannot type, and
+                      this select is Windows' (on Android the keyboard's layer picks
+                      the scheme). Listed only when a config already names it, so
+                      the select has something to show. */}
+                  {config.scheme === 'grid' && (
+                    <ListBoxItem id="grid" textValue={t('settings.ime.scheme.grid')}>
+                      {t('settings.ime.scheme.grid')}
+                    </ListBoxItem>
+                  )}
+                </Select>
+              </div>
+            </SettingsRow>
+          )}
+          {/* The Windows candidate window's numbered page. The touch keyboard
+              has none: it scrolls one row and opens a grid of the lot. */}
+          {!android && (
+            <SettingsRow label={t('settings.ime.pageSize')}>
+              <div className="m-ime__select">
+                <Select
+                  selectedKey={String(config.page_size)}
+                  onSelectionChange={(key) =>
+                    typeof key === 'string' && setConfig({ ...config, page_size: Number(key) })
+                  }
+                >
+                  {PAGE_SIZES.map((v) => (
+                    <ListBoxItem key={v} id={v} textValue={v}>
+                      {v}
+                    </ListBoxItem>
+                  ))}
+                </Select>
+              </div>
+            </SettingsRow>
+          )}
+          <SettingsRow label={t('settings.ime.punctuation')}>
+            <div className="m-ime__select">
+              <Select
+                selectedKey={config.punctuation}
+                onSelectionChange={(key) =>
+                  typeof key === 'string' && setConfig({ ...config, punctuation: key as ImePunctuation })
+                }
+              >
+                <ListBoxItem id="full_width" textValue={t('settings.ime.punctuation.fullWidth')}>
+                  {t('settings.ime.punctuation.fullWidth')}
+                </ListBoxItem>
+                <ListBoxItem id="half_width" textValue={t('settings.ime.punctuation.halfWidth')}>
+                  {t('settings.ime.punctuation.halfWidth')}
+                </ListBoxItem>
+              </Select>
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
+      </div>
+
+      <div data-slot="ime-learning">
+        <SettingsGroup>
+          <SettingsRow
+            label={t('settings.ime.learning')}
+            description={<span data-slot="ime-learning-hint">{t('settings.ime.learningHint')}</span>}
+          >
+            <Switch
+              isSelected={config.learning}
+              onChange={(selected) => setConfig({ ...config, learning: selected })}
+            />
+          </SettingsRow>
+        </SettingsGroup>
       </div>
 
       <ImeLearningSection />
 
-      <div data-slot="ime-prediction" className="m-ime__stack">
-        <Switch
-          variant="card"
-          aria-label={t('settings.ime.prediction')}
-          aria-describedby="ime-prediction-hint"
-          isSelected={config.prediction}
-          onChange={(selected) => setConfig({ ...config, prediction: selected })}
+      <SettingsGroup>
+        <div data-slot="ime-prediction" className="m-ime__group-rows">
+          <SettingsRow
+            label={t('settings.ime.prediction')}
+            description={
+              <span data-slot="ime-prediction-hint">
+                {t(android ? 'settings.ime.predictionHintAndroid' : 'settings.ime.predictionHint')}
+              </span>
+            }
+          >
+            <Switch
+              isSelected={config.prediction}
+              onChange={(selected) => setConfig({ ...config, prediction: selected })}
+            />
+          </SettingsRow>
+        </div>
+
+        <SettingsRow
+          layout="stacked"
+          label={t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}
+          description={t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}
         >
-          {t('settings.ime.prediction')}
-        </Switch>
-        <p id="ime-prediction-hint" data-slot="ime-prediction-hint" className="m-ime__hint">
-          {t(android ? 'settings.ime.predictionHintAndroid' : 'settings.ime.predictionHint')}
-        </p>
-      </div>
+          <TextArea
+            name="imePrivateApps"
+            rows={3}
+            value={privateAppsInput}
+            onChange={setPrivateAppsInput}
+            placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
+          />
+        </SettingsRow>
 
-      <TextArea
-        label={t(android ? 'settings.ime.privateAppsAndroid' : 'settings.ime.privateApps')}
-        name="imePrivateApps"
-        rows={3}
-        value={privateAppsInput}
-        onChange={setPrivateAppsInput}
-        placeholder={android ? 'com.kunzisoft.keepass.free\ncom.x8bit.bitwarden' : 'KeePass.exe\n1Password.exe'}
-        description={t(android ? 'settings.ime.privateAppsHintAndroid' : 'settings.ime.privateAppsHint')}
-      />
+        <SettingsRow
+          layout="stacked"
+          label={t('settings.ime.contextApps')}
+          description={t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}
+        >
+          <TextArea
+            name="imeContextApps"
+            rows={2}
+            value={contextAppsInput}
+            onChange={setContextAppsInput}
+            placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
+          />
+        </SettingsRow>
 
-      <TextArea
-        label={t('settings.ime.contextApps')}
-        name="imeContextApps"
-        rows={2}
-        value={contextAppsInput}
-        onChange={setContextAppsInput}
-        placeholder={android ? 'com.android.notes' : 'Notepad.exe'}
-        description={t(android ? 'settings.ime.contextAppsHintAndroid' : 'settings.ime.contextAppsHint')}
-      />
-
-      <Switch
-        variant="card"
-        aria-label={t('settings.ime.debugLog')}
-        isSelected={config.debug_log}
-        onChange={(selected) => setConfig({ ...config, debug_log: selected })}
-      >
-        {t('settings.ime.debugLog')}
-      </Switch>
+        <SettingsRow label={t('settings.ime.debugLog')}>
+          <Switch
+            isSelected={config.debug_log}
+            onChange={(selected) => setConfig({ ...config, debug_log: selected })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
 
       {error && (
         <Alert data-slot="ime-error" tone="danger" shouldAnnounce>
@@ -705,31 +750,37 @@ export function ImeSettings() {
             {t('settings.ime.dictionariesEmpty')}
           </p>
         ) : (
-          <div className="m-ime__dicts">
+          <SettingsGroup>
             {dictionaries.map((dict) => (
-              <div key={dict.file} className="m-ime__dict">
-                <span className="m-ime__dict-text">
+              <SettingsRow
+                key={dict.file}
+                label={
                   <span className="m-ime__dict-name" onPointerEnter={titleIfTruncated}>
                     {dict.name}
                   </span>
-                  <span className="m-ime__hint">
-                    {t('settings.ime.dictionaryDetail', {
-                      count: dict.entries,
-                      size:
-                        dict.size_bytes === null
-                          ? t('settings.ime.dictionarySizeUnknown')
-                          : formatBytes(dict.size_bytes),
-                      license: dict.license,
-                    })}
+                }
+                description={
+                  <span className="m-ime__dict-meta">
+                    <span>
+                      {t('settings.ime.dictionaryDetail', {
+                        count: dict.entries,
+                        size:
+                          dict.size_bytes === null
+                            ? t('settings.ime.dictionarySizeUnknown')
+                            : formatBytes(dict.size_bytes),
+                        license: dict.license,
+                      })}
+                    </span>
+                    <DictionaryStateLine state={dict.state} />
                   </span>
-                  <DictionaryStateLine state={dict.state} />
-                </span>
+                }
+              >
                 <span className="m-ime__dict-actions">
                   <Switch
                     aria-label={t('settings.ime.dictionaryEnabled', { name: dict.name })}
                     isSelected={dict.enabled}
                     onChange={(selected) => handleToggleDictionary(dict.file, selected)}
-                  ></Switch>
+                  />
                   <TooltipTrigger>
                     <Button
                       icon={<Bin />}
@@ -741,9 +792,9 @@ export function ImeSettings() {
                     <Tooltip>{t('settings.ime.removeDictionary', { name: dict.name })}</Tooltip>
                   </TooltipTrigger>
                 </span>
-              </div>
+              </SettingsRow>
             ))}
-          </div>
+          </SettingsGroup>
         )}
         <p data-slot="ime-dictionaries-hint" className="m-ime__hint">
           {t('settings.ime.dictionariesHint')}

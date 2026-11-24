@@ -13,6 +13,7 @@ import { Bin } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
@@ -221,10 +222,11 @@ export function ImeLearningSection() {
               {t('settings.ime.learned.none')}
             </p>
           ) : (
-            <div className="m-ime-learned__words">
+            <SettingsGroup>
               {matching.slice(0, SHOWN).map((word) => (
-                <div key={word.text} className="m-ime-learned__row">
-                  <span className="m-ime-learned__text">
+                <SettingsRow
+                  key={word.text}
+                  label={
                     <span className="m-ime-learned__title">
                       <span
                         data-slot="ime-learned-word"
@@ -235,10 +237,9 @@ export function ImeLearningSection() {
                       </span>
                       {word.user_word && <Badge size="sm">{t('settings.ime.learned.userWord')}</Badge>}
                     </span>
-                    <span className="m-ime-learned__count">
-                      {t('settings.ime.learned.count', { count: word.count })}
-                    </span>
-                  </span>
+                  }
+                  description={t('settings.ime.learned.count', { count: word.count })}
+                >
                   <TooltipTrigger>
                     <Button
                       icon={<Bin />}
@@ -249,9 +250,9 @@ export function ImeLearningSection() {
                     />
                     <Tooltip>{t('settings.ime.learned.forget', { word: word.text })}</Tooltip>
                   </TooltipTrigger>
-                </div>
+                </SettingsRow>
               ))}
-            </div>
+            </SettingsGroup>
           )}
           {matching.length > SHOWN && (
             <p data-slot="ime-learned-more" className="m-ime-learned__hint">

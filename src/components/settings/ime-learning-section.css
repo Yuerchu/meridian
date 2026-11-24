@@ -8,7 +8,6 @@
 
   .m-ime-learned__head,
   .m-ime-learned__actions,
-  .m-ime-learned__row,
   .m-ime-learned__title {
     display: flex;
     align-items: center;
@@ -25,8 +24,7 @@
   }
 
   .m-ime-learned__summary,
-  .m-ime-learned__hint,
-  .m-ime-learned__count {
+  .m-ime-learned__hint {
     margin: 0;
     color: var(--text-secondary);
     font: var(--text-caption);
@@ -34,30 +32,6 @@
 
   .m-ime-learned__summary {
     font: var(--text-small-medium);
-  }
-
-  .m-ime-learned__words {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
-  .m-ime-learned__row {
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
-    border-block-end: 1px solid var(--border);
-  }
-
-  .m-ime-learned__row:last-child {
-    border-block-end: none;
-  }
-
-  .m-ime-learned__text {
-    display: flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
   }
 
   .m-ime-learned__word {

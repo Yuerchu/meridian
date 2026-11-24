@@ -1,34 +1,43 @@
 @layer components {
-  .m-onebot__stack,
-  .m-onebot__replies,
-  .m-onebot__copy,
   .m-onebot__status {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
   }
 
-  .m-onebot__replies {
-    gap: var(--space-3);
+  .m-onebot__group-rows {
+    display: flex;
+    flex-direction: column;
   }
 
-  .m-onebot__title,
+  .m-onebot__group-rows + .ui-settings-row,
+  .ui-settings-row + .m-onebot__group-rows,
+  .m-onebot__group-rows + .m-onebot__group-rows,
+  .m-onebot__group-rows > .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* Compact inline select inside SettingsRow */
+  .m-onebot__select {
+    min-width: 9.5rem;
+    max-width: 100%;
+  }
+
   .m-onebot__hint,
   .m-onebot__warning,
   .m-onebot__status-title {
     margin: 0;
   }
 
-  .m-onebot__title,
-  .m-onebot__status-title {
-    color: var(--text);
-    font: var(--text-body-medium);
-  }
-
   .m-onebot__status-title {
     display: flex;
     align-items: center;
     gap: var(--space-2);
+    color: var(--text);
     font: var(--text-body);
   }
 
@@ -40,13 +49,6 @@
   .m-onebot__warning {
     color: var(--warning-fg);
     font: var(--text-caption);
-  }
-
-  .m-onebot__grid {
-    container-type: inline-size;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-3);
   }
 
   .m-onebot__actions {
@@ -64,14 +66,6 @@
     clip: rect(0 0 0 0);
   }
 
-  .m-onebot__status {
-    gap: var(--space-1);
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
   .m-onebot__dot {
     width: var(--space-2);
     height: var(--space-2);
@@ -82,11 +76,5 @@
 
   .m-onebot__dot[data-running] {
     background: var(--success-fg);
-  }
-
-  @container (width >= 420px) {
-    .m-onebot__grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 }

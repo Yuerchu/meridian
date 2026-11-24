@@ -1,20 +1,17 @@
 @layer components {
-  .m-remote__stack,
   .m-remote__status {
     display: flex;
     flex-direction: column;
     gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
   }
 
-  .m-remote__label,
   .m-remote__hint,
   .m-remote__status-title {
     margin: 0;
-  }
-
-  .m-remote__label {
-    color: var(--text-secondary);
-    font: var(--text-small-medium);
   }
 
   .m-remote__hint {
@@ -22,16 +19,18 @@
     font: var(--text-caption);
   }
 
-  .m-remote__endpoint {
-    container-type: inline-size;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-3);
+  .m-remote__group-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-remote__group-rows + .m-remote__group-rows,
+  .m-remote__group-rows > .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
   }
 
   .m-remote__token-row,
   .m-remote__actions,
-  .m-remote__address,
   .m-remote__status-title {
     display: flex;
     align-items: center;
@@ -40,7 +39,12 @@
 
   .m-remote__token-row {
     flex-wrap: wrap;
-    align-items: flex-end;
+    width: 100%;
+  }
+
+  .m-remote__token-field {
+    flex: 1 1 12rem;
+    min-width: 0;
   }
 
   .m-remote__actions {
@@ -54,13 +58,6 @@
     height: 1px;
     overflow: hidden;
     clip: rect(0 0 0 0);
-  }
-
-  .m-remote__status {
-    padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
   }
 
   .m-remote__status-title {
@@ -80,21 +77,8 @@
     background: var(--success-fg);
   }
 
-  .m-remote__addresses {
-    overflow: hidden;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-panel);
-    background: var(--surface);
-  }
-
-  .m-remote__address {
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
-    border-block-end: 1px solid var(--border);
-  }
-
-  .m-remote__address:last-child {
-    border-block-end: none;
+  .m-remote__empty-row {
+    padding: var(--space-3) var(--space-4);
   }
 
   .m-remote__address-text {
@@ -102,11 +86,5 @@
     overflow-wrap: anywhere;
     font-family: var(--font-mono);
     font-variant-ligatures: none;
-  }
-
-  @container (width >= 420px) {
-    .m-remote__endpoint {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
   }
 }
