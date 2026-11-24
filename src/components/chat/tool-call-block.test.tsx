@@ -611,6 +611,26 @@ describe('web search sources', () => {
     expect(event.defaultPrevented).toBe(true)
     expect(shellOpen).toHaveBeenCalledWith('https://example.com/docs')
   })
+
+  it('parses hosted WebSearch Links into structured sources plus summary', async () => {
+    render(
+      <ChatToolPresentationProvider value="bubble">
+        <ToolCallBlock
+          data={{
+            ...toolCall('WebSearch', { query: 'react aria' }, 'completed'),
+            result:
+              'Web search results for query: "react aria"\n\nLinks: [{"title":"Disclosure – React Aria","url":"https://react-spectrum.adobe.com/react-aria/Disclosure.html"}]\n\nAccessible disclosure primitives.',
+          }}
+        />
+      </ChatToolPresentationProvider>,
+    )
+    const trigger = screen.getByRole('button', { name: /react aria/ })
+    expect(trigger).toHaveTextContent(/1 source/)
+    await userEvent.click(trigger)
+    expect(screen.getByText('Disclosure – React Aria')).toBeInTheDocument()
+    expect(screen.getByText('react-spectrum.adobe.com')).toBeInTheDocument()
+    expect(screen.getByText('Accessible disclosure primitives.')).toBeInTheDocument()
+  })
 })
 
 /**
@@ -696,16 +716,24 @@ describe('the summary lines beside the tool name', () => {
   })
 
   /**
-   * The bare id, not a guess. Anything from MCP or the custom registry has a
-   * schema this cannot know, and `toolLabel` deliberately hands back the key it
-   * was given when no translation exists.
+   * Third-party MCP tools keep no guessed identifying arg, while splitting the
+   * `mcp__<server>__<action>` prefix into a readable server badge + action name.
    */
-  it('says nothing about a tool it has no schema for', () => {
+  it('formats an MCP tool name without guessing unknown schema arguments', () => {
     const { container } = render(
       <ToolCallBlock data={toolCall('mcp__linear__list_issues', { teamId: 'abc' }, 'completed')} />,
     )
     expect(summary(container)).toBeNull()
-    expect(screen.getByText('mcp__linear__list_issues')).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="tool-mcp-server"]')).toHaveTextContent('linear')
+    expect(container.querySelector('[data-slot="tool-mcp-action"]')).toHaveTextContent('list_issues')
+  })
+
+  it.each([
+    ['delete_file', { path: 'src/old.ts' }, 'src/old.ts'],
+    ['move_file', { from: 'src/a.ts', to: 'src/b.ts' }, 'src/a.ts'],
+  ])('names the target file for %s on the trigger', (name, args, expected) => {
+    const { container } = render(<ToolCallBlock data={toolCall(name, args, 'completed')} />)
+    expect(summary(container)).toBe(expected)
   })
 
   it('translates a hosted tool rather than showing its bare id', () => {
@@ -1144,7 +1172,7 @@ describe('as bubble blocks', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Recent history')
   })
 
-  it('asks a question from a panel, open while it waits', () => {
+  it('renders a pending ask_user as a standalone prompt without a collapsible bubble header', () => {
     const { container } = inBubble(
       <ToolCallBlock
         data={toolCall('ask_user', {
@@ -1152,12 +1180,11 @@ describe('as bubble blocks', () => {
         })}
       />,
     )
-    const key = keyOf(container)
-    expect(key).toHaveTextContent('Question')
-    expectExpanded(key)
-    const panel = document.getElementById(key.getAttribute('aria-controls')!)!
-    expect(within(panel).getByText('Which one?')).toBeVisible()
-    expect(within(panel).getByRole('button', { name: /Submit/ })).toBeVisible()
+    const prompt = container.querySelector<HTMLElement>('[data-slot="ask-user-prompt"]')!
+    expect(prompt).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="chat-tool-trigger"]')).toBeNull()
+    expect(within(prompt).getByText('Which one?')).toBeVisible()
+    expect(within(prompt).getByRole('button', { name: /Submit/ })).toBeVisible()
   })
 
   it('makes the plan review a key that goes to the review', async () => {

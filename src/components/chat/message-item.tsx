@@ -3,10 +3,13 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bin,
+  BookOpen,
+  Brain,
   Check,
   Copy,
   CursorText,
   File,
+  Info,
   Mic,
   Pen,
   RefreshCw,
@@ -562,6 +565,21 @@ const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'ar
   commands: SquareTerminal,
   files: File,
   searches: Search,
+  skills: BookOpen,
+  memory: Brain,
+  context: Info,
+}
+
+function singleSkillName(fold: FoldedCalls): string | null {
+  if (fold.kind !== 'skills' || fold.count !== 1) return null
+  try {
+    const args = JSON.parse(fold.tools[0].arguments) as { skill_name?: unknown; skill?: unknown }
+    const name =
+      typeof args.skill_name === 'string' ? args.skill_name : typeof args.skill === 'string' ? args.skill : ''
+    return name.trim() || null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -625,10 +643,14 @@ function FoldBadges({
     <div data-slot="bubble-fold-badges" className="m-message-item__fold-badges">
       {folded.map((fold) => {
         const Icon = FOLD_ICONS[fold.kind]
+        const skillName = singleSkillName(fold)
+        const text = skillName
+          ? t('chat.tool.fold.skillSingle', { name: skillName })
+          : t(`chat.tool.fold.${fold.kind}`, { count: fold.count })
         return (
           <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onPress={() => toggle(fold.key)}>
             <Icon aria-hidden className="m-message-item__fold-icon" />
-            {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
+            {text}
           </BubbleFoldBadge>
         )
       })}

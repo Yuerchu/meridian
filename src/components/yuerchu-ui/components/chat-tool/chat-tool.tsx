@@ -41,6 +41,7 @@ function joinClass(base: string, extra?: string): string {
 }
 
 const ChatToolStateContext = createContext<ChatToolState>("input-available");
+const InsideChatToolFooterContext = createContext(false);
 
 /** 当前工具调用形态上下文，默认为 `"card"`。 */
 export const ChatToolPresentationContext = createContext<ChatToolPresentation>("card");
@@ -438,6 +439,7 @@ export function ChatToolPanelFooter({ className, children, ref, ...props }: Chat
   const footer = useContext(ChatToolFooterContext);
   const inFooter = presentation === "bubble" && footer !== undefined;
   useFooterOccupancy(inFooter ? footer : undefined);
+  const wrapped = <InsideChatToolFooterContext.Provider value={true}>{children}</InsideChatToolFooterContext.Provider>;
   if (inFooter) {
     return createPortal(
       <div
@@ -446,7 +448,7 @@ export function ChatToolPanelFooter({ className, children, ref, ...props }: Chat
         className={joinClass("ui-chat-tool__panel-footer-item", className)}
         {...props}
       >
-        {children}
+        {wrapped}
       </div>,
       footer.node,
     );
@@ -459,7 +461,7 @@ export function ChatToolPanelFooter({ className, children, ref, ...props }: Chat
       className={joinClass("ui-chat-tool__panel-footer", className)}
       {...props}
     >
-      {children}
+      {wrapped}
     </div>
   );
 }
@@ -479,6 +481,8 @@ export function ChatToolError({ className, ref, ...props }: ChatToolErrorProps) 
 }
 
 export interface ChatToolApprovalProps extends ComponentProps<"div"> {
+  /** 显示在审批操作按钮上方的说明或风险提示（例如沙箱提权说明）。 */
+  notice?: ReactNode;
   /** 审批操作按钮（如拒绝、允许）。 */
   children?: ReactNode;
   /** 自定义类名。 */
@@ -488,10 +492,11 @@ export interface ChatToolApprovalProps extends ComponentProps<"div"> {
 }
 
 /** 工具调用的审批操作行；`card` 形态右对齐，`bubble` 形态均分整行并自动置底。 */
-export function ChatToolApproval({ className, children, ref, ...props }: ChatToolApprovalProps) {
+export function ChatToolApproval({ notice, className, children, ref, ...props }: ChatToolApprovalProps) {
   const presentation = useContext(ChatToolPresentationContext);
   const footer = useContext(ChatToolFooterContext);
-  const inFooter = presentation === "bubble" && footer !== undefined;
+  const insideFooter = useContext(InsideChatToolFooterContext);
+  const inFooter = presentation === "bubble" && footer !== undefined && !insideFooter;
   useFooterOccupancy(inFooter ? footer : undefined);
   const row = (
     <div
@@ -501,6 +506,11 @@ export function ChatToolApproval({ className, children, ref, ...props }: ChatToo
       className={joinClass("ui-chat-tool__approval", className)}
       {...props}
     >
+      {notice ? (
+        <div data-slot="chat-tool-approval-notice" className="ui-chat-tool__approval-notice">
+          {notice}
+        </div>
+      ) : null}
       <div
         data-slot="chat-tool-approval-actions"
         data-presentation={presentation}
@@ -649,6 +659,11 @@ function InlineList({ items }: { items: string[] }) {
   );
 }
 
+function isCompactTableValue(value: unknown): boolean {
+  if (value === null || value === undefined || typeof value === "number" || typeof value === "boolean") return true;
+  return typeof value === "string" && value.length <= 16;
+}
+
 function ValueTable({
   items,
   keys,
@@ -675,8 +690,14 @@ function ValueTable({
             <tr key={i} data-slot="tool-value-table-row" className="ui-tool-value__table-row">
               {keys.map((key) => {
                 const v = item[key];
+                const compact = isCompactTableValue(v);
                 return (
-                  <td key={key} data-slot="tool-value-table-cell" className="ui-tool-value__table-cell">
+                  <td
+                    key={key}
+                    data-slot="tool-value-table-cell"
+                    data-compact={compact || undefined}
+                    className="ui-tool-value__table-cell"
+                  >
                     {Array.isArray(v) ? (
                       <InlineList items={v as string[]} />
                     ) : (

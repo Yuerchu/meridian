@@ -174,7 +174,9 @@ export function ToolDiffView({
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? lines : lines.slice(0, maxLines);
   const hidden = lines.length - shown.length;
-  const numbered = lines.some((line) => line.oldNo !== undefined || line.newNo !== undefined);
+  const hasOldNo = lines.some((line) => line.oldNo !== undefined);
+  const hasNewNo = lines.some((line) => line.newNo !== undefined);
+  const numbered = hasOldNo || hasNewNo;
   const added = lines.filter((line) => line.kind === "add").length;
   const removed = lines.filter((line) => line.kind === "remove").length;
 
@@ -228,12 +230,16 @@ export function ToolDiffView({
             >
               {numbered ? (
                 <span aria-hidden="true" data-slot="file-diff-gutter" className="ui-tool-diff__gutter">
-                  <span data-slot="file-diff-old-no" className="ui-tool-diff__old-no">
-                    {line.oldNo ?? ""}
-                  </span>
-                  <span data-slot="file-diff-new-no" className="ui-tool-diff__new-no">
-                    {line.newNo ?? ""}
-                  </span>
+                  {hasOldNo ? (
+                    <span data-slot="file-diff-old-no" className="ui-tool-diff__old-no">
+                      {line.oldNo ?? ""}
+                    </span>
+                  ) : null}
+                  {hasNewNo ? (
+                    <span data-slot="file-diff-new-no" className="ui-tool-diff__new-no">
+                      {line.newNo ?? ""}
+                    </span>
+                  ) : null}
                 </span>
               ) : null}
               <span data-slot="file-diff-sign" className="ui-tool-diff__sign">
@@ -570,13 +576,20 @@ export interface ToolWebSource {
   snippet?: string;
   /** 可选来源域名或站点名称。 */
   domain?: string;
+  /** 可选站点图标地址。 */
+  favicon?: string;
 }
 
 export interface ToolWebSourcesProps {
   /** 网页检索结果列表。 */
   sources: readonly ToolWebSource[];
-  /** 点击外部链接时的自定义打开回调（如桌面端调用系统浏览器）；未传入时以新标签页打开。 */
+  /** 点击或中键点击外部链接时的自定义打开回调（如桌面端调用系统浏览器）；未传入时以新标签页打开。 */
   onOpen?: (url: string) => void;
+  /**
+   * 当提供 `onOpen` 时写入链接 `href` 的占位锚点（避免 WebView 直接在应用内跳转）。
+   * @default "#external"
+   */
+  externalHref?: string;
   /** 自定义类名。 */
   className?: string;
 }
@@ -591,14 +604,17 @@ function hostOf(url?: string): string | null {
 }
 
 /** 联网搜索工具的来源引用列表视图。 */
-export function ToolWebSources({ sources, onOpen, className }: ToolWebSourcesProps) {
+export function ToolWebSources({ sources, onOpen, externalHref = "#external", className }: ToolWebSourcesProps) {
   return (
     <div data-slot="web-sources" className={joinClass("ui-tool-web", className)}>
       {sources.map((src, i) => {
-        const host = src.domain ?? hostOf(src.url);
+        const host = src.domain || hostOf(src.url);
         const content = (
           <>
             <span className="ui-tool-web__head">
+              {src.favicon ? (
+                <img data-slot="web-source-favicon" src={src.favicon} alt="" className="ui-tool-web__favicon" />
+              ) : null}
               <span className="ui-tool-web__title">{src.title}</span>
               {src.url ? <ArrowUpRightIcon className="ui-tool-web__arrow" /> : null}
             </span>
@@ -610,21 +626,24 @@ export function ToolWebSources({ sources, onOpen, className }: ToolWebSourcesPro
           return (
             <AriaLink
               key={`${src.url}-${i}`}
-              href={src.url}
-              target="_blank"
+              href={onOpen ? externalHref : src.url}
+              target={onOpen ? undefined : "_blank"}
               rel="noopener noreferrer"
-              onPress={
-                onOpen
-                  ? (event) => {
-                      event.continuePropagation();
-                      onOpen(src.url!);
-                    }
-                  : undefined
-              }
               onClick={
                 onOpen
                   ? (event) => {
                       event.preventDefault();
+                      onOpen(src.url!);
+                    }
+                  : undefined
+              }
+              onAuxClick={
+                onOpen
+                  ? (event) => {
+                      if (event.button === 1) {
+                        event.preventDefault();
+                        onOpen(src.url!);
+                      }
                     }
                   : undefined
               }

@@ -145,9 +145,13 @@
 
   .ui-tool-diff__old-no,
   .ui-tool-diff__new-no {
-    width: var(--space-10);
-    padding-inline-end: var(--space-1);
+    min-width: var(--space-6);
+    padding-inline: var(--space-1);
     text-align: end;
+  }
+
+  .ui-tool-diff__gutter > :first-child {
+    padding-inline-start: var(--space-2);
   }
 
   .ui-tool-diff__sign {
@@ -411,6 +415,14 @@
     align-items: center;
     gap: var(--space-1);
     font: var(--text-small-medium);
+  }
+
+  .ui-tool-web__favicon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+    border-radius: calc(var(--radius-item) / 3);
+    object-fit: contain;
   }
 
   .ui-tool-web__title {

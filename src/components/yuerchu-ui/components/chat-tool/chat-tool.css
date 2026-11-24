@@ -485,6 +485,19 @@
     vertical-align: top;
   }
 
+  .ui-tool-value__table-cell[data-compact] {
+    white-space: nowrap;
+  }
+
+  .ui-tool-value__table-cell:not([data-compact]) {
+    min-width: 12ch;
+    max-width: 36ch;
+  }
+
+  .ui-tool-value__table-cell .ui-tool-value__string {
+    overflow-wrap: break-word;
+  }
+
   .ui-tool-value__chips {
     display: inline-flex;
     flex-wrap: wrap;

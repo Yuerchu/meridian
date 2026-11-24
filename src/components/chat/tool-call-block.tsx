@@ -30,13 +30,16 @@ import { ShikiCode } from './shiki-code'
 import { NumberedCode } from './numbered-code'
 import { SubAgentGroup } from './sub-agent-group'
 import { PlanReviewEntryBlock } from './plan-review-entry'
-import { DiffStats, FileDiffCard, FileIcon } from './file-diff-card'
+import { FileDiffCard, FileIcon } from './file-diff-card'
 import { pathExtension } from '@/lib/paths'
 import {
   PathLabel,
   ToolCommandView,
+  ToolDiffStats,
   ToolFileList,
   ToolSearchResult,
+  ToolWebSources,
+  type ToolWebSource,
 } from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import { Hint } from '@/components/ui/hint'
 import {
@@ -62,7 +65,6 @@ import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Radio, RadioGroup } from '@/components/yuerchu-ui/components/radio-group/radio-group'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { HoverCard } from '@/components/yuerchu-ui/components/hover-card/hover-card'
 import {
   ChatTool,
   ChatToolApproval,
@@ -91,7 +93,7 @@ import { rendererFor } from '@/lib/tool-renderers'
 import { canonicalToolName, toolUi } from '@/lib/tool-catalog'
 import { parsePartialObject } from '@/lib/partial-json'
 
-import { openExternally } from '@/lib/external-link'
+import { openExternalUrl } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { MediaResult } from './media-result'
 import { CopyButton } from '@/components/ui/copy-button'
@@ -162,6 +164,23 @@ function askQuestionsFrom(json: string): AskQuestion[] {
  * id rather than disappearing. A result that is not such an object (an older
  * row, "User did not respond.") is shown as the text it is.
  */
+function summarizeAskAnswers(result: string): string | null {
+  try {
+    const parsed: unknown = JSON.parse(result)
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      const text = result.trim()
+      return text === '' ? null : text
+    }
+    const values = Object.values(parsed as Record<string, unknown>)
+      .map((v) => (typeof v === 'string' ? v.split('\n')[0].trim() : ''))
+      .filter((v) => v !== '' && v !== '(skipped)' && v !== '(no answer)')
+    return values.length > 0 ? values.join(' · ') : null
+  } catch {
+    const text = result.trim()
+    return text === '' ? null : text
+  }
+}
+
 function AskAnswers({
   result,
   questions,
@@ -312,7 +331,7 @@ function QuestionBlock({
           )}
         </div>
         {!q.required && (
-          <Button icon={<SkipForward />} variant="secondary" size="sm" onPress={() => onSkip(q.id)}>
+          <Button icon={<SkipForward />} variant="ghost" size="sm" onPress={() => onSkip(q.id)}>
             {t('chat.tool.skipQuestion')}
           </Button>
         )}
@@ -328,9 +347,15 @@ function QuestionBlock({
             name={q.id}
             value={Array.isArray(value.selected) ? value.selected : []}
             onChange={(selected) => onChange(q.id, { ...value, selected })}
+            className="m-tool-call-block__ask-options"
           >
             {q.options!.map((opt) => (
-              <Checkbox key={opt.label} value={opt.label} variant="card" description={opt.description}>
+              <Checkbox
+                key={opt.label}
+                value={opt.label}
+                description={opt.description}
+                className="m-tool-call-block__ask-option"
+              >
                 {opt.label}
               </Checkbox>
             ))}
@@ -362,9 +387,15 @@ function QuestionBlock({
               name={q.id}
               value={typeof value.selected === 'string' ? value.selected : ''}
               onChange={(selected) => onChange(q.id, { ...value, selected })}
+              className="m-tool-call-block__ask-options"
             >
               {q.options!.map((opt, index) => (
-                <Radio key={opt.label} value={opt.label} variant="card" description={opt.description}>
+                <Radio
+                  key={opt.label}
+                  value={opt.label}
+                  description={opt.description}
+                  className="m-tool-call-block__ask-option"
+                >
                   {opt.label}
                   {index < 9 && <span aria-hidden="true"> ({index + 1})</span>}
                 </Radio>
@@ -378,19 +409,11 @@ function QuestionBlock({
           answer with it: `formatAnswer` folds a note into the selection, so a
           note beside a valid choice is what makes the pair unplaceable. */}
       {acceptsText(q) && (
-        // A row like the options, where Pro has its "Other" row. Only the look
-        // is borrowed: a note here is added to the choice, not a choice of its
-        // own, which is what `formatAnswer` sends.
         <div
           data-slot="question-notes"
           data-has-options={hasOptions || undefined}
           className="m-tool-call-block__question-notes"
         >
-          {hasOptions && (
-            <span data-slot="question-notes-label" className="m-tool-call-block__question-notes-label">
-              {t('chat.tool.other')}
-            </span>
-          )}
           <TextField
             data-slot="question-answer"
             name={`${q.id}-notes`}
@@ -547,16 +570,18 @@ export function AskUserBlock({
   // and by then the card has already reported success and retired the queue
   // entry, so every other answer is lost without a word.
   const unanswered = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
-  const inCard = !chromeless && presentation === 'card'
+  const standalonePending = !chromeless && data.status === 'pending'
+  const inCard = !chromeless && !standalonePending && presentation === 'card'
   // In a bubble the panel is the lower half of the block and carries no
   // padding of its own — each section brings its inset, as ChatToolPanelHeader
   // and ChatToolPanelFooter do. Left empty, the form sat flush against the
-  // block's edge. Chromeless is inside somebody else's padding already.
-  const section = chromeless
-    ? undefined
-    : inCard
-      ? 'm-tool-call-block__card-section'
-      : 'm-tool-call-block__bubble-section'
+  // block's edge. Chromeless and standalonePending bring their own container padding.
+  const section =
+    chromeless || standalonePending
+      ? undefined
+      : inCard
+        ? 'm-tool-call-block__card-section'
+        : 'm-tool-call-block__bubble-section'
   const body = (
     <>
       {data.status === 'pending' && (
@@ -632,10 +657,29 @@ export function AskUserBlock({
     )
   }
 
+  // An active question is an interactive form, not a collapsible tool log or
+  // chat bubble — render it as a single quiet, border-light prompt surface.
+  if (standalonePending) {
+    return (
+      <div data-slot="ask-user-prompt" data-status={data.status} className="m-tool-call-block__ask-prompt">
+        {body}
+      </div>
+    )
+  }
+
   if (presentation === 'bubble') {
+    const answerSummary = data.status === 'completed' && data.result ? summarizeAskAnswers(data.result) : null
     return (
       <ChatTool state={mapChatToolState(data.status)} {...expansion}>
-        <ChatToolTrigger>
+        <ChatToolTrigger
+          endContent={
+            answerSummary ? (
+              <span data-slot="ask-user-summary" className="m-tool-call-block__trigger-meta">
+                {answerSummary}
+              </span>
+            ) : null
+          }
+        >
           <CircleQuestion aria-hidden className="m-tool-call-block__icon-sm" />
           <span data-slot="ask-user-title" className="m-tool-call-block__trigger-title">
             {t('chat.tool.askUser')}
@@ -1198,49 +1242,48 @@ export function PendingApproval({
   }
 
   if (ui === 'idle') {
+    const escalationNotice = isEscalation ? (
+      <div data-slot="approval-escalation" className="m-tool-call-block__notice-line">
+        <TriangleAlert data-tone="warning" className="m-tool-call-block__icon-sm" />
+        <span data-slot="approval-escalation-text">
+          {t(escalationPromptKey(retry.kind))}
+          {/* What went wrong, verbatim: the card is asking the user to
+              decide without the setting, and this is why it has to. */}
+          {retry.kind === 'settings_unreadable' && (
+            <span data-slot="approval-escalation-error" className="m-tool-call-block__escalation-error">
+              {retry.reason}
+            </span>
+          )}
+        </span>
+      </div>
+    ) : undefined
+
     return (
-      <>
-        {isEscalation && (
-          <div data-slot="approval-escalation" className="m-tool-call-block__notice-line">
-            <TriangleAlert data-tone="warning" className="m-tool-call-block__icon-sm" />
-            <span data-slot="approval-escalation-text">
-              {t(escalationPromptKey(retry.kind))}
-              {/* What went wrong, verbatim: the card is asking the user to
-                  decide without the setting, and this is why it has to. */}
-              {retry.kind === 'settings_unreadable' && (
-                <span data-slot="approval-escalation-error" className="m-tool-call-block__escalation-error">
-                  {retry.reason}
-                </span>
-              )}
-            </span>
-          </div>
-        )}
-        <ChatToolApproval>
-          {/* The label in its own span, with the chord beside it as a hint the
-              accessible name leaves out: `aria-keyshortcuts` is what a screen
-              reader announces, and `aria-hidden` keeps the hint from being read
-              as part of the button's name. */}
-          <Button
-            icon={<X />}
-            variant="destructive"
-            aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
-            onPress={() => setUi('feedback')}
-          >
-            <span data-slot="approval-deny-label">{t('chat.tool.deny')}</span>
-            <HotkeyHint combo={DENY_HOTKEY} />
-          </Button>
-          <Button
-            icon={<Check />}
-            aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
-            onPress={() => decide(() => api.approveToolCall(approvalId))}
-          >
-            <span data-slot="approval-allow-label">
-              {retry ? t(escalationAllowKey(retry.kind)) : t('chat.tool.allow')}
-            </span>
-            <HotkeyHint combo={APPROVE_HOTKEY} />
-          </Button>
-        </ChatToolApproval>
-      </>
+      <ChatToolApproval notice={escalationNotice}>
+        {/* The label in its own span, with the chord beside it as a hint the
+            accessible name leaves out: `aria-keyshortcuts` is what a screen
+            reader announces, and `aria-hidden` keeps the hint from being read
+            as part of the button's name. */}
+        <Button
+          icon={<X />}
+          variant="destructive"
+          aria-keyshortcuts={ariaHotkey(DENY_HOTKEY)}
+          onPress={() => setUi('feedback')}
+        >
+          <span data-slot="approval-deny-label">{t('chat.tool.deny')}</span>
+          <HotkeyHint combo={DENY_HOTKEY} />
+        </Button>
+        <Button
+          icon={<Check />}
+          aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
+          onPress={() => decide(() => api.approveToolCall(approvalId))}
+        >
+          <span data-slot="approval-allow-label">
+            {retry ? t(escalationAllowKey(retry.kind)) : t('chat.tool.allow')}
+          </span>
+          <HotkeyHint combo={APPROVE_HOTKEY} />
+        </Button>
+      </ChatToolApproval>
     )
   }
 
@@ -1273,21 +1316,57 @@ export function PendingApproval({
   )
 }
 
-interface WebSearchSource {
-  title: string
-  url: string
-  content: string
-  favicon?: string
+interface RawWebSearchSource {
+  title?: string
+  url?: string
+  content?: string
+  snippet?: string
+  favicon?: string | null
   site_name?: string
 }
 
+interface ParsedWebSearch {
+  sources: ToolWebSource[]
+  summary?: string
+}
+
+function toToolWebSource(raw: RawWebSearchSource): ToolWebSource {
+  const title = raw.title?.trim() || raw.site_name?.trim() || raw.url?.trim() || ''
+  return {
+    title,
+    url: raw.url?.trim() || undefined,
+    domain: raw.site_name?.trim() || undefined,
+    snippet: (raw.content ?? raw.snippet)?.trim() || undefined,
+    favicon: raw.favicon?.trim() || undefined,
+  }
+}
+
+const HOSTED_LINKS_RE = /^Links:\s*(\[[^\n]*\])\s*$/m
+const HOSTED_HEADER_RE = /^Web search results for query:[^\n]*\n*/
+
 // null means the result is not valid tool output (i.e. a raw error string).
-function parseWebSearchResult(result: string): WebSearchSource[] | null {
+function parseWebSearchResult(result: string): ParsedWebSearch | null {
   try {
     const data = JSON.parse(result)
-    if (data && Array.isArray(data.sources)) return data.sources
+    if (data && Array.isArray(data.sources)) {
+      return { sources: (data.sources as RawWebSearchSource[]).map(toToolWebSource) }
+    }
   } catch {
     /* not JSON */
+  }
+  // Hosted Claude Code `WebSearch` returns prose carrying a `Links: [...]` JSON array line.
+  const linksMatch = HOSTED_LINKS_RE.exec(result)
+  if (linksMatch) {
+    try {
+      const parsed = JSON.parse(linksMatch[1])
+      if (Array.isArray(parsed)) {
+        const sources = (parsed as RawWebSearchSource[]).map(toToolWebSource)
+        const summary = result.replace(HOSTED_LINKS_RE, '').replace(HOSTED_HEADER_RE, '').trim()
+        return { sources, summary: summary || undefined }
+      }
+    } catch {
+      /* malformed Links array */
+    }
   }
   return null
 }
@@ -1296,66 +1375,6 @@ function providerWebToolTitle(t: ReturnType<typeof useTranslation>['t'], toolNam
   if (toolName === 'google_search') return t('chat.tool.name.google_search')
   if (toolName === 'url_context') return t('chat.tool.name.url_context')
   return t('chat.tool.name.web_search')
-}
-
-function SourceFavicon({ url }: { url?: string }) {
-  return url ? (
-    <img data-slot="chat-source-icon" src={url} alt="" className="m-tool-call-block__source-favicon" />
-  ) : (
-    <span data-slot="chat-source-icon" data-fallback="" aria-hidden className="m-tool-call-block__source-favicon" />
-  )
-}
-
-function WebSearchSourceItem({ src }: { src: WebSearchSource }) {
-  const site = src.site_name || src.title
-  return (
-    <div data-slot="chat-source">
-      <HoverCard
-        placement="top"
-        openDelay={400}
-        closeDelay={150}
-        content={
-          <div data-slot="chat-source-preview" className="m-tool-call-block__source-preview">
-            <div className="m-tool-call-block__source-preview-head">
-              <SourceFavicon url={src.favicon ?? undefined} />
-              <span className="m-tool-call-block__source-preview-site" onPointerEnter={titleIfTruncated}>
-                {site}
-              </span>
-            </div>
-            <p data-slot="chat-source-preview-title" className="m-tool-call-block__source-preview-title">
-              {src.title}
-            </p>
-            {src.url && (
-              <span
-                data-slot="chat-source-preview-url"
-                onPointerEnter={titleIfTruncated}
-                className="m-tool-call-block__source-preview-url"
-              >
-                {src.url}
-              </span>
-            )}
-          </div>
-        }
-      >
-        <a
-          data-slot="chat-source-trigger"
-          href="#meridian-external"
-          rel="noreferrer noopener"
-          className="m-tool-call-block__source-link"
-          onAuxClick={(e) => {
-            e.preventDefault()
-            if (e.button === 1) openExternally(src.url, e)
-          }}
-          onClick={(e) => openExternally(src.url, e)}
-        >
-          <SourceFavicon url={src.favicon ?? undefined} />
-          <span data-slot="chat-source-title" className="m-tool-call-block__source-title">
-            {site}
-          </span>
-        </a>
-      </HoverCard>
-    </div>
-  )
 }
 
 function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
@@ -1374,7 +1393,12 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
     }
   }, [data.arguments])
 
-  const sources = useMemo(() => (data.result ? parseWebSearchResult(data.result) : null), [data.result])
+  const parsed = useMemo(() => (data.result ? parseWebSearchResult(data.result) : null), [data.result])
+  const sources = parsed?.sources ?? null
+  const summary = parsed?.summary
+  const openSource = useCallback((url: string) => {
+    void openExternalUrl(url)
+  }, [])
   const presentation = useContext(ChatToolPresentationContext)
   const settled =
     data.status === 'completed' || data.status === 'denied' || data.status === 'error' || data.status === 'orphaned'
@@ -1442,13 +1466,14 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
             </div>
           )}
           {sources && sources.length > 0 && (
-            <ul data-slot="web-search-sources" className="m-tool-call-block__sources-bubble">
-              {sources.map((src, i) => (
-                <li key={i} data-slot="web-search-source">
-                  <WebSearchSourceItem src={src} />
-                </li>
-              ))}
-            </ul>
+            <div data-slot="web-search-sources">
+              <ToolWebSources sources={sources} onOpen={openSource} externalHref="#meridian-external" />
+            </div>
+          )}
+          {summary && (
+            <div data-slot="web-search-summary" className="m-tool-call-block__markdown-result">
+              <CollapsibleMarkdown content={summary} blockId={`${data.call_id}:summary`} />
+            </div>
           )}
         </ChatToolContent>
       </ChatTool>
@@ -1587,9 +1612,12 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
       </AriaButton>
       <DisclosurePanel data-slot="chat-sources-content" className="m-tool-call-block__sources-content">
         <div data-slot="chat-sources-list" className="m-tool-call-block__sources-list">
-          {sources.map((src, i) => (
-            <WebSearchSourceItem key={i} src={src} />
-          ))}
+          <ToolWebSources sources={sources} onOpen={openSource} externalHref="#meridian-external" />
+          {summary && (
+            <div data-slot="web-search-summary" className="m-tool-call-block__markdown-result">
+              <CollapsibleMarkdown content={summary} blockId={`${data.call_id}:summary`} />
+            </div>
+          )}
         </div>
       </DisclosurePanel>
     </Disclosure>
@@ -1745,7 +1773,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
     data.status === 'pending' || data.answer_error !== undefined,
   )
   const inCard = presentation === 'card'
-  const section = inCard ? 'm-tool-call-block__card-section' : undefined
+  const section = inCard ? 'm-tool-call-block__card-section' : 'm-tool-call-block__bubble-section'
   const divider = inCard ? 'm-tool-call-block__card-divider' : undefined
 
   const body = (
@@ -1754,9 +1782,11 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <MarkdownContent content={plan} />
       </div>
 
-      {data.status === 'pending' && approvalId && ui !== 'sent' && (
-        <div data-slot="exit-plan-actions" className={joinClasses(divider, section)}>
-          {ui === 'feedback' ? (
+      {data.status === 'pending' &&
+        approvalId &&
+        ui !== 'sent' &&
+        (ui === 'feedback' ? (
+          <div data-slot="exit-plan-actions" className={joinClasses(divider, section)}>
             <div data-slot="exit-plan-feedback" className="m-tool-call-block__feedback-box">
               <TextField
                 name="plan-feedback"
@@ -1780,7 +1810,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 </Button>
               </ChatToolApproval>
             </div>
-          ) : (
+          </div>
+        ) : inCard ? (
+          <div data-slot="exit-plan-actions" className={joinClasses(divider, section)}>
             <ChatToolApproval>
               <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
                 {t('chat.plan.revise')}
@@ -1789,9 +1821,17 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
-          )}
-        </div>
-      )}
+          </div>
+        ) : (
+          <ChatToolApproval>
+            <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
+              {t('chat.plan.revise')}
+            </Button>
+            <Button icon={<Check />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              {t('chat.plan.approve')}
+            </Button>
+          </ChatToolApproval>
+        ))}
 
       {data.status === 'pending' && ui === 'sent' && (
         <div
@@ -1893,6 +1933,41 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
  * how a tool with no translation — anything from MCP or the custom registry — is
  * told apart and shown under its bare id.
  */
+/** Splits a third-party `mcp__<server>__<action>` tool id into readable parts; bridged Meridian tools return null. */
+function parseMcpToolName(toolName: string): { server: string; action: string } | null {
+  const canonical = canonicalToolName(toolName)
+  if (!canonical.startsWith('mcp__')) return null
+  const rest = canonical.slice('mcp__'.length)
+  const sep = rest.indexOf('__')
+  if (sep <= 0 || sep + 2 >= rest.length) return null
+  return { server: rest.slice(0, sep), action: rest.slice(sep + 2) }
+}
+
+/** Concise trailing count for collapsed/expanded search and file listing tools. */
+function toolResultSummary(t: TFunction, toolName: string, body: string): string | null {
+  switch (rendererFor(toolName).result) {
+    case 'search': {
+      const { body: clean } = splitListingFootnote(body)
+      if (clean.trim() === NO_SEARCH_MATCHES) return t('chat.tool.panel.noMatches')
+      const matches = parseSearchMatches(clean)
+      return matches ? t('chat.tool.summary.matches', { count: matches.length }) : null
+    }
+    case 'glob': {
+      const { paths, empty } = parseGlobResult(splitListingFootnote(body).body)
+      return empty ? t('chat.tool.panel.noGlobMatches') : t('chat.tool.summary.files', { count: paths.length })
+    }
+    case 'directory': {
+      const entries = parseDirectoryListing(body)
+      if (entries === null) return null
+      return entries.length === 0
+        ? t('chat.tool.panel.emptyDirectory')
+        : t('chat.tool.summary.items', { count: entries.length })
+    }
+    default:
+      return null
+  }
+}
+
 export function toolLabel(t: TFunction, toolName: string): string {
   const key = `chat.tool.name.${canonicalToolName(toolName)}`
   const name = t(key)
@@ -2426,12 +2501,9 @@ export function ToolCallBlock({
   }
 
   const label = toolLabel(t, data.tool_name)
+  const mcp = parseMcpToolName(data.tool_name)
   const description = toolDescription(parsedArgs)
   const arg = identifyingArg(data.tool_name, parsedArgs)
-  const state = mapChatToolState(data.status)
-  // A key is half a row; a key waiting on a decision, or a card, shows the
-  // whole value. See `ToolArgsSummary`.
-  const compact = presentation === 'bubble' && state !== 'requires-action'
 
   const parsedOk = Object.keys(parsedArgs).length > 0
   const isCommand = arg?.kind === 'command'
@@ -2443,6 +2515,15 @@ export function ToolCallBlock({
   const hasBody = data.result !== undefined && data.status !== 'error' && data.status !== 'denied'
   const output = hasBody ? splitTruncation(data.result!) : null
   const command = isCommand && output !== null ? parseCommandOutput(output.body) : null
+  const commandFailed =
+    data.status === 'completed' &&
+    command !== null &&
+    ((command.exitCode !== null && command.exitCode !== 0) || command.timedOut)
+  const state: ChatToolState = commandFailed ? 'output-error' : mapChatToolState(data.status)
+  // A key is half a row; a key waiting on a decision, or a card, shows the
+  // whole value. See `ToolArgsSummary`.
+  const compact = presentation === 'bubble' && state !== 'requires-action'
+
   // A confirmation — "Successfully wrote 312 bytes to …", "Saved memory …" —
   // is one sentence about the outcome and goes in the footer as such. What a
   // reading tool returns is the reading, however short, and stays in the body;
@@ -2461,41 +2542,71 @@ export function ToolCallBlock({
 
   const singleDiff = numberedDiffs !== null && numberedDiffs.length === 1 ? numberedDiffs[0] : null
 
-  const end: React.ReactNode[] = []
-  if (singleDiff) end.push(<DiffStats key="stats" diff={singleDiff} />)
-  if (command) end.push(...commandChips(t, command))
+  // Lightweight outcome metadata lives on the trigger row so collapsed blocks
+  // communicate diff stats, non-zero exit codes, and match/file counts at a
+  // glance without duplicating them on a second row inside the panel.
+  const triggerEnd: React.ReactNode[] = []
+  if (numberedDiffs && numberedDiffs.length > 0) {
+    let added = 0
+    let removed = 0
+    for (const diff of numberedDiffs) {
+      for (const line of diff.lines) {
+        if (line.kind === 'add') added++
+        else if (line.kind === 'remove') removed++
+      }
+    }
+    if (added > 0 || removed > 0) {
+      triggerEnd.push(<ToolDiffStats key="stats" added={added} removed={removed} />)
+    }
+  }
+  if (command) triggerEnd.push(...commandChips(t, command))
+  if (data.status === 'completed' && output !== null) {
+    const summaryText = toolResultSummary(t, data.tool_name, output.body)
+    if (summaryText) {
+      triggerEnd.push(
+        <span key="summary" data-slot="tool-result-summary" className="m-tool-call-block__trigger-meta">
+          {summaryText}
+        </span>,
+      )
+    }
+  }
   if (output?.truncation) {
-    end.push(
+    triggerEnd.push(
       <Hint key="truncated" label={t('chat.tool.panel.truncatedTokens', { count: output.truncation.originalTokens })}>
         <Badge size="sm">{t('chat.tool.panel.truncated')}</Badge>
       </Hint>,
     )
   }
 
-  // The header names the call when the key above had to shorten it (compact),
-  // or when the header carries chips the key does not. A key that is already
-  // showing the whole value — `requires-action` — needs no repetition: the
-  // reader is looking at the same text an inch above, and saying it twice
-  // reads as two things rather than one.
-  const needsTitle = compact || end.length > 0
-  const titleArg = needsTitle ? panelTitleArg(data.tool_name, parsedArgs) : null
-  const title =
-    titleArg === null ? null : titleArg.kind === 'path' ? (
-      <PathLabel path={titleArg.value} wrap />
-    ) : titleArg.kind === 'command' ? (
-      (description ?? commandHeadline(titleArg.value).head)
-    ) : (
-      <span data-slot="tool-panel-title-text" className="m-tool-call-block__panel-title-mono">
-        {titleArg.value}
-      </span>
-    )
-  const headerDescription = compact && titleArg?.kind !== 'command' ? description : null
-  // The arguments the title and the body do not already show. A diff's
-  // content is the diff; a command's is the code block. Short ones go in the
-  // header's meta line, long ones — a prompt, a patch, a JSON blob — get a
-  // block each in the body.
+  // Only show a panel heading when it adds information the trigger did not
+  // already display in full:
+  // - Commands already show their full code in `<CommandCode>`, so only a
+  //   human `description` hidden in the bubble trigger's tooltip belongs here.
+  // - Known identifying args only repeat when long enough to truncate in a
+  //   compact single-line bubble trigger.
+  // - Unknown tools (MCP / custom) have no trigger arg, so the first short arg
+  //   headlines the expanded panel.
+  const unknownTitleArg = arg === null ? panelTitleArg(data.tool_name, parsedArgs) : null
+  const showExpandedLongArg = !isCommand && arg !== null && compact && arg.value.length > 36
+  const titleArg = isCommand ? null : showExpandedLongArg ? arg : unknownTitleArg
+  const title = isCommand ? (
+    compact && description !== null ? (
+      description
+    ) : null
+  ) : titleArg === null ? null : titleArg.kind === 'path' ? (
+    <PathLabel path={titleArg.value} wrap />
+  ) : (
+    <span data-slot="tool-panel-title-text" className="m-tool-call-block__panel-title-mono">
+      {titleArg.value}
+    </span>
+  )
+  const headerDescription = compact && !isCommand ? description : null
+  // Exclude arguments already rendered by the trigger, panel heading, diff, or
+  // command block so neither bubble nor card mode repeats them as meta fields.
   const shownKeys = new Set<string>(['description'])
+  if (arg?.key) shownKeys.add(arg.key)
   if (titleArg?.key) shownKeys.add(titleArg.key)
+  if (isCommand) shownKeys.add('command')
   if (fileDiffs) for (const key of ['content', 'old_string', 'new_string', 'patch', 'replace_all']) shownKeys.add(key)
   const restArgs = Object.entries(parsedArgs).filter(([key]) => !shownKeys.has(key))
   const metaArgs = restArgs.filter(([, value]) => !isLongArg(value))
@@ -2512,11 +2623,22 @@ export function ToolCallBlock({
     <ChatTool state={state} {...expansion} className={className}>
       {/* Both, on two lines: what this call is, and what it is for. Neither
           displaces the other — see `toolDescription`. */}
-      <ChatToolTrigger subtitle={description}>
+      <ChatToolTrigger subtitle={description} endContent={triggerEnd.length > 0 ? triggerEnd : undefined}>
         <ChatToolStatusIcon />
-        <span data-slot="tool-label" className="m-tool-call-block__trigger-title">
-          {label}
-        </span>
+        {mcp ? (
+          <span data-slot="tool-label" className="m-tool-call-block__trigger-title m-tool-call-block__mcp-title">
+            <span data-slot="tool-mcp-server" className="m-tool-call-block__mcp-server">
+              {mcp.server}
+            </span>
+            <span data-slot="tool-mcp-action" className="m-tool-call-block__mcp-action">
+              {mcp.action}
+            </span>
+          </span>
+        ) : (
+          <span data-slot="tool-label" className="m-tool-call-block__trigger-title">
+            {label}
+          </span>
+        )}
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} compact={compact} />
         {/* In the trigger, not the body: a queued card is collapsed, and a
             standing clock beside a spinning one is too fine a distinction to
@@ -2529,7 +2651,7 @@ export function ToolCallBlock({
         )}
       </ChatToolTrigger>
       <ChatToolContent>
-        {(title !== null || headerDescription !== null || metaArgs.length > 0 || end.length > 0) && (
+        {(title !== null || headerDescription !== null || metaArgs.length > 0) && (
           <ChatToolPanelHeader
             heading={title}
             description={
@@ -2544,7 +2666,6 @@ export function ToolCallBlock({
                 </>
               ) : null
             }
-            end={end.length > 0 ? end : undefined}
           />
         )}
         <ChatToolPanelBody>

@@ -120,11 +120,13 @@
     padding: var(--space-3);
     font: var(--text-code);
   }
-  .code-block__code span[style] {
+  .code-block__code span[style],
+  [data-slot='file-diff-highlighted'] span[style] {
     color: var(--shiki-light);
     font-style: var(--shiki-light-font-style, inherit);
   }
-  :root[data-theme='dark'] .code-block__code span[style] {
+  :root[data-theme='dark'] .code-block__code span[style],
+  :root[data-theme='dark'] [data-slot='file-diff-highlighted'] span[style] {
     color: var(--shiki-dark);
     font-style: var(--shiki-dark-font-style, inherit);
   }
