@@ -191,8 +191,7 @@ export function GeneralSettings() {
       <RemoteClientSettings />
 
       <SettingsGroup heading={t('settings.general.appearanceGroup')} headingLevel={3}>
-        <div className="m-general__inline-row">
-          <span className="m-general__inline-label">{t('settings.general.theme')}</span>
+        <SettingsRow label={t('settings.general.theme')}>
           <SegmentedControl
             aria-label={t('settings.general.theme')}
             size="sm"
@@ -205,9 +204,8 @@ export function GeneralSettings() {
             <Segment id="dark">{t('settings.general.themeDark')}</Segment>
             <Segment id="system">{t('settings.general.themeSystem')}</Segment>
           </SegmentedControl>
-        </div>
-        <div className="m-general__inline-row">
-          <span className="m-general__inline-label">{t('settings.general.language')}</span>
+        </SettingsRow>
+        <SettingsRow label={t('settings.general.language')}>
           <div className="m-general__select">
             <Select
               aria-label={t('settings.general.language')}
@@ -221,7 +219,7 @@ export function GeneralSettings() {
               ))}
             </Select>
           </div>
-        </div>
+        </SettingsRow>
       </SettingsGroup>
 
       <div data-slot="general-fonts" className="m-general__stack">
@@ -230,8 +228,7 @@ export function GeneralSettings() {
           description={t('settings.general.fontHint')}
           headingLevel={3}
         >
-          <div className="m-general__inline-row">
-            <span className="m-general__inline-label">{t('settings.general.fontUi')}</span>
+          <SettingsRow label={t('settings.general.fontUi')}>
             <div className="m-general__font">
               <FontPicker
                 hideLabel
@@ -241,9 +238,8 @@ export function GeneralSettings() {
                 families={fontFamilies}
               />
             </div>
-          </div>
-          <div className="m-general__inline-row">
-            <span className="m-general__inline-label">{t('settings.general.fontCode')}</span>
+          </SettingsRow>
+          <SettingsRow label={t('settings.general.fontCode')}>
             <div className="m-general__font">
               <FontPicker
                 hideLabel
@@ -253,7 +249,7 @@ export function GeneralSettings() {
                 families={fontFamilies}
               />
             </div>
-          </div>
+          </SettingsRow>
         </SettingsGroup>
         {fontListFailed && (
           <p data-slot="general-font-list-error" role="status" className="m-general__hint">
@@ -316,8 +312,7 @@ export function GeneralSettings() {
             description={t('settings.general.searchHint')}
             headingLevel={3}
           >
-            <div className="m-general__inline-row">
-              <span className="m-general__inline-label">{t('settings.general.webSearch')}</span>
+            <SettingsRow label={t('settings.general.webSearch')}>
               <SegmentedControl
                 aria-label={t('settings.general.webSearch')}
                 size="sm"
@@ -332,7 +327,7 @@ export function GeneralSettings() {
                   </Segment>
                 ))}
               </SegmentedControl>
-            </div>
+            </SettingsRow>
             <div data-slot="general-search-key-row" className="m-general__key-row">
               <PasswordField
                 aria-label={t('settings.provider.apiKey')}

@@ -7,7 +7,16 @@
     position: absolute;
     inset: 0;
     background: var(--surface);
-    box-shadow: var(--shadow-resting);
+    box-shadow:
+      var(--shadow-resting),
+      inset 0 0 0 1px var(--border);
+    transition: box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-composer-loader:focus-within .m-composer-loader__surface {
+    box-shadow:
+      var(--shadow-resting),
+      inset 0 0 0 1px var(--border-strong);
   }
 
   .m-composer-loader__light {

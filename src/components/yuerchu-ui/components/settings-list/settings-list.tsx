@@ -80,11 +80,18 @@ export function SettingsGroup({ heading, description, headingLevel = 2, children
   );
 }
 
+export type SettingsRowLayout = "inline" | "stacked";
+
 export interface SettingsRowProps {
   /** 设置项名称（例如“邮件通知”），会作为行内受支持控件的无障碍名称，控件自身无需再传入 label。 */
   label: ReactNode;
   /** 设置项补充说明，说明更改该项产生的作用，聚焦控件时随名称一并播报。 */
   description?: ReactNode;
+  /**
+   * 行内排版方式：`inline` 将名称与控件保持在同一首行、说明跨全宽折于下方（窄屏下输入框类控件自动换行）；`stacked` 将控件始终置底并占满全宽。
+   * @default "inline"
+   */
+  layout?: SettingsRowLayout;
   /** 右侧交互控件，例如 Switch、Select、TextField 或 SegmentedControl。 */
   children: ReactNode;
   /** 根元素附加类名。 */
@@ -94,16 +101,20 @@ export interface SettingsRowProps {
 }
 
 /**
- * 渲染单行设置项并通过 React Aria Context 将名称和说明关联至右侧交互控件（不包括 Button 与单个 Checkbox），容器较窄时控件自动换行至名称下方。
+ * 渲染单行设置项并通过 React Aria Context 将名称和说明关联至右侧交互控件（不包括 Button 与单个 Checkbox），名称与控件优先同行，长说明跨满下方整行。
  *
  * @promote label, description
  */
-export function SettingsRow({ label, description, children, className, ref }: SettingsRowProps) {
+export function SettingsRow({ label, description, layout = "inline", children, className, ref }: SettingsRowProps) {
   const labelId = useId();
   const descriptionId = useId();
   const a11y = { "aria-labelledby": labelId, "aria-describedby": description ? descriptionId : undefined };
   return (
-    <div ref={ref} className={className ? `ui-settings-row ${className}` : "ui-settings-row"}>
+    <div
+      ref={ref}
+      data-layout={layout}
+      className={className ? `ui-settings-row ${className}` : "ui-settings-row"}
+    >
       <div className="ui-settings-row__text">
         <span id={labelId} className="ui-settings-row__label">
           {label}

@@ -39,17 +39,21 @@
     border-block-start: 1px solid var(--border);
   }
 
-  /* 名称和说明在左，控件在右；按行自己的宽度，窄的时候控件换到下面 */
+  /* 名称与控件保持在首行左右对齐，补充说明跨满整行折于下方，避免长说明把紧凑控件挤到底部 */
   .ui-settings-row {
     container-type: inline-size;
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--space-2) var(--space-6);
+    gap: var(--space-1) var(--space-4);
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
     padding: var(--space-3) var(--space-4);
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__text {
+    display: contents;
   }
 
   .ui-settings-row__text {
@@ -64,15 +68,49 @@
     font: var(--text-body);
   }
 
+  .ui-settings-row:not(.ui-settings-nav-row) .ui-settings-row__label {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    align-self: center;
+  }
+
   .ui-settings-row__description {
     color: var(--text-secondary);
     font: var(--text-small);
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) .ui-settings-row__description {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
   }
 
   .ui-settings-row__control {
     display: flex;
     justify-content: flex-end;
     min-width: 0;
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__control {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .ui-settings-row[data-layout="stacked"] {
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .ui-settings-row[data-layout="stacked"] .ui-settings-row__label {
+    grid-column: 1 / -1;
+  }
+
+  .ui-settings-row[data-layout="stacked"] > .ui-settings-row__control {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    width: 100%;
   }
 
   .ui-settings-nav-row {
@@ -133,24 +171,55 @@
     }
   }
 
-  /* 窄的时候控件换到名称下面、靠左；开关不换（手机设置页的开关都在名称右边） */
+  /* 窄屏下开关、下拉选择、分段控件仍与名称同行，仅宽输入类控件自动折到说明下方 */
   @container (width < 440px) {
-    .ui-settings-row__text,
-    .ui-settings-row__control {
+    .ui-settings-row:not(.ui-settings-nav-row):has(
+        > .ui-settings-row__control
+          > :is(
+            .ui-text-field,
+            .ui-password-field,
+            .ui-search-field,
+            .ui-textarea,
+            .ui-radio-group,
+            .ui-checkbox-group,
+            .ui-slider
+          )
+      ) {
+      gap: var(--space-2) var(--space-4);
+    }
+
+    .ui-settings-row:not(.ui-settings-nav-row):has(
+        > .ui-settings-row__control
+          > :is(
+            .ui-text-field,
+            .ui-password-field,
+            .ui-search-field,
+            .ui-textarea,
+            .ui-radio-group,
+            .ui-checkbox-group,
+            .ui-slider
+          )
+      )
+      .ui-settings-row__label {
       grid-column: 1 / -1;
     }
 
-    .ui-settings-row__control {
+    .ui-settings-row:not(.ui-settings-nav-row)
+      > .ui-settings-row__control:has(
+        > :is(
+          .ui-text-field,
+          .ui-password-field,
+          .ui-search-field,
+          .ui-textarea,
+          .ui-radio-group,
+          .ui-checkbox-group,
+          .ui-slider
+        )
+      ) {
+      grid-column: 1 / -1;
+      grid-row: 3;
       justify-content: flex-start;
-    }
-
-    .ui-settings-row__text:has(+ .ui-settings-row__control > .ui-switch:only-child) {
-      grid-column: auto;
-    }
-
-    .ui-settings-row__control:has(> .ui-switch:only-child) {
-      grid-column: auto;
-      justify-content: flex-end;
+      width: 100%;
     }
   }
 }
