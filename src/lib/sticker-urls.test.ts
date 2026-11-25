@@ -1,21 +1,21 @@
 import { api } from '@/api'
 import { loadStickerUrl, MAX_CONCURRENT, peekStickerUrl, resetStickerUrls } from './sticker-urls'
 
-vi.mock('@/api', () => ({ api: { getEmojiFileUrl: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { emojis: { getFileUrl: vi.fn() } } }))
 
-const fileUrl = vi.mocked(api.getEmojiFileUrl)
+const fileUrl = vi.mocked(api.emojis.getFileUrl)
 
 /** Each call parks until the test releases it by id. */
 function parked() {
   const pending = new Map<string, (url: string) => void>()
   fileUrl.mockImplementation(
-    (id: string) =>
+    ({ emoji_id }) =>
       new Promise<string>((resolve) => {
-        pending.set(id, resolve)
+        pending.set(emoji_id, resolve)
       }),
   )
   return {
-    started: () => fileUrl.mock.calls.map(([id]) => id),
+    started: () => fileUrl.mock.calls.map(([req]) => req.emoji_id),
     release: async (id: string) => {
       pending.get(id)!(`data:${id}`)
       await Promise.resolve()

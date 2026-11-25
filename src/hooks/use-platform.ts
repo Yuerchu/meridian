@@ -10,7 +10,7 @@ export function usePlatform() {
 
   React.useEffect(() => {
     if (cached !== null) return
-    api.getPlatform().then((p) => {
+    api.platform.getInfo().then((p) => {
       cached = p
       setPlatform(p)
     })

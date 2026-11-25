@@ -22,7 +22,11 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api', () => ({
-  api: mocks,
+  api: {
+    assistants: { list: mocks.listAssistants },
+    providers: { list: mocks.listProviders, getCapabilities: mocks.getProviderCapabilities },
+    conversations: { list: mocks.listConversations, update: mocks.setConversationMode },
+  },
 }))
 
 const assistants: AssistantInfoResponse[] = [

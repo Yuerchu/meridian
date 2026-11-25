@@ -29,7 +29,7 @@ function keepConversationLocally(conversation: ConversationInfoResponse) {
 async function deleteWhenFree(id: string) {
   for (let attempt = 0; ; attempt++) {
     try {
-      await api.deleteConversation(id)
+      await api.conversations.delete({ id })
       return
     } catch (err) {
       if (attempt >= RELEASE_ATTEMPTS) throw err
@@ -95,7 +95,7 @@ function App() {
       // hands them (`.then(onCreate)`, a menu's `onAction`) — anything that is
       // not a project id must mean "the default", not a garbage filing target.
       const target = typeof projectId === 'string' ? projectId : projectId === null ? null : activeProjectId
-      const conv = await api.createConversation({ title: null, projectId: target })
+      const conv = await api.conversations.create({ title: null, project_id: target })
       try {
         await refreshConversations()
       } catch {
@@ -111,7 +111,7 @@ function App() {
 
   const handleCreateWithDraft = useCallback(
     async (draft: InitialTurnDraft) => {
-      const conv = await api.createConversation({ title: null, projectId: activeProjectId })
+      const conv = await api.conversations.create({ title: null, project_id: activeProjectId })
       const { settings } = draft
       // A welcome-page toolbar is real, not decorative. Persist every setting
       // that has a conversation column before the first turn starts; the model
@@ -119,15 +119,15 @@ function App() {
       try {
         const results = await Promise.allSettled([
           settings.selectedAssistantId
-            ? api.setConversationAssistant({ id: conv.id, assistantId: settings.selectedAssistantId })
+            ? api.conversations.update({ id: conv.id, assistant_id: settings.selectedAssistantId })
             : Promise.resolve(),
-          api.setConversationReasoningPrefs({
+          api.conversations.update({
             id: conv.id,
-            thinkingLevel: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
-            fastMode: settings.fastMode,
+            thinking_level: settings.thinkingLevel === 'default' ? null : settings.thinkingLevel,
+            fast_mode: settings.fastMode,
           }),
-          api.setConversationMode({ id: conv.id, mode: settings.mode === 'work' ? null : settings.mode }),
-          api.setConversationAcceptEdits({ id: conv.id, acceptEdits: settings.acceptEdits }),
+          api.conversations.update({ id: conv.id, mode: settings.mode === 'work' ? null : settings.mode }),
+          api.conversations.update({ id: conv.id, accept_edits: settings.acceptEdits }),
         ])
         // Wait for every SQLite write before cleanup. Promise.all would enter
         // the catch on the first rejection and race deletion against the other
@@ -140,7 +140,7 @@ function App() {
         // retry creates another orphaned conversation.
         let failure = settingsError
         try {
-          await api.deleteConversation(conv.id)
+          await api.conversations.delete({ id: conv.id })
         } catch (cleanupError) {
           failure = new Error(`${String(settingsError)}; cleanup failed: ${String(cleanupError)}`)
         }
@@ -179,7 +179,7 @@ function App() {
     async (id: string) => {
       const session = useConversationStore.getState().sessions[id]
       if (session?.streaming) {
-        await api.stopChat({ conversationId: id, turnId: session.activeTurnId })
+        await api.chat.stop({ conversation_id: id, turn_id: session.activeTurnId })
         // A stop is a signal, not a join. The turn keeps writing until it
         // reaches its next await, and the backend refuses to delete a
         // conversation someone is still writing to — so wait for it to let go
@@ -189,7 +189,7 @@ function App() {
         // under a runner that is still appending to them.
         await deleteWhenFree(id)
       } else {
-        await api.deleteConversation(id)
+        await api.conversations.delete({ id })
       }
       await refreshConversations()
       // The open conversation now, not when the delete was asked for: an undo
@@ -219,12 +219,12 @@ function App() {
 
   const handleCreateProject = useCallback(
     async (name: string, path: string) => {
-      const project = await api.createProject({
+      const project = await api.projects.create({
         name,
         path,
-        sourceType: 'local',
-        sourceId: null,
-        assistantId: null,
+        source_type: 'local',
+        source_id: null,
+        assistant_id: null,
         description: null,
       })
       try {
@@ -255,7 +255,7 @@ function App() {
     async (cwd: string): Promise<string | null> => {
       let conversationId: string
       try {
-        conversationId = await api.acpOpenSession({ cwd })
+        conversationId = await api.acp.openSession({ cwd })
       } catch (err) {
         return String(err)
       }
@@ -274,7 +274,7 @@ function App() {
 
   const handleRename = useCallback(
     async (id: string, newTitle: string) => {
-      await api.updateConversationTitle({ id, title: newTitle })
+      await api.conversations.update({ id, title: newTitle })
       await refreshConversations()
     },
     [refreshConversations],
@@ -282,15 +282,19 @@ function App() {
 
   const handleTogglePin = useCallback(
     async (id: string) => {
-      await api.togglePinConversation(id)
+      const conv = conversations.find((c) => c.id === id)
+      if (!conv) return
+      await api.conversations.update({ id, is_pinned: !conv.is_pinned })
       await refreshConversations()
     },
-    [refreshConversations],
+    [conversations, refreshConversations],
   )
 
   const handleToggleArchive = useCallback(
     async (id: string) => {
-      const updated = await api.toggleArchiveConversation(id)
+      const conv = conversations.find((c) => c.id === id)
+      if (!conv) return
+      const updated = await api.conversations.update({ id, is_archived: !conv.is_archived })
       await refreshConversations()
       if (updated.is_archived && id === activeId) {
         const next = conversations.find((c) => c.id !== id && !c.is_archived)
@@ -303,7 +307,7 @@ function App() {
   const handleMoveToProject = useCallback(
     async (id: string, projectId: string | null): Promise<string | null> => {
       try {
-        await api.setConversationProject({ id, projectId })
+        await api.conversations.update({ id, project_id: projectId })
         await refreshConversations()
         return null
       } catch (err) {
@@ -315,7 +319,7 @@ function App() {
 
   const handleDeleteProject = useCallback(
     async (id: string) => {
-      await api.deleteProject(id)
+      await api.projects.delete({ id })
       await refreshProjects()
       if (activeProjectId === id) {
         storeSetActiveProjectId(null)
@@ -326,7 +330,7 @@ function App() {
 
   const handleRenameProject = useCallback(
     async (id: string, newName: string) => {
-      await api.updateProject({ id, name: newName })
+      await api.projects.update({ id, name: newName })
       await refreshProjects()
     },
     [refreshProjects],

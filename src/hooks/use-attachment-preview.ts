@@ -55,8 +55,8 @@ export function useAttachmentPreview(file: Attachment): string | null {
     let cancelled = false
     let objectUrl: string | null = null
     setSrc(null)
-    void api
-      .previewLocalImage({ filePath: path })
+    void api.messages
+      .readLocalImagePreview({ file_path: path })
       .then((preview) => {
         if (cancelled) return
         const url = blobUrlFromPreview(preview.data_base64, preview.mime_type)

@@ -315,7 +315,7 @@ export function useGlobalEventListener() {
     // conversation, but the answer is a short list and reading it whole keeps
     // a missed event from leaving a mark behind for ever.
     const readBackgroundRunning = () =>
-      api.backgroundTaskRunningCounts().then(
+      api.backgroundTasks.listCounts().then(
         (rows) => useConversationStore.getState().setBackgroundRunning(rows),
         (err: unknown) => console.warn('could not read the running background commands', err),
       )

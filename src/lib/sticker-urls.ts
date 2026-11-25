@@ -133,7 +133,7 @@ class StickerUrlCache {
         this.#jobs.delete(job.id)
         this.#pump()
       }
-      api.getEmojiFileUrl(job.id).then(
+      api.emojis.getFileUrl({ emoji_id: job.id }).then(
         (url) => {
           if (generation === this.#generation) this.#store(job.id, url)
           finish()

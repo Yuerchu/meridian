@@ -21,7 +21,7 @@ export function useLaunchRequest(open: (tab: LaunchSettingsTab) => void) {
     let disposed = false
     let unlisten: (() => void) | null = null
     const take = () => {
-      void api
+      void api.platform
         .takeLaunchRequest()
         .then((request) => {
           if (request && !disposed) latest.current(request.settings_tab)

@@ -4,7 +4,9 @@ import { useBoardStore } from '@/stores/board-store'
 
 vi.mock('@/api', () => ({
   api: {
-    boardTaskList: vi.fn(() => Promise.resolve([])),
+    board: {
+      listTasks: vi.fn(() => Promise.resolve([])),
+    },
   },
 }))
 

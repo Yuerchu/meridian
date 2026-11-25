@@ -10,15 +10,17 @@ import type { PlanReviewInfoResponse, PlanReviewStatus } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
-    getPlanReview: vi.fn(),
-    savePlanReviewDraft: vi.fn(),
-    decidePlanReview: vi.fn(),
+    planReview: {
+      get: vi.fn(),
+      setDraft: vi.fn(),
+      submitDecision: vi.fn(),
+    },
   },
 }))
 
-const getPlanReview = vi.mocked(api.getPlanReview)
-const saveDraft = vi.mocked(api.savePlanReviewDraft)
-const decide = vi.mocked(api.decidePlanReview)
+const getPlanReview = vi.mocked(api.planReview.get)
+const saveDraft = vi.mocked(api.planReview.setDraft)
+const decide = vi.mocked(api.planReview.submitDecision)
 
 const PLAN = '# Fix the scroller\n\n1. Track reader scroll\n2. Change the pin check\n'
 
@@ -123,9 +125,9 @@ describe('approveFromCard', () => {
     expect(outcome).toEqual({ kind: 'decided', result: DECIDED })
     expect(decide).toHaveBeenCalledWith(
       expect.objectContaining({
-        reviewId: 'review-1',
-        expectedGeneration: 7,
-        expectedDraftHash: 'draft-hash-3',
+        review_id: 'review-1',
+        expected_generation: 7,
+        expected_draft_hash: 'draft-hash-3',
         action: 'approve',
       }),
     )
@@ -155,7 +157,7 @@ describe('approveFromCard', () => {
     decide.mockRejectedValueOnce(new Error('connection reset'))
     await expect(approveFromCard('review-1', attempt)).rejects.toThrow('connection reset')
     await approveFromCard('review-1', attempt)
-    expect(decide.mock.calls[0][0].decisionId).toBe(decide.mock.calls[1][0].decisionId)
+    expect(decide.mock.calls[0][0].decision_id).toBe(decide.mock.calls[1][0].decision_id)
   })
 
   it('refuses the other decision while the first is in doubt', async () => {
@@ -173,10 +175,14 @@ describe('sendBackFromCard', () => {
     saveDraft.mockResolvedValue({ review_id: 'review-1', generation: 4, draft_sha256: 'draft-hash-4', updated_at: 2 })
     await sendBackFromCard('review-1', 'Add verification.', new PlanDecisionAttempt())
     expect(saveDraft).toHaveBeenCalledWith(
-      expect.objectContaining({ reviewId: 'review-1', expectedGeneration: 3, globalNote: 'Add verification.' }),
+      expect.objectContaining({ review_id: 'review-1', expected_generation: 3, global_note: 'Add verification.' }),
     )
     expect(decide).toHaveBeenCalledWith(
-      expect.objectContaining({ expectedGeneration: 4, expectedDraftHash: 'draft-hash-4', action: 'request_changes' }),
+      expect.objectContaining({
+        expected_generation: 4,
+        expected_draft_hash: 'draft-hash-4',
+        action: 'request_changes',
+      }),
     )
   })
 
@@ -194,7 +200,7 @@ describe('sendBackFromCard', () => {
     getPlanReview.mockResolvedValue(info({ note: 'Add verification.', generation: 4 }))
     await sendBackFromCard('review-1', 'Add verification.', new PlanDecisionAttempt())
     expect(saveDraft).not.toHaveBeenCalled()
-    expect(decide).toHaveBeenCalledWith(expect.objectContaining({ expectedGeneration: 4, action: 'request_changes' }))
+    expect(decide).toHaveBeenCalledWith(expect.objectContaining({ expected_generation: 4, action: 'request_changes' }))
   })
 })
 

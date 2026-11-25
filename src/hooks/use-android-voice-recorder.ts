@@ -155,8 +155,8 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
     }
 
     try {
-      const result = await api.voiceTranscribePcm({
-        sampleRate: captured.sampleRate,
+      const result = await api.voice.transcribePcm({
+        sample_rate: captured.sampleRate,
         pcm: encodePcm16Base64(captured.samples),
       })
       if (result.status === 'ok') onSend(result.text)
@@ -185,7 +185,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
       //
       // Both slow things still start now: the device, and the 149MB encoder
       // behind the first transcription. Talking covers them.
-      api.voicePrewarm().catch(() => {})
+      api.voice.startPrewarm().catch(() => {})
       const opening = openCapture({
         onPeak: (p) => {
           peakRef.current = p

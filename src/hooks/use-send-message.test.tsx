@@ -14,8 +14,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({
   api: {
-    chat: mocks.chat,
-    acpSend: mocks.acpSend,
+    chat: { start: mocks.chat },
+    acp: { sendPrompt: mocks.acpSend },
   },
 }))
 
@@ -77,7 +77,7 @@ describe('useSendMessage', () => {
       { type: 'image_url', image_url: { url: 'file:///attachments/design.png' } },
       { type: 'sticker', sticker_id: 'sticker-1' },
     ])
-    expect(request).toEqual(expect.objectContaining({ contextRefs }))
+    expect(request).toEqual(expect.objectContaining({ context_refs: contextRefs }))
   })
 
   // Continuing after a failure asks again from the head with no message and no

@@ -28,8 +28,8 @@ export function useReferenceProbe(conversationId: string): (path: string) => Pro
       const key = `${conversationId}\0${path}`
       const cached = cache.current.get(key)
       if (cached) return cached
-      const probe = api
-        .workspaceProbeRef({ conversationId, projectId: null, path })
+      const probe = api.workspace
+        .testRef({ conversation_id: conversationId, project_id: null, path })
         .then(
           () => true,
           () => false,

@@ -60,7 +60,7 @@ export function useProviderModels(providers: ProviderInfoResponse[], wanted: boo
     Promise.allSettled(
       enabled.map(async (provider) => ({
         provider,
-        models: await api.fetchProviderModels({ providerId: provider.id, forceRefresh: false }),
+        models: await api.providers.listModels({ provider_id: provider.id, fetch_policy: 'cache_first' }),
       })),
     ).then((results) => {
       if (latestKey.current !== requestedKey) return

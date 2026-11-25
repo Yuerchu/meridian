@@ -38,9 +38,9 @@ describe('plan draft CAS writer', () => {
     const save = vi.fn(async (request: PlanReviewDraftSaveRequest) => {
       requests.push(request)
       return {
-        review_id: request.reviewId,
-        generation: request.expectedGeneration + 1,
-        draft_sha256: `hash-${request.expectedGeneration + 1}`,
+        review_id: request.review_id,
+        generation: request.expected_generation + 1,
+        draft_sha256: `hash-${request.expected_generation + 1}`,
         updated_at: 1,
       }
     })
@@ -52,9 +52,9 @@ describe('plan draft CAS writer', () => {
     await queue.flush()
 
     expect(requests).toHaveLength(2)
-    expect(requests.map((request) => request.baseNormalizedMarkdown)).toEqual(['# Plan\n', '# Plan\n'])
-    expect(requests[0].normalizedMarkdown).toBe('# Edited\n')
-    expect(requests[1].expectedGeneration).toBe(1)
+    expect(requests.map((request) => request.base_normalized_markdown)).toEqual(['# Plan\n', '# Plan\n'])
+    expect(requests[0].normalized_markdown).toBe('# Edited\n')
+    expect(requests[1].expected_generation).toBe(1)
   })
 
   it('coalesces only the pending snapshot while preserving in-flight CAS order', async () => {
@@ -68,8 +68,8 @@ describe('plan draft CAS writer', () => {
       if (requests.length === 1) await first
       return {
         review_id: 'review-1',
-        generation: request.expectedGeneration + 1,
-        draft_sha256: `hash-${request.expectedGeneration + 1}`,
+        generation: request.expected_generation + 1,
+        draft_sha256: `hash-${request.expected_generation + 1}`,
         updated_at: 1,
       }
     })
@@ -82,17 +82,17 @@ describe('plan draft CAS writer', () => {
     releaseFirst()
     await flushing
 
-    expect(requests.map((request) => request.normalizedMarkdown)).toEqual(['first', 'latest'])
-    expect(requests.map((request) => request.expectedGeneration)).toEqual([3, 4])
+    expect(requests.map((request) => request.normalized_markdown)).toEqual(['first', 'latest'])
+    expect(requests.map((request) => request.expected_generation)).toEqual([3, 4])
   })
 })
 
 describe('plan draft save failures', () => {
   function answer(request: PlanReviewDraftSaveRequest) {
     return {
-      review_id: request.reviewId,
-      generation: request.expectedGeneration + 1,
-      draft_sha256: `hash-${request.expectedGeneration + 1}`,
+      review_id: request.review_id,
+      generation: request.expected_generation + 1,
+      draft_sha256: `hash-${request.expected_generation + 1}`,
       updated_at: 1,
     }
   }
@@ -115,7 +115,7 @@ describe('plan draft save failures', () => {
     expect(requests).toHaveLength(1)
 
     await queue.retry()
-    expect(requests.map((request) => request.normalizedMarkdown)).toEqual([
+    expect(requests.map((request) => request.normalized_markdown)).toEqual([
       'typed before the failure',
       'typed before the failure',
     ])
@@ -139,7 +139,7 @@ describe('plan draft save failures', () => {
     expect(() => queue.enqueue(payload('second'))).not.toThrow()
     expect(states.at(-1)).toBe('error')
     await queue.retry()
-    expect(requests.at(-1)?.normalizedMarkdown).toBe('second')
+    expect(requests.at(-1)?.normalized_markdown).toBe('second')
   })
 
   it('refuses to retry a conflict, whose generation only a reload can replace', async () => {

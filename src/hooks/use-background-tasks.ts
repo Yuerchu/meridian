@@ -29,7 +29,7 @@ export function useBackgroundTasks(conversationId: string) {
 
   const read = useCallback(
     () =>
-      api.listBackgroundTasks(conversationId).then(
+      api.backgroundTasks.list({ conversation_id: conversationId }).then(
         (next) => {
           setTasks(next)
           return true
@@ -46,7 +46,7 @@ export function useBackgroundTasks(conversationId: string) {
     let alive = true
     setTasks([])
     setError(null)
-    api.listBackgroundTasks(conversationId).then(
+    api.backgroundTasks.list({ conversation_id: conversationId }).then(
       (next) => {
         if (alive) setTasks(next)
       },
@@ -56,7 +56,7 @@ export function useBackgroundTasks(conversationId: string) {
     )
     const unlisten = listen('background-tasks-updated', (event) => {
       if (!alive || event.payload.conversation_id !== conversationId) return
-      api.listBackgroundTasks(conversationId).then(
+      api.backgroundTasks.list({ conversation_id: conversationId }).then(
         (next) => {
           if (alive) setTasks(next)
         },
@@ -74,7 +74,7 @@ export function useBackgroundTasks(conversationId: string) {
   const stop = useCallback(
     async (id: string) => {
       try {
-        await api.stopBackgroundTask({ conversationId, id })
+        await api.backgroundTasks.stop({ conversation_id: conversationId, id })
       } catch (err) {
         setError({ kind: 'stop', message: errorMessage(err) })
       } finally {

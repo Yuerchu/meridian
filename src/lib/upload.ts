@@ -75,14 +75,20 @@ function fileToBase64(file: File): Promise<string> {
 export async function uploadAttachment(conversationId: string, attachment: Attachment): Promise<UploadFileResponse> {
   if (!attachment.file) {
     if (attachment.path === undefined) throw `nothing to upload for ${attachment.name}`
-    return api.uploadFile({ conversationId, filePath: attachment.path })
+    return api.messages.uploadFile({
+      conversation_id: conversationId,
+      source: { kind: 'path', file_path: attachment.path },
+    })
   }
 
   if (!remoteConnection) {
-    return api.uploadFileBytes({
-      conversationId,
-      fileName: attachment.name,
-      dataBase64: await fileToBase64(attachment.file),
+    return api.messages.uploadFile({
+      conversation_id: conversationId,
+      source: {
+        kind: 'bytes',
+        file_name: attachment.name,
+        data_base64: await fileToBase64(attachment.file),
+      },
     })
   }
 

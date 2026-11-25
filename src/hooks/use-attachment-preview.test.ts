@@ -4,7 +4,9 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import { useAttachmentPreview } from './use-attachment-preview'
 
 const apiMocks = vi.hoisted(() => ({
-  previewLocalImage: vi.fn(),
+  messages: {
+    readLocalImagePreview: vi.fn(),
+  },
 }))
 
 const transport = vi.hoisted(() => ({
@@ -24,7 +26,7 @@ const revokeObjectURL = vi.fn()
 
 beforeEach(() => {
   transport.isRemote = false
-  apiMocks.previewLocalImage.mockReset()
+  apiMocks.messages.readLocalImagePreview.mockReset()
   createObjectURL.mockClear()
   revokeObjectURL.mockClear()
   URL.createObjectURL = createObjectURL
@@ -36,7 +38,7 @@ it('turns a pasted image File into an object URL and revokes it on unmount', () 
   const { result, unmount } = renderHook(() => useAttachmentPreview({ name: 'image.png', file }))
   expect(result.current).toBe('blob:test/3')
   expect(createObjectURL).toHaveBeenCalledTimes(1)
-  expect(apiMocks.previewLocalImage).not.toHaveBeenCalled()
+  expect(apiMocks.messages.readLocalImagePreview).not.toHaveBeenCalled()
   unmount()
   expect(revokeObjectURL).toHaveBeenCalledWith('blob:test/3')
 })
@@ -54,7 +56,7 @@ it('does not preview a spreadsheet File', () => {
   const { result } = renderHook(() => useAttachmentPreview({ name: 'sheet.xlsx', file }))
   expect(result.current).toBeNull()
   expect(createObjectURL).not.toHaveBeenCalled()
-  expect(apiMocks.previewLocalImage).not.toHaveBeenCalled()
+  expect(apiMocks.messages.readLocalImagePreview).not.toHaveBeenCalled()
 })
 
 it('does not preview HEIC even when the File type says image', () => {
@@ -67,29 +69,29 @@ it('does not preview HEIC even when the File type says image', () => {
 it('does not fetch a missing draft image', () => {
   const { result } = renderHook(() => useAttachmentPreview({ name: 'gone.png', path: 'C:/gone.png', missing: true }))
   expect(result.current).toBeNull()
-  expect(apiMocks.previewLocalImage).not.toHaveBeenCalled()
+  expect(apiMocks.messages.readLocalImagePreview).not.toHaveBeenCalled()
 })
 
 it('loads a picker path through preview_local_image', async () => {
-  apiMocks.previewLocalImage.mockResolvedValue({
+  apiMocks.messages.readLocalImagePreview.mockResolvedValue({
     mime_type: 'image/png',
     data_base64: btoa('PNGDATA'),
   })
   const { result } = renderHook(() => useAttachmentPreview({ name: 'photo.png', path: 'C:/Users/A/photo.png' }))
   await waitFor(() => expect(result.current).toBe(`blob:test/${'PNGDATA'.length}`))
-  expect(apiMocks.previewLocalImage).toHaveBeenCalledWith({ filePath: 'C:/Users/A/photo.png' })
+  expect(apiMocks.messages.readLocalImagePreview).toHaveBeenCalledWith({ file_path: 'C:/Users/A/photo.png' })
 })
 
 it('does not ask the host to preview a path while remote', () => {
   transport.isRemote = true
   const { result } = renderHook(() => useAttachmentPreview({ name: 'photo.png', path: 'C:/Users/A/photo.png' }))
   expect(result.current).toBeNull()
-  expect(apiMocks.previewLocalImage).not.toHaveBeenCalled()
+  expect(apiMocks.messages.readLocalImagePreview).not.toHaveBeenCalled()
 })
 
 it('treats a refused preview as no picture', async () => {
-  apiMocks.previewLocalImage.mockRejectedValue('not a previewable image')
+  apiMocks.messages.readLocalImagePreview.mockRejectedValue('not a previewable image')
   const { result } = renderHook(() => useAttachmentPreview({ name: 'photo.png', path: 'C:/Users/A/photo.png' }))
-  await waitFor(() => expect(apiMocks.previewLocalImage).toHaveBeenCalled())
+  await waitFor(() => expect(apiMocks.messages.readLocalImagePreview).toHaveBeenCalled())
   expect(result.current).toBeNull()
 })

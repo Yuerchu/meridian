@@ -65,8 +65,8 @@ export function useComposerTypeahead({
       return
     }
     let alive = true
-    void api
-      .fetchProviderModels({ providerId, forceRefresh: null })
+    void api.providers
+      .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
       .then((next) => {
         if (alive) setModels(next)
       })
@@ -87,10 +87,10 @@ export function useComposerTypeahead({
 
     let alive = true
     const timer = window.setTimeout(() => {
-      void api
-        .workspaceSuggestRefs({
-          conversationId: conversationId ?? null,
-          projectId: projectId ?? null,
+      void api.workspace
+        .searchRefs({
+          conversation_id: conversationId ?? null,
+          project_id: projectId ?? null,
           query: token.query,
           limit: 15,
         })

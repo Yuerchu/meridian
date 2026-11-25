@@ -4,6 +4,7 @@ import {
   PlanDecisionAttempt,
   PlanDecisionInDoubtError,
   planReviewActionRules,
+  toPlanReviewDraftSaveRequest,
   type PlanApprovalOptions,
 } from './plan-review-draft'
 import { planCommentRequests, planDraftPayload, projectPlanReviewDraft } from './plan-review-projection'
@@ -97,7 +98,7 @@ export async function approveFromCard(
   note?: string,
 ): Promise<PlanCardOutcome> {
   const trimmedNote = note?.trim() ?? ''
-  const info = await api.getPlanReview({ reviewId })
+  const info = await api.planReview.get({ review_id: reviewId })
   if (info.review.state !== 'pending') return settledBy(info)
   if (!pristine(info, trimmedNote || null)) return { kind: 'draft_in_progress' }
   const held = attempt.current()
@@ -106,19 +107,19 @@ export async function approveFromCard(
   let draftHash = info.draft.draft_sha256
   if (trimmedNote && (info.draft.global_note ?? '').trim() !== trimmedNote) {
     const payload = planDraftPayload({ ...projectPlanReviewDraft(info), globalNote: trimmedNote })
-    const saved = await api.savePlanReviewDraft({ reviewId, expectedGeneration: generation, ...payload })
+    const saved = await api.planReview.setDraft(toPlanReviewDraftSaveRequest(reviewId, generation, payload))
     generation = saved.generation
     draftHash = saved.draft_sha256
   }
   const { id } = attempt.forAction('approve')
-  const result = await api.decidePlanReview({
-    reviewId,
-    decisionId: id,
-    expectedGeneration: generation,
-    expectedDraftHash: draftHash,
+  const result = await api.planReview.submitDecision({
+    review_id: reviewId,
+    decision_id: id,
+    expected_generation: generation,
+    expected_draft_hash: draftHash,
     action: 'approve',
-    approvalMode: options.approvalMode,
-    clearContext: options.clearContext,
+    approval_mode: options.approvalMode,
+    clear_context: options.clearContext,
   })
   attempt.reset()
   await takeInDecision(reviewId)
@@ -145,7 +146,7 @@ function settledBy(info: PlanReviewInfoResponse): PlanCardOutcome {
  */
 async function takeInDecision(reviewId: string): Promise<void> {
   try {
-    receivePlanReview(planReviewProjection(await api.getPlanReview({ reviewId })))
+    receivePlanReview(planReviewProjection(await api.planReview.get({ review_id: reviewId })))
   } catch {
     // The decision itself succeeded; see above.
   }
@@ -163,7 +164,7 @@ export async function sendBackFromCard(
   note: string,
   attempt: PlanDecisionAttempt,
 ): Promise<PlanCardOutcome> {
-  const info = await api.getPlanReview({ reviewId })
+  const info = await api.planReview.get({ review_id: reviewId })
   if (info.review.state !== 'pending') return settledBy(info)
   if (!pristine(info, note)) return { kind: 'draft_in_progress' }
   // Refuse up front if a different decision is still in doubt, before the
@@ -177,19 +178,19 @@ export async function sendBackFromCard(
   let draftHash = info.draft.draft_sha256
   if ((info.draft.global_note ?? '').trim() !== note.trim()) {
     const payload = planDraftPayload({ ...projectPlanReviewDraft(info), globalNote: note })
-    const saved = await api.savePlanReviewDraft({ reviewId, expectedGeneration: generation, ...payload })
+    const saved = await api.planReview.setDraft(toPlanReviewDraftSaveRequest(reviewId, generation, payload))
     generation = saved.generation
     draftHash = saved.draft_sha256
   }
   const { id } = attempt.forAction('request_changes')
-  const result = await api.decidePlanReview({
-    reviewId,
-    decisionId: id,
-    expectedGeneration: generation,
-    expectedDraftHash: draftHash,
+  const result = await api.planReview.submitDecision({
+    review_id: reviewId,
+    decision_id: id,
+    expected_generation: generation,
+    expected_draft_hash: draftHash,
     action: 'request_changes',
-    approvalMode: null,
-    clearContext: false,
+    approval_mode: null,
+    clear_context: false,
   })
   attempt.reset()
   await takeInDecision(reviewId)
