@@ -14,6 +14,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { stagedSnapshot } from './staged-snapshot.mjs'
+import { checkIpcWireParity } from './ipc-wire-parity.mjs'
 import {
   bareEntityImports,
   entityTypeAliases,
@@ -919,6 +920,7 @@ for (const [name, values] of [
   ['ShellType', ['bash', 'powershell', 'cmd']],
   ['SandboxMode', ['auto', 'container', 'off']],
   ['SearchProvider', ['tavily', 'zhipu']],
+  ['ServiceKey', ['tavily', 'zhipu_search', 'fish_audio']],
   ['VoiceFilterLevel', ['off', 'standard', 'aggressive']],
 ]) {
   const declaration = typescriptContracts?.match(new RegExp(`export type ${name}\\s*=\\s*([^\\r\\n]+)`))?.[1]
@@ -2765,6 +2767,9 @@ for (const file of filesUnder('src-tauri/src', ['.rs'])) {
   }
 }
 
+const wireParity = checkIpcWireParity({ readAt, filesUnder })
+for (const problem of wireParity.problems) problems.push(problem)
+
 if (problems.length > 0) {
   console.error(`✗ 模型/DTO 硬性标准检查失败（${STAGED ? '暂存区' : '工作树'}），共 ${problems.length} 处：\n`)
   for (const problem of problems) console.error(`  · ${problem}`)
@@ -2772,5 +2777,5 @@ if (problems.length > 0) {
 }
 
 console.log(
-  `✓ 模型/DTO 硬性标准通过（${STAGED ? '暂存区' : '工作树'}）：严格 DTO / 分层命名 / typed JSON / Decimal money / exact response`,
+  `✓ 模型/DTO 硬性标准通过（${STAGED ? '暂存区' : '工作树'}）：严格 DTO / 分层命名 / typed JSON / Decimal money / exact response / IPC wire parity (${wireParity.stats.commands} commands, ${wireParity.stats.structs} structs, ${wireParity.stats.enums} enums)`,
 )

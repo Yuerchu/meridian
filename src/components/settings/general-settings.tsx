@@ -33,8 +33,8 @@ const SHELLS = [
 ] as const
 
 const SEARCH_PROVIDERS = [
-  { value: 'tavily', label: 'Tavily', keyService: 'TAVILY' },
-  { value: 'zhipu', label: '智谱 (Zhipu)', keyService: 'ZHIPU_SEARCH' },
+  { value: 'tavily', label: 'Tavily', keyService: 'tavily' },
+  { value: 'zhipu', label: '智谱 (Zhipu)', keyService: 'zhipu_search' },
 ] as const
 
 function InlineSelect<T extends string>({

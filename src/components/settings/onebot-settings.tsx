@@ -140,7 +140,7 @@ export function OneBotSettings() {
         api.onebot.getConfig(),
         api.onebot.getStatus(),
         api.assistants.list(),
-        api.tools.testServiceKey({ service: 'FISH_AUDIO' }),
+        api.tools.testServiceKey({ service: 'fish_audio' }),
         api.onebot.getVoiceReadiness(),
       ])
       const nextPort = cfg.port.toString()
@@ -240,7 +240,7 @@ export function OneBotSettings() {
       // that the policy refresh below sees it — readiness counts the key as one
       // of its four parts, and watching preferences alone would miss it.
       if (fishKey.trim()) {
-        await api.tools.setServiceKey({ service: 'FISH_AUDIO', key: fishKey.trim() })
+        await api.tools.setServiceKey({ service: 'fish_audio', key: fishKey.trim() })
         setFishKey('')
         setFishKeySet(true)
       }

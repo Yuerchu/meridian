@@ -3104,7 +3104,7 @@ export interface UsageCacheMissInfoResponse {
 export type TurnOrigin =
   'desktop' | 'onebot' | 'sub_agent' | 'plan_review' | 'impl_review' | 'claude_code' | 'user_shell'
 
-export type ServiceKey = 'TAVILY' | 'ZHIPU_SEARCH' | 'FISH_AUDIO'
+export type ServiceKey = 'tavily' | 'zhipu_search' | 'fish_audio'
 
 export interface ServiceKeyUpdateRequest {
   service: ServiceKey

@@ -379,7 +379,7 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     emojiPacks: buildEmojiPacks(now),
     emojis: buildEmojis(now),
     preferences: buildPreferences(),
-    serviceKeys: new Set(['TAVILY']),
+    serviceKeys: new Set(['tavily']),
     planReview: buildPlanReview(now),
     serial: 0,
   }
