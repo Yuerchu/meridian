@@ -36,7 +36,7 @@ function useWorktreeBranch(conversationId: string | null, hasWorktree: boolean, 
   useEffect(() => {
     if (conversationId === null || !hasWorktree) return
     let cancelled = false
-    api.workspaceGitStatus({ conversationId }).then(
+    api.workspace.getGitStatus({ conversation_id: conversationId }).then(
       (status) => {
         if (cancelled) return
         setBranch(status.state === 'ok' ? { kind: 'read', name: status.branch } : { kind: 'unreadable' })
@@ -172,7 +172,10 @@ export function AgentCard({
   const move = async (stage: 'review' | 'done') => {
     try {
       const { tasks } = useBoardStore.getState()
-      await api.boardTaskMove({ id: task.id, stage, index: tasks.filter((c) => c.stage === stage).length })
+      await api.board.updateTask({
+        id: task.id,
+        position: { stage, index: tasks.filter((c) => c.stage === stage).length },
+      })
     } catch (err) {
       onError(t('board.error.move', { error: String(err) }))
     }
@@ -180,7 +183,7 @@ export function AgentCard({
 
   const removeWorktree = async () => {
     try {
-      await api.boardTaskRemoveWorktree({ id: task.id })
+      await api.board.deleteTaskWorktree({ id: task.id })
       await reloadBoard()
     } catch (err) {
       onError(t('board.error.removeWorktree', { error: String(err) }))
@@ -198,7 +201,7 @@ export function AgentCard({
       return
     }
     try {
-      await api.boardTaskDelete({ id: task.id })
+      await api.board.deleteTask({ id: task.id })
       await settleAfterCardDeleted(task.conversation_id)
     } catch (err) {
       onError(t('board.error.delete', { error: String(err) }))

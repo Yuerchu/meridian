@@ -169,10 +169,10 @@ function BackgroundTaskOutputSheet({
     let timer: number | undefined
     const load = async () => {
       try {
-        let slice = await api.readBackgroundTaskOutput({ conversationId, id: task.id, offset: 0 })
+        let slice = await api.backgroundTasks.readOutput({ conversation_id: conversationId, id: task.id, offset: 0 })
         if (slice.total_bytes > READ_MAX) {
-          slice = await api.readBackgroundTaskOutput({
-            conversationId,
+          slice = await api.backgroundTasks.readOutput({
+            conversation_id: conversationId,
             id: task.id,
             offset: slice.total_bytes - READ_MAX,
           })

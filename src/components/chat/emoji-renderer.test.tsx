@@ -10,9 +10,11 @@ import { resetViewportPlayback } from './sticker-playback'
 
 vi.mock('@/api', () => ({
   api: {
-    listAssistantEmojiPacks: vi.fn(),
-    listEmojis: vi.fn(),
-    getEmojiFileUrl: vi.fn(),
+    emojis: {
+      listPacks: vi.fn(),
+      list: vi.fn(),
+      getFileUrl: vi.fn(),
+    },
   },
 }))
 
@@ -25,8 +27,8 @@ describe('useEmojiMap', () => {
   })
 
   it('maps names to sticker metadata without asking for a single file URL', async () => {
-    mockApi.listAssistantEmojiPacks.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never)
-    mockApi.listEmojis
+    mockApi.emojis.listPacks.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never)
+    mockApi.emojis.list
       .mockResolvedValueOnce([
         { id: 'e1', name: 'one', semantic_status: 'confirmed', file_format: 'png' },
         { id: 'e3', name: 'draft', semantic_status: 'pending', file_format: 'png' },
@@ -35,7 +37,7 @@ describe('useEmojiMap', () => {
         { id: 'e2', name: 'two', semantic_status: 'confirmed', file_format: 'gif' },
         { id: 'e4', name: 'lottie', semantic_status: 'confirmed', file_format: 'lottie' },
       ] as never)
-    mockApi.getEmojiFileUrl.mockImplementation(async (id) => `asset://${id}`)
+    mockApi.emojis.getFileUrl.mockImplementation(async ({ emoji_id }) => `asset://${emoji_id}`)
 
     const { result } = renderHook(() => useEmojiMap('assistant-1'))
 
@@ -44,12 +46,12 @@ describe('useEmojiMap', () => {
     expect(result.current.two.id).toBe('e2')
     // The pictures are asked for by whichever sticker is about to be drawn.
     await act(async () => {})
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(0)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(0)
   })
 
   it('ignores a late load after the hook unmounts', async () => {
     let resolvePacks!: (value: never[]) => void
-    mockApi.listAssistantEmojiPacks.mockReturnValue(
+    mockApi.emojis.listPacks.mockReturnValue(
       new Promise((resolve) => {
         resolvePacks = resolve
       }),
@@ -60,7 +62,7 @@ describe('useEmojiMap', () => {
     resolvePacks([])
     await Promise.resolve()
 
-    expect(mockApi.listEmojis).not.toHaveBeenCalled()
+    expect(mockApi.emojis.list).not.toHaveBeenCalled()
   })
 })
 
@@ -103,7 +105,7 @@ describe('StickerImage', () => {
   })
 
   it('shows an actionable error and retries the failed URL lookup', async () => {
-    mockApi.getEmojiFileUrl.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('asset://wave.png')
+    mockApi.emojis.getFileUrl.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('asset://wave.png')
     render(<StickerImage stickerId="emoji-1" name="Wave" />)
 
     expect(await screen.findByRole('group', { name: 'Could not load Wave' })).toBeVisible()
@@ -114,11 +116,11 @@ describe('StickerImage', () => {
       expect(image.querySelector('[data-slot="sticker-thumb"]')).toHaveAttribute('data-state', 'playing'),
     )
     expect(image.querySelector('img[data-slot="sticker-thumb-live"]')).toHaveAttribute('src', 'asset://wave.png')
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(2)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(2)
   })
 
   it('offers the same retry inline, and the retry really asks again', async () => {
-    mockApi.getEmojiFileUrl.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('asset://wave.png')
+    mockApi.emojis.getFileUrl.mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce('asset://wave.png')
     render(
       <p>
         before <InlineSticker stickerId="emoji-1" name="Wave" /> after
@@ -132,24 +134,24 @@ describe('StickerImage', () => {
     await waitFor(() =>
       expect(image.querySelector('img[data-slot="sticker-thumb-live"]')).toHaveAttribute('src', 'asset://wave.png'),
     )
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(2)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(2)
   })
 
   it('asks for nothing until it comes near the viewport', async () => {
     io.restore()
     io = installIntersectionObserver()
-    mockApi.getEmojiFileUrl.mockResolvedValue('asset://wave.png')
+    mockApi.emojis.getFileUrl.mockResolvedValue('asset://wave.png')
     const { container } = render(<StickerImage stickerId="emoji-1" name="Wave" />)
     await act(async () => {})
-    expect(mockApi.getEmojiFileUrl).not.toHaveBeenCalled()
+    expect(mockApi.emojis.getFileUrl).not.toHaveBeenCalled()
 
     io.intersect(container.querySelector('[data-slot="sticker-box"]')!, true)
     await screen.findByRole('img', { name: 'Wave' })
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledWith('emoji-1')
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledWith({ emoji_id: 'emoji-1' })
   })
 
   it('stops playing when it leaves the screen and while the reader scrolls', async () => {
-    mockApi.getEmojiFileUrl.mockResolvedValue('asset://wave.png')
+    mockApi.emojis.getFileUrl.mockResolvedValue('asset://wave.png')
     const { container } = render(<StickerImage stickerId="emoji-1" name="Wave" />)
     const thumb = () => container.querySelector('[data-slot="sticker-thumb"]')
     await waitFor(() => expect(thumb()).toHaveAttribute('data-state', 'playing'))
@@ -181,7 +183,7 @@ describe('StickerImage', () => {
 
   it('does not play by itself under reduced motion, but plays while pointed at', async () => {
     reduceMotion(true)
-    mockApi.getEmojiFileUrl.mockResolvedValue('asset://wave.png')
+    mockApi.emojis.getFileUrl.mockResolvedValue('asset://wave.png')
     const { container } = render(<StickerImage stickerId="emoji-1" name="Wave" />)
     const thumb = () => container.querySelector('[data-slot="sticker-thumb"]')
     await waitFor(() => expect(thumb()).toHaveAttribute('data-state', 'drawn'))

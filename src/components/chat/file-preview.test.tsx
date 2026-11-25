@@ -9,10 +9,14 @@ const highlightInline = vi.hoisted(() =>
 
 vi.mock('@/api', () => ({
   api: {
-    getPlatform: vi.fn(() => Promise.resolve('windows')),
-    workspaceResolveRef,
-    workspaceProbeRef,
-    openInEditor: vi.fn(() => Promise.resolve()),
+    platform: {
+      getInfo: vi.fn(() => Promise.resolve('windows')),
+    },
+    workspace: {
+      resolveRef: workspaceResolveRef,
+      testRef: workspaceProbeRef,
+      openEditor: vi.fn(() => Promise.resolve()),
+    },
   },
 }))
 vi.mock('@/hooks/use-shiki-language', () => ({
@@ -107,11 +111,11 @@ describe('file preview source', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open preview' }))
     await waitFor(() =>
       expect(workspaceResolveRef).toHaveBeenCalledWith({
-        conversationId: 'conversation-1',
-        projectId: null,
+        conversation_id: 'conversation-1',
+        project_id: null,
         path: 'src/example.ts',
-        lineStart: null,
-        lineEnd: null,
+        line_start: null,
+        line_end: null,
       }),
     )
 

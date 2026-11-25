@@ -22,11 +22,15 @@ vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(() => Promise.resolve()
 
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn().mockResolvedValue(undefined),
-    denyToolCall: vi.fn().mockResolvedValue(undefined),
-    respondToAsk: vi.fn().mockResolvedValue(undefined),
-    workspaceResolveRef: vi.fn(),
-    conversationSnapshot: vi.fn(),
+    approvals: {
+      submitDecision: vi.fn().mockResolvedValue(undefined),
+    },
+    workspace: {
+      resolveRef: vi.fn(),
+    },
+    conversations: {
+      getSnapshot: vi.fn(),
+    },
   },
 }))
 
@@ -54,8 +58,8 @@ describe('tool panels', () => {
 
   beforeEach(() => {
     resetEditLocations()
-    vi.mocked(api.workspaceResolveRef).mockReset()
-    vi.mocked(api.conversationSnapshot).mockReset()
+    vi.mocked(api.workspace.resolveRef).mockReset()
+    vi.mocked(api.conversations.getSnapshot).mockReset()
     useConversationStore.setState({ sessions: {}, activeId: 'conv' })
     useConversationStore.getState().ensureSession('conv')
   })
@@ -143,7 +147,7 @@ describe('tool panels', () => {
 
   /// The edit names a string, not a line. The file says where the string is.
   it('places a pending edit by reading the file it is about to change', async () => {
-    vi.mocked(api.workspaceResolveRef).mockResolvedValue({
+    vi.mocked(api.workspace.resolveRef).mockResolvedValue({
       kind: 'project_file',
       path: 'src/app.py',
       content: 'import os\r\n\r\ndef main():\r\n    return 1\r\n',
@@ -171,8 +175,8 @@ describe('tool panels', () => {
       '[data-slot="file-diff-line"][data-kind="remove"] [data-slot="file-diff-gutter"]',
     )!
     expect(first.textContent?.trim()).toBe('3')
-    expect(api.workspaceResolveRef).toHaveBeenCalledWith(
-      expect.objectContaining({ conversationId: 'conv', path: 'src/app.py', lineStart: null, lineEnd: null }),
+    expect(api.workspace.resolveRef).toHaveBeenCalledWith(
+      expect.objectContaining({ conversation_id: 'conv', path: 'src/app.py', line_start: null, line_end: null }),
     )
   })
 
@@ -187,7 +191,7 @@ describe('tool panels', () => {
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Edit File/ }))
-    expect(api.workspaceResolveRef).not.toHaveBeenCalled()
+    expect(api.workspace.resolveRef).not.toHaveBeenCalled()
     expect(panel(container).querySelector('[data-slot="file-diff-gutter"]')).toBeNull()
     // The confirmation is the footer's sentence, not a block of result text.
     expect(panel(container).querySelector('[data-slot="chat-tool-panel-footer"]')).toHaveTextContent(

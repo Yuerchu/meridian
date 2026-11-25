@@ -700,13 +700,13 @@ export function InputBar({
     if (isRemote) return fileInputRef.current?.open({ accept: 'image/*', capture: true })
     let uri: string | null
     try {
-      uri = await api.takePhoto()
+      uri = await api.platform.selectCameraPhoto()
     } catch (err) {
       setComposerError(t('chat.attachFailed', { error: errorMessage(err) }))
       return
     }
     if (uri && onAttachFiles) {
-      const name = await api.resolveFileName(uri).catch(() => 'photo.jpg')
+      const name = await api.platform.resolveFileName({ path: uri }).catch(() => 'photo.jpg')
       onAttachFiles([{ path: uri, name }])
     }
   }, [onAttachFiles, t])
@@ -715,13 +715,13 @@ export function InputBar({
     if (isRemote) return fileInputRef.current?.open({ accept: 'image/*' })
     let uri: string | null
     try {
-      uri = await api.pickGalleryImage()
+      uri = await api.platform.selectGalleryImage()
     } catch (err) {
       setComposerError(t('chat.attachFailed', { error: errorMessage(err) }))
       return
     }
     if (uri && onAttachFiles) {
-      const name = await api.resolveFileName(uri).catch(() => 'image.jpg')
+      const name = await api.platform.resolveFileName({ path: uri }).catch(() => 'image.jpg')
       onAttachFiles([{ path: uri, name }])
     }
   }, [onAttachFiles, t])
@@ -735,8 +735,8 @@ export function InputBar({
       const files = await Promise.all(
         paths.map(async (p) => ({
           path: p,
-          name: await api
-            .resolveFileName(p)
+          name: await api.platform
+            .resolveFileName({ path: p })
             .catch(() => p.replace(/\\/g, '/').split('/').pop() || t('chat.attachedFile')),
         })),
       )

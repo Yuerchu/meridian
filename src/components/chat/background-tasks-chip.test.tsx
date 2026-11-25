@@ -8,7 +8,7 @@ import type { BackgroundTaskInfoResponse } from '@/types'
 import { BackgroundTasksChip } from './background-tasks-chip'
 import { ComposerStatusTab } from './composer-status-tab'
 
-vi.mock('@/api', () => ({ api: { readBackgroundTaskOutput: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { backgroundTasks: { readOutput: vi.fn() } } }))
 
 beforeAll(() => {
   void i18n.changeLanguage('en')
@@ -60,7 +60,7 @@ describe('BackgroundTasksChip', () => {
 
 describe('the output drawer', () => {
   it('opens on the output of a task, titled and described by what it is running', async () => {
-    vi.mocked(api.readBackgroundTaskOutput).mockResolvedValue({
+    vi.mocked(api.backgroundTasks.readOutput).mockResolvedValue({
       content: 'compiled 12 modules',
       total_bytes: 19,
       task: task({ id: 'b1', description: 'Dev server', state: 'running' }),

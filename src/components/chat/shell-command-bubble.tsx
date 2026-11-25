@@ -97,7 +97,7 @@ export function ShellCommandBubble({
     }
     let live = true
     setState({ status: 'loading' })
-    void api.getUserCommandResult({ conversationId: message.conversation_id, messageId: message.id }).then(
+    void api.userCommands.getResult({ conversation_id: message.conversation_id, message_id: message.id }).then(
       (result) => {
         if (!live) return
         setState(result ? { status: 'loaded', result } : { status: 'unavailable' })

@@ -143,16 +143,16 @@ export function StartComposer({ task, onError }: { task: BoardTaskInfoResponse; 
 
   const start = async (text: string) => {
     try {
-      const started = await api.boardTaskStart({ id: task.id, agentKind })
+      const started = await api.board.startTask({ id: task.id, agent_kind: agentKind })
       // The first message is what was asked, and the board's note about the
       // worktree: detached, the branch and its base the agent's to choose.
       const asked = text || task.request || task.title
-      await api.queueEnqueue({
-        conversationId: started.conversation.id,
+      await api.queue.create({
+        conversation_id: started.conversation.id,
         content: `${asked}\n\n${t('board.agentNote')}`,
         delivery: 'follow_up',
-        contextRefs: null,
-        conversationRefs: null,
+        context_refs: null,
+        conversation_refs: null,
       })
       setComposerText(task.id, '')
       await useBoardStore.getState().load()
@@ -234,19 +234,19 @@ export function ConversationComposer({
     if (!text) return
     try {
       if (running) {
-        await api.queueEnqueue({
-          conversationId,
+        await api.queue.create({
+          conversation_id: conversationId,
           content: text,
           delivery: 'follow_up',
-          contextRefs: null,
-          conversationRefs: null,
+          context_refs: null,
+          conversation_refs: null,
         })
       } else {
         // Telling a card under review to keep working is the person moving it.
         if (task.stage === 'review') {
           // At the end of the column: the backend's index is a u32, and "past the end" is "append".
           const end = useBoardStore.getState().tasks.filter((card) => card.stage === 'running').length
-          await api.boardTaskMove({ id: task.id, stage: 'running', index: end })
+          await api.board.updateTask({ id: task.id, position: { stage: 'running', index: end } })
         }
         await sendMessage(text, true)
       }
@@ -259,11 +259,11 @@ export function ConversationComposer({
   const stop = () => {
     const failed = (err: unknown) => onError(t('board.error.send', { error: String(err) }))
     if (task.agent_kind === 'claude_code') {
-      api.acpCancel(conversationId).catch(failed)
+      api.acp.stopTurn({ conversation_id: conversationId }).catch(failed)
       return
     }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId ?? null
-    api.stopChat({ conversationId, turnId }).catch(failed)
+    api.chat.stop({ conversation_id: conversationId, turn_id: turnId }).catch(failed)
   }
 
   return (

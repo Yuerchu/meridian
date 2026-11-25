@@ -17,7 +17,17 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@/api', () => ({
-  api: { approveToolCall: mocks.approve, denyToolCall: mocks.deny, dismissSystemNotice: mocks.dismissNotice },
+  api: {
+    approvals: {
+      submitDecision: (req: { approval_id: string; decision: { kind: string; reason?: string | null } }) =>
+        req.decision.kind === 'approve'
+          ? mocks.approve(req.approval_id)
+          : mocks.deny({ approvalId: req.approval_id, reason: req.decision.reason ?? null }),
+    },
+    systemNotices: {
+      delete: mocks.dismissNotice,
+    },
+  },
 }))
 
 function call(

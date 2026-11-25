@@ -2,9 +2,15 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react'
 
 vi.mock('@/api', () => ({
   api: {
-    getPlatform: vi.fn(() => Promise.resolve('windows')),
-    getEmojiFileUrl: vi.fn(),
-    workspaceProbeRef: vi.fn(() => Promise.resolve({ kind: 'missing' })),
+    platform: {
+      getInfo: vi.fn(() => Promise.resolve('windows')),
+    },
+    emojis: {
+      getFileUrl: vi.fn(),
+    },
+    workspace: {
+      testRef: vi.fn(() => Promise.resolve({ kind: 'missing' })),
+    },
   },
 }))
 
@@ -37,7 +43,7 @@ describe('stickers in assistant markdown', () => {
     vi.clearAllMocks()
     resetStickerUrls()
     resetViewportPlayback()
-    mockApi.getEmojiFileUrl.mockResolvedValue('asset://wave.gif')
+    mockApi.emojis.getFileUrl.mockResolvedValue('asset://wave.gif')
     io = installIntersectionObserver(() => true)
     getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
       drawImage: vi.fn(),
@@ -62,12 +68,12 @@ describe('stickers in assistant markdown', () => {
     await act(async () => {})
     const [sticker] = stickers(container)
     expect(sticker).toHaveAccessibleName('wave')
-    expect(mockApi.getEmojiFileUrl).not.toHaveBeenCalled()
+    expect(mockApi.emojis.getFileUrl).not.toHaveBeenCalled()
     expect(sticker.querySelector('img, canvas')).toBeNull()
 
     act(() => io.intersect(sticker, true, isNearObserver))
     await waitFor(() => expect(stateOf(sticker)).toBe('drawn'))
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledExactlyOnceWith('e1')
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledExactlyOnceWith({ emoji_id: 'e1' })
   })
 
   it('freezes while the reader scrolls and resumes once it settles', async () => {
@@ -103,7 +109,7 @@ describe('stickers in assistant markdown', () => {
       expect(stickers(container).map(stateOf)).toEqual([...Array<string>(MAX_PLAYING).fill('playing'), 'drawn']),
     )
     // One sticker, one request, however many times it is named.
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(1)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(1)
   })
 
   it('does not play by itself under reduced motion, but plays while pointed at', async () => {
@@ -149,7 +155,7 @@ describe('stickers in assistant markdown', () => {
     expect(stickers(container)).toHaveLength(1)
     expect(stickers(container)[0]).toBe(sticker)
     expect(stateOf(sticker)).toBe('playing')
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(1)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(1)
     expect(decode).toHaveBeenCalledTimes(1)
   })
 
@@ -171,7 +177,7 @@ describe('stickers in assistant markdown', () => {
 
     expect(stickers(container)).toHaveLength(1)
     expect(stickers(container)[0]).toBe(sticker)
-    expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(1)
+    expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(1)
     expect(decode).toHaveBeenCalledTimes(1)
   })
 

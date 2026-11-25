@@ -16,29 +16,31 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: () => pickDirectory() }))
 
 vi.mock('@/api', () => ({
   api: {
-    acpListSessions: (...args: unknown[]) => acpListSessions(...args),
-    acpImportSession: (...args: unknown[]) => acpImportSession(...args),
-    acpAttachSession: (...args: unknown[]) => acpAttachSession(...args),
-    acpConversationSession: (...args: unknown[]) => acpConversationSession(...args),
+    acp: {
+      listSessions: (...args: unknown[]) => acpListSessions(...args),
+      importSession: (...args: unknown[]) => acpImportSession(...args),
+      attachSession: (...args: unknown[]) => acpAttachSession(...args),
+      getSession: (...args: unknown[]) => acpConversationSession(...args),
+    },
   },
 }))
 
 function session(
-  over: Partial<AcpDiscoveredSessionInfoResponse> & { sessionId: string },
+  over: Partial<AcpDiscoveredSessionInfoResponse> & { session_id: string },
 ): AcpDiscoveredSessionInfoResponse {
   return {
     cwd: '/work/meridian',
     title: null,
-    updatedAt: null,
-    ownedBy: null,
+    updated_at: null,
+    owned_by: null,
     ...over,
   }
 }
 
 const SESSIONS: AcpDiscoveredSessionInfoResponse[] = [
-  session({ sessionId: 's-old', title: '很久以前', updatedAt: '2026-01-01T00:00:00.000Z' }),
-  session({ sessionId: 's-none', title: '不知道什么时候' }),
-  session({ sessionId: 's-new', title: '刚刚', updatedAt: '2026-08-20T11:00:00.000Z' }),
+  session({ session_id: 's-old', title: '很久以前', updated_at: '2026-01-01T00:00:00.000Z' }),
+  session({ session_id: 's-none', title: '不知道什么时候' }),
+  session({ session_id: 's-new', title: '刚刚', updated_at: '2026-08-20T11:00:00.000Z' }),
 ]
 
 async function open(props: Partial<React.ComponentProps<typeof ClaudeSessionPicker>> = {}) {
@@ -82,8 +84,8 @@ test('sessions are listed newest first, with an undated one last', async () => {
 
 test('the search box narrows on title and on path', async () => {
   acpListSessions.mockResolvedValue([
-    session({ sessionId: 's-a', title: 'queue work', cwd: '/work/meridian' }),
-    session({ sessionId: 's-b', title: 'unrelated', cwd: '/work/foxline' }),
+    session({ session_id: 's-a', title: 'queue work', cwd: '/work/meridian' }),
+    session({ session_id: 's-b', title: 'unrelated', cwd: '/work/foxline' }),
   ])
   await open()
   await rows(2)
@@ -102,7 +104,7 @@ test('the search box narrows on title and on path', async () => {
  * imported invites a second attempt that can only fail on the unique index.
  */
 test('an imported row becomes an already-imported row and the dialog stays open', async () => {
-  acpImportSession.mockResolvedValue({ conversationId: 'conv-99', truncated: false, messages: 12 })
+  acpImportSession.mockResolvedValue({ conversation_id: 'conv-99', truncated: false, messages: 12 })
   const onOpenChange = vi.fn()
   await open({ onOpenChange })
   await rows(3)
@@ -112,10 +114,10 @@ test('an imported row becomes an already-imported row and the dialog stays open'
 
   await waitFor(() => expect(within(row).getByRole('button', { name: /Imported/ })).toBeInTheDocument())
   expect(acpImportSession).toHaveBeenCalledWith({
-    sessionId: 's-new',
+    session_id: 's-new',
     cwd: '/work/meridian',
     title: '刚刚',
-    updatedAt: '2026-08-20T11:00:00.000Z',
+    updated_at: '2026-08-20T11:00:00.000Z',
   })
   expect(onOpenChange).not.toHaveBeenCalled()
   // And it was not re-fetched: the list is an adapter start, not a query.
@@ -129,7 +131,7 @@ test('an imported row becomes an already-imported row and the dialog stays open'
  * again.
  */
 test('a session another conversation owns opens that conversation', async () => {
-  acpListSessions.mockResolvedValue([session({ sessionId: 's-mine', title: '已经在里面了', ownedBy: 'conv-7' })])
+  acpListSessions.mockResolvedValue([session({ session_id: 's-mine', title: '已经在里面了', owned_by: 'conv-7' })])
   const onOpenConversation = vi.fn()
   const onOpenChange = vi.fn()
   await open({ onOpenConversation, onOpenChange })
@@ -149,18 +151,18 @@ test('a session another conversation owns opens that conversation', async () => 
  */
 test('attaching starts narrowed to the conversation directory and closes when it lands', async () => {
   acpConversationSession.mockResolvedValue({ cwd: '/work/foxline', acp_session_id: null })
-  acpListSessions.mockResolvedValue([session({ sessionId: 's-a', title: 'there it is', cwd: '/work/foxline' })])
+  acpListSessions.mockResolvedValue([session({ session_id: 's-a', title: 'there it is', cwd: '/work/foxline' })])
   const onOpenChange = vi.fn()
   await open({ mode: 'attach', conversationId: 'conv-1', onOpenChange })
 
-  expect(acpConversationSession).toHaveBeenCalledWith('conv-1')
+  expect(acpConversationSession).toHaveBeenCalledWith({ conversation_id: 'conv-1' })
   expect(acpListSessions).toHaveBeenCalledWith({ cwd: '/work/foxline' })
 
   await rows(1)
   await userEvent.click(screen.getByRole('button', { name: 'Connect' }))
   expect(acpAttachSession).toHaveBeenCalledWith({
-    conversationId: 'conv-1',
-    sessionId: 's-a',
+    conversation_id: 'conv-1',
+    session_id: 's-a',
     cwd: '/work/foxline',
   })
   // The opposite of an import: there is exactly one session to pick and the
@@ -193,8 +195,8 @@ test('attaching a conversation with nothing on record lists every project', asyn
 test('a session held by another conversation cannot be attached', async () => {
   acpConversationSession.mockResolvedValue({ cwd: '/work/meridian', acp_session_id: null })
   acpListSessions.mockResolvedValue([
-    session({ sessionId: 's-taken', title: '别人的', ownedBy: 'conv-other' }),
-    session({ sessionId: 's-ours', title: '就是这个', ownedBy: 'conv-1' }),
+    session({ session_id: 's-taken', title: '别人的', owned_by: 'conv-other' }),
+    session({ session_id: 's-ours', title: '就是这个', owned_by: 'conv-1' }),
   ])
   await open({ mode: 'attach', conversationId: 'conv-1' })
   await rows(2)
@@ -256,7 +258,7 @@ test('a slow first load cannot overwrite the narrowed one that overtook it', asy
   expect(screen.queryByRole('listitem')).not.toBeInTheDocument()
 
   // The user narrows while the whole-machine list is still coming.
-  const narrow = [session({ sessionId: 's-a', title: 'narrowed', cwd: '/work/foxline' })]
+  const narrow = [session({ session_id: 's-a', title: 'narrowed', cwd: '/work/foxline' })]
   acpListSessions.mockResolvedValue(narrow)
   await userEvent.click(screen.getByRole('button', { name: 'Folder' }))
   await rows(1)
@@ -295,7 +297,7 @@ test('while one row is importing the others cannot be pressed', async () => {
   expect(first).toHaveAttribute('aria-busy', 'true')
   expect(within(first).getByRole('button', { name: 'Import' })).toBeInTheDocument()
 
-  finish({ conversationId: 'conv-1', truncated: false, messages: 3 })
+  finish({ conversation_id: 'conv-1', truncated: false, messages: 3 })
   await waitFor(() => expect(within(second).getByRole('button', { name: 'Import' })).toBeEnabled())
   expect(acpImportSession).toHaveBeenCalledTimes(1)
 })
@@ -309,7 +311,7 @@ test('while one row is importing the others cannot be pressed', async () => {
  * row would scroll a notification away.
  */
 test('a session that came back as a tail says so on its row', async () => {
-  acpImportSession.mockResolvedValue({ conversationId: 'conv-99', truncated: true, messages: 34 })
+  acpImportSession.mockResolvedValue({ conversation_id: 'conv-99', truncated: true, messages: 34 })
   await open()
   await rows(3)
 
@@ -329,9 +331,9 @@ test('a very long list is cut, and says how much it cut', async () => {
   acpListSessions.mockResolvedValue(
     Array.from({ length: 250 }, (_, i) =>
       session({
-        sessionId: `s-${i}`,
+        session_id: `s-${i}`,
         title: `session ${i}`,
-        updatedAt: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
+        updated_at: new Date(Date.UTC(2026, 0, 1, 0, 0, i)).toISOString(),
       }),
     ),
   )

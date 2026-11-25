@@ -15,7 +15,7 @@ const agentKnob: AcpConfigOptionInfoResponse = {
   description: null,
   category: null,
   type: 'select',
-  currentValue: 'general',
+  current_value: 'general',
   options: [
     { value: 'general', name: 'General', description: null },
     { value: 'reviewer', name: 'Reviewer', description: 'Reads, does not write' },

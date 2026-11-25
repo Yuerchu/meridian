@@ -13,14 +13,22 @@ import type { MessageViewModel, ToolCallDisplay } from '@/types'
 vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(() => Promise.resolve()) }))
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn().mockResolvedValue(undefined),
-    denyToolCall: vi.fn().mockResolvedValue(undefined),
-    respondToAsk: vi.fn().mockResolvedValue(undefined),
-    workspaceResolveRef: vi.fn(),
-    workspaceProbeRef: vi.fn(() => Promise.resolve(null)),
-    getPlatform: vi.fn(() => Promise.resolve('windows')),
-    conversationSnapshot: vi.fn(),
-    activeUserShellTurn: vi.fn(() => Promise.resolve(null)),
+    approvals: {
+      submitDecision: vi.fn().mockResolvedValue(undefined),
+    },
+    workspace: {
+      resolveRef: vi.fn(),
+      testRef: vi.fn(() => Promise.resolve(null)),
+    },
+    platform: {
+      getInfo: vi.fn(() => Promise.resolve('windows')),
+    },
+    conversations: {
+      getSnapshot: vi.fn(),
+    },
+    userCommands: {
+      getActive: vi.fn(() => Promise.resolve(null)),
+    },
   },
 }))
 
@@ -84,7 +92,7 @@ describe('SubAgentGroup', () => {
   })
 
   beforeEach(() => {
-    vi.mocked(api.conversationSnapshot).mockReset()
+    vi.mocked(api.conversations.getSnapshot).mockReset()
     useConversationStore.setState({ sessions: {}, activeId: 'conv', subAgentSteps: {} })
     useConversationStore.getState().ensureSession('conv')
   })
@@ -255,28 +263,28 @@ describe('SubAgentSheetProvider', () => {
   })
 
   beforeEach(() => {
-    vi.mocked(api.conversationSnapshot).mockReset()
+    vi.mocked(api.conversations.getSnapshot).mockReset()
     useConversationStore.setState({ sessions: {}, activeId: 'conv', subAgentSteps: {} })
     useConversationStore.getState().ensureSession('conv')
   })
 
   it('loads the run’s conversation into the store and draws it, only once a row is pressed', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue({
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue({
       tree: { messages: [], branches: [] },
       pending_approvals: [],
       turns: [],
       sub_agent_runs: [],
       acp_notices: [],
       plan_reviews: [],
-    } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
+    } as unknown as Awaited<ReturnType<typeof api.conversations.getSnapshot>>)
     render(
       <SubAgentSheetProvider>
         <SubAgentGroup calls={[finished('1', 'Audit the cache', 'Fine.')]} />
       </SubAgentSheetProvider>,
     )
-    expect(api.conversationSnapshot).not.toHaveBeenCalled()
+    expect(api.conversations.getSnapshot).not.toHaveBeenCalled()
     await userEvent.click(rowOf(/Audit the cache/))
-    expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: 'sub-1' })
+    expect(api.conversations.getSnapshot).toHaveBeenCalledWith({ conversation_id: 'sub-1' })
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('heading', { name: 'Audit the cache' })).toBeVisible()
     expect(await within(dialog).findByText('Nothing recorded yet.')).toBeVisible()
@@ -287,7 +295,7 @@ describe('SubAgentSheetProvider', () => {
   /// a successful load and the sheet says "nothing recorded yet" about a run
   /// that has a transcript — with no error and no way to try again.
   it('says a failed load failed, and offers to try again', async () => {
-    vi.mocked(api.conversationSnapshot).mockRejectedValue(new Error('backend is gone'))
+    vi.mocked(api.conversations.getSnapshot).mockRejectedValue(new Error('backend is gone'))
     render(
       <SubAgentSheetProvider>
         <SubAgentGroup calls={[finished('1', 'Audit the cache', 'Fine.')]} />
@@ -302,14 +310,14 @@ describe('SubAgentSheetProvider', () => {
     // Not a skeleton either: that promises something is on its way.
     expect(dialog.querySelector('[data-slot="sub-agent-sheet-loading"]')).toBeNull()
 
-    vi.mocked(api.conversationSnapshot).mockResolvedValue({
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue({
       tree: { messages: [], branches: [] },
       pending_approvals: [],
       turns: [],
       sub_agent_runs: [],
       acp_notices: [],
       plan_reviews: [],
-    } as unknown as Awaited<ReturnType<typeof api.conversationSnapshot>>)
+    } as unknown as Awaited<ReturnType<typeof api.conversations.getSnapshot>>)
     await userEvent.click(within(dialog).getByRole('button', { name: 'Retry' }))
     expect(await within(dialog).findByText('Nothing recorded yet.')).toBeVisible()
   })

@@ -105,17 +105,23 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('@/api', () => ({
   api: {
-    fetchProviderModels: mocks.fetchProviderModels,
-    runUserCommand: mocks.runUserCommand,
-    stopChat: mocks.stopChat,
-    workspaceProbeRef: mocks.workspaceProbeRef,
-    getComposerDraft: vi.fn(() => Promise.resolve(null)),
-    saveComposerDraft: vi.fn((request: { revision: number }) =>
-      Promise.resolve({ applied: true, revision: request.revision }),
-    ),
-    clearComposerDraft: vi.fn((request: { revision: number }) =>
-      Promise.resolve({ applied: true, revision: request.revision }),
-    ),
+    providers: {
+      listModels: mocks.fetchProviderModels,
+    },
+    userCommands: {
+      invoke: mocks.runUserCommand,
+    },
+    chat: {
+      stop: mocks.stopChat,
+    },
+    workspace: {
+      testRef: mocks.workspaceProbeRef,
+    },
+    composerDrafts: {
+      get: vi.fn(() => Promise.resolve(null)),
+      set: vi.fn((request: { revision: number }) => Promise.resolve({ applied: true, revision: request.revision })),
+      delete: vi.fn((request: { revision: number }) => Promise.resolve({ applied: true, revision: request.revision })),
+    },
   },
 }))
 
@@ -406,7 +412,7 @@ describe('ChatView composer dispatch', () => {
       expect(mocks.enqueue).toHaveBeenCalledWith(
         'Review @src/api.ts',
         'follow_up',
-        [{ path: 'src/api.ts', lineStart: null, lineEnd: null }],
+        [{ path: 'src/api.ts', line_start: null, line_end: null }],
         [],
       ),
     )
@@ -435,7 +441,7 @@ describe('ChatView composer dispatch', () => {
         undefined,
         undefined,
         undefined,
-        [{ path: 'src/models.py', lineStart: null, lineEnd: null }],
+        [{ path: 'src/models.py', line_start: null, line_end: null }],
         [],
       ),
     )
@@ -599,10 +605,10 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(mocks.confirm).toHaveBeenCalledTimes(1))
     expect(mocks.runUserCommand).toHaveBeenCalledTimes(1)
     expect(mocks.runUserCommand).toHaveBeenCalledWith({
-      conversationId: 'conversation-1',
+      conversation_id: 'conversation-1',
       command: 'echo hello',
-      turnId: expect.any(String),
-      retryWithoutSandbox: null,
+      turn_id: expect.any(String),
+      retry_without_sandbox: null,
     })
 
     render(mocks.confirm.mock.calls[0][0].description)
@@ -628,17 +634,17 @@ describe('ChatView composer dispatch', () => {
     )
     await waitFor(() => expect(mocks.loadMessages).toHaveBeenCalledTimes(2))
 
-    const firstTurnId = mocks.runUserCommand.mock.calls[0][0].turnId
+    const firstTurnId = mocks.runUserCommand.mock.calls[0][0].turn_id
     act(() => latestInputBar().onSubmit())
 
     await waitFor(() => expect(mocks.runUserCommand).toHaveBeenCalledTimes(2))
-    expect(mocks.runUserCommand.mock.calls[1][0].turnId).toBe(firstTurnId)
+    expect(mocks.runUserCommand.mock.calls[1][0].turn_id).toBe(firstTurnId)
   })
 
   it('does not restore a runnable draft when a lost response left a durable shell row', async () => {
     let attemptedTurn = ''
     mocks.runUserCommand.mockImplementation((request: UserCommandRunRequest) => {
-      attemptedTurn = request.turnId
+      attemptedTurn = request.turn_id
       return Promise.reject(new Error('response lost'))
     })
     render(<ChatView conversationId="conversation-1" />)
@@ -688,7 +694,7 @@ describe('ChatView composer draft', () => {
     'removes only the focused reference with %s and focuses its neighbor',
     async (key) => {
       const user = userEvent.setup()
-      vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+      vi.mocked(api.composerDrafts.get).mockResolvedValueOnce({
         conversation_id: 'conversation-1',
         body: 'draft',
         attachments: [],
@@ -719,7 +725,7 @@ describe('ChatView composer draft', () => {
   it('names the reference group and native remove buttons in Chinese', async () => {
     const user = userEvent.setup()
     await i18n.changeLanguage('zh-CN')
-    vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+    vi.mocked(api.composerDrafts.get).mockResolvedValueOnce({
       conversation_id: 'conversation-1',
       body: '',
       attachments: [],
@@ -750,7 +756,7 @@ describe('ChatView composer draft', () => {
   })
 
   it('restores the stored draft and will not send a file that has gone', async () => {
-    vi.mocked(api.getComposerDraft).mockResolvedValueOnce({
+    vi.mocked(api.composerDrafts.get).mockResolvedValueOnce({
       conversation_id: 'conversation-1',
       body: 'where I left off',
       attachments: [{ path: '/work/gone.txt', name: 'gone.txt', exists: false }],
@@ -765,7 +771,7 @@ describe('ChatView composer draft', () => {
     await waitFor(() => expect(latestInputBar().value).toBe('where I left off'))
     const props = mocks.inputBarProps.mock.calls.at(-1)?.[0] as { attachedFiles: unknown[] }
     expect(props.attachedFiles).toEqual([{ path: '/work/gone.txt', name: 'gone.txt', missing: true }])
-    expect(api.saveComposerDraft).not.toHaveBeenCalled()
+    expect(api.composerDrafts.set).not.toHaveBeenCalled()
 
     act(() => latestInputBar().onSubmit())
     expect(mocks.setError).toHaveBeenCalledWith(

@@ -25,9 +25,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({
   api: {
-    listAssistantEmojiPacks: mocks.listPacks,
-    listEmojis: mocks.listEmojis,
-    getEmojiFileUrl: mocks.fileUrl,
+    emojis: {
+      listPacks: mocks.listPacks,
+      list: mocks.listEmojis,
+      getFileUrl: mocks.fileUrl,
+    },
   },
 }))
 
@@ -52,7 +54,7 @@ describe('EmojiPicker', () => {
     const onSelect = vi.fn()
     renderPicker(<EmojiPicker assistantId="assistant-1" onSelect={onSelect} />)
 
-    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalledWith('pack-1'))
+    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalledWith({ filter: { kind: 'pack', pack_id: 'pack-1' } }))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
     // The panel opens on the Unicode tab. No sticker file is asked for until
@@ -69,8 +71,8 @@ describe('EmojiPicker', () => {
         expect.objectContaining({ emoji: expect.objectContaining({ id: 'emoji-1' }), url: 'asset://wave.png' }),
       ),
     )
-    expect(mocks.fileUrl).toHaveBeenCalledWith('emoji-1')
-    expect(mocks.listPacks).toHaveBeenCalledWith('assistant-1')
+    expect(mocks.fileUrl).toHaveBeenCalledWith({ emoji_id: 'emoji-1' })
+    expect(mocks.listPacks).toHaveBeenCalledWith({ assistant_id: 'assistant-1' })
   })
 
   it('inserts a Unicode emoji without sending a sticker', async () => {
@@ -100,7 +102,7 @@ describe('EmojiPicker', () => {
     const user = userEvent.setup()
     renderPicker(<EmojiPicker assistantId="assistant-broken" onSelect={vi.fn()} />)
 
-    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-broken'))
+    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith({ assistant_id: 'assistant-broken' }))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
     const alert = await screen.findByRole('alert')
@@ -116,7 +118,7 @@ describe('EmojiPicker', () => {
     const user = userEvent.setup()
     renderPicker(<EmojiPicker assistantId="assistant-empty" onSelect={vi.fn()} />)
 
-    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-empty'))
+    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith({ assistant_id: 'assistant-empty' }))
     await user.click(screen.getByRole('button', { name: 'Emoji' }))
 
     expect(await screen.findByText('No emoji packs assigned to this assistant')).toBeInTheDocument()
@@ -142,7 +144,7 @@ describe('EmojiPicker', () => {
     )
     rerender(<EmojiPicker assistantId="assistant-2" onSelect={onSelect} />)
 
-    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith('assistant-2'))
+    await waitFor(() => expect(mocks.listPacks).toHaveBeenCalledWith({ assistant_id: 'assistant-2' }))
     expect(screen.queryByRole('button', { name: 'Pack One' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Wave' })).toBeNull()
     expect(onSelect).not.toHaveBeenCalled()

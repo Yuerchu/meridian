@@ -6,7 +6,7 @@ import type { MessageViewModel, UserCommandResultResponse } from '@/types'
 
 const getUserCommandResult = vi.hoisted(() => vi.fn())
 
-vi.mock('@/api', () => ({ api: { getUserCommandResult } }))
+vi.mock('@/api', () => ({ api: { userCommands: { getResult: getUserCommandResult } } }))
 
 import { ShellCommandBubble } from './shell-command-bubble'
 
@@ -66,8 +66,8 @@ it('rehydrates a structured command result without reading raw transcript contex
   expect(screen.getByText('C:/repo')).toBeInTheDocument()
   await waitFor(() =>
     expect(getUserCommandResult).toHaveBeenCalledWith({
-      conversationId: 'conversation-1',
-      messageId: 'message-1',
+      conversation_id: 'conversation-1',
+      message_id: 'message-1',
     }),
   )
 })

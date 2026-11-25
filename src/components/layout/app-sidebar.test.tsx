@@ -15,10 +15,14 @@ const dialogMocks = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }))
 
 vi.mock('@/api', () => ({
   api: {
-    getPlatform: () => Promise.resolve('windows'),
-    exportConversation: apiMocks.exportConversation,
-    // The archived rows of each group, loaded by the sidebar itself.
-    listConversations: () => apiMocks.listConversations(),
+    platform: {
+      getInfo: () => Promise.resolve('windows'),
+    },
+    conversations: {
+      export: apiMocks.exportConversation,
+      // The archived rows of each group, loaded by the sidebar itself.
+      list: () => apiMocks.listConversations(),
+    },
   },
 }))
 vi.mock('@tauri-apps/plugin-dialog', () => dialogMocks)

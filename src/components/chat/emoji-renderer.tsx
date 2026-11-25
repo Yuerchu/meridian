@@ -32,9 +32,11 @@ export function useEmojiMap(assistantId: string | null): EmojiMap {
 
     async function load() {
       try {
-        const packs = await api.listAssistantEmojiPacks(assistantId!)
+        const packs = await api.emojis.listPacks({ assistant_id: assistantId! })
         if (cancelled) return
-        const emojiGroups = await Promise.all(packs.map((pack) => api.listEmojis(pack.id)))
+        const emojiGroups = await Promise.all(
+          packs.map((pack) => api.emojis.list({ filter: { kind: 'pack', pack_id: pack.id } })),
+        )
         if (cancelled) return
         const usable = emojiGroups
           .flat()

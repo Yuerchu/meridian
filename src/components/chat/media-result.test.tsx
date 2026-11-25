@@ -18,9 +18,15 @@ vi.mock('@tauri-apps/api/core', () => ({ convertFileSrc: (path: string) => `asse
 vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(() => Promise.resolve()) }))
 vi.mock('@/api', () => ({
   api: {
-    exportMediaFile: vi.fn(),
-    workspaceResolveRef: vi.fn(),
-    conversationSnapshot: vi.fn(),
+    messages: {
+      exportMedia: vi.fn(),
+    },
+    workspace: {
+      resolveRef: vi.fn(),
+    },
+    conversations: {
+      getSnapshot: vi.fn(),
+    },
   },
 }))
 
@@ -74,7 +80,7 @@ describe('MediaResult', () => {
   it('saves the opened picture through export_media_file', async () => {
     const user = userEvent.setup()
     dialog.save.mockResolvedValue('D:/out/drawn.png')
-    vi.mocked(api.exportMediaFile).mockResolvedValue(undefined)
+    vi.mocked(api.messages.exportMedia).mockResolvedValue(undefined)
     draw([image])
 
     await user.click(screen.getByRole('button', { name: i18n.t('chat.media.open', { name: 'drawn.png' }) }))
@@ -82,10 +88,10 @@ describe('MediaResult', () => {
     await user.click(within(sheet).getByRole('button', { name: i18n.t('chat.media.save') }))
 
     expect(dialog.save).toHaveBeenCalledWith({ defaultPath: 'drawn.png' })
-    expect(api.exportMediaFile).toHaveBeenCalledWith({
-      conversationId: 'c1',
+    expect(api.messages.exportMedia).toHaveBeenCalledWith({
+      conversation_id: 'c1',
       uri: image.url,
-      outputPath: 'D:/out/drawn.png',
+      output_path: 'D:/out/drawn.png',
     })
   })
 

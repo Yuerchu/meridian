@@ -66,7 +66,7 @@ export function MediaPreviewSheet({
     setSaveError(null)
     setSaving(true)
     try {
-      await api.exportMediaFile({ conversationId, uri: media.url, outputPath: path })
+      await api.messages.exportMedia({ conversation_id: conversationId, uri: media.url, output_path: path })
       setSaved(true)
     } catch (error) {
       // Unsaid, a refused write looks exactly like a cancelled picker.

@@ -81,11 +81,11 @@ export function EmojiPicker({
       setLoadError(null)
       setPackError(null)
       try {
-        const assignedPacks = await api.listAssistantEmojiPacks(assistantId!)
+        const assignedPacks = await api.emojis.listPacks({ assistant_id: assistantId! })
         const result = await Promise.all(
           assignedPacks.map(async (pack) => ({
             pack,
-            emojis: (await api.listEmojis(pack.id)).filter(
+            emojis: (await api.emojis.list({ filter: { kind: 'pack', pack_id: pack.id } })).filter(
               (emoji) => emoji.semantic_status === 'confirmed' && emoji.file_format !== 'lottie',
             ),
           })),

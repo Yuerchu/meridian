@@ -9,11 +9,15 @@ const openInEditor = vi.hoisted(() => vi.fn(() => Promise.resolve()))
 vi.mock('@tauri-apps/plugin-shell', () => ({ open: shellOpen }))
 vi.mock('@/api', () => ({
   api: {
-    getPlatform: vi.fn(() => Promise.resolve('windows')),
-    workspaceReadFile,
-    workspaceResolveRef,
-    workspaceProbeRef,
-    openInEditor,
+    platform: {
+      getInfo: vi.fn(() => Promise.resolve('windows')),
+    },
+    workspace: {
+      readFile: workspaceReadFile,
+      resolveRef: workspaceResolveRef,
+      testRef: workspaceProbeRef,
+      openEditor: openInEditor,
+    },
   },
 }))
 
@@ -118,8 +122,8 @@ describe('MarkdownContent file references', () => {
     expect(screen.queryByRole('button', { name: '条件1/条件2/条件3' })).not.toBeInTheDocument()
     await waitFor(() =>
       expect(workspaceProbeRef).toHaveBeenCalledWith({
-        conversationId: 'conversation-1',
-        projectId: null,
+        conversation_id: 'conversation-1',
+        project_id: null,
         path: 'fastapi/__init__.md',
       }),
     )
@@ -183,11 +187,11 @@ describe('MarkdownContent file references', () => {
     fireEvent.click(source)
     await waitFor(() =>
       expect(workspaceResolveRef).toHaveBeenCalledWith({
-        conversationId: 'conversation-1',
-        projectId: null,
+        conversation_id: 'conversation-1',
+        project_id: null,
         path: 'src/chat.ts',
-        lineStart: null,
-        lineEnd: null,
+        line_start: null,
+        line_end: null,
       }),
     )
     expect(workspaceReadFile).not.toHaveBeenCalled()
@@ -230,11 +234,11 @@ describe('MarkdownContent file references', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'README.md' }))
     await waitFor(() =>
       expect(workspaceResolveRef).toHaveBeenCalledWith({
-        conversationId: 'conversation-1',
-        projectId: null,
+        conversation_id: 'conversation-1',
+        project_id: null,
         path: 'README.md',
-        lineStart: null,
-        lineEnd: null,
+        line_start: null,
+        line_end: null,
       }),
     )
     expect(workspaceReadFile).not.toHaveBeenCalled()

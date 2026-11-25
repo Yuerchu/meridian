@@ -185,9 +185,9 @@ function PreviewSheet({
   const openInEditor = React.useCallback(async () => {
     setEditorError(null)
     try {
-      await api.openInEditor({
-        conversationId,
-        relPath: reference.path,
+      await api.workspace.openEditor({
+        conversation_id: conversationId,
+        rel_path: reference.path,
         line: reference.line ?? null,
       })
     } catch (error) {
@@ -343,16 +343,16 @@ export function FilePreviewProvider({
     // Every assistant-authored path goes through the reference resolver. It
     // performs the workspace-only lexical preflight before touching the OS,
     // then retains the handle-based containment check for links/junctions.
-    const load = api
+    const load = api.workspace
       // A source location chooses where the preview scrolls, not what is read.
       // The resolver still applies its 256 KiB / 2,000-line limits and marks a
       // bounded prefix as truncated.
-      .workspaceResolveRef({
-        conversationId: request.conversationId,
-        projectId: null,
+      .resolveRef({
+        conversation_id: request.conversationId,
+        project_id: null,
         path: request.reference.path,
-        lineStart: null,
-        lineEnd: null,
+        line_start: null,
+        line_end: null,
       })
       .then(
         (

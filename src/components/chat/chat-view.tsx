@@ -225,20 +225,20 @@ function ChatViewInner({
   const handleStop = useCallback(() => {
     const failed = reportFailure('chat.error.stopFailed')
     if (shellTurnId) {
-      api.stopChat({ conversationId, turnId: shellTurnId }).catch(failed)
+      api.chat.stop({ conversation_id: conversationId, turn_id: shellTurnId }).catch(failed)
       return
     }
     if (isHostedAgent) {
-      api.acpCancel(conversationId).catch(failed)
+      api.acp.stopTurn({ conversation_id: conversationId }).catch(failed)
       return
     }
-    const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
-    api.stopChat({ conversationId, turnId }).catch(failed)
+    const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId ?? null
+    api.chat.stop({ conversation_id: conversationId, turn_id: turnId }).catch(failed)
   }, [conversationId, isHostedAgent, reportFailure, shellTurnId])
 
   const handleDelete = useCallback(
     (id: string) => {
-      api.deleteMessage({ conversationId, id }).then(() => {
+      api.messages.delete({ conversation_id: conversationId, id }).then(() => {
         storeLoadMessages(conversationId)
       }, reportFailure('chat.error.deleteFailed'))
     },
@@ -247,7 +247,7 @@ function ChatViewInner({
 
   const handleRate = useCallback(
     (id: string, rating: MessageRating | null) => {
-      api.rateMessage({ id, rating }).then(() => {
+      api.messages.updateRating({ id, rating }).then(() => {
         storeLoadMessages(conversationId)
       }, reportFailure('chat.error.rateFailed'))
     },
@@ -258,7 +258,7 @@ function ChatViewInner({
     async (instructions?: string) => {
       storeSetError(conversationId, null)
       try {
-        await api.compact({ conversationId, customInstructions: instructions ?? null })
+        await api.conversations.compact({ conversation_id: conversationId, custom_instructions: instructions ?? null })
       } catch (err) {
         storeSetError(conversationId, String(err))
         storeSetCompacting(conversationId, false)
@@ -312,7 +312,7 @@ function ChatViewInner({
         void sendMessage(text, true)
       },
       restartAgent: () => {
-        void api.acpClose(conversationId).catch((err: unknown) => {
+        void api.acp.closeSession({ conversation_id: conversationId }).catch((err: unknown) => {
           useConversationStore.getState().setError(conversationId, String(err))
         })
       },
@@ -419,7 +419,7 @@ function ChatViewInner({
         }
 
         if (isHostedAgent) {
-          const options = await api.acpSessionConfig({ conversationId })
+          const options = await api.acp.getSessionConfig({ conversation_id: conversationId })
           const option = options.find((candidate) => {
             if (command.id === 'thinking') return candidate.id === 'effort' || candidate.category === 'thought_level'
             return candidate.id === command.id || candidate.category === command.id
@@ -430,7 +430,11 @@ function ChatViewInner({
             storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
             return
           }
-          await api.acpSetSessionConfig({ conversationId, configId: option.id, value: selected.value })
+          await api.acp.setSessionConfig({
+            conversation_id: conversationId,
+            config_id: option.id,
+            value: selected.value,
+          })
           clearSubmittedDraft()
           return
         }
@@ -441,7 +445,7 @@ function ChatViewInner({
             storeSetError(conversationId, t('chat.command.invalidArgument', { name: command.name, value: args }))
             return
           }
-          const models = await api.fetchProviderModels({ providerId, forceRefresh: null })
+          const models = await api.providers.listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
           const model = models.find(
             (candidate) =>
               candidate.id.toLowerCase() === args.toLowerCase() || candidate.name.toLowerCase() === args.toLowerCase(),
@@ -513,7 +517,7 @@ function ChatViewInner({
       shellSubmittingRef.current = true
       let turnId: string | null = null
       try {
-        if (!isRemote && (platform ?? (await api.getPlatform())) === 'android') {
+        if (!isRemote && (platform ?? (await api.platform.getInfo())) === 'android') {
           storeSetError(conversationId, t('chat.shell.androidUnavailable'))
           return
         }
@@ -535,11 +539,11 @@ function ChatViewInner({
         storeSetError(conversationId, null)
         storeBeginShellCommand(conversationId, turnId)
         setInput((current) => (current === originalDraft ? '' : current))
-        let result = await api.runUserCommand({
-          conversationId,
+        let result = await api.userCommands.invoke({
+          conversation_id: conversationId,
           command,
-          turnId,
-          retryWithoutSandbox: null,
+          turn_id: turnId,
+          retry_without_sandbox: null,
         })
         clearShellRetry(turnId)
         storeFinishShellCommand(result)
@@ -587,11 +591,11 @@ function ChatViewInner({
           })
           if (approved) {
             storeBeginShellCommand(conversationId, turnId)
-            result = await api.runUserCommand({
-              conversationId,
+            result = await api.userCommands.invoke({
+              conversation_id: conversationId,
               command,
-              turnId,
-              retryWithoutSandbox: true,
+              turn_id: turnId,
+              retry_without_sandbox: true,
             })
             storeFinishShellCommand(result)
           }
