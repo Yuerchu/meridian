@@ -64,8 +64,8 @@ export function AcpSettings() {
   useEffect(() => {
     let cancelled = false
     setLoadError(null)
-    api
-      .acpGetConfig()
+    api.acp
+      .getConfig()
       .then((loaded) => {
         if (cancelled) return
         setConfig(loaded)
@@ -85,7 +85,7 @@ export function AcpSettings() {
     setSaveError(null)
     let next: AcpConfigInfoResponse
     try {
-      next = await api.acpSaveConfig({ command: config.command.trim(), args: parseArgs(argsText) })
+      next = await api.acp.setConfig({ command: config.command.trim(), args: parseArgs(argsText) })
       setConfig(next)
       setOnDisk(next)
       setArgsText(next.args.join('\n'))
@@ -115,7 +115,7 @@ export function AcpSettings() {
     setChecking(true)
     setCheck(null)
     try {
-      const verdict = await api.acpCheckAdapter()
+      const verdict = await api.acp.testAdapter()
       if (attempt.current === mine) setCheck(verdict)
     } catch (err) {
       if (attempt.current === mine) {

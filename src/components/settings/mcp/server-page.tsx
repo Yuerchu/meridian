@@ -43,7 +43,7 @@ export function McpServerPage({
   const [loadError, setLoadError] = useState<string | null>(null)
   const refresh = useCallback(async () => {
     try {
-      const list = await api.listMcpServers()
+      const list = await api.mcp.listServers()
       setServer(list.find((candidate) => candidate.id === serverId) ?? null)
       setLoadError(null)
     } catch (reason) {
@@ -145,7 +145,7 @@ function McpServerEditor({
     // Asked, not inferred. Reading this off the tool list showed a server that
     // connects and exposes nothing as disconnected, while its process was
     // running quite happily.
-    Promise.all([api.listMcpTools(server.id), api.listMcpConnectionStatuses()])
+    Promise.all([api.mcp.listServerTools({ server_id: server.id }), api.mcp.listConnectionStatuses()])
       .then(([list, statuses]) => {
         if (cancelled) return
         setTools(list)
@@ -171,7 +171,11 @@ function McpServerEditor({
     [t],
   )
   const handleSave = useCallback(async () => {
-    const request: Parameters<typeof api.updateMcpServer>[0] = { id: server.id, name, transportType }
+    const request: Parameters<typeof api.mcp.updateServer>[0] = {
+      id: server.id,
+      name,
+      transport_type: transportType,
+    }
     try {
       if (transportType === 'stdio') {
         request.command = command || null
@@ -195,7 +199,7 @@ function McpServerEditor({
     setSaving(true)
     setError(null)
     try {
-      await api.updateMcpServer(request)
+      await api.mcp.updateServer(request)
       setSavedSignature(currentSignature)
       markSaved()
       onSaved()
@@ -223,8 +227,8 @@ function McpServerEditor({
     setConnecting(true)
     setError(null)
     try {
-      await api.connectMcpServer(server.id)
-      setTools(await api.listMcpTools(server.id))
+      await api.mcp.connectServer({ id: server.id })
+      setTools(await api.mcp.listServerTools({ server_id: server.id }))
       setConnected(true)
     } catch (reason) {
       setError(String(reason))
@@ -234,7 +238,7 @@ function McpServerEditor({
   }, [server.id])
   const handleDisconnect = useCallback(async () => {
     try {
-      await api.disconnectMcpServer(server.id)
+      await api.mcp.disconnectServer({ id: server.id })
       setTools([])
       setConnected(false)
     } catch (reason) {
@@ -246,7 +250,7 @@ function McpServerEditor({
       const previous = autoConnect
       setAutoConnect(next)
       try {
-        await api.updateMcpServer({ id: server.id, isEnabled: next })
+        await api.mcp.updateServer({ id: server.id, is_enabled: next })
       } catch (reason) {
         // Rolled back rather than kept locally: a switch that says a server will
         // come back on its own, when nothing recorded that, is worse than an
@@ -263,7 +267,7 @@ function McpServerEditor({
       setTools((current) => current.map((tool) => (tool.name === toolName ? { ...tool, enabled: next } : tool)))
       setError(null)
       try {
-        await api.setMcpToolEnabled({ serverId: server.id, toolName, enabled: next })
+        await api.mcp.setToolEnabled({ server_id: server.id, tool_name: toolName, enabled: next })
       } catch (reason) {
         setTools(previous)
         setError(String(reason))
@@ -282,7 +286,7 @@ function McpServerEditor({
       return
     setDeleting(true)
     try {
-      await api.deleteMcpServer(server.id)
+      await api.mcp.deleteServer({ id: server.id })
     } catch (reason) {
       setError(String(reason))
       setDeleting(false)

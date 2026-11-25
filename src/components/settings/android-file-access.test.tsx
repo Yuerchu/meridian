@@ -7,13 +7,17 @@ import { AndroidFileAccess } from './android-file-access'
 
 vi.mock('@/api', () => ({
   api: {
-    getPreference: vi.fn(),
-    getManageStorageStatus: vi.fn(),
-    listSafRoots: vi.fn(),
-    setPreference: vi.fn(),
-    requestManageStorage: vi.fn(),
-    pickSafDirectory: vi.fn(),
-    removeSafRoot: vi.fn(),
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    platform: {
+      getManageStorageStatus: vi.fn(),
+      listSafRoots: vi.fn(),
+      openManageStorageSettings: vi.fn(),
+      selectSafDirectory: vi.fn(),
+      deleteSafRoot: vi.fn(),
+    },
   },
 }))
 
@@ -26,11 +30,11 @@ describe('AndroidFileAccess', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.getPreference.mockResolvedValue({ key: 'android.manage_storage_enabled', value: false })
-    mockApi.getManageStorageStatus.mockResolvedValue(false)
-    mockApi.listSafRoots.mockResolvedValue([])
-    mockApi.setPreference.mockResolvedValue(undefined)
-    mockApi.requestManageStorage.mockResolvedValue(undefined)
+    mockApi.preferences.get.mockResolvedValue({ key: 'android.manage_storage_enabled', value: false })
+    mockApi.platform.getManageStorageStatus.mockResolvedValue(false)
+    mockApi.platform.listSafRoots.mockResolvedValue([])
+    mockApi.preferences.set.mockResolvedValue(undefined)
+    mockApi.platform.openManageStorageSettings.mockResolvedValue(undefined)
   })
 
   it('persists an enabled switch immediately and opens the system grant page', async () => {
@@ -45,8 +49,8 @@ describe('AndroidFileAccess', () => {
     await user.click(toggle)
 
     await waitFor(() => {
-      expect(mockApi.setPreference).toHaveBeenCalledWith({ key: 'android.manage_storage_enabled', value: true })
-      expect(mockApi.requestManageStorage).toHaveBeenCalledTimes(1)
+      expect(mockApi.preferences.set).toHaveBeenCalledWith({ key: 'android.manage_storage_enabled', value: true })
+      expect(mockApi.platform.openManageStorageSettings).toHaveBeenCalledTimes(1)
     })
     expect(toggle).toBeChecked()
     expect(screen.getByText(i18n.t('settings.fileAccess.manageNotGranted'))).toBeInTheDocument()
@@ -54,7 +58,7 @@ describe('AndroidFileAccess', () => {
 
   it('says so when adding a directory fails, instead of logging it', async () => {
     const user = userEvent.setup()
-    mockApi.pickSafDirectory.mockRejectedValue('picker unavailable')
+    mockApi.platform.selectSafDirectory.mockRejectedValue('picker unavailable')
     render(<AndroidFileAccess />)
 
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.fileAccess.addDir') }))
@@ -65,13 +69,13 @@ describe('AndroidFileAccess', () => {
 
   it('puts the switch back and says so when the preference is not written', async () => {
     const user = userEvent.setup()
-    mockApi.setPreference.mockRejectedValue('db locked')
+    mockApi.preferences.set.mockRejectedValue('db locked')
     render(<AndroidFileAccess />)
 
     const toggle = await screen.findByRole('switch', { name: i18n.t('settings.fileAccess.manageToggle') })
     await user.click(toggle)
     expect(await screen.findByRole('alert')).toHaveTextContent('db locked')
     expect(toggle).not.toBeChecked()
-    expect(mockApi.requestManageStorage).not.toHaveBeenCalled()
+    expect(mockApi.platform.openManageStorageSettings).not.toHaveBeenCalled()
   })
 })

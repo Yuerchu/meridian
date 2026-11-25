@@ -22,9 +22,9 @@ export function McpSettings() {
   const { push, reset } = stack
 
   const handleCreate = useCallback(async () => {
-    const server = await api.createMcpServer({
+    const server = await api.mcp.createServer({
       name: 'New Server',
-      transportType: 'stdio',
+      transport_type: 'stdio',
       command: null,
       args: null,
       env: null,
@@ -38,9 +38,9 @@ export function McpSettings() {
     async (data: McpServersJson) => {
       let lastId: string | null = null
       for (const [name, cfg] of Object.entries(data.mcpServers)) {
-        const server = await api.createMcpServer({
+        const server = await api.mcp.createServer({
           name,
-          transportType: cfg.type ?? (cfg.url ? 'streamablehttp' : 'stdio'),
+          transport_type: cfg.type ?? (cfg.url ? 'streamablehttp' : 'stdio'),
           command: cfg.command ?? null,
           args: cfg.args ?? null,
           env: cfg.env ?? null,

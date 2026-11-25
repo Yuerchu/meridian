@@ -33,8 +33,8 @@ function AuxiliaryModelRow({ providers }: { providers: ProviderInfoResponse[] })
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api
-      .getPreference({ key: PREFERENCE_KEY })
+    api.preferences
+      .get({ key: PREFERENCE_KEY })
       .then(({ value }) => {
         if (!value) return
         setProviderId(value.provider_id)
@@ -45,8 +45,8 @@ function AuxiliaryModelRow({ providers }: { providers: ProviderInfoResponse[] })
 
   useEffect(() => {
     if (providerId) {
-      api
-        .fetchProviderModels({ providerId, forceRefresh: null })
+      api.providers
+        .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
         .then(setModels)
         // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved pair is form state
         .catch(() => setModels([]))
@@ -59,10 +59,10 @@ function AuxiliaryModelRow({ providers }: { providers: ProviderInfoResponse[] })
   // "follow the conversation", and a half-selected model never reaches storage.
   function persist(provider: string, model: string) {
     setError(null)
-    api
-      .setPreference({
+    api.preferences
+      .set({
         key: PREFERENCE_KEY,
-        value: provider && model ? { providerId: provider, modelId: model } : null,
+        value: provider && model ? { provider_id: provider, model_id: model } : null,
       })
       .catch((reason) => setError(String(reason)))
   }

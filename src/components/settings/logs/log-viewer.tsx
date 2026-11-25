@@ -45,7 +45,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
     if (!path) return
     setExportError(null)
     try {
-      await api.exportLogs({ outputPath: path })
+      await api.logs.export({ output_path: path })
     } catch (e) {
       // Unsaid, a refused write looks exactly like a cancelled picker.
       setExportError(String(e))
@@ -160,7 +160,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         ) : (
           <>
             {logs.entries.map((entry) => (
-              <LogRow key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`} entry={entry} />
+              <LogRow key={`${entry.cursor.file_index}:${entry.cursor.byte_offset}`} entry={entry} />
             ))}
             <div data-slot="log-viewer-footer" className="m-log-viewer__footer">
               {logs.truncated && (

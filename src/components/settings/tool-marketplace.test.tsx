@@ -5,7 +5,7 @@ import i18n from '@/i18n'
 import type { CustomToolInfoResponse } from '@/types'
 import { CustomToolEditor } from './tool-marketplace'
 
-vi.mock('@/api', () => ({ api: { updateCustomTool: vi.fn(), createCustomTool: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { tools: { updateCustom: vi.fn(), createCustom: vi.fn() } } }))
 
 const legacy: CustomToolInfoResponse = {
   id: 'legacy',
@@ -28,7 +28,7 @@ const legacy: CustomToolInfoResponse = {
 beforeEach(async () => {
   vi.clearAllMocks()
   await i18n.changeLanguage('en')
-  vi.mocked(api.updateCustomTool).mockResolvedValue(legacy)
+  vi.mocked(api.tools.updateCustom).mockResolvedValue(legacy)
 })
 
 it('preserves disabled multiline legacy source, cwd, schema, and nullable timeout on save', async () => {
@@ -38,15 +38,15 @@ it('preserves disabled multiline legacy source, cwd, schema, and nullable timeou
   expect(screen.getByLabelText(/Preserved legacy arguments/)).toHaveValue(legacy.args_template)
   await user.click(screen.getByRole('button', { name: /Save/ }))
   await waitFor(() =>
-    expect(api.updateCustomTool).toHaveBeenCalledWith(
+    expect(api.tools.updateCustom).toHaveBeenCalledWith(
       expect.objectContaining({
         command: legacy.command,
-        argsTemplate: legacy.args_template,
+        args_template: legacy.args_template,
         execution: null,
-        isEnabled: false,
-        workingDirectory: legacy.working_directory,
-        parametersSchema: legacy.parameters_schema,
-        timeoutMs: null,
+        is_enabled: false,
+        working_directory: legacy.working_directory,
+        parameters_schema: legacy.parameters_schema,
+        timeout_ms: null,
       }),
     ),
   )
@@ -59,7 +59,7 @@ it('explicitly converts a legacy tool and enables its typed definition', async (
   fireEvent.change(screen.getByLabelText(/Execution definition/), { target: { value: JSON.stringify(execution) } })
   await user.click(screen.getByRole('button', { name: /Save/ }))
   await waitFor(() =>
-    expect(api.updateCustomTool).toHaveBeenCalledWith(expect.objectContaining({ execution, isEnabled: true })),
+    expect(api.tools.updateCustom).toHaveBeenCalledWith(expect.objectContaining({ execution, is_enabled: true })),
   )
 })
 
@@ -72,5 +72,7 @@ it('does not enable an already-safe disabled tool when editing it', async () => 
     />,
   )
   await user.click(screen.getByRole('button', { name: /Save/ }))
-  await waitFor(() => expect(api.updateCustomTool).toHaveBeenCalledWith(expect.objectContaining({ isEnabled: false })))
+  await waitFor(() =>
+    expect(api.tools.updateCustom).toHaveBeenCalledWith(expect.objectContaining({ is_enabled: false })),
+  )
 })

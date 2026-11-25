@@ -9,7 +9,7 @@ import { api } from '@/api'
 import { decimal } from '@/lib/decimal'
 import type { UsageBucketInfoResponse, UsageDimension, UsageReportRequest } from '@/types'
 
-vi.mock('@/api', () => ({ api: { usageReport: vi.fn(), usageGaps: vi.fn(), usageCacheMisses: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { usage: { getReport: vi.fn(), listGaps: vi.fn(), getCacheMisses: vi.fn() } } }))
 
 const mockApi = vi.mocked(api)
 const onOpenConversation = vi.fn()
@@ -51,7 +51,9 @@ function bucket(over: Partial<UsageBucketInfoResponse> = {}): UsageBucketInfoRes
 
 /** Answers each of the five groupings the panel asks for. */
 function serve(by: Partial<Record<UsageDimension, UsageBucketInfoResponse[]>>) {
-  mockApi.usageReport.mockImplementation((request: UsageReportRequest) => Promise.resolve(by[request.dimension] ?? []))
+  mockApi.usage.getReport.mockImplementation((request: UsageReportRequest) =>
+    Promise.resolve(by[request.dimension] ?? []),
+  )
 }
 
 /** The card a chart sits in, found by its heading. */
@@ -63,7 +65,7 @@ async function chartCard(title: string): Promise<HTMLElement> {
 
 beforeEach(async () => {
   vi.clearAllMocks()
-  mockApi.usageCacheMisses.mockResolvedValue({
+  mockApi.usage.getCacheMisses.mockResolvedValue({
     missed_tokens: 0,
     missed_cost: decimal('0'),
     miss_count: 0,
@@ -91,12 +93,12 @@ it('names filters and associates the selected breakdown tab with its panel', asy
   expect(source).toHaveAttribute('aria-selected', 'true')
   expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', source.id)
   await waitFor(() =>
-    expect(mockApi.usageReport).toHaveBeenCalledWith(expect.objectContaining({ dimension: 'source' })),
+    expect(mockApi.usage.getReport).toHaveBeenCalledWith(expect.objectContaining({ dimension: 'source' })),
   )
 })
 
 it('shows a recoverable error when the initial report fails', async () => {
-  mockApi.usageReport.mockRejectedValue(new Error('offline'))
+  mockApi.usage.getReport.mockRejectedValue(new Error('offline'))
   const user = userEvent.setup()
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
@@ -584,7 +586,7 @@ it('marks incomplete token counts as lower bounds in the ranking and the composi
 })
 
 it('holds a place for every chart card while the first report loads', async () => {
-  mockApi.usageReport.mockReturnValue(new Promise(() => {}))
+  mockApi.usage.getReport.mockReturnValue(new Promise(() => {}))
   render(<UsageSettings onOpenConversation={onOpenConversation} />)
 
   const skeleton = await screen.findByRole('status', { name: 'Loading...' })
@@ -782,12 +784,12 @@ it('narrows the window without reloading the whole page', async () => {
   await screen.findByText('Cost', { selector: '[data-slot="kpi-title"]' })
 
   const sent = (): UsageReportRequest | null =>
-    (mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest | undefined) ?? null
-  const thirtyDays = sent()?.sinceMs ?? 0
+    (mockApi.usage.getReport.mock.calls.at(-1)?.[0] as UsageReportRequest | undefined) ?? null
+  const thirtyDays = sent()?.since_ms ?? 0
 
   await userEvent.click(screen.getByRole('radio', { name: 'Last 7 days' }))
 
-  await waitFor(() => expect(sent()?.sinceMs ?? 0).toBeGreaterThan(thirtyDays))
+  await waitFor(() => expect(sent()?.since_ms ?? 0).toBeGreaterThan(thirtyDays))
 })
 
 it('asks for the whole log when the range is cleared', async () => {
@@ -798,8 +800,8 @@ it('asks for the whole log when the range is cleared', async () => {
   await userEvent.click(screen.getByRole('radio', { name: 'All time' }))
 
   await waitFor(() => {
-    const request = mockApi.usageReport.mock.calls.at(-1)?.[0] as UsageReportRequest
-    expect(request.sinceMs).toBeNull()
+    const request = mockApi.usage.getReport.mock.calls.at(-1)?.[0] as UsageReportRequest
+    expect(request.since_ms).toBeNull()
   })
 })
 
@@ -920,7 +922,7 @@ it('reads the KPI off the conversation rather than off side requests', async () 
 
 it('reports what a broken prefix cost instead of only the hit rate', async () => {
   serve({ total: [bucket()] })
-  mockApi.usageCacheMisses.mockResolvedValue({
+  mockApi.usage.getCacheMisses.mockResolvedValue({
     missed_tokens: 12_000,
     missed_cost: decimal('0.03'),
     miss_count: 2,
@@ -985,7 +987,7 @@ it('keeps an explicitly reported zero cache read as zero percent', async () => {
 /** A count with no way to the rows it counts is a number nobody can act on. */
 it('lists the incomplete replies and opens the conversation one is in', async () => {
   serve({ total: [bucket({ messages: 3, unpriced_token_messages: 1, unpriced_messages: 1 })] })
-  mockApi.usageGaps.mockResolvedValue({
+  mockApi.usage.listGaps.mockResolvedValue({
     total: 2,
     items: [
       {
@@ -1028,8 +1030,8 @@ it('lists the incomplete replies and opens the conversation one is in', async ()
   await user.click(await screen.findByRole('button', { name: 'Show which' }))
   const sheet = await screen.findByRole('dialog', { name: 'Replies with incomplete usage or pricing' })
   // The same window as the report whose warning was pressed.
-  expect(mockApi.usageGaps).toHaveBeenCalledWith(
-    expect.objectContaining({ sinceMs: expect.any(Number), origin: null, conversationId: null }),
+  expect(mockApi.usage.listGaps).toHaveBeenCalledWith(
+    expect.objectContaining({ since_ms: expect.any(Number), origin: null, conversation_id: null }),
   )
   const rows = within(sheet).getAllByText(/QQ group|Deleted conversation/)
   expect(rows).toHaveLength(2)

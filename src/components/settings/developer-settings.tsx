@@ -132,7 +132,7 @@ export function DeveloperSettings() {
       setRecording(false)
 
       const t1 = performance.now()
-      const result = await api.voiceTranscribePcm({ sampleRate, pcm: encodePcm16Base64(samples) })
+      const result = await api.voice.transcribePcm({ sample_rate: sampleRate, pcm: encodePcm16Base64(samples) })
       const ms = Math.round(performance.now() - t1)
       say(
         'transcribe',
@@ -239,7 +239,7 @@ export function DeveloperSettings() {
 
           const ipcStart = performance.now()
           try {
-            const got = await api.voiceProbeEcho({ sampleRate: sampleRateRef.current, pcm: b64 })
+            const got = await api.voice.testEcho({ sample_rate: sampleRateRef.current, pcm: b64 })
             const ipcMs = Math.round(performance.now() - ipcStart)
             say(
               'ipc',

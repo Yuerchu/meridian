@@ -33,7 +33,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.getPreference({ key: PREFERENCE_KEYS[kind] }).then(({ value }) => {
+    api.preferences.get({ key: PREFERENCE_KEYS[kind] }).then(({ value }) => {
       if (!value) return
       setProviderId(value.provider_id)
       setModelId(value.model_id)
@@ -42,8 +42,8 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
 
   useEffect(() => {
     if (providerId) {
-      api
-        .fetchProviderModels({ providerId, forceRefresh: null })
+      api.providers
+        .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
         .then(setModels)
         // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved pair is form state
         .catch(() => setModels([]))
@@ -56,10 +56,10 @@ function KindRow({ kind, providers }: { kind: Kind; providers: ProviderInfoRespo
   // "follow the parent", and a half-selected model never reaches storage.
   function persist(provider: string, model: string) {
     setError(null)
-    api
-      .setPreference({
+    api.preferences
+      .set({
         key: PREFERENCE_KEYS[kind],
-        value: provider && model ? { providerId: provider, modelId: model } : null,
+        value: provider && model ? { provider_id: provider, model_id: model } : null,
       })
       .catch((reason) => setError(String(reason)))
   }

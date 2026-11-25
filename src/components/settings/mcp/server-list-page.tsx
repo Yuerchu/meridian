@@ -48,9 +48,9 @@ export function McpServerListPage({
     setLoadError(null)
     try {
       const [list, status, listed] = await Promise.all([
-        api.listMcpServers(),
-        api.listMcpConnectionStatuses(),
-        api.listMcpTools(),
+        api.mcp.listServers(),
+        api.mcp.listConnectionStatuses(),
+        api.mcp.listServerTools({ server_id: null }),
       ])
       setServers(list)
       setStatuses(status)

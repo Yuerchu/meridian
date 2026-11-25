@@ -83,7 +83,7 @@ function normaliseTtl(raw: string): number {
 function modelSelection(value: string | null): PreferenceModelSelectionRequest | null {
   const at = value?.indexOf(':') ?? -1
   if (!value || at <= 0 || at === value.length - 1) return null
-  return { providerId: value.slice(0, at), modelId: value.slice(at + 1) }
+  return { provider_id: value.slice(0, at), model_id: value.slice(at + 1) }
 }
 
 /**
@@ -130,8 +130,8 @@ function ModelPicker({
       setModels([])
       return
     }
-    api
-      .fetchProviderModels({ providerId, forceRefresh: null })
+    api.providers
+      .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
       .then(setModels)
       // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
       .catch(() => setModels([]))
@@ -240,14 +240,14 @@ export function AutoReviewSettings() {
     setLoadError(null)
     try {
       const [enabled, model, escalate, allow, deny, environment, ttl, provs] = await Promise.all([
-        api.getPreference({ key: KEYS.enabled }),
-        api.getPreference({ key: KEYS.model }),
-        api.getPreference({ key: KEYS.escalate }),
-        api.getPreference({ key: KEYS.allow }),
-        api.getPreference({ key: KEYS.deny }),
-        api.getPreference({ key: KEYS.environment }),
-        api.getPreference({ key: KEYS.ttl }),
-        api.listProviders(),
+        api.preferences.get({ key: KEYS.enabled }),
+        api.preferences.get({ key: KEYS.model }),
+        api.preferences.get({ key: KEYS.escalate }),
+        api.preferences.get({ key: KEYS.allow }),
+        api.preferences.get({ key: KEYS.deny }),
+        api.preferences.get({ key: KEYS.environment }),
+        api.preferences.get({ key: KEYS.ttl }),
+        api.providers.list(),
       ])
       setSettings({
         enabled: enabled.value ?? false,
@@ -280,17 +280,17 @@ export function AutoReviewSettings() {
     setError(null)
     try {
       await Promise.all([
-        api.setPreference({ key: KEYS.enabled, value: settings.enabled }),
-        api.setPreference({ key: KEYS.model, value: modelSelection(settings.model) }),
-        api.setPreference({ key: KEYS.escalate, value: settings.escalate }),
-        api.setPreference({ key: KEYS.allow, value: settings.allow }),
-        api.setPreference({ key: KEYS.deny, value: settings.deny }),
-        api.setPreference({ key: KEYS.environment, value: settings.environment }),
+        api.preferences.set({ key: KEYS.enabled, value: settings.enabled }),
+        api.preferences.set({ key: KEYS.model, value: modelSelection(settings.model) }),
+        api.preferences.set({ key: KEYS.escalate, value: settings.escalate }),
+        api.preferences.set({ key: KEYS.allow, value: settings.allow }),
+        api.preferences.set({ key: KEYS.deny, value: settings.deny }),
+        api.preferences.set({ key: KEYS.environment, value: settings.environment }),
         // Normalised on the way out, so the backend's parse never has to guess:
         // anything that is not a number becomes the default rather than
         // silently disabling the deadline, which is what an unparseable value
         // would otherwise do if the backend read it as zero.
-        api.setPreference({ key: KEYS.ttl, value: normaliseTtl(settings.ttl) }),
+        api.preferences.set({ key: KEYS.ttl, value: normaliseTtl(settings.ttl) }),
       ])
       setSaved(true)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)

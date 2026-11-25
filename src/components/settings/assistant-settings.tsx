@@ -122,8 +122,8 @@ function AssistantEditor({
 
   useEffect(() => {
     if (providerId) {
-      api
-        .fetchProviderModels({ providerId, forceRefresh: null })
+      api.providers
+        .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
         .then(setModels)
         // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
         .catch(() => setModels([]))
@@ -148,8 +148,8 @@ function AssistantEditor({
     // model's capability read fails whenever its file does, and that must not
     // take the profile's window down with it — that window is the whole lock.
     void Promise.allSettled([
-      api.getModelConfig({ providerId, modelId }),
-      api.getProviderCapabilities({ providerId, modelId }),
+      api.modelConfigs.get({ provider_id: providerId, model_id: modelId }),
+      api.providers.getCapabilities({ provider_id: providerId, model_id: modelId }),
     ]).then(([config, caps]) => {
       if (cancelled) return
       setBoundWindow(
@@ -176,13 +176,15 @@ function AssistantEditor({
   })
 
   useEffect(() => {
-    api.listAllToolNames().then(setAllTools)
-    api.listEmojiPacks().then(setAllPacks)
-    api.listToolPresets().then(setToolPresets)
-    api.listAssistantEmojiPacks(assistant.id).then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
-    api.listSkills().then(setAllSkills)
-    api
-      .listSkillBindings({ layer: 'assistant', anchorId: assistant.id })
+    api.mcp.listAllTools().then(setAllTools)
+    api.emojis.listPacks({ assistant_id: null }).then(setAllPacks)
+    api.tools.listPresets().then(setToolPresets)
+    api.emojis
+      .listPacks({ assistant_id: assistant.id })
+      .then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
+    api.skills.list().then(setAllSkills)
+    api.skills
+      .listBindings({ layer: 'assistant', anchor_id: assistant.id })
       .then((dirs) => setBoundSkillDirs(new Set(dirs)))
   }, [assistant.id])
 
@@ -201,19 +203,19 @@ function AssistantEditor({
     try {
       await onSave(assistant.id, {
         name,
-        systemPrompt,
-        providerId: providerId.trim() || null,
-        modelId: modelId.trim() || null,
+        system_prompt: systemPrompt,
+        provider_id: providerId.trim() || null,
+        model_id: modelId.trim() || null,
         temperature: temperature ? parseFloat(temperature) : null,
         // Blank is "no override", which the backend stores as 0 and resolves
         // to the model's own window. The same parse the guard used, so the
         // number saved is the number that was checked.
-        contextLimit: draftContextLimit,
-        enabledTools,
-        thinkingEnabled,
-        thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
-        toolPresetId,
-        autoCompactEnabled,
+        context_limit: draftContextLimit,
+        enabled_tools: enabledTools,
+        thinking_enabled: thinkingEnabled,
+        thinking_budget: thinkingBudget ? parseInt(thinkingBudget) : null,
+        tool_preset_id: toolPresetId,
+        auto_compact_enabled: autoCompactEnabled,
       })
     } catch (error) {
       // A plan review can hold the assistant; said nowhere, the button does
@@ -426,11 +428,14 @@ function AssistantEditor({
                 key={pack.id}
                 isSelected={assignedPackIds.has(pack.id)}
                 onChange={async (selected) => {
+                  await api.emojis.setPackAssignment({
+                    assistant_id: assistant.id,
+                    pack_id: pack.id,
+                    assigned: selected,
+                  })
                   if (selected) {
-                    await api.assignEmojiPack({ assistantId: assistant.id, packId: pack.id })
                     setAssignedPackIds((prev) => new Set([...prev, pack.id]))
                   } else {
-                    await api.unassignEmojiPack({ assistantId: assistant.id, packId: pack.id })
                     setAssignedPackIds((prev) => {
                       const next = new Set(prev)
                       next.delete(pack.id)
@@ -470,10 +475,10 @@ function AssistantEditor({
                     try {
                       // The cap on bindings per anchor lives in the backend, so
                       // take the returned set rather than guessing locally.
-                      const next = await api.setSkillBinding({
+                      const next = await api.skills.setBinding({
                         layer: 'assistant',
-                        anchorId: assistant.id,
-                        dirName: skill.dir_name,
+                        anchor_id: assistant.id,
+                        dir_name: skill.dir_name,
                         bound: selected,
                       })
                       setBoundSkillDirs(new Set(next))
@@ -551,7 +556,7 @@ export function AssistantSettings() {
   )
 
   const refresh = useCallback(async () => {
-    const [aList, pList] = await Promise.all([api.listAssistants(), api.listProviders()])
+    const [aList, pList] = await Promise.all([api.assistants.list(), api.providers.list()])
     setAssistants(aList)
     setProviders(pList)
   }, [])
@@ -564,13 +569,13 @@ export function AssistantSettings() {
 
   const handleCreate = useCallback(async () => {
     if (!(await requestLeave())) return
-    const a = await api.createAssistant({
+    const a = await api.assistants.create({
       name: 'New Assistant',
-      systemPrompt: 'You are a helpful assistant.',
-      modelId: null,
+      system_prompt: 'You are a helpful assistant.',
+      model_id: null,
       temperature: null,
-      topP: null,
-      maxTokens: null,
+      top_p: null,
+      max_tokens: null,
     })
     await refresh()
     setExpandedId(a.id)
@@ -578,7 +583,7 @@ export function AssistantSettings() {
 
   const handleSave = useCallback(
     async (id: string, updates: Omit<AssistantUpdateRequest, 'id'>) => {
-      await api.updateAssistant({ ...updates, id })
+      await api.assistants.update({ ...updates, id })
       await refresh()
     },
     [refresh],
@@ -594,7 +599,7 @@ export function AssistantSettings() {
         }))
       )
         return
-      await api.deleteAssistant(id)
+      await api.assistants.delete({ id })
       setDirtyAssistantId(null)
       if (expandedId === id) setExpandedId(null)
       await refresh()

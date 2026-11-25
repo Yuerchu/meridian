@@ -8,14 +8,16 @@ import { SkillSettings } from './skill-settings'
 
 vi.mock('@/api', () => ({
   api: {
-    listSkills: vi.fn(),
-    listSkillBindings: vi.fn(),
-    getSkillBody: vi.fn(),
-    updateSkill: vi.fn(),
-    createSkill: vi.fn(),
-    deleteSkill: vi.fn(),
-    rescanSkills: vi.fn(),
-    setSkillBinding: vi.fn(),
+    skills: {
+      list: vi.fn(),
+      listBindings: vi.fn(),
+      readBody: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+      rescan: vi.fn(),
+      setBinding: vi.fn(),
+    },
   },
 }))
 
@@ -45,13 +47,13 @@ describe('SkillSettings editor', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listSkills.mockResolvedValue([SKILL])
-    mockApi.listSkillBindings.mockResolvedValue([])
-    mockApi.updateSkill.mockResolvedValue(SKILL)
+    mockApi.skills.list.mockResolvedValue([SKILL])
+    mockApi.skills.listBindings.mockResolvedValue([])
+    mockApi.skills.update.mockResolvedValue(SKILL)
   })
 
   it('does not send an empty body when SKILL.md could not be read', async () => {
-    mockApi.getSkillBody.mockRejectedValue('disk gone')
+    mockApi.skills.readBody.mockRejectedValue('disk gone')
     const user = await openEditor()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('settings.skills.bodyLoadError'))
@@ -63,12 +65,12 @@ describe('SkillSettings editor', () => {
     await user.type(name, 'Renamed')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
-    await waitFor(() => expect(mockApi.updateSkill).toHaveBeenCalledTimes(1))
-    expect(mockApi.updateSkill).toHaveBeenCalledWith({ dirName: 'review', displayName: 'Renamed' })
+    await waitFor(() => expect(mockApi.skills.update).toHaveBeenCalledTimes(1))
+    expect(mockApi.skills.update).toHaveBeenCalledWith({ dir_name: 'review', display_name: 'Renamed' })
   })
 
   it('retries the read and then saves the loaded body', async () => {
-    mockApi.getSkillBody.mockRejectedValueOnce('busy').mockResolvedValueOnce('# body')
+    mockApi.skills.readBody.mockRejectedValueOnce('busy').mockResolvedValueOnce('# body')
     const user = await openEditor()
 
     await screen.findByRole('alert')
@@ -77,10 +79,10 @@ describe('SkillSettings editor', () => {
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.updateSkill).toHaveBeenCalledWith({
-        dirName: 'review',
-        displayName: 'Review',
-        llmDescription: 'Review code',
+      expect(mockApi.skills.update).toHaveBeenCalledWith({
+        dir_name: 'review',
+        display_name: 'Review',
+        llm_description: 'Review code',
         body: '# body',
       }),
     )

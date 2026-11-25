@@ -9,27 +9,34 @@ import type { DecimalString, ProviderCatalogEntryInfoResponse, ProviderInfoRespo
 
 vi.mock('@/api', () => ({
   api: {
-    listProviders: vi.fn(),
-    listProviderCatalog: vi.fn(),
-    codexAuthStatus: vi.fn(),
-    getProviderKeyExists: vi.fn(),
-    createProvider: vi.fn(),
-    deleteProvider: vi.fn(),
-    updateProvider: vi.fn(),
-    fetchProviderModels: vi.fn(),
-    listCachedProviderModels: vi.fn(),
-    listModelConfigs: vi.fn(),
-    getModelConfig: vi.fn(),
-    listModelProfiles: vi.fn(),
-    getProviderCapabilities: vi.fn(),
-    inspectLocalModel: vi.fn(),
-    getProviderLocalModelInfo: vi.fn(),
-    saveModelConfig: vi.fn(),
-    deleteModelConfig: vi.fn(),
-    listAssistants: vi.fn(),
-    setProviderKey: vi.fn(),
-    getPreference: vi.fn(),
-    setPreference: vi.fn(),
+    providers: {
+      list: vi.fn(),
+      listCatalog: vi.fn(),
+      getCodexAuthStatus: vi.fn(),
+      testKey: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+      update: vi.fn(),
+      listModels: vi.fn(),
+      getCapabilities: vi.fn(),
+      testLocalModel: vi.fn(),
+      getLocalModel: vi.fn(),
+      setKey: vi.fn(),
+    },
+    modelConfigs: {
+      list: vi.fn(),
+      get: vi.fn(),
+      listProfiles: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+    },
+    assistants: {
+      list: vi.fn(),
+    },
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
   },
 }))
 
@@ -241,19 +248,19 @@ describe('ProviderSettings list/detail navigation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One'), makeProvider('p2', 'Provider Two')])
-    mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
-    mockApi.getProviderKeyExists.mockResolvedValue(false)
-    mockApi.listModelConfigs.mockResolvedValue([])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.providers.list.mockResolvedValue([makeProvider('p1', 'Provider One'), makeProvider('p2', 'Provider Two')])
+    mockApi.providers.listCatalog.mockResolvedValue(CATALOG)
+    mockApi.providers.testKey.mockResolvedValue(false)
+    mockApi.modelConfigs.list.mockResolvedValue([])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
     // The page reads the cached list on its own; only the button fetches.
-    mockApi.listCachedProviderModels.mockResolvedValue([])
-    mockApi.fetchProviderModels.mockResolvedValue([])
-    mockApi.getProviderCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
-    mockApi.listAssistants.mockResolvedValue([])
-    mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
-    mockApi.setPreference.mockResolvedValue(undefined)
+    mockApi.providers.listModels.mockResolvedValue([])
+    mockApi.providers.listModels.mockResolvedValue([])
+    mockApi.providers.getCapabilities.mockRejectedValue(new Error('No capabilities in this test'))
+    mockApi.assistants.list.mockResolvedValue([])
+    mockApi.preferences.get.mockResolvedValue({ key: 'codex.client_version', value: null })
+    mockApi.preferences.set.mockResolvedValue(undefined)
   })
 
   it('shows the list first, and opens nothing on its own', async () => {
@@ -275,10 +282,10 @@ describe('ProviderSettings list/detail navigation', () => {
       transport_profile: 'local_native',
       local_backend: 'auto',
     }
-    mockApi.listProviders.mockImplementation(async () => [stored])
-    mockApi.updateProvider.mockImplementation(async (request) => {
-      if (request.localBackend !== null && typeof request.localBackend === 'string')
-        stored = { ...stored, local_backend: request.localBackend }
+    mockApi.providers.list.mockImplementation(async () => [stored])
+    mockApi.providers.update.mockImplementation(async (request) => {
+      if (request.local_backend !== null && typeof request.local_backend === 'string')
+        stored = { ...stored, local_backend: request.local_backend }
       return stored
     })
     render(<ProviderSettings />)
@@ -287,8 +294,8 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('option', { name: 'GPU' }))
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.updateProvider).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'local', localBackend: 'gpu' }),
+      expect(mockApi.providers.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'local', local_backend: 'gpu' }),
       ),
     )
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
@@ -310,7 +317,7 @@ describe('ProviderSettings list/detail navigation', () => {
       transport_profile: 'local_native',
       local_backend: 'auto',
     }
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       local,
       { ...local, id: 'local-2', name: 'Second local model', local_backend: 'cpu' },
     ])
@@ -322,7 +329,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('button', { name: backendName }))
     await user.click(await screen.findByRole('option', { name: 'GPU' }))
     expect(screen.getByRole('button', { name: backendName })).toHaveTextContent('GPU')
-    expect(mockApi.updateProvider).not.toHaveBeenCalled()
+    expect(mockApi.providers.update).not.toHaveBeenCalled()
     expect(local.local_backend).toBe('auto')
     rerender(page('local-1'))
     expect(screen.getByRole('button', { name: backendName })).toHaveTextContent('GPU')
@@ -352,7 +359,7 @@ describe('ProviderSettings list/detail navigation', () => {
   })
 
   it('renders providers as one card of rows, icon and name on one line', async () => {
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       makeProvider('p1', 'Provider One'),
       { ...makeProvider('p2', 'Provider Two'), catalog_id: null, provider_type: 'google' },
     ])
@@ -388,18 +395,18 @@ describe('ProviderSettings list/detail navigation', () => {
   // the key-issuing link.
   it('creating a provider prefills from the catalog and states which vendor it is', async () => {
     const user = userEvent.setup()
-    mockApi.createProvider.mockResolvedValue(makeProvider('p3', 'OpenAI'))
+    mockApi.providers.create.mockResolvedValue(makeProvider('p3', 'OpenAI'))
     render(<ProviderSettings />)
     await screen.findByText('Provider One')
     await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.addProvider') }))
-    expect(mockApi.createProvider).toHaveBeenCalledWith({
+    expect(mockApi.providers.create).toHaveBeenCalledWith({
       name: 'OpenAI',
-      providerType: 'openai',
-      baseUrl: 'https://api.openai.com/v1',
-      apiFormat: 'chat_completions',
-      catalogId: 'openai',
-      authOption: 'api_key',
-      localBackend: null,
+      provider_type: 'openai',
+      base_url: 'https://api.openai.com/v1',
+      api_format: 'chat_completions',
+      catalog_id: 'openai',
+      auth_option: 'api_key',
+      local_backend: null,
     })
   })
 
@@ -408,7 +415,7 @@ describe('ProviderSettings list/detail navigation', () => {
   // added to the catalog gets the right answer without a code change.
   it('hides the dialect selector for a vendor that offers one', async () => {
     const user = userEvent.setup()
-    mockApi.listProviderCatalog.mockResolvedValue([
+    mockApi.providers.listCatalog.mockResolvedValue([
       {
         ...CATALOG[0],
         id: 'single',
@@ -427,10 +434,10 @@ describe('ProviderSettings list/detail navigation', () => {
   // account the session belongs to.
   it('a ChatGPT login is shown its account instead of a key field', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
     ])
-    mockApi.codexAuthStatus.mockResolvedValue({
+    mockApi.providers.getCodexAuthStatus.mockResolvedValue({
       logged_in: true,
       email: 'someone@example.com',
       plan: 'pro',
@@ -455,11 +462,11 @@ describe('ProviderSettings list/detail navigation', () => {
   // unreachable from the UI.
   it('a ChatGPT login can fetch its model list without a stored key', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
     ])
-    mockApi.getProviderKeyExists.mockResolvedValue(false)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.providers.testKey.mockResolvedValue(false)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
     render(<ProviderSettings />)
     await openFirstProvider(user, 'Codex')
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
@@ -467,18 +474,18 @@ describe('ProviderSettings list/detail navigation', () => {
     const fetchButton = screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) })
     expect(fetchButton).not.toBeDisabled()
     await user.click(fetchButton)
-    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith({ providerId: 'codex-1', forceRefresh: true })
+    expect(mockApi.providers.listModels).toHaveBeenCalledWith({ provider_id: 'codex-1', fetch_policy: 'force_remote' })
   })
 
   it('renders fetched models as rows saying where each one stands', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([
       { id: 'gpt-5.6', name: 'gpt-5.6' },
       { id: 'gpt-5.6-mini', name: 'gpt-5.6-mini' },
       { id: 'gpt-unconfigured', name: 'gpt-unconfigured' },
     ])
-    mockApi.listModelConfigs.mockResolvedValue([
+    mockApi.modelConfigs.list.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1.25'), output_price: decimal('10') }),
       modelConfig({ id: 'config-2', model_id: 'gpt-5.6-mini', input_price: decimal('0'), output_price: decimal('0') }),
     ])
@@ -523,9 +530,9 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('lists a configured model the provider did not announce', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
-    mockApi.listModelConfigs.mockResolvedValue([
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.modelConfigs.list.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
       modelConfig({ id: 'config-preview', model_id: 'gpt-6-preview' }),
     ])
@@ -539,12 +546,12 @@ describe('ProviderSettings list/detail navigation', () => {
 
   it('opens a model on its own page, and the back button returns to the provider', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
-    mockApi.getModelConfig.mockResolvedValue(
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.modelConfigs.get.mockResolvedValue(
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
     )
-    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -569,13 +576,13 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('drops a deleted provider from the list it unwinds onto', async () => {
     const user = userEvent.setup()
-    mockApi.deleteProvider.mockResolvedValue(undefined as never)
+    mockApi.providers.delete.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     expect(await screen.findByRole('heading', { name: 'Provider One' })).toBeInTheDocument()
 
     // What the list will answer with once the delete has happened.
-    mockApi.listProviders.mockResolvedValue([makeProvider('p2', 'Provider Two')])
+    mockApi.providers.list.mockResolvedValue([makeProvider('p2', 'Provider Two')])
     await user.click(screen.getByRole('button', { name: i18n.t('common.delete') }))
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
@@ -591,12 +598,12 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('refreshes the model table when a model page is left', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
-    mockApi.listModelConfigs.mockResolvedValue([])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.modelConfigs.list.mockResolvedValue([])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -609,12 +616,12 @@ describe('ProviderSettings list/detail navigation', () => {
       target: { value: '10' },
     })
     // What the provider page will read once the save has landed.
-    mockApi.listModelConfigs.mockResolvedValue([
+    mockApi.modelConfigs.list.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1.25'), output_price: decimal('10') }),
     ])
     fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
-    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalled())
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalled())
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     expect(await screen.findByText(i18n.t('settings.provider.modelPriced'))).toBeInTheDocument()
@@ -636,10 +643,10 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('replays the capability patch of the description it is pointed at', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.providers.getCapabilities.mockResolvedValue({
       supports_tools: true,
       supports_streaming_tools: true,
       supports_thinking: true,
@@ -658,7 +665,7 @@ describe('ProviderSettings list/detail navigation', () => {
       default_verbosity: null,
       server_tools: [],
     })
-    mockApi.listModelProfiles.mockResolvedValue([
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([
       {
         id: 'prof-quiet',
         name: 'Quiet model',
@@ -676,7 +683,7 @@ describe('ProviderSettings list/detail navigation', () => {
         updated_at: 0,
       },
     ])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -687,7 +694,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({
           profile: expect.objectContaining({
             id: 'prof-quiet',
@@ -709,10 +716,10 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('points a model at an existing description, and takes its values', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'claude-sonnet-5@vertex', name: 'claude-sonnet-5@vertex' }])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'claude-sonnet-5@vertex', name: 'claude-sonnet-5@vertex' }])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([
       {
         id: 'prof-sonnet',
         name: 'Claude Sonnet 5',
@@ -730,7 +737,7 @@ describe('ProviderSettings list/detail navigation', () => {
         updated_at: 0,
       },
     ])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -749,7 +756,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({
           model_id: 'claude-sonnet-5@vertex',
           profile: expect.objectContaining({ id: 'prof-sonnet', name: 'Claude Sonnet 5', context_window: 200000 }),
@@ -766,11 +773,11 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('sends this provider own rates only while the override is on', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -789,7 +796,7 @@ describe('ProviderSettings list/detail navigation', () => {
     fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({ overrides_pricing: true, input_price: '9', output_price: '18' }),
       ),
     )
@@ -804,11 +811,11 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('sends this provider own long-context tiers when the override is on', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'relayed', name: 'relayed' }])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -838,7 +845,7 @@ describe('ProviderSettings list/detail navigation', () => {
     fillLimits()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({
           overrides_pricing: true,
           pricing_tiers: [
@@ -858,9 +865,9 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('takes a model the provider never announced straight to its page', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -869,7 +876,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.confirm') }))
 
     expect(await screen.findByRole('heading', { name: 'gpt-6-preview' })).toBeInTheDocument()
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
   })
 
   it('asks before dismissing a dirty add-model drawer and resets draft after discard', async () => {
@@ -911,7 +918,7 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('writes a chosen logo, and writes null to go back to the vendor', async () => {
     const user = userEvent.setup()
-    mockApi.updateProvider.mockResolvedValue(makeProvider('p1', 'Provider One'))
+    mockApi.providers.update.mockResolvedValue(makeProvider('p1', 'Provider One'))
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -923,24 +930,24 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(document.querySelector('[data-slot="provider-icon"][data-provider="vertexai"]')).not.toBeNull()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.updateProvider).toHaveBeenCalledWith(expect.objectContaining({ icon: 'vertexai' })),
+      expect(mockApi.providers.update).toHaveBeenCalledWith(expect.objectContaining({ icon: 'vertexai' })),
     )
 
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.icon')) }))
     await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.iconDefault') }))
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.updateProvider).toHaveBeenLastCalledWith(expect.objectContaining({ icon: null })),
+      expect(mockApi.providers.update).toHaveBeenLastCalledWith(expect.objectContaining({ icon: null })),
     )
   })
 
   /** A page with unsaved work does not go quietly. */
   it('asks before the back button discards a model draft', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.listModelProfiles.mockResolvedValue([])
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) }))
@@ -964,9 +971,9 @@ describe('ProviderSettings list/detail navigation', () => {
 
   it('sends canonical decimal strings and typed price tiers to IPC', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'priced-model', name: 'Priced model' }])
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'priced-model', name: 'Priced model' }])
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -993,7 +1000,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({
           provider_id: 'p1',
           model_id: 'priced-model',
@@ -1021,19 +1028,19 @@ describe('ProviderSettings list/detail navigation', () => {
 
   it('keeps model capability overrides and server tools structured across IPC', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'structured-model', name: 'Structured model' }])
     const structured = modelConfig({
       id: 'structured-config',
       model_id: 'structured-model',
       capability_overrides: { supports_thinking: false, default_effort: null },
       server_tools: ['web_search'],
     })
-    mockApi.listModelConfigs.mockResolvedValue([structured])
+    mockApi.modelConfigs.list.mockResolvedValue([structured])
     // The model page reads its own row by id rather than taking it off the
     // provider's list.
-    mockApi.getModelConfig.mockResolvedValue(structured)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.modelConfigs.get.mockResolvedValue(structured)
+    mockApi.providers.getCapabilities.mockResolvedValue({
       supports_tools: true,
       supports_streaming_tools: true,
       supports_thinking: true,
@@ -1052,7 +1059,7 @@ describe('ProviderSettings list/detail navigation', () => {
       default_verbosity: null,
       server_tools: ['web_search'],
     })
-    mockApi.saveModelConfig.mockResolvedValue(undefined as never)
+    mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -1060,7 +1067,7 @@ describe('ProviderSettings list/detail navigation', () => {
     await openModel(user, /^Structured model/)
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.saveModelConfig).toHaveBeenCalledWith(
+      expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
         expect.objectContaining({
           server_tools: ['web_search'],
           profile: expect.objectContaining({
@@ -1083,8 +1090,8 @@ describe('ProviderSettings list/detail navigation', () => {
       { ...CATALOG[0], id: 'openai', name: 'OpenAI', balance: false },
       { ...CATALOG[0], id: 'moonshot', name: 'Moonshot (Kimi)', balance: true },
     ]
-    mockApi.listProviderCatalog.mockResolvedValue(catalog)
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.listCatalog.mockResolvedValue(catalog)
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('kimi-1', 'Kimi'), catalog_id: 'moonshot', base_url: 'https://api.moonshot.cn/v1' },
     ])
     const { unmount } = render(<ProviderSettings />)
@@ -1093,7 +1100,7 @@ describe('ProviderSettings list/detail navigation', () => {
     unmount()
 
     // Same type, same catalog, different vendor.
-    mockApi.listProviders.mockResolvedValue([{ ...makeProvider('oa-1', 'OpenAI'), catalog_id: 'openai' }])
+    mockApi.providers.list.mockResolvedValue([{ ...makeProvider('oa-1', 'OpenAI'), catalog_id: 'openai' }])
     render(<ProviderSettings />)
     await openFirstProvider(user, 'OpenAI')
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
@@ -1105,8 +1112,8 @@ describe('ProviderSettings list/detail navigation', () => {
   // posting the key to an endpoint its operator never published.
   it('an unidentified row is offered no balance button', async () => {
     const user = userEvent.setup()
-    mockApi.listProviderCatalog.mockResolvedValue([{ ...CATALOG[0], id: 'moonshot', balance: true }])
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.listCatalog.mockResolvedValue([{ ...CATALOG[0], id: 'moonshot', balance: true }])
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('relay-1', 'Relay'), catalog_id: null, base_url: 'https://relay.example/v1' },
     ])
     render(<ProviderSettings />)
@@ -1130,7 +1137,7 @@ describe('ProviderSettings list/detail navigation', () => {
   // entry's default, and nothing on the panel could change it afterwards.
   it('a vendor with two sign-ins gets a selector, and choosing one writes the row', async () => {
     const user = userEvent.setup()
-    mockApi.listProviderCatalog.mockResolvedValue([
+    mockApi.providers.listCatalog.mockResolvedValue([
       {
         ...CATALOG[0],
         auth: [
@@ -1145,7 +1152,7 @@ describe('ProviderSettings list/detail navigation', () => {
         ],
       },
     ])
-    mockApi.updateProvider.mockResolvedValue(makeProvider('p1', 'Provider One'))
+    mockApi.providers.update.mockResolvedValue(makeProvider('p1', 'Provider One'))
     render(<ProviderSettings />)
     await openFirstProvider(user)
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
@@ -1155,20 +1162,20 @@ describe('ProviderSettings list/detail navigation', () => {
     await user.click(await screen.findByRole('button', { name: new RegExp(i18n.t('settings.provider.authMethod')) }))
     await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.authMethodCodexCli') }))
 
-    expect(mockApi.updateProvider).toHaveBeenCalledWith(
+    expect(mockApi.providers.update).toHaveBeenCalledWith(
       expect.objectContaining({
         id: 'p1',
-        credentialKind: 'codex_cli',
-        transportProfile: 'chatgpt_codex',
-        apiFormat: 'responses',
-        baseUrl: 'https://chatgpt.com/backend-api/codex',
+        credential_kind: 'codex_cli',
+        transport_profile: 'chatgpt_codex',
+        api_format: 'responses',
+        base_url: 'https://chatgpt.com/backend-api/codex',
       }),
     )
   })
 
   it('shows the native GenerateContent protocol for Google connections', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       {
         ...makeProvider('google-1', 'Gemini Relay'),
         provider_type: 'google',
@@ -1192,7 +1199,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
   it('explains the Vertex Interactions express-mode fields', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       {
         ...makeProvider('google-1', 'Vertex Gemini'),
         provider_type: 'google',
@@ -1210,7 +1217,7 @@ describe('ProviderSettings list/detail navigation', () => {
 
   it('renders a multiline credential editor for Vertex Service Accounts', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       {
         ...makeProvider('google-1', 'Vertex Service Account'),
         provider_type: 'google',
@@ -1236,7 +1243,7 @@ describe('ProviderSettings list/detail navigation', () => {
    */
   it('offers the Codex request shape only to a Responses row', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('p1', 'Chat Row'), api_format: 'chat_completions' },
       { ...makeProvider('p2', 'Responses Row'), api_format: 'responses' },
     ])
@@ -1256,11 +1263,11 @@ describe('ProviderSettings list/detail navigation', () => {
 
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     await waitFor(() =>
-      expect(mockApi.updateProvider).toHaveBeenLastCalledWith(expect.objectContaining({ codexRequestShape: true })),
+      expect(mockApi.providers.update).toHaveBeenLastCalledWith(expect.objectContaining({ codex_request_shape: true })),
     )
     // Blank means "the version this build shipped with", which is the row
     // being absent rather than a version of `""`.
-    expect(mockApi.setPreference).toHaveBeenLastCalledWith({ key: 'codex.client_version', value: null })
+    expect(mockApi.preferences.set).toHaveBeenLastCalledWith({ key: 'codex.client_version', value: null })
   })
 })
 
@@ -1271,29 +1278,28 @@ describe('ProviderPage failure paths and cached models', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One')])
-    mockApi.listProviderCatalog.mockResolvedValue(CATALOG)
-    mockApi.getProviderKeyExists.mockResolvedValue(true)
-    mockApi.listCachedProviderModels.mockResolvedValue([])
-    mockApi.listModelConfigs.mockResolvedValue([])
-    mockApi.fetchProviderModels.mockResolvedValue([])
-    mockApi.listAssistants.mockResolvedValue([])
-    mockApi.getPreference.mockResolvedValue({ key: 'codex.client_version', value: null })
-    mockApi.setPreference.mockResolvedValue(undefined)
+    mockApi.providers.list.mockResolvedValue([makeProvider('p1', 'Provider One')])
+    mockApi.providers.listCatalog.mockResolvedValue(CATALOG)
+    mockApi.providers.testKey.mockResolvedValue(true)
+    mockApi.providers.listModels.mockResolvedValue([])
+    mockApi.modelConfigs.list.mockResolvedValue([])
+    mockApi.assistants.list.mockResolvedValue([])
+    mockApi.preferences.get.mockResolvedValue({ key: 'codex.client_version', value: null })
+    mockApi.preferences.set.mockResolvedValue(undefined)
   })
 
   it('reads the cached model list on open instead of calling every model unlisted', async () => {
     const user = userEvent.setup()
-    mockApi.listCachedProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
-    mockApi.listModelConfigs.mockResolvedValue([
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    mockApi.modelConfigs.list.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
     ])
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
     expect(await screen.findByRole('row', { name: 'gpt-5.6' })).toBeInTheDocument()
-    expect(mockApi.listCachedProviderModels).toHaveBeenCalledWith({ providerId: 'p1' })
-    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+    expect(mockApi.providers.listModels).toHaveBeenCalledWith({ provider_id: 'p1', fetch_policy: 'cache_only' })
+    expect(mockApi.providers.listModels).not.toHaveBeenCalledWith({ provider_id: 'p1', fetch_policy: 'force_remote' })
     expect(screen.queryByText(i18n.t('settings.provider.modelNotListed'))).not.toBeInTheDocument()
   })
 
@@ -1303,23 +1309,26 @@ describe('ProviderPage failure paths and cached models', () => {
   // lists none of the configured models.
   it('opens on an empty cache without asking the provider or calling models unlisted', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockRejectedValue('offline')
-    mockApi.listModelConfigs.mockResolvedValue([
+    mockApi.providers.listModels.mockImplementation(async ({ fetch_policy }) => {
+      if (fetch_policy === 'force_remote') throw 'offline'
+      return []
+    })
+    mockApi.modelConfigs.list.mockResolvedValue([
       modelConfig({ id: 'config-1', model_id: 'gpt-5.6', input_price: decimal('1'), output_price: decimal('2') }),
     ])
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
     expect(await screen.findByRole('row', { name: 'gpt-5.6' })).toBeInTheDocument()
-    expect(mockApi.listCachedProviderModels).toHaveBeenCalledWith({ providerId: 'p1' })
-    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+    expect(mockApi.providers.listModels).toHaveBeenCalledWith({ provider_id: 'p1', fetch_policy: 'cache_only' })
+    expect(mockApi.providers.listModels).not.toHaveBeenCalledWith({ provider_id: 'p1', fetch_policy: 'force_remote' })
     expect(screen.queryByText('offline')).not.toBeInTheDocument()
     expect(screen.queryByText(i18n.t('settings.provider.modelNotListed'))).not.toBeInTheDocument()
   })
 
   it('keeps the filter box when nothing matches, and says so', async () => {
     const user = userEvent.setup()
-    mockApi.listCachedProviderModels.mockResolvedValue(
+    mockApi.providers.listModels.mockResolvedValue(
       Array.from({ length: 10 }, (_, i) => ({ id: `model-${i}`, name: `model-${i}` })),
     )
     render(<ProviderSettings />)
@@ -1333,7 +1342,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('reports a refused save instead of doing nothing', async () => {
     const user = userEvent.setup()
-    mockApi.updateProvider.mockRejectedValueOnce('name taken')
+    mockApi.providers.update.mockRejectedValueOnce('name taken')
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -1346,7 +1355,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('reports a failed delete and stays on the page', async () => {
     const user = userEvent.setup()
-    mockApi.deleteProvider.mockRejectedValueOnce('in use')
+    mockApi.providers.delete.mockRejectedValueOnce('in use')
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -1360,7 +1369,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('counts an edited Codex client version as unsaved work', async () => {
     const user = userEvent.setup()
-    mockApi.listProviders.mockResolvedValue([
+    mockApi.providers.list.mockResolvedValue([
       { ...makeProvider('p1', 'Responses Row'), api_format: 'responses', codex_request_shape: true },
     ])
     render(<ProviderSettings />)
@@ -1373,7 +1382,7 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('does not count a typed key as unsaved work on the provider form', async () => {
     const user = userEvent.setup()
-    mockApi.setProviderKey.mockResolvedValue(undefined)
+    mockApi.providers.setKey.mockResolvedValue(undefined)
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -1382,8 +1391,8 @@ describe('ProviderPage failure paths and cached models', () => {
     // The form's own Save writes the row and never the key: it may not report
     // the key as saved, and leaving still asks because the key is its own draft.
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
-    await waitFor(() => expect(mockApi.updateProvider).toHaveBeenCalledTimes(1))
-    expect(mockApi.setProviderKey).not.toHaveBeenCalled()
+    await waitFor(() => expect(mockApi.providers.update).toHaveBeenCalledTimes(1))
+    expect(mockApi.providers.setKey).not.toHaveBeenCalled()
     await user.click(screen.getByRole('button', { name: i18n.t('common.back') }))
     expect(await screen.findByRole('alertdialog', { name: i18n.t('confirm.title') })).toBeInTheDocument()
   })
@@ -1416,8 +1425,8 @@ describe('ProviderPage failure paths and cached models', () => {
 
   it('saves a key with its own button and then says one is stored', async () => {
     const user = userEvent.setup()
-    mockApi.setProviderKey.mockResolvedValue(undefined)
-    mockApi.getProviderKeyExists.mockResolvedValue(false)
+    mockApi.providers.setKey.mockResolvedValue(undefined)
+    mockApi.providers.testKey.mockResolvedValue(false)
     render(<ProviderSettings />)
     await openFirstProvider(user)
 
@@ -1427,10 +1436,12 @@ describe('ProviderPage failure paths and cached models', () => {
     await user.type(key, 'sk-test')
     await user.click(screen.getByRole('button', { name: i18n.t('settings.provider.saveKey') }))
 
-    await waitFor(() => expect(mockApi.setProviderKey).toHaveBeenCalledWith({ providerId: 'p1', apiKey: 'sk-test' }))
+    await waitFor(() =>
+      expect(mockApi.providers.setKey).toHaveBeenCalledWith({ provider_id: 'p1', api_key: 'sk-test' }),
+    )
     expect(await screen.findByText(i18n.t('settings.provider.keySaved'))).toBeInTheDocument()
     expect(key).toHaveValue('')
     expect(key).toHaveAttribute('placeholder', i18n.t('settings.provider.apiKeyPlaceholderSet'))
-    expect(mockApi.updateProvider).not.toHaveBeenCalled()
+    expect(mockApi.providers.update).not.toHaveBeenCalled()
   })
 })

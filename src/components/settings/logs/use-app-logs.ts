@@ -52,8 +52,8 @@ export function useAppLogs() {
   }, [search])
 
   useEffect(() => {
-    api
-      .getLogSettings()
+    api.logs
+      .getSettings()
       .then(setSettings)
       // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- read-only viewer; null hides the level control
       .catch(() => setSettings(null))
@@ -66,18 +66,18 @@ export function useAppLogs() {
     const id = ++requestId.current
     setLoading(true)
     setError(null)
-    api
-      .readLogs({
-        minLevel: level === 'all' ? undefined : level,
+    api.logs
+      .read({
+        min_level: level === 'all' ? undefined : level,
         limit: PAGE_SIZE,
         contains: debouncedSearch || undefined,
-        sinceTsMs: sinceFor(range),
+        since_ts_ms: sinceFor(range),
       })
       .then((page) => {
         if (id !== requestId.current) return
         setEntries(page.entries)
-        setCursor(page.nextCursor)
-        setTruncated(page.scanTruncated)
+        setCursor(page.next_cursor)
+        setTruncated(page.scan_truncated)
         setLoaded(true)
       })
       .catch((e) => {
@@ -99,20 +99,20 @@ export function useAppLogs() {
     if (!cursor || loadingMore) return
     const id = requestId.current
     setLoadingMore(true)
-    api
-      .readLogs({
-        minLevel: level === 'all' ? undefined : level,
+    api.logs
+      .read({
+        min_level: level === 'all' ? undefined : level,
         limit: PAGE_SIZE,
         contains: debouncedSearch || undefined,
-        sinceTsMs: sinceFor(range),
+        since_ts_ms: sinceFor(range),
         cursor,
       })
       .then((page) => {
         // A filter change while this was in flight makes the result stale.
         if (id !== requestId.current) return
         setEntries((prev) => [...prev, ...page.entries].slice(0, MAX_RENDERED))
-        setCursor(page.nextCursor)
-        setTruncated(page.scanTruncated)
+        setCursor(page.next_cursor)
+        setTruncated(page.scan_truncated)
       })
       .catch((e) => setError(String(e)))
       .finally(() => setLoadingMore(false))

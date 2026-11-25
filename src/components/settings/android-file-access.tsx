@@ -28,15 +28,15 @@ export function AndroidFileAccess() {
   const report = useCallback((e: unknown) => setError(String(e)), [])
 
   const refreshGranted = useCallback(() => {
-    api.getManageStorageStatus().then(setManageGranted).catch(report)
+    api.platform.getManageStorageStatus().then(setManageGranted).catch(report)
   }, [report])
 
   useEffect(() => {
-    api
-      .getPreference({ key: 'android.manage_storage_enabled' })
+    api.preferences
+      .get({ key: 'android.manage_storage_enabled' })
       .then(({ value }) => setManageEnabled(value ?? false))
       .catch(report)
-    api.listSafRoots().then(setSafRoots).catch(report)
+    api.platform.listSafRoots().then(setSafRoots).catch(report)
     refreshGranted()
     // Re-check the system grant when returning from the system settings page.
     // On Android WebView, window 'focus' may not fire reliably on Activity
@@ -57,7 +57,7 @@ export function AndroidFileAccess() {
     setError(null)
     setManageEnabled(checked)
     try {
-      await api.setPreference({ key: 'android.manage_storage_enabled', value: checked })
+      await api.preferences.set({ key: 'android.manage_storage_enabled', value: checked })
     } catch (e) {
       // Not written, so the switch goes back to what is actually stored.
       setManageEnabled(!checked)
@@ -66,7 +66,7 @@ export function AndroidFileAccess() {
     }
     if (checked && !manageGranted) {
       try {
-        await api.requestManageStorage()
+        await api.platform.openManageStorageSettings()
       } catch (e) {
         report(e)
       }
@@ -77,7 +77,7 @@ export function AndroidFileAccess() {
     setError(null)
     setPicking(true)
     try {
-      setSafRoots(await api.pickSafDirectory())
+      setSafRoots(await api.platform.selectSafDirectory())
     } catch (e) {
       report(e)
     } finally {
@@ -88,7 +88,7 @@ export function AndroidFileAccess() {
   const handleRemove = async (uri: string) => {
     setError(null)
     try {
-      setSafRoots(await api.removeSafRoot(uri))
+      setSafRoots(await api.platform.deleteSafRoot({ uri }))
     } catch (e) {
       report(e)
     }

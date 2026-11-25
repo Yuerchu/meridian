@@ -12,11 +12,17 @@ vi.mock('./remote-client-settings', () => ({ RemoteClientSettings: () => null })
 vi.mock('./android-file-access', () => ({ AndroidFileAccess: () => null }))
 vi.mock('@/api', () => ({
   api: {
-    getPreference: vi.fn(),
-    setPreference: vi.fn(),
-    getServiceKeyExists: vi.fn(),
-    setServiceKey: vi.fn(),
-    listSystemFonts: vi.fn(),
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    tools: {
+      testServiceKey: vi.fn(),
+      setServiceKey: vi.fn(),
+    },
+    platform: {
+      listSystemFonts: vi.fn(),
+    },
   },
 }))
 
@@ -38,20 +44,20 @@ describe('GeneralSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
-    mockApi.getServiceKeyExists.mockResolvedValue(false)
-    mockApi.listSystemFonts.mockResolvedValue({ families: ['Segoe UI'] })
+    mockApi.tools.testServiceKey.mockResolvedValue(false)
+    mockApi.platform.listSystemFonts.mockResolvedValue(['Segoe UI'])
   })
 
   it('waits for the stored settings rather than showing defaults as if they were them', async () => {
     let finish: () => void = () => {}
-    mockApi.getPreference.mockImplementation(
+    mockApi.preferences.get.mockImplementation(
       ({ key }) =>
         new Promise((resolve) => {
           finish = () => resolve({ key, value: key === 'shell' ? 'powershell' : null } as never)
         }) as never,
     )
     // Keep the independent font listing from resolving after this test ends.
-    mockApi.listSystemFonts.mockReturnValue(new Promise(() => {}))
+    mockApi.platform.listSystemFonts.mockReturnValue(new Promise(() => {}))
     renderGeneral()
 
     expect(screen.getByRole('status', { name: i18n.t('common.loading') })).toBeInTheDocument()
@@ -60,8 +66,8 @@ describe('GeneralSettings', () => {
 
   it('reports a failed read with a retry, instead of drawing the defaults', async () => {
     const user = userEvent.setup()
-    mockApi.getPreference.mockRejectedValueOnce('db locked')
-    mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
+    mockApi.preferences.get.mockRejectedValueOnce('db locked')
+    mockApi.preferences.get.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
     renderGeneral()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('settings.general.loadError'))
@@ -73,8 +79,8 @@ describe('GeneralSettings', () => {
   })
 
   it('still lets the rest of the page load when listing fonts fails', async () => {
-    mockApi.listSystemFonts.mockRejectedValueOnce('denied')
-    mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
+    mockApi.platform.listSystemFonts.mockRejectedValueOnce('denied')
+    mockApi.preferences.get.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
     renderGeneral()
 
     expect(await screen.findByText(i18n.t('settings.general.fontListError'))).toBeInTheDocument()

@@ -75,7 +75,7 @@ export function About() {
   useEffect(() => {
     // Silent on failure: this panel is where someone lands *because* something
     // is wrong, and an error notification over the version number helps nobody.
-    api.getAppInfo().then(setInfo, () => {})
+    api.platform.getAppInfo().then(setInfo, () => {})
   }, [])
 
   // So the back gesture leaves the log list before it leaves settings.
@@ -101,10 +101,10 @@ export function About() {
   // except a home directory the user can see in the row above.
   const diagnostics = [
     `Meridian ${info?.version ?? '?'}`,
-    `Tauri ${info?.tauriVersion ?? '?'}`,
+    `Tauri ${info?.tauri_version ?? '?'}`,
     runtime,
     platform ?? '?',
-    info?.dataDir ?? '',
+    info?.data_dir ?? '',
   ].join('\n')
 
   return (
@@ -177,13 +177,13 @@ export function About() {
 
       <SettingsGroup heading={t('settings.about.system.title')} headingLevel={3}>
         <InfoRow label={t('settings.about.system.version')} value={info?.version} />
-        <InfoRow label="Tauri" value={info?.tauriVersion} />
+        <InfoRow label="Tauri" value={info?.tauri_version} />
         {/* Read off `navigator`, so it needs no round trip and is never absent. */}
         <InfoRow label={t('settings.about.system.runtime')} value={runtime} />
         <InfoRow label={t('settings.about.system.platform')} value={platform ?? undefined} />
         <InfoRow
           label={t('settings.about.system.dataDir')}
-          value={info?.dataDir}
+          value={info?.data_dir}
           action={
             info && (
               <>
@@ -193,7 +193,7 @@ export function About() {
                     size="sm"
                     variant="ghost"
                     aria-label={t('settings.about.system.copyDataDir')}
-                    onPress={() => void pathCopy.copy(info.dataDir)}
+                    onPress={() => void pathCopy.copy(info.data_dir)}
                   />
                   <Tooltip>
                     {pathCopy.failure !== null
