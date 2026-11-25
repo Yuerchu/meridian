@@ -48,7 +48,7 @@ export function ImeLearningSection() {
 
   const load = useCallback(async () => {
     try {
-      setLearning(await api.getImeLearning())
+      setLearning(await api.ime.getLearning())
     } catch (err) {
       setError(String(err))
     }
@@ -67,7 +67,7 @@ export function ImeLearningSection() {
   const handleForget = async (word: ImeLearnedWordInfoResponse) => {
     setError(null)
     try {
-      setLearning(await api.forgetImeLearnedWord({ text: word.text }))
+      setLearning(await api.ime.deleteLearning({ word: word.text }))
     } catch (err) {
       setError(String(err))
     }
@@ -84,7 +84,7 @@ export function ImeLearningSection() {
         filters: [{ name: 'Zip', extensions: ['zip'] }],
       }).catch(() => null)
       if (dest === null) return
-      const result = await api.exportImeLearning({ dest })
+      const result = await api.ime.exportLearning({ dest })
       setNotice(
         dest.startsWith('content://')
           ? t('settings.ime.learned.exported')
@@ -102,7 +102,7 @@ export function ImeLearningSection() {
     setNotice(null)
     setBusy(true)
     try {
-      setLearning(await api.importImeLearning({ path, mode }))
+      setLearning(await api.ime.importLearning({ path, mode }))
     } catch (err) {
       setError(String(err))
     } finally {
@@ -147,7 +147,7 @@ export function ImeLearningSection() {
     setError(null)
     setBusy(true)
     try {
-      setLearning(await api.forgetAllImeLearning())
+      setLearning(await api.ime.deleteLearning({ word: null }))
     } catch (err) {
       setError(String(err))
     } finally {

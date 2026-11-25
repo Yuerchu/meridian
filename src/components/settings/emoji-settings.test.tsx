@@ -9,19 +9,25 @@ import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
-    listEmojiPacks: vi.fn(),
-    listEmojis: vi.fn(),
-    getEmojiFileUrl: vi.fn(),
-    confirmStickerSemantics: vi.fn(),
-    deleteEmoji: vi.fn(),
-    deleteEmojiPack: vi.fn(),
-    createEmojiPack: vi.fn(),
-    importEmojis: vi.fn(),
-    getPreference: vi.fn(),
-    setPreference: vi.fn(),
-    listProviders: vi.fn(),
-    fetchProviderModels: vi.fn(),
-    suggestStickerSemantics: vi.fn(),
+    emojis: {
+      listPacks: vi.fn(),
+      list: vi.fn(),
+      getFileUrl: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      deletePack: vi.fn(),
+      createPack: vi.fn(),
+      import: vi.fn(),
+      suggestSemantics: vi.fn(),
+    },
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    providers: {
+      list: vi.fn(),
+      listModels: vi.fn(),
+    },
   },
 }))
 
@@ -75,16 +81,23 @@ describe('EmojiSettings', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetStickerUrls()
-    mockApi.listEmojiPacks.mockResolvedValue([PACK])
-    mockApi.getEmojiFileUrl.mockResolvedValue('blob:sticker')
-    mockApi.confirmStickerSemantics.mockImplementation(({ id, name, tags }) =>
-      Promise.resolve(makeEmoji({ id, name, tags, semantic_status: 'confirmed' })),
+    mockApi.emojis.listPacks.mockResolvedValue([PACK])
+    mockApi.emojis.getFileUrl.mockResolvedValue('blob:sticker')
+    mockApi.emojis.update.mockImplementation(async ({ id, action }) =>
+      makeEmoji({
+        id,
+        name: action.name,
+        tags: action.kind === 'confirm_semantics' ? action.tags : null,
+        semantic_status: 'confirmed',
+      }),
     )
-    mockApi.getPreference.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
-    mockApi.setPreference.mockResolvedValue(null)
-    mockApi.listProviders.mockResolvedValue([])
-    mockApi.fetchProviderModels.mockResolvedValue([])
-    mockApi.suggestStickerSemantics.mockImplementation(async (id) => makeEmoji({ id, semantic_status: 'suggested' }))
+    mockApi.preferences.get.mockImplementation(async ({ key }) => ({ key, value: null }) as never)
+    mockApi.preferences.set.mockResolvedValue(undefined)
+    mockApi.providers.list.mockResolvedValue([])
+    mockApi.providers.listModels.mockResolvedValue([])
+    mockApi.emojis.suggestSemantics.mockImplementation(async ({ id }) =>
+      makeEmoji({ id, semantic_status: 'suggested' }),
+    )
   })
 
   /**
@@ -94,7 +107,7 @@ describe('EmojiSettings', () => {
    */
   it('keeps the tags when only the name is edited', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat,angry', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
@@ -107,17 +120,16 @@ describe('EmojiSettings', () => {
     await user.type(field, 'new name{Enter}')
 
     await waitFor(() =>
-      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+      expect(mockApi.emojis.update).toHaveBeenCalledWith({
         id: 'e1',
-        name: 'new name',
-        tags: 'cat,angry',
+        action: { kind: 'confirm_semantics', name: 'new name', tags: 'cat,angry' },
       }),
     )
   })
 
   it('keeps the name when only the tags are edited', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
@@ -129,10 +141,9 @@ describe('EmojiSettings', () => {
     await user.type(field, 'cat,angry{Enter}')
 
     await waitFor(() =>
-      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+      expect(mockApi.emojis.update).toHaveBeenCalledWith({
         id: 'e1',
-        name: 'old name',
-        tags: 'cat,angry',
+        action: { kind: 'confirm_semantics', name: 'old name', tags: 'cat,angry' },
       }),
     )
   })
@@ -144,7 +155,7 @@ describe('EmojiSettings', () => {
    */
   it('offers the suggestion, and confirms it as typed', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({
         id: 'e1',
         name: 'sticker_a1b2.gif',
@@ -160,17 +171,16 @@ describe('EmojiSettings', () => {
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
-      expect(mockApi.confirmStickerSemantics).toHaveBeenCalledWith({
+      expect(mockApi.emojis.update).toHaveBeenCalledWith({
         id: 'e1',
-        name: 'shyly hiding',
-        tags: 'shy,hiding',
+        action: { kind: 'confirm_semantics', name: 'shyly hiding', tags: 'shy,hiding' },
       }),
     )
   })
 
   it('Escape puts the saved value back and commits nothing', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
@@ -183,13 +193,13 @@ describe('EmojiSettings', () => {
 
     expect(field).toHaveValue('old name')
     expect(field).not.toHaveFocus()
-    expect(mockApi.confirmStickerSemantics).not.toHaveBeenCalled()
+    expect(mockApi.emojis.update).not.toHaveBeenCalled()
   })
 
   /** Unreviewed first, whatever the pack's own order says. */
   it('puts the stickers awaiting review at the top', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'confirmed one', semantic_status: 'confirmed', sort_order: 0 }),
       makeEmoji({ id: 'e2', name: 'waiting', semantic_status: 'pending', sort_order: 1 }),
     ])
@@ -220,7 +230,7 @@ describe('EmojiSettings', () => {
       // Every row is on screen as soon as it is drawn: what is fetched is
       // then decided by what is drawn, which is the page.
       io = installIntersectionObserver(() => true)
-      mockApi.listEmojis.mockResolvedValue(MANY)
+      mockApi.emojis.list.mockResolvedValue(MANY)
       Object.defineProperty(HTMLImageElement.prototype, 'decode', {
         configurable: true,
         value: () => new Promise(() => {}),
@@ -231,7 +241,7 @@ describe('EmojiSettings', () => {
 
     const shownNames = () =>
       screen.getAllByRole('textbox', { name: 'Edit meaning' }).map((field) => (field as HTMLInputElement).value)
-    const requested = () => new Set(mockApi.getEmojiFileUrl.mock.calls.map(([id]) => id))
+    const requested = () => new Set(mockApi.emojis.getFileUrl.mock.calls.map(([req]) => req.emoji_id))
 
     it('draws one page and asks only for the files on it', async () => {
       const user = userEvent.setup()
@@ -242,13 +252,13 @@ describe('EmojiSettings', () => {
       const firstPage = new Set(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${i}`))
       await waitFor(() => expect(requested()).toEqual(firstPage))
       // Nothing about the settings page asks for every file up front any more.
-      expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE)
+      expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE)
 
       await user.click(screen.getByRole('button', { name: 'Page 2' }))
       expect(shownNames()[0]).toBe(`sticker ${STICKERS_PER_PAGE}`)
       const secondPage = Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${STICKERS_PER_PAGE + i}`)
       await waitFor(() => expect(requested()).toEqual(new Set([...firstPage, ...secondPage])))
-      expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE * 2)
+      expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE * 2)
       expect(requested().has(`e${COUNT - 1}`)).toBe(false)
     })
 
@@ -279,7 +289,7 @@ describe('EmojiSettings', () => {
 
   it('clears the selection from the bulk bar', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([makeEmoji({ id: 'e1', semantic_status: 'confirmed' })])
+    mockApi.emojis.list.mockResolvedValue([makeEmoji({ id: 'e1', semantic_status: 'confirmed' })])
     render(<EmojiSettings />)
     await openPack(user)
 
@@ -293,7 +303,7 @@ describe('EmojiSettings', () => {
 
   it('generates suggestions for unconfirmed selected stickers that have a file', async () => {
     const user = userEvent.setup()
-    mockApi.listEmojis.mockResolvedValue([
+    mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'pending', name: 'pending-a', semantic_status: 'pending', file_name: 'a.gif' }),
       makeEmoji({ id: 'named', name: '点赞', semantic_status: 'confirmed', file_name: 'b.gif' }),
       makeEmoji({ id: 'nofile', name: 'pending-c', semantic_status: 'pending', file_name: '' }),
@@ -305,8 +315,8 @@ describe('EmojiSettings', () => {
     await user.click(await screen.findByRole('button', { name: 'Generate suggestions' }))
 
     await waitFor(() => {
-      expect(mockApi.suggestStickerSemantics).toHaveBeenCalledTimes(1)
+      expect(mockApi.emojis.suggestSemantics).toHaveBeenCalledTimes(1)
     })
-    expect(mockApi.suggestStickerSemantics).toHaveBeenCalledWith('pending')
+    expect(mockApi.emojis.suggestSemantics).toHaveBeenCalledWith({ id: 'pending' })
   })
 })

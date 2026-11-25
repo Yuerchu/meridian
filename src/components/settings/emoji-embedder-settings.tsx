@@ -33,8 +33,8 @@ function EmojiEmbedderRow() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    api
-      .getPreference({ key: PREFERENCE_KEY })
+    api.preferences
+      .get({ key: PREFERENCE_KEY })
       .then(({ value }) => {
         setPath(value)
         setReady(true)
@@ -44,8 +44,8 @@ function EmojiEmbedderRow() {
 
   const persist = useCallback((next: string | null) => {
     setError(null)
-    api
-      .setPreference({ key: PREFERENCE_KEY, value: next })
+    api.preferences
+      .set({ key: PREFERENCE_KEY, value: next })
       .then(() => setPath(next))
       .catch((reason) => setError(String(reason)))
   }, [])

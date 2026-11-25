@@ -10,7 +10,6 @@ import type {
   ImeDictionaryInfoResponse,
   ImeLmStatusInfoResponse,
   ImeStatusInfoResponse,
-  ListenConfigInfoResponse,
   LogEntryInfoResponse,
   LogRecordLevel,
   McpServerInfoResponse,
@@ -25,6 +24,7 @@ import type {
   ProviderCapabilitiesInfoResponse,
   ProviderCatalogEntryInfoResponse,
   ProviderInfoResponse,
+  RemoteConfigInfoResponse,
   SkillInfoResponse,
   ToolCategoryInfoResponse,
   ToolPresetInfoResponse,
@@ -754,16 +754,16 @@ export function buildLogs(now: number): LogEntryInfoResponse[] {
       const tsMs = ago(300 - index * 40, now)
       return {
         ts: new Date(tsMs).toISOString(),
-        tsMs,
+        ts_ms: tsMs,
         level,
         target,
         msg,
         fields,
         spans: target.includes('engine') ? ['chat'] : [],
-        spanFields: target.includes('engine') ? { conversation_id: CONV.rich } : {},
+        span_fields: target.includes('engine') ? { conversation_id: CONV.rich } : {},
         file: null,
         line: null,
-        cursor: { fileIndex: 0, byteOffset: index * 200 },
+        cursor: { file_index: 0, byte_offset: index * 200 },
       }
     })
     .reverse()
@@ -835,7 +835,7 @@ export function buildHooksConfig(): HookConfigInfoResponse {
   }
 }
 
-export function buildListenConfig(): ListenConfigInfoResponse {
+export function buildRemoteConfig(): RemoteConfigInfoResponse {
   return { enabled: false, host: '0.0.0.0', port: 8787, token: 'demo-listen-token-000000' }
 }
 
@@ -946,10 +946,10 @@ export function buildEmojis(now: number): EmojiInfoResponse[] {
 
 export const APP_INFO: AppInfoResponse = {
   version: '0.3.0-demo',
-  tauriVersion: '2.x',
+  tauri_version: '2.x',
   os: 'windows',
   arch: 'x86_64',
-  dataDir: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian',
+  data_dir: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian',
 }
 
 export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: PreferenceInfoValueByKey[K] } {

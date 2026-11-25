@@ -8,9 +8,11 @@ import { MemoryTrash } from './memory-trash'
 
 vi.mock('@/api', () => ({
   api: {
-    listMemoryTrash: vi.fn(),
-    restoreMemories: vi.fn(),
-    purgeMemories: vi.fn(),
+    memories: {
+      list: vi.fn(),
+      restore: vi.fn(),
+      delete: vi.fn(),
+    },
   },
 }))
 
@@ -30,9 +32,9 @@ describe('MemoryTrash', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listMemoryTrash.mockResolvedValue([ROW])
-    mockApi.restoreMemories.mockResolvedValue(null as never)
-    mockApi.purgeMemories.mockResolvedValue(null as never)
+    mockApi.memories.list.mockResolvedValue([ROW])
+    mockApi.memories.restore.mockResolvedValue(1)
+    mockApi.memories.delete.mockResolvedValue(1)
   })
 
   it('is a drawer named by its title and described by the retention hint', async () => {
@@ -45,7 +47,7 @@ describe('MemoryTrash', () => {
   it('restores a row and tells the list behind it', async () => {
     const { user, onChanged } = setup()
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.memory.trash.restore') }))
-    await waitFor(() => expect(mockApi.restoreMemories).toHaveBeenCalledWith(['m1']))
+    await waitFor(() => expect(mockApi.memories.restore).toHaveBeenCalledWith({ ids: ['m1'] }))
     expect(onChanged).toHaveBeenCalled()
   })
 
@@ -55,12 +57,12 @@ describe('MemoryTrash', () => {
 
     // Declined: nothing is sent.
     await user.click(await screen.findByRole('button', { name: i18n.t('common.cancel') }))
-    expect(mockApi.purgeMemories).not.toHaveBeenCalled()
+    expect(mockApi.memories.delete).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: i18n.t('settings.memory.trash.purge') }))
     const confirmButtons = await screen.findAllByRole('button', { name: i18n.t('settings.memory.trash.purge') })
     await user.click(confirmButtons[confirmButtons.length - 1])
-    await waitFor(() => expect(mockApi.purgeMemories).toHaveBeenCalledWith(['m1']))
+    await waitFor(() => expect(mockApi.memories.delete).toHaveBeenCalledWith({ ids: ['m1'], permanent: true }))
   })
 
   it('asks to close on Escape', async () => {

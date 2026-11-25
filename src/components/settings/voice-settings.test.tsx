@@ -15,8 +15,12 @@ vi.mock('@/lib/transport', () => ({
 }))
 vi.mock('@/api', () => ({
   api: {
-    voiceModelStatus: vi.fn(async () => ({ installed: false, size_bytes: 0, path: '' })),
-    getPreference: vi.fn(async () => ({ value: null })),
+    voice: {
+      getModelStatus: vi.fn(async () => ({ installed: false, size_bytes: 0, path: '' })),
+    },
+    preferences: {
+      get: vi.fn(async () => ({ value: null })),
+    },
   },
 }))
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))

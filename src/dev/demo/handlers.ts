@@ -2,34 +2,67 @@ import { demoLocalModel } from './local-model'
 import { decimal } from '@/lib/decimal'
 import { parseCustomToolExecution } from '@/lib/custom-tool-execution'
 import type {
+  ApprovalDecisionRequest,
   AssistantCreateRequest,
+  AssistantUpdateRequest,
+  BackgroundTaskListRequest,
+  BackgroundTaskOutputReadRequest,
+  BackgroundTaskStopRequest,
+  BoardStage,
+  BoardTaskCreateRequest,
+  BoardTaskInfoResponse,
+  BoardTaskStartRequest,
+  BoardTaskUpdateRequest,
+  ChatStartRequest,
+  ComposerDraftDeleteRequest,
+  ComposerDraftReadRequest,
+  ComposerDraftUpsertRequest,
+  ConversationCreateRequest,
+  ConversationInfoResponse,
+  ConversationListRequest,
+  ConversationUpdateRequest,
   CustomToolCreateRequest,
   CustomToolInfoResponse,
   CustomToolUpdateRequest,
-  BoardAgentKind,
-  BoardStage,
-  BoardTaskInfoResponse,
-  AssistantUpdateRequest,
-  ChatRequest,
-  ComposerDraftUpsertRequest,
-  ConversationInfoResponse,
+  EmojiListRequest,
+  EmojiPackAssignmentUpdateRequest,
+  EmojiPackListRequest,
+  EmojiUpdateRequest,
+  LocalModelInspectRequest,
   McpServerCreateRequest,
-  McpToolEnabledUpdateRequest,
   McpServerUpdateRequest,
+  McpToolEnabledUpdateRequest,
+  McpToolListRequest,
+  MemoryCreateRequest,
+  MemoryDeleteRequest,
   MemoryInfoResponse,
-  MemoryScopedUpsertRequest,
+  MemoryListRequest,
+  MemoryRestoreRequest,
+  MemorySubjectDeleteRequest,
+  MemorySubjectUpdateRequest,
+  MemoryUpdateRequest,
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
-  PendingApprovalInfoResponse,
   OneBotConfigUpdateRequest,
+  PendingApprovalInfoResponse,
   PreferenceKey,
   ProviderCreateRequest,
-  LocalModelInspectRequest,
-  ProviderLocalModelInfoReadRequest,
   ProviderInfoResponse,
+  ProviderLocalModelReadRequest,
+  ProviderModelListRequest,
   ProviderUpdateRequest,
   QueuedPromptCreateRequest,
+  RemoteConfigUpdateRequest,
+  SkillBindingListRequest,
+  SkillBindingUpdateRequest,
+  SkillUpdateRequest,
   UsageDimension,
+  UserCommandRunRequest,
+  WorkspaceFileReadRequest,
+  WorkspaceGitDiffRequest,
+  WorkspaceReferenceProbeRequest,
+  WorkspaceReferenceResolveRequest,
+  WorkspaceReferenceSuggestRequest,
 } from '@/types'
 import { conversation, message } from './factories'
 import type { DemoArgs, DemoBackend, DemoHandler } from './index'
@@ -70,10 +103,6 @@ function request<T = Rec>(args: DemoArgs): T {
   return value as T
 }
 
-function field<T>(args: DemoArgs, key: string): T {
-  return args?.[key] as T
-}
-
 /** What the demo provider's model list names: every configured model, plus two
  *  more for Anthropic so the picker has something to add. */
 function demoProviderModels(state: DemoBackend['state'], id: string): { id: string; name: string }[] {
@@ -99,14 +128,6 @@ function patch<T extends object>(row: T, changes: object): T {
     ;(row as Rec)[key] = value
   }
   return row
-}
-
-const camelToSnake = (key: string) => key.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
-
-function snakePatch(row: object, changes: object) {
-  const out: Rec = {}
-  for (const [key, value] of Object.entries(changes)) out[camelToSnake(key)] = value
-  return patch(row, out)
 }
 
 function allPending(backend: DemoBackend): PendingApprovalInfoResponse[] {
@@ -240,22 +261,21 @@ function modelConfigFrom(backend: DemoBackend, req: ModelConfigUpsertRequest): M
 
 const conversations: Record<string, DemoHandler> = {
   list_conversations: (args, { state }) => {
-    const archived = field<boolean>(args, 'archived') ?? false
-    return state.conversations.filter((c) => c.is_archived === archived && c.parent_conversation_id === null)
-  },
-  list_conversations_by_project: (args, { state }) => {
-    const req = request<{ projectId: string; archived: boolean }>(args)
+    const req = request<ConversationListRequest>(args)
     return state.conversations.filter(
-      (c) => c.project_id === req.projectId && c.is_archived === req.archived && c.parent_conversation_id === null,
+      (c) =>
+        c.is_archived === req.archived &&
+        c.parent_conversation_id === null &&
+        (req.project_id === null || c.project_id === req.project_id),
     )
   },
   create_conversation: (args, backend) => {
-    const req = request<{ title: string | null; projectId: string | null }>(args)
+    const req = request<ConversationCreateRequest>(args)
     const now = Date.now()
     const row = conversation({
       id: mintId(backend.state, 'conv'),
       title: req.title,
-      project_id: req.projectId,
+      project_id: req.project_id,
       updated_at: now,
     })
     backend.state.conversations.unshift(row)
@@ -273,52 +293,15 @@ const conversations: Record<string, DemoHandler> = {
     }
     return row
   },
-  update_conversation_title: (args, backend) => {
-    const req = request<{ id: string; title: string }>(args)
-    conversationOf(backend, req.id).title = req.title
-    return null
-  },
-  set_conversation_assistant: (args, backend) => {
-    const req = request<{ id: string; assistantId: string | null }>(args)
-    conversationOf(backend, req.id).assistant_id = req.assistantId
-    return null
-  },
-  set_conversation_reasoning_prefs: (args, backend) => {
-    const req = request<{ id: string; thinkingLevel: ConversationInfoResponse['thinking_level']; fastMode: boolean }>(
-      args,
-    )
+  update_conversation: (args, backend) => {
+    const req = request<ConversationUpdateRequest>(args)
     const row = conversationOf(backend, req.id)
-    row.thinking_level = req.thinkingLevel
-    row.fast_mode = req.fastMode
-    return null
-  },
-  set_conversation_mode: (args, backend) => {
-    const req = request<{ id: string; mode: ConversationInfoResponse['mode'] }>(args)
-    conversationOf(backend, req.id).mode = req.mode
-    return null
-  },
-  set_conversation_accept_edits: (args, backend) => {
-    const req = request<{ id: string; acceptEdits: boolean }>(args)
-    conversationOf(backend, req.id).accept_edits = req.acceptEdits
-    return null
-  },
-  set_conversation_project: (args, backend) => {
-    const req = request<{ id: string; projectId: string | null }>(args)
-    conversationOf(backend, req.id).project_id = req.projectId
-    return null
-  },
-  toggle_pin_conversation: (args, backend) => {
-    const row = conversationOf(backend, field(args, 'id'))
-    row.is_pinned = !row.is_pinned
-    return row
-  },
-  toggle_archive_conversation: (args, backend) => {
-    const row = conversationOf(backend, field(args, 'id'))
-    row.is_archived = !row.is_archived
+    patch(row, req)
+    row.updated_at = Date.now()
     return row
   },
   delete_conversation: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.conversations = state.conversations.filter((c) => c.id !== id && c.parent_conversation_id !== id)
     delete state.threads[id]
     return null
@@ -348,22 +331,23 @@ const conversations: Record<string, DemoHandler> = {
       })
       .slice(0, pageSize)
   },
-  conversation_snapshot: (args, { state }) => snapshot(state, request<{ conversationId: string }>(args).conversationId),
-  switch_branch: (args, { state }) => {
-    const req = request<{ conversationId: string; messageId: string }>(args)
-    const thread = state.threads[req.conversationId]
-    thread.head = newestTip(thread, req.messageId)
-    touchConversation(state, req.conversationId, thread.head)
+  get_conversation_snapshot: (args, { state }) =>
+    snapshot(state, request<{ conversation_id: string }>(args).conversation_id),
+  switch_message_branch: (args, { state }) => {
+    const req = request<{ conversation_id: string; message_id: string }>(args)
+    const thread = state.threads[req.conversation_id]
+    thread.head = newestTip(thread, req.message_id)
+    touchConversation(state, req.conversation_id, thread.head)
     return null
   },
   delete_message: (args, { state }) => {
-    const req = request<{ conversationId: string; id: string }>(args)
-    const thread = state.threads[req.conversationId]
+    const req = request<{ conversation_id: string; id: string }>(args)
+    const thread = state.threads[req.conversation_id]
     deleteSubtree(thread, req.id)
-    touchConversation(state, req.conversationId, thread.head)
+    touchConversation(state, req.conversation_id, thread.head)
     return null
   },
-  rate_message: (args, { state }) => {
+  update_message_rating: (args, { state }) => {
     const req = request<{ id: string; rating: -1 | 1 | null }>(args)
     for (const thread of Object.values(state.threads)) {
       const row = thread.all.find((m) => m.id === req.id)
@@ -372,16 +356,16 @@ const conversations: Record<string, DemoHandler> = {
     return null
   },
   read_message_context_item: (args, { state }) => {
-    const req = request<{ conversationId: string; itemId: string }>(args)
-    const thread = state.threads[req.conversationId]
+    const req = request<{ conversation_id: string; item_id: string }>(args)
+    const thread = state.threads[req.conversation_id]
     for (const row of thread?.all ?? []) {
-      const descriptor = row.context_items.find((item) => item.id === req.itemId)
-      if (descriptor) return { descriptor, content: thread.contextContents[req.itemId] ?? '' }
+      const descriptor = row.context_items.find((item) => item.id === req.item_id)
+      if (descriptor) return { descriptor, content: thread.contextContents[req.item_id] ?? '' }
     }
-    throw `context item not found: ${req.itemId}`
+    throw `context item not found: ${req.item_id}`
   },
-  get_context_info: (args, { state }) => {
-    const id = field<string>(args, 'conversationId')
+  get_conversation_context: (args, { state }) => {
+    const id = request<{ conversation_id: string }>(args).conversation_id
     const convo = state.conversations.find((c) => c.id === id)
     const count = state.threads[id]?.all.length ?? 0
     return {
@@ -395,9 +379,10 @@ const conversations: Record<string, DemoHandler> = {
       agent_kind: convo?.agent_kind ?? null,
     }
   },
-  get_active_todo_list: (args, { state }) => state.threads[field<string>(args, 'conversationId')]?.todo ?? null,
-  compact: (args, backend) => {
-    const id = request<{ conversationId: string }>(args).conversationId
+  get_todo_list: (args, { state }) =>
+    state.threads[request<{ conversation_id: string }>(args).conversation_id]?.todo ?? null,
+  invoke_conversation_compaction: (args, backend) => {
+    const id = request<{ conversation_id: string }>(args).conversation_id
     backend.emit('compact-start', { conversation_id: id, mid_turn: false, trigger: 'manual' })
     backend.later(1200, () =>
       backend.emit('compact-done', {
@@ -413,21 +398,21 @@ const conversations: Record<string, DemoHandler> = {
   },
   export_conversation: () => ({ path: 'C:\\Users\\demo\\Downloads\\conversation.jsonl' }),
   get_user_command_result: (args, { state }) => {
-    const req = request<{ conversationId: string; messageId: string }>(args)
-    return state.threads[req.conversationId]?.shellResults[req.messageId] ?? null
+    const req = request<{ conversation_id: string; message_id: string }>(args)
+    return state.threads[req.conversation_id]?.shellResults[req.message_id] ?? null
   },
-  active_user_shell_turn: () => null,
+  get_active_user_command: () => null,
 }
 
 const chat: Record<string, DemoHandler> = {
-  chat: (args, backend) => {
-    const req = request<ChatRequest>(args)
+  start_chat: (args, backend) => {
+    const req = request<ChatStartRequest>(args)
     const { state } = backend
-    const thread = state.threads[req.conversationId]
-    if (!thread) throw `conversation not found: ${req.conversationId}`
-    if (isReplaying(state, req.conversationId)) throw 'A turn is already running in this conversation.'
-    const turnId = req.turnId ?? mintId(state, 'turn')
-    let parent = tailOf(backend, req.conversationId)
+    const thread = state.threads[req.conversation_id]
+    if (!thread) throw `conversation not found: ${req.conversation_id}`
+    if (isReplaying(state, req.conversation_id)) throw 'A turn is already running in this conversation.'
+    const turnId = req.turn_id ?? mintId(state, 'turn')
+    let parent = tailOf(backend, req.conversation_id)
     let content = req.message
     if (req.replaces) {
       const replaced = thread.all.find((m) => m.id === req.replaces)
@@ -435,63 +420,60 @@ const chat: Record<string, DemoHandler> = {
       // Regenerating re-asks the question above; editing asks a new one.
       if (req.message === null && replaced?.role === 'user') content = replaced.content
     }
-    const convo = conversationOf(backend, req.conversationId)
+    const convo = conversationOf(backend, req.conversation_id)
     if (convo.title === null && content) {
       convo.title = content.slice(0, 24)
       backend.later(50, () => backend.emit('conversation-updated', { conversation_id: convo.id }))
     }
-    startReplay(backend, req.conversationId, turnId, parent, content)
+    startReplay(backend, req.conversation_id, turnId, parent, content)
     return null
   },
   stop_chat: (args, { state }) => {
-    stopReplay(state, request<{ conversationId: string }>(args).conversationId)
+    stopReplay(state, request<{ conversation_id: string }>(args).conversation_id)
     return null
   },
-  steer_conversation: () => {
+  send_conversation_steer: () => {
     throw 'Nothing is running to steer in demo mode.'
   },
-  approve_tool_call: (args, backend) => {
-    const id = field<string>(args, 'approvalId')
-    if (!answerReplay(backend.state, id, true))
-      settleFixtureApproval(backend, id, '（演示）命令已执行，退出码 0。', false)
-    return null
-  },
-  deny_tool_call: (args, backend) => {
-    const req = request<{ approvalId: string; reason: string | null }>(args)
-    if (!answerReplay(backend.state, req.approvalId, false)) {
-      settleFixtureApproval(
-        backend,
-        req.approvalId,
-        `The user denied this tool call.${req.reason ? ` ${req.reason}` : ''}`,
-        true,
-      )
+  submit_approval_decision: (args, backend) => {
+    const req = request<ApprovalDecisionRequest>(args)
+    if (req.decision.kind === 'approve') {
+      if (!answerReplay(backend.state, req.approval_id, true)) {
+        settleFixtureApproval(backend, req.approval_id, '（演示）命令已执行，退出码 0。', false)
+      }
+    } else if (req.decision.kind === 'deny') {
+      if (!answerReplay(backend.state, req.approval_id, false)) {
+        settleFixtureApproval(
+          backend,
+          req.approval_id,
+          `The user denied this tool call.${req.decision.reason ? ` ${req.decision.reason}` : ''}`,
+          true,
+        )
+      }
+    } else {
+      settleFixtureApproval(backend, req.approval_id, req.decision.response, false)
     }
     return null
   },
-  respond_to_ask: (args, backend) => {
-    const req = request<{ approvalId: string; response: string }>(args)
-    settleFixtureApproval(backend, req.approvalId, req.response, false)
-    return null
-  },
-  all_pending_approvals: (_args, backend) => allPending(backend),
-  run_user_command: (args, backend) => {
-    const req = request<{ conversationId: string; turnId: string; command: string }>(args)
+  list_pending_approvals: (_args, backend) => allPending(backend),
+  invoke_user_command: (args, backend) => {
+    const req = request<UserCommandRunRequest>(args)
     const { state } = backend
-    const thread = state.threads[req.conversationId]
+    const thread = state.threads[req.conversation_id]
     const id = mintId(state, 'msg')
     const stdout = `（演示）${req.command}\n这条命令没有真的执行。\n`
     const itemId = mintId(state, 'ctx')
     thread.all.push(
       message({
         id,
-        conversation_id: req.conversationId,
+        conversation_id: req.conversation_id,
         role: 'user',
         content: `!${req.command}`,
         source: 'shell',
         created_at: Date.now(),
-        parent_id: tailOf(backend, req.conversationId),
+        parent_id: tailOf(backend, req.conversation_id),
         sort_order: thread.all.length,
-        turn_id: req.turnId,
+        turn_id: req.turn_id,
         context_items: [
           {
             id: itemId,
@@ -511,8 +493,8 @@ const chat: Record<string, DemoHandler> = {
     thread.head = id
     thread.contextContents[itemId] = stdout
     const result = {
-      conversation_id: req.conversationId,
-      turn_id: req.turnId,
+      conversation_id: req.conversation_id,
+      turn_id: req.turn_id,
       message_id: id,
       status: 'completed' as const,
       stdout,
@@ -529,59 +511,53 @@ const chat: Record<string, DemoHandler> = {
       retry_without_sandbox: false,
     }
     thread.shellResults[id] = result
-    touchConversation(state, req.conversationId, id)
+    touchConversation(state, req.conversation_id, id)
     return result
   },
-  upload_file: (args) => {
-    const path = request<{ filePath: string }>(args).filePath
+  upload_message_file: (args) => {
+    const path = request<{ file_path: string }>(args).file_path
     const name = path.split(/[\\/]/).pop() ?? path
     return { type: 'file', file: { url: `data:text/plain,${encodeURIComponent(name)}`, mime_type: 'text/plain', name } }
   },
-  upload_file_bytes: (args) => {
-    const req = request<{ fileName: string; dataBase64: string }>(args)
-    const image = /\.(png|jpe?g|gif|webp)$/i.test(req.fileName)
-    const url = `data:${image ? 'image/png' : 'application/octet-stream'};base64,${req.dataBase64}`
-    return image
-      ? { type: 'image_url', image_url: { url } }
-      : { type: 'file', file: { url, mime_type: 'application/octet-stream', name: req.fileName } }
-  },
-  preview_local_image: () => ({
+  read_local_image_preview: () => ({
     mime_type: 'image/png',
     data_base64: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
   }),
   get_composer_draft: (args, { state }) =>
-    state.drafts[request<{ conversationId: string | null }>(args).conversationId ?? ''] ?? null,
-  save_composer_draft: (args, { state }) => {
+    state.drafts[request<ComposerDraftReadRequest>(args).conversation_id ?? ''] ?? null,
+  set_composer_draft: (args, { state }) => {
     const req = request<ComposerDraftUpsertRequest>(args)
-    const key = req.conversationId ?? ''
+    const key = req.conversation_id ?? ''
     const current = state.drafts[key]
     if (current && current.revision >= req.revision) return { applied: false, revision: current.revision }
     state.drafts[key] = {
-      conversation_id: req.conversationId,
+      conversation_id: req.conversation_id,
       body: req.body,
       attachments: req.attachments.map((a) => ({ ...a, exists: true })),
-      conversation_refs: req.conversationRefs.map((id) => ({
+      conversation_refs: req.conversation_refs.map((id) => ({
         id,
         title: state.conversations.find((c) => c.id === id)?.title ?? null,
         exists: state.conversations.some((c) => c.id === id),
       })),
-      sticker: state.emojis.find((e) => e.id === req.stickerId) ?? null,
+      sticker: state.emojis.find((e) => e.id === req.sticker_id) ?? null,
       revision: req.revision,
       updated_at: Date.now(),
     }
     return { applied: true, revision: req.revision }
   },
-  clear_composer_draft: (args, { state }) => {
-    const req = request<{ conversationId: string | null; revision: number }>(args)
-    const key = req.conversationId ?? ''
+  delete_composer_draft: (args, { state }) => {
+    const req = request<ComposerDraftDeleteRequest>(args)
+    const key = req.conversation_id ?? ''
     const current = state.drafts[key]
     if (current && current.revision >= req.revision) return { applied: false, revision: current.revision }
     delete state.drafts[key]
     return { applied: true, revision: req.revision }
   },
-  queue_list: (args, { state }) => state.queues[field<string>(args, 'conversationId')] ?? [],
-  list_background_tasks: (args, { state }) => state.backgroundTasks[field<string>(args, 'conversationId')] ?? [],
-  background_task_running_counts: (_args, { state }) =>
+  list_queued_prompts: (args, { state }) =>
+    state.queues[request<{ conversation_id: string }>(args).conversation_id] ?? [],
+  list_background_tasks: (args, { state }) =>
+    state.backgroundTasks[request<BackgroundTaskListRequest>(args).conversation_id] ?? [],
+  list_background_task_counts: (_args, { state }) =>
     Object.entries(state.backgroundTasks)
       .map(([conversation_id, tasks]) => ({
         conversation_id,
@@ -589,31 +565,31 @@ const chat: Record<string, DemoHandler> = {
       }))
       .filter((row) => row.running > 0),
   stop_background_task: (args, backend) => {
-    const req = request<{ conversationId: string; id: string }>(args)
-    const task = (backend.state.backgroundTasks[req.conversationId] ?? []).find((t) => t.id === req.id)
+    const req = request<BackgroundTaskStopRequest>(args)
+    const task = (backend.state.backgroundTasks[req.conversation_id] ?? []).find((t) => t.id === req.id)
     if (!task) throw `there is no background task ${req.id} in this conversation`
     if (task.state === 'running') {
       task.state = 'stopped'
       task.ended_reason = 'stopped by the user'
       task.ended_at = Date.now()
-      backend.later(0, () => backend.emit('background-tasks-updated', { conversation_id: req.conversationId }))
+      backend.later(0, () => backend.emit('background-tasks-updated', { conversation_id: req.conversation_id }))
     }
     return task
   },
   read_background_task_output: (args, { state }) => {
-    const req = request<{ conversationId: string; id: string; offset: number }>(args)
-    const task = (state.backgroundTasks[req.conversationId] ?? []).find((t) => t.id === req.id)
+    const req = request<BackgroundTaskOutputReadRequest>(args)
+    const task = (state.backgroundTasks[req.conversation_id] ?? []).find((t) => t.id === req.id)
     if (!task) throw `there is no background task ${req.id} in this conversation`
     const log = state.backgroundOutput[req.id] ?? ''
     const offset = Math.min(req.offset, log.length)
     return { task, offset, content: log.slice(offset), next_offset: log.length, total_bytes: log.length }
   },
-  queue_enqueue: (args, backend) => {
+  create_queued_prompt: (args, backend) => {
     const req = request<QueuedPromptCreateRequest>(args)
-    const queue = (backend.state.queues[req.conversationId] ??= [])
+    const queue = (backend.state.queues[req.conversation_id] ??= [])
     const row = {
       id: mintId(backend.state, 'queue'),
-      conversation_id: req.conversationId,
+      conversation_id: req.conversation_id,
       content: req.content,
       delivery: req.delivery,
       position: queue.length,
@@ -626,32 +602,32 @@ const chat: Record<string, DemoHandler> = {
       reported_at: null,
     }
     queue.push(row)
-    backend.later(0, () => backend.emit('queue-updated', { conversation_id: req.conversationId, delivered: false }))
+    backend.later(0, () => backend.emit('queue-updated', { conversation_id: req.conversation_id, delivered: false }))
     return row
   },
-  queue_remove: (args, backend) => {
-    const req = request<{ conversationId: string; id: string }>(args)
-    backend.state.queues[req.conversationId] = (backend.state.queues[req.conversationId] ?? []).filter(
+  delete_queued_prompt: (args, backend) => {
+    const req = request<{ conversation_id: string; id: string }>(args)
+    backend.state.queues[req.conversation_id] = (backend.state.queues[req.conversation_id] ?? []).filter(
       (q) => q.id !== req.id,
     )
-    backend.later(0, () => backend.emit('queue-updated', { conversation_id: req.conversationId, delivered: false }))
+    backend.later(0, () => backend.emit('queue-updated', { conversation_id: req.conversation_id, delivered: false }))
     return null
   },
 }
 
 const plan: Record<string, DemoHandler> = {
   get_plan_review: (args, { state }) => {
-    if (request<{ reviewId: string }>(args).reviewId !== PLAN_REVIEW_ID) throw 'plan review not found'
+    if (request<{ review_id: string }>(args).review_id !== PLAN_REVIEW_ID) throw 'plan review not found'
     return state.planReview
   },
   list_plan_revisions: (_args, { state }) => [state.planReview.submitted_revision],
-  save_plan_review_draft: (args, { state }) => {
-    const req = request<{ expectedGeneration: number; normalizedMarkdown: string; globalNote: string | null }>(args)
+  set_plan_review_draft: (args, { state }) => {
+    const req = request<{ expected_generation: number; normalized_markdown: string; global_note: string | null }>(args)
     const draft = state.planReview.draft
-    if (req.expectedGeneration !== draft.generation) throw 'The draft changed in another window.'
+    if (req.expected_generation !== draft.generation) throw 'The draft changed in another window.'
     draft.generation += 1
-    draft.draft_normalized_markdown = req.normalizedMarkdown
-    draft.global_note = req.globalNote
+    draft.draft_normalized_markdown = req.normalized_markdown
+    draft.global_note = req.global_note
     draft.updated_at = Date.now()
     return {
       review_id: PLAN_REVIEW_ID,
@@ -660,14 +636,14 @@ const plan: Record<string, DemoHandler> = {
       updated_at: draft.updated_at,
     }
   },
-  discard_plan_review_draft: (_args, { state }) => {
+  delete_plan_review_draft: (_args, { state }) => {
     const draft = state.planReview.draft
     draft.generation += 1
     draft.draft_normalized_markdown = draft.base_normalized_markdown
     draft.global_note = null
     return state.planReview
   },
-  decide_plan_review: (args, backend) => {
+  submit_plan_review_decision: (args, backend) => {
     const req = request<{ action: 'approve' | 'request_changes' }>(args)
     const { planReview, threads } = backend.state
     const status = req.action === 'approve' ? 'approved' : 'changes_requested'
@@ -727,17 +703,17 @@ function moveCard(state: DemoState, card: BoardTaskInfoResponse, stage: BoardSta
 }
 
 const board: Record<string, DemoHandler> = {
-  board_task_list: (_args, { state }) =>
+  list_board_tasks: (_args, { state }) =>
     [...state.boardTasks].sort((a, b) => a.stage.localeCompare(b.stage) || a.position - b.position),
-  board_task_create: (args, { state }) => {
-    const req = request<{ projectId: string; title: string; request: string | null; stage: BoardStage }>(args)
+  create_board_task: (args, { state }) => {
+    const req = request<BoardTaskCreateRequest>(args)
     const title = req.title.trim()
     if (!title) throw 'a card needs a title'
-    if (!state.projects.some((p) => p.id === req.projectId)) throw `project \`${req.projectId}\` not found`
+    if (!state.projects.some((p) => p.id === req.project_id)) throw `project \`${req.project_id}\` not found`
     const now = Date.now()
     const card: BoardTaskInfoResponse = {
       id: mintId(state, 'card'),
-      project_id: req.projectId,
+      project_id: req.project_id,
       conversation_id: null,
       source: 'local',
       title: title.slice(0, 80),
@@ -753,40 +729,37 @@ const board: Record<string, DemoHandler> = {
     state.boardTasks.push(card)
     return card
   },
-  board_task_update: (args, { state }) => {
-    const req = request<{ id: string; title: string; request: string | null }>(args)
-    const title = req.title.trim()
-    if (!title) throw 'a card needs a title'
+  update_board_task: (args, { state }) => {
+    const req = request<BoardTaskUpdateRequest>(args)
     const card = boardCard(state, req.id)
-    card.title = title.slice(0, 80)
-    card.request = req.request
+    if (req.title !== undefined) {
+      const title = req.title.trim()
+      if (!title) throw 'a card needs a title'
+      card.title = title.slice(0, 80)
+    }
+    if (req.request !== undefined) card.request = req.request
+    if (req.position !== undefined) moveCard(state, card, req.position.stage, req.position.index)
     card.updated_at = Date.now()
     return card
   },
-  board_task_move: (args, { state }) => {
-    const req = request<{ id: string; stage: BoardStage; index: number }>(args)
-    const card = boardCard(state, req.id)
-    moveCard(state, card, req.stage, req.index)
-    return card
-  },
-  board_task_start: (args, backend) => {
-    const req = request<{ id: string; agentKind: BoardAgentKind }>(args)
+  start_board_task: (args, backend) => {
+    const req = request<BoardTaskStartRequest>(args)
     const { state } = backend
     const card = boardCard(state, req.id)
     if (card.conversation_id !== null || card.worktree_removed_at !== null) throw 'this card has already been started'
     const project = state.projects.find((p) => p.id === card.project_id)
     if (!project?.path) throw "the card's project has no folder; give the project one before starting a card"
     const conversation = conversations.create_conversation(
-      { request: { title: card.title, projectId: card.project_id } },
+      { request: { title: card.title, project_id: card.project_id } },
       backend,
     ) as ConversationInfoResponse
     card.conversation_id = conversation.id
-    card.agent_kind = req.agentKind
+    card.agent_kind = req.agent_kind
     card.worktree_path = `${project.path}.worktrees/${card.id.replace(/[^a-z0-9]/gi, '').slice(0, 8)}`
     moveCard(state, card, 'running', columnOf(state, 'running', card.id).length)
     return { task: card, conversation }
   },
-  board_task_remove_worktree: (args, { state }) => {
+  delete_board_task_worktree: (args, { state }) => {
     const card = boardCard(state, request<{ id: string }>(args).id)
     if (card.worktree_path === null) throw 'this card has no worktree'
     card.worktree_path = null
@@ -794,11 +767,11 @@ const board: Record<string, DemoHandler> = {
     moveCard(state, card, 'done', columnOf(state, 'done', card.id).length)
     return card
   },
-  board_task_delete: (args, backend) => {
+  delete_board_task: (args, backend) => {
     const card = boardCard(backend.state, request<{ id: string }>(args).id)
     if (card.worktree_path !== null) throw "remove the card's worktree before deleting it"
     const conversationId = card.conversation_id
-    if (conversationId !== null) conversations.delete_conversation({ id: conversationId }, backend)
+    if (conversationId !== null) conversations.delete_conversation({ request: { id: conversationId } }, backend)
     backend.state.boardTasks = backend.state.boardTasks.filter((t) => t.id !== card.id)
     backend.emit('board-updated', { task_id: null })
     if (conversationId !== null) backend.emit('conversation-updated', { conversation_id: conversationId })
@@ -829,90 +802,92 @@ const projects: Record<string, DemoHandler> = {
     const req = request<{ id: string }>(args)
     const row = state.projects.find((p) => p.id === req.id)
     if (!row) throw 'project not found'
-    return snakePatch(row, req)
+    patch(row, req)
+    row.updated_at = Date.now()
+    return row
   },
   delete_project: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.projects = state.projects.filter((p) => p.id !== id)
     for (const c of state.conversations) if (c.project_id === id) c.project_id = null
     return null
   },
-  workspace_root: (args, { state }) => {
-    const convo = state.conversations.find((c) => c.id === request<{ conversationId: string }>(args).conversationId)
+  get_workspace_root: (args, { state }) => {
+    const convo = state.conversations.find((c) => c.id === request<{ conversation_id: string }>(args).conversation_id)
     if (!convo?.project_id) return { state: 'no_project' }
     const project = state.projects.find((p) => p.id === convo.project_id)
     if (!project?.path) return { state: 'no_path' }
     return { state: 'ok', root: project.path, git_available: true, is_repo: convo.project_id === PROJECT_MERIDIAN }
   },
-  workspace_tree: (args) => tree(request<{ dir: string | null }>(args).dir),
-  workspace_read_file: (args) => {
-    const rel = request<{ relPath: string }>(args).relPath
+  list_workspace_entries: (args) => tree(request<{ dir: string | null }>(args).dir),
+  read_workspace_file: (args) => {
+    const rel = request<WorkspaceFileReadRequest>(args).rel_path
     const file = readFile(rel)
     if (!file) throw `No such file: ${rel}`
     return file
   },
-  workspace_probe_ref: (args) => {
-    const path = request<{ path: string }>(args).path
+  test_workspace_ref: (args) => {
+    const path = request<WorkspaceReferenceProbeRequest>(args).path
     if (readFile(path)) return { kind: 'project_file', path }
     throw `not a workspace path: ${path}`
   },
-  workspace_resolve_ref: (args) => {
-    const req = request<{ path: string; lineStart: number | null; lineEnd: number | null }>(args)
+  resolve_workspace_ref: (args) => {
+    const req = request<WorkspaceReferenceResolveRequest>(args)
     const file = readFile(req.path)
     if (!file) throw `No such file: ${req.path}`
     return {
       kind: 'project_file',
       path: req.path,
       content: file.content,
-      line_start: req.lineStart,
-      line_end: req.lineEnd,
+      line_start: req.line_start,
+      line_end: req.line_end,
       byte_count: file.size_bytes,
       line_count: file.total_lines,
       token_count: Math.ceil(file.size_bytes / 4),
       truncated: false,
     }
   },
-  workspace_suggest_refs: (args) => {
-    const query = request<{ query: string }>(args).query.toLowerCase()
+  search_workspace_refs: (args) => {
+    const query = request<WorkspaceReferenceSuggestRequest>(args).query.toLowerCase()
     return tree(null)
       .concat(tree('src/lib'), tree('src/components/chat'))
       .filter((entry) => entry.rel_path.toLowerCase().includes(query))
       .map((entry) => ({ path: entry.rel_path, name: entry.name, is_dir: entry.is_dir }))
   },
-  // The same answers `workspace_root` gives: only the Meridian project is a
+  // The same answers `get_workspace_root` gives: only the Meridian project is a
   // repository, and a conversation without a folder is refused, as
   // `require_root` refuses it.
-  workspace_git_status: (args, { state }) => {
-    const convo = state.conversations.find((c) => c.id === request<{ conversationId: string }>(args).conversationId)
+  get_workspace_git_status: (args, { state }) => {
+    const convo = state.conversations.find((c) => c.id === request<{ conversation_id: string }>(args).conversation_id)
     const project = convo?.project_id ? state.projects.find((p) => p.id === convo.project_id) : undefined
     if (!project) throw 'no_project'
     if (!project.path) throw 'no_path'
     return project.id === PROJECT_MERIDIAN ? GIT_STATUS : { state: 'not_repo' }
   },
-  workspace_git_diff: (args) => ({
-    diff_text: gitDiff(request<{ relPath: string | null }>(args).relPath),
+  get_workspace_git_diff: (args) => ({
+    diff_text: gitDiff(request<WorkspaceGitDiffRequest>(args).rel_path),
     truncated: false,
   }),
-  open_in_editor: () => {
+  open_workspace_editor: () => {
     throw 'Opening an editor is not available in the browser.'
   },
 }
 
 const providers: Record<string, DemoHandler> = {
   list_providers: (_args, { state }) => state.providers,
-  inspect_local_model: (args) => {
+  test_local_model: (args) => {
     const req = request<LocalModelInspectRequest>(args)
-    return demoLocalModel(req.modelPath, req.backend)
+    return demoLocalModel(req.model_path, req.backend)
   },
-  get_provider_local_model_info: (args, { state }) => {
-    const req = request<ProviderLocalModelInfoReadRequest>(args)
-    const provider = state.providers.find((row) => row.id === req.providerId) ?? null
+  get_provider_local_model: (args, { state }) => {
+    const req = request<ProviderLocalModelReadRequest>(args)
+    const provider = state.providers.find((row) => row.id === req.provider_id) ?? null
     if (provider === null || provider.provider_type !== 'litert_lm' || provider.local_backend === null)
       throw 'demo: provider is not a configured local model'
     return demoLocalModel(provider.base_url, provider.local_backend)
   },
   list_provider_catalog: () => buildCatalog(),
-  codex_auth_status: () => ({
+  get_codex_auth_status: () => ({
     logged_in: false,
     email: null,
     plan: null,
@@ -926,19 +901,19 @@ const providers: Record<string, DemoHandler> = {
     const row: ProviderInfoResponse = {
       id: mintId(state, 'provider'),
       name: req.name,
-      provider_type: req.providerType,
-      base_url: req.baseUrl,
+      provider_type: req.provider_type,
+      base_url: req.base_url,
       is_enabled: true,
       sort_order: state.providers.length,
       created_at: now,
       updated_at: now,
-      api_format: req.apiFormat ?? 'chat_completions',
-      catalog_id: req.catalogId,
-      credential_kind: req.providerType === 'litert_lm' ? 'none' : 'api_key',
-      transport_profile: req.providerType === 'litert_lm' ? 'local_native' : 'standard',
+      api_format: req.api_format ?? 'chat_completions',
+      catalog_id: req.catalog_id,
+      credential_kind: req.provider_type === 'litert_lm' ? 'none' : 'api_key',
+      transport_profile: req.provider_type === 'litert_lm' ? 'local_native' : 'standard',
       icon: null,
       codex_request_shape: false,
-      local_backend: req.localBackend,
+      local_backend: req.local_backend,
     }
     state.providers.push(row)
     return row
@@ -948,29 +923,27 @@ const providers: Record<string, DemoHandler> = {
     const row = state.providers.find((p) => p.id === req.id)
     if (!row) throw 'provider not found'
     const previousType = row.provider_type
-    snakePatch(row, req)
+    patch(row, req)
     if (row.provider_type !== previousType) row.catalog_id = null
     row.updated_at = Date.now()
     return row
   },
   delete_provider: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.providers = state.providers.filter((p) => p.id !== id)
     state.modelConfigs = state.modelConfigs.filter((m) => m.provider_id !== id)
     return null
   },
   set_provider_key: (args, { state }) => {
-    state.providerKeys.add(request<{ providerId: string }>(args).providerId)
+    state.providerKeys.add(request<{ provider_id: string }>(args).provider_id)
     return null
   },
-  get_provider_key_exists: (args, { state }) => state.providerKeys.has(field(args, 'providerId')),
-  fetch_provider_models: (args, { state }) =>
-    demoProviderModels(state, request<{ providerId: string }>(args).providerId),
-  // As if a fetch had already been made: the cache holds what it would return.
-  list_cached_provider_models: (args, { state }) =>
-    demoProviderModels(state, request<{ providerId: string }>(args).providerId),
+  test_provider_key: (args, { state }) => state.providerKeys.has(request<{ provider_id: string }>(args).provider_id),
+  list_provider_models: (args, { state }) =>
+    demoProviderModels(state, request<ProviderModelListRequest>(args).provider_id),
   get_provider_capabilities: (args, { state }) => {
-    const provider = state.providers.find((row) => row.id === request<{ providerId: string }>(args).providerId) ?? null
+    const provider =
+      state.providers.find((row) => row.id === request<{ provider_id: string }>(args).provider_id) ?? null
     if (provider === null) throw 'demo: provider not found'
     if (provider.provider_type !== 'litert_lm') return CAPABILITIES
     if (provider.local_backend === null) throw 'demo: missing local backend'
@@ -990,7 +963,7 @@ const providers: Record<string, DemoHandler> = {
     }
   },
   get_provider_balance: (args) =>
-    field(args, 'providerId') === 'demo-provider-deepseek'
+    request<{ provider_id: string }>(args).provider_id === 'demo-provider-deepseek'
       ? {
           is_available: true,
           accounts: [
@@ -1004,22 +977,23 @@ const providers: Record<string, DemoHandler> = {
         }
       : null,
   list_model_configs: (args, { state }) =>
-    state.modelConfigs.filter((m) => m.provider_id === field(args, 'providerId')),
+    state.modelConfigs.filter((m) => m.provider_id === request<{ provider_id: string }>(args).provider_id),
   list_model_profiles: (_args, { state }) => state.modelConfigs.map((m) => m.profile),
   get_model_config: (args, { state }) => {
-    const req = request<{ providerId: string; modelId: string }>(args)
-    return state.modelConfigs.find((m) => m.provider_id === req.providerId && m.model_id === req.modelId) ?? null
+    const req = request<{ provider_id: string; model_id: string }>(args)
+    return state.modelConfigs.find((m) => m.provider_id === req.provider_id && m.model_id === req.model_id) ?? null
   },
-  save_model_config: (args, backend) => modelConfigFrom(backend, request<ModelConfigUpsertRequest>(args)),
+  set_model_config: (args, backend) => modelConfigFrom(backend, request<ModelConfigUpsertRequest>(args)),
   delete_model_config: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.modelConfigs = state.modelConfigs.filter((m) => m.id !== id)
     return null
   },
-  usage_report: (args, { state }) => usageBuckets(request<{ dimension: UsageDimension }>(args).dimension, state.now),
+  get_usage_report: (args, { state }) =>
+    usageBuckets(request<{ dimension: UsageDimension }>(args).dimension, state.now),
   // The fixture's total has nothing unpriced or incomplete, so its list is empty.
-  usage_gaps: () => ({ total: 0, items: [] }),
-  usage_cache_misses: () => usageCacheMisses(),
+  list_usage_gaps: () => ({ total: 0, items: [] }),
+  get_usage_cache_misses: () => usageCacheMisses(),
 }
 
 const assistants: Record<string, DemoHandler> = {
@@ -1031,11 +1005,11 @@ const assistants: Record<string, DemoHandler> = {
       ...state.assistants[0],
       id: mintId(state, 'assistant'),
       name: req.name,
-      system_prompt: req.systemPrompt,
-      model_id: req.modelId,
+      system_prompt: req.system_prompt,
+      model_id: req.model_id,
       temperature: req.temperature,
-      top_p: req.topP,
-      max_tokens: req.maxTokens,
+      top_p: req.top_p,
+      max_tokens: req.max_tokens,
       is_default: false,
       sort_order: state.assistants.length,
       created_at: now,
@@ -1048,12 +1022,12 @@ const assistants: Record<string, DemoHandler> = {
     const req = request<AssistantUpdateRequest>(args)
     const row = state.assistants.find((a) => a.id === req.id)
     if (!row) throw 'assistant not found'
-    snakePatch(row, req)
+    patch(row, req)
     row.updated_at = Date.now()
     return row
   },
   delete_assistant: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.assistants = state.assistants.filter((a) => a.id !== id)
     return null
   },
@@ -1062,7 +1036,7 @@ const assistants: Record<string, DemoHandler> = {
   create_custom_tool: (args, { state }) => {
     const r = request<CustomToolCreateRequest>(args)
     const execution = r.execution === null ? null : parseCustomToolExecution(r.execution)
-    if (execution && r.timeoutMs !== null && (!Number.isInteger(r.timeoutMs) || r.timeoutMs <= 0)) {
+    if (execution && r.timeout_ms !== null && (!Number.isInteger(r.timeout_ms) || r.timeout_ms <= 0)) {
       throw new Error('Custom tool timeout must be positive')
     }
     const now = Date.now()
@@ -1071,12 +1045,12 @@ const assistants: Record<string, DemoHandler> = {
       name: r.name,
       description: r.description,
       command: r.command,
-      args_template: r.argsTemplate,
+      args_template: r.args_template,
       execution,
-      category_id: r.categoryId,
-      parameters_schema: r.parametersSchema ?? { type: 'object', properties: {} },
-      working_directory: r.workingDirectory,
-      timeout_ms: r.timeoutMs,
+      category_id: r.category_id,
+      parameters_schema: r.parameters_schema ?? { type: 'object', properties: {} },
+      working_directory: r.working_directory,
+      timeout_ms: r.timeout_ms,
       permission: r.permission ?? 'ask',
       is_enabled: execution !== null,
       sort_order: 0,
@@ -1093,53 +1067,51 @@ const assistants: Record<string, DemoHandler> = {
     const row = { ...state.customTools[index] }
     const execution =
       r.execution === undefined ? row.execution : r.execution === null ? null : parseCustomToolExecution(r.execution)
-    const enabled = r.isEnabled ?? row.is_enabled
-    const timeout = r.timeoutMs === undefined ? row.timeout_ms : r.timeoutMs
+    const enabled = r.is_enabled ?? row.is_enabled
+    const timeout = r.timeout_ms === undefined ? row.timeout_ms : r.timeout_ms
     if (enabled && execution === null)
       throw new Error('Legacy custom tools cannot be enabled without a safe execution definition')
     if (execution && timeout !== null && (!Number.isInteger(timeout) || timeout <= 0))
       throw new Error('Custom tool timeout must be positive')
-    for (const [key, value] of Object.entries(r)) {
-      if (key !== 'id' && value !== undefined) patch(row, { [camelToSnake(key)]: value })
-    }
+    patch(row, r)
     row.execution = execution
     row.updated_at = Date.now()
     state.customTools[index] = row
     return row
   },
   delete_custom_tool: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.customTools = state.customTools.filter((t) => t.id !== id)
     return null
   },
   list_tool_presets: (_args, { state }) => state.toolPresets,
   delete_tool_preset: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.toolPresets = state.toolPresets.filter((t) => t.id !== id)
     return null
   },
-  list_all_tool_names: () => buildToolNames(),
+  list_tools: () => buildToolNames(),
   list_skills: (_args, { state }) => state.skills,
-  rescan_skills: (_args, { state }) => state.skills,
-  get_skill_body: () => SKILL_BODY,
+  invoke_skill_rescan: (_args, { state }) => state.skills,
+  read_skill_body: () => SKILL_BODY,
   update_skill: (args, { state }) => {
-    const req = request<{ dirName: string }>(args)
-    const row = state.skills.find((s) => s.dir_name === req.dirName)
+    const req = request<SkillUpdateRequest>(args)
+    const row = state.skills.find((s) => s.dir_name === req.dir_name)
     if (!row) throw 'skill not found'
-    const { dirName: _dir, ...rest } = req as Rec
-    snakePatch(row, rest)
+    const { dir_name: _dir, ...rest } = req
+    patch(row, rest)
     return row
   },
   list_skill_bindings: (args, { state }) => {
-    const req = request<{ layer: string; anchorId: string | null }>(args)
-    return state.skillBindings[`${req.layer}:${req.anchorId ?? ''}`] ?? []
+    const req = request<SkillBindingListRequest>(args)
+    return state.skillBindings[`${req.layer}:${req.anchor_id ?? ''}`] ?? []
   },
   set_skill_binding: (args, { state }) => {
-    const req = request<{ layer: string; anchorId: string | null; dirName: string; bound: boolean }>(args)
-    const key = `${req.layer}:${req.anchorId ?? ''}`
+    const req = request<SkillBindingUpdateRequest>(args)
+    const key = `${req.layer}:${req.anchor_id ?? ''}`
     const names = new Set(state.skillBindings[key] ?? [])
-    if (req.bound) names.add(req.dirName)
-    else names.delete(req.dirName)
+    if (req.bound) names.add(req.dir_name)
+    else names.delete(req.dir_name)
     state.skillBindings[key] = [...names]
     return state.skillBindings[key]
   },
@@ -1153,7 +1125,7 @@ const mcp: Record<string, DemoHandler> = {
     const row = {
       id: mintId(state, 'mcp'),
       name: req.name,
-      transport_type: req.transportType,
+      transport_type: req.transport_type,
       command: req.command,
       args: req.args,
       env: req.env,
@@ -1171,26 +1143,26 @@ const mcp: Record<string, DemoHandler> = {
     const req = request<McpServerUpdateRequest>(args)
     const row = state.mcpServers.find((s) => s.id === req.id)
     if (!row) throw 'server not found'
-    snakePatch(row, req)
+    patch(row, req)
     row.updated_at = Date.now()
     return row
   },
   delete_mcp_server: (args, { state }) => {
-    const id = field<string>(args, 'id')
+    const id = request<{ id: string }>(args).id
     state.mcpServers = state.mcpServers.filter((s) => s.id !== id)
     state.mcpConnected.delete(id)
     return null
   },
   connect_mcp_server: (args, { state }) => {
-    state.mcpConnected.add(field(args, 'id'))
+    state.mcpConnected.add(request<{ id: string }>(args).id)
     return null
   },
   disconnect_mcp_server: (args, { state }) => {
-    state.mcpConnected.delete(field(args, 'id'))
+    state.mcpConnected.delete(request<{ id: string }>(args).id)
     return null
   },
   list_mcp_tools: (args, { state }) => {
-    const serverId = field<string | null>(args, 'serverId')
+    const serverId = request<McpToolListRequest>(args).server_id
     return buildMcpTools()
       .filter(
         (t) =>
@@ -1204,12 +1176,12 @@ const mcp: Record<string, DemoHandler> = {
   },
   set_mcp_tool_enabled: (args, { state }) => {
     const req = request<McpToolEnabledUpdateRequest>(args)
-    const row = state.mcpServers.find((s) => s.id === req.serverId)
+    const row = state.mcpServers.find((s) => s.id === req.server_id)
     if (!row) throw 'server not found'
-    const current = new Set(state.mcpDisabledTools[req.serverId] ?? [])
-    if (req.enabled) current.delete(req.toolName)
-    else current.add(req.toolName)
-    state.mcpDisabledTools[req.serverId] = [...current]
+    const current = new Set(state.mcpDisabledTools[req.server_id] ?? [])
+    if (req.enabled) current.delete(req.tool_name)
+    else current.add(req.tool_name)
+    state.mcpDisabledTools[req.server_id] = [...current]
     row.updated_at = Date.now()
     return row
   },
@@ -1224,37 +1196,42 @@ const mcp: Record<string, DemoHandler> = {
 }
 
 const memories: Record<string, DemoHandler> = {
-  list_all_memories: (_args, { state }) => state.memories,
-  list_memories: (args, { state }) =>
-    state.memories.filter((m) => m.scope_type === 'project' && m.scope_id === field(args, 'projectId')),
+  list_memories: (args, { state }) => {
+    const req = request<MemoryListRequest>(args)
+    if (req.filter.kind === 'all') return state.memories
+    if (req.filter.kind === 'project') {
+      const projectId = req.filter.project_id
+      return state.memories.filter((m) => m.scope_type === 'project' && m.scope_id === projectId)
+    }
+    return req.filter.limit !== null ? state.memoryTrash.slice(0, req.filter.limit) : state.memoryTrash
+  },
   list_memory_subjects: (_args, { state }) => state.memorySubjects,
-  list_memory_trash: (_args, { state }) => state.memoryTrash,
-  memory_enums: () => ({
+  get_memory_enums: () => ({
     scopes: ['project', 'client_global', 'onebot_global', 'onebot_user'],
     origins: ['private', 'group', 'admin', 'desktop', 'legacy'],
     visibilities: ['normal', 'owner_only'],
     memory_types: ['general', 'preference', 'fact', 'instruction', 'relationship'],
   }),
-  save_memory_scoped: (args, { state }) => {
-    const req = request<MemoryScopedUpsertRequest>(args)
+  create_memory: (args, { state }) => {
+    const req = request<MemoryCreateRequest>(args)
     const now = Date.now()
     const row: MemoryInfoResponse = {
       id: mintId(state, 'memory'),
       scope_type: req.scope,
       scope_id:
         req.scope === 'project'
-          ? (req.projectId ?? '')
+          ? (req.project_id ?? '')
           : req.scope === 'onebot_user'
-            ? (req.subjectScopeId ?? '')
+            ? (req.subject_scope_id ?? '')
             : req.scope === 'client_global'
               ? 'client'
               : 'onebot',
       key: req.key,
       content: req.content,
-      memory_type: req.memoryType ?? 'general',
-      subject_scope_id: req.subjectScopeId,
+      memory_type: req.memory_type ?? 'general',
+      subject_scope_id: req.subject_scope_id,
       origin: 'desktop',
-      visibility: req.ownerOnly ? 'owner_only' : 'normal',
+      visibility: req.owner_only ? 'owner_only' : 'normal',
       source_session_id: null,
       deleted_at: null,
       deleted_by: null,
@@ -1265,67 +1242,63 @@ const memories: Record<string, DemoHandler> = {
     return row
   },
   update_memory: (args, { state }) => {
-    const req = request<{
-      id: string
-      content?: string
-      memoryType?: MemoryInfoResponse['memory_type']
-      ownerOnly?: boolean
-    }>(args)
+    const req = request<MemoryUpdateRequest>(args)
     const row = state.memories.find((m) => m.id === req.id)
     if (!row) throw 'memory not found'
     if (req.content !== undefined) row.content = req.content
-    if (req.memoryType !== undefined) row.memory_type = req.memoryType
-    if (req.ownerOnly !== undefined) row.visibility = req.ownerOnly ? 'owner_only' : 'normal'
+    if (req.memory_type !== undefined) row.memory_type = req.memory_type
+    if (req.owner_only !== undefined) row.visibility = req.owner_only ? 'owner_only' : 'normal'
     row.updated_at = Date.now()
     return row
   },
   delete_memories: (args, { state }) => {
-    const ids = new Set(field<string[]>(args, 'ids'))
+    const req = request<MemoryDeleteRequest>(args)
+    const ids = new Set(req.ids)
+    if (req.permanent) {
+      const before = state.memories.length + state.memoryTrash.length
+      state.memories = state.memories.filter((m) => !ids.has(m.id))
+      state.memoryTrash = state.memoryTrash.filter((m) => !ids.has(m.id))
+      return before - (state.memories.length + state.memoryTrash.length)
+    }
     const gone = state.memories.filter((m) => ids.has(m.id))
     state.memories = state.memories.filter((m) => !ids.has(m.id))
     state.memoryTrash.unshift(...gone.map((m) => ({ ...m, deleted_at: Date.now(), deleted_by: 'self' as const })))
     return gone.length
   },
-  delete_memory: (args, { state }) => {
-    const id = field<string>(args, 'id')
-    state.memories = state.memories.filter((m) => m.id !== id)
-    return null
-  },
   restore_memories: (args, { state }) => {
-    const ids = new Set(field<string[]>(args, 'ids'))
+    const ids = new Set(request<MemoryRestoreRequest>(args).ids)
     const back = state.memoryTrash.filter((m) => ids.has(m.id))
     state.memoryTrash = state.memoryTrash.filter((m) => !ids.has(m.id))
     state.memories.unshift(...back.map((m) => ({ ...m, deleted_at: null, deleted_by: null })))
     return back.length
   },
-  purge_memories: (args, { state }) => {
-    const ids = new Set(field<string[]>(args, 'ids'))
-    const before = state.memoryTrash.length
-    state.memoryTrash = state.memoryTrash.filter((m) => !ids.has(m.id))
-    return before - state.memoryTrash.length
-  },
-  forget_memory_subject: (args, { state }) => {
-    const id = field<string>(args, 'subjectScopeId')
+  delete_memory_subject: (args, { state }) => {
+    const id = request<MemorySubjectDeleteRequest>(args).subject_scope_id
     const before = state.memories.length
     state.memories = state.memories.filter((m) => m.subject_scope_id !== id)
     state.memorySubjects = state.memorySubjects.filter((s) => s.scope_id !== id)
     return before - state.memories.length
   },
-  set_memory_subject_flags: (args, { state }) => {
-    const req = request<{ subjectScopeId: string; isPinned: boolean | null; optedOut: boolean | null }>(args)
-    const row = state.memorySubjects.find((s) => s.scope_id === req.subjectScopeId)
-    if (row && req.isPinned !== null) row.is_pinned = req.isPinned
-    if (row && req.optedOut !== null) row.opted_out = req.optedOut
+  update_memory_subject: (args, { state }) => {
+    const req = request<MemorySubjectUpdateRequest>(args)
+    const row = state.memorySubjects.find((s) => s.scope_id === req.subject_scope_id)
+    if (row && req.is_pinned !== null) row.is_pinned = req.is_pinned
+    if (row && req.opted_out !== null) row.opted_out = req.opted_out
     return null
   },
 }
 
 const system: Record<string, DemoHandler> = {
   get_platform: () => 'windows',
-  list_system_fonts: () => ({
-    families: ['Cascadia Code', 'Consolas', 'Microsoft YaHei UI', 'PingFang SC', 'Sarasa Gothic', 'Segoe UI'],
-  }),
-  get_window_insets: () => ({ top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0 }),
+  list_system_fonts: () => [
+    'Cascadia Code',
+    'Consolas',
+    'Microsoft YaHei UI',
+    'PingFang SC',
+    'Sarasa Gothic',
+    'Segoe UI',
+  ],
+  get_window_insets: () => ({ top: 0, right: 0, bottom: 0, left: 0, ime_bottom: 0 }),
   get_app_info: () => APP_INFO,
   get_secret: () => null,
   get_preference: (args, { state }) => {
@@ -1334,29 +1307,26 @@ const system: Record<string, DemoHandler> = {
   },
   set_preference: (args, { state }) => {
     const req = request<{ key: PreferenceKey; value: unknown }>(args)
-    ;(state.preferences as Rec)[req.key] =
-      req.value !== null && typeof req.value === 'object' && 'providerId' in req.value
-        ? { provider_id: (req.value as Rec).providerId, model_id: (req.value as Rec).modelId }
-        : req.value
+    ;(state.preferences as Rec)[req.key] = req.value
     return null
   },
-  get_service_key_exists: (args, { state }) => state.serviceKeys.has(field(args, 'service')),
+  test_service_key: (args, { state }) => state.serviceKeys.has(request<{ service: string }>(args).service),
   set_service_key: (args, { state }) => {
     state.serviceKeys.add(request<{ service: string }>(args).service)
     return null
   },
   read_logs: (args, { state }) => {
-    const req = request<{ minLevel: string | null; contains: string | null }>(args)
+    const req = request<{ min_level: string | null; contains: string | null }>(args)
     const rank = { debug: 0, info: 1, warn: 2, error: 3 } as Record<string, number>
-    const floor = rank[req.minLevel ?? 'debug'] ?? 0
+    const floor = rank[req.min_level ?? 'debug'] ?? 0
     const needle = req.contains?.toLowerCase() ?? ''
     return {
       entries: state.logs.filter(
         (e) => rank[e.level.toLowerCase()] >= floor && (!needle || e.msg.toLowerCase().includes(needle)),
       ),
-      nextCursor: null,
-      scanTruncated: false,
-      filesScanned: ['meridian.log'],
+      next_cursor: null,
+      scan_truncated: false,
+      files_scanned: ['meridian.log'],
     }
   },
   list_log_files: () => [
@@ -1367,23 +1337,23 @@ const system: Record<string, DemoHandler> = {
     level: state.logLevel,
     levels: ['error', 'warn', 'info', 'debug'],
     directory: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian\\logs',
-    maxFileBytes: 5_242_880,
-    maxFiles: 5,
+    max_file_bytes: 5_242_880,
+    max_files: 5,
     available: true,
   }),
   set_log_level: (args, { state }) => {
     state.logLevel = request<{ level: typeof state.logLevel }>(args).level
     return null
   },
-  export_logs: () => ({ bytesWritten: 6_447_280 }),
+  export_logs: () => ({ bytes_written: 6_447_280 }),
 }
 
 const integrations: Record<string, DemoHandler> = {
   get_onebot_config: (_args, { state }) => state.onebot,
-  save_onebot_config: (args, { state }) => {
+  set_onebot_config: (args, { state }) => {
     const body = request<OneBotConfigUpdateRequest>(args)
     state.onebot = { ...body, reply_seeds: state.onebot.reply_seeds }
-    return null
+    return state.onebot
   },
   get_onebot_status: (_args, { state }) => ({
     enabled: state.onebot.enabled,
@@ -1400,7 +1370,7 @@ const integrations: Record<string, DemoHandler> = {
     state.onebotRunning = false
     return null
   },
-  get_voice_send_readiness: () => ({
+  get_onebot_voice_readiness: () => ({
     enabled: true,
     has_model: true,
     has_reference_id: true,
@@ -1408,14 +1378,14 @@ const integrations: Record<string, DemoHandler> = {
     ready: false,
   }),
   list_voice_corpus: (_args, { state }) => state.voiceCorpus,
-  voice_model_status: () => ({
+  get_voice_model_status: () => ({
     installed: true,
     path: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian\\models\\sense-voice',
     size_bytes: 239_000_000,
     downloading: false,
   }),
   get_hooks_config: (_args, { state }) => state.hooks,
-  save_hooks_config: (args, { state }) => {
+  set_hooks_config: (args, { state }) => {
     state.hooks = { ...request<typeof state.hooks>(args) }
     return state.hooks
   },
@@ -1426,18 +1396,47 @@ const integrations: Record<string, DemoHandler> = {
     port: state.hooks.port,
     handshake_path: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian\\plan-gate.json',
   }),
-  get_listen_config: (_args, { state }) => state.listen,
-  get_listen_status: (_args, { state }) => ({
-    enabled: state.listen.enabled,
-    running: state.listenRunning,
-    host: state.listen.host,
-    port: state.listen.port,
+  get_remote_config: (_args, { state }) => state.remote,
+  set_remote_config: (args, { state }) => {
+    const req = request<RemoteConfigUpdateRequest>(args)
+    patch(state.remote, req)
+    return state.remote
+  },
+  get_remote_status: (_args, { state }) => ({
+    enabled: state.remote.enabled,
+    running: state.remoteRunning,
+    host: state.remote.host,
+    port: state.remote.port,
     connections: 0,
   }),
-  get_listen_addresses: () => ['192.168.1.20', '100.64.0.7'],
+  start_remote: (_args, { state }) => {
+    state.remoteRunning = true
+    return {
+      enabled: state.remote.enabled,
+      running: state.remoteRunning,
+      host: state.remote.host,
+      port: state.remote.port,
+      connections: 0,
+    }
+  },
+  stop_remote: (_args, { state }) => {
+    state.remoteRunning = false
+    return {
+      enabled: state.remote.enabled,
+      running: state.remoteRunning,
+      host: state.remote.host,
+      port: state.remote.port,
+      connections: 0,
+    }
+  },
+  reset_remote_token: (_args, { state }) => {
+    state.remote.token = 'demo-listen-token-reset0'
+    return state.remote
+  },
+  list_remote_addresses: () => ['192.168.1.20', '100.64.0.7'],
   get_ime_status: () => IME_STATUS,
   get_ime_config: (_args, { state }) => state.ime,
-  save_ime_config: (args, { state }) => {
+  set_ime_config: (args, { state }) => {
     state.ime = { ...request<typeof state.ime>(args) }
     return state.ime
   },
@@ -1446,14 +1445,13 @@ const integrations: Record<string, DemoHandler> = {
   list_system_notices: () => [],
   // A browser has typed nothing into the demo's keyboard.
   get_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
-  forget_ime_learned_word: () => ({ words: [], transitions: 0, pending: 0 }),
-  forget_all_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
+  delete_ime_learning: () => ({ words: [], transitions: 0, pending: 0 }),
   export_ime_learning: () => ({ path: '/tmp/meridian-ime-learn.zip' }),
   import_ime_learning: () => ({ words: [], transitions: 0, pending: 1 }),
   // A browser is launched by nobody's keyboard.
   take_launch_request: () => null,
-  cancel_staged_ime_dictionaries: () => null,
-  dismiss_system_notice: () => null,
+  cancel_ime_dictionary_staging: () => null,
+  delete_system_notice: () => null,
   set_ime_dictionary_enabled: (args, { state }) => {
     const req = request<{ file: string; enabled: boolean }>(args)
     const row = state.imeDictionaries.find((d) => d.file === req.file)
@@ -1461,28 +1459,45 @@ const integrations: Record<string, DemoHandler> = {
     return state.imeDictionaries
   },
   get_ime_lm_status: () => IME_LM_STATUS,
-  refresh_ime_memory_hints: () => ({ count: 12, path: `${IME_STATUS.data_dir}\\context\\memory-hints.json` }),
-  acp_get_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
+  invoke_ime_memory_hints_refresh: () => ({
+    count: 12,
+    path: `${IME_STATUS.data_dir}\\context\\memory-hints.json`,
+  }),
+  get_acp_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
 }
 
 const emoji: Record<string, DemoHandler> = {
-  list_emoji_packs: (_args, { state }) => state.emojiPacks,
-  list_assistant_emoji_packs: (_args, { state }) => state.emojiPacks,
-  list_emojis: (args, { state }) => state.emojis.filter((e) => e.pack_id === field(args, 'packId')),
-  search_emojis: (args, { state }) => {
-    const query = field<string>(args, 'query').toLowerCase()
+  list_emoji_packs: (args, { state }) => {
+    request<EmojiPackListRequest>(args)
+    return state.emojiPacks
+  },
+  set_emoji_pack_assignment: (args) => {
+    request<EmojiPackAssignmentUpdateRequest>(args)
+    return null
+  },
+  list_emojis: (args, { state }) => {
+    const req = request<EmojiListRequest>(args)
+    if (req.filter.kind === 'pack') {
+      const packId = req.filter.pack_id
+      return state.emojis.filter((e) => e.pack_id === packId)
+    }
+    const query = req.filter.query.toLowerCase()
     return state.emojis.filter((e) => e.name.toLowerCase().includes(query) || (e.tags ?? '').includes(query))
   },
   get_emoji_file_url: (args) => {
-    const url = STICKER_IMAGES[field<string>(args, 'emojiId')]
+    const url = STICKER_IMAGES[request<{ emoji_id: string }>(args).emoji_id]
     if (!url) throw 'sticker not found'
     return url
   },
-  rename_emoji: (args, { state }) => {
-    const req = request<{ id: string; newName: string }>(args)
+  update_emoji: (args, { state }) => {
+    const req = request<EmojiUpdateRequest>(args)
     const row = state.emojis.find((e) => e.id === req.id)
     if (!row) throw 'sticker not found'
-    row.name = req.newName
+    row.name = req.action.name
+    if (req.action.kind === 'confirm_semantics') {
+      row.tags = req.action.tags
+      row.semantic_status = 'confirmed'
+    }
     return row
   },
 }

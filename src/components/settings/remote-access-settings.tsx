@@ -16,7 +16,7 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { writeClipboard } from '@/lib/clipboard'
-import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
+import type { RemoteConfigInfoResponse, RemoteStatusResponse } from '@/types'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 
@@ -24,8 +24,8 @@ import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 const TOKEN_COPY_KEY = '<token>'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 
-/** Mirrors `ListenConfig::default()`; only used until the first load lands. */
-const DEFAULTS: ListenConfigInfoResponse = {
+/** Mirrors `RemoteConfig::default()`; only used until the first load lands. */
+const DEFAULTS: RemoteConfigInfoResponse = {
   enabled: false,
   host: '0.0.0.0',
   port: 8787,
@@ -51,8 +51,8 @@ const DEFAULTS: ListenConfigInfoResponse = {
 export function RemoteAccessSettings() {
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
-  const [config, setConfig] = useState<ListenConfigInfoResponse>(DEFAULTS)
-  const [status, setStatus] = useState<ListenStatusResponse | null>(null)
+  const [config, setConfig] = useState<RemoteConfigInfoResponse>(DEFAULTS)
+  const [status, setStatus] = useState<RemoteStatusResponse | null>(null)
   const [addresses, setAddresses] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
@@ -72,9 +72,9 @@ export function RemoteAccessSettings() {
     setLoadError(null)
     try {
       const [cfg, sts, addrs] = await Promise.all([
-        api.getListenConfig(),
-        api.getListenStatus(),
-        api.getListenAddresses(),
+        api.remote.getConfig(),
+        api.remote.getStatus(),
+        api.remote.listAddresses(),
       ])
       setConfig(cfg)
       setStatus(sts)
@@ -97,7 +97,7 @@ export function RemoteAccessSettings() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        setStatus(await api.getListenStatus())
+        setStatus(await api.remote.getStatus())
       } catch {
         // Polling failures are not worth a banner: the next tick will say.
       }
@@ -108,14 +108,14 @@ export function RemoteAccessSettings() {
   /**
    * Read the config back after anything that could have minted a token.
    *
-   * `save`, `start` and `stop` all answer with the status rather than the
-   * config, and the backend creates a token behind the first two — so the panel
+   * `start` and `stop` answer with the status rather than the
+   * config, and the backend creates a token behind the first — so the panel
    * would otherwise go on showing "generated on first save" for a server that
    * already has one.
    */
   const adoptConfig = async () => {
     try {
-      const next = await api.getListenConfig()
+      const next = await api.remote.getConfig()
       const nextPort = next.port.toString()
       setConfig(next)
       setPortInput(nextPort)
@@ -134,8 +134,12 @@ export function RemoteAccessSettings() {
     }
     setSaving(true)
     try {
-      setStatus(await api.saveListenConfig({ ...config, port }))
-      await adoptConfig()
+      const next = await api.remote.setConfig({ ...config, port })
+      const nextPort = next.port.toString()
+      setConfig(next)
+      setPortInput(nextPort)
+      setSavedDraft(JSON.stringify({ ...next, token: undefined, port: nextPort }))
+      setStatus(await api.remote.getStatus())
       markSaved()
       return true
     } catch (err) {
@@ -148,10 +152,10 @@ export function RemoteAccessSettings() {
 
   const handleStart = async () => {
     // Saved first, so that a host or port edited but not committed is what gets
-    // started: `start_listen` reads the stored config, not this one.
+    // started: `start_remote` reads the stored config, not this one.
     if (!(await handleSave())) return
     try {
-      setStatus(await api.startListen())
+      setStatus(await api.remote.start())
       await adoptConfig()
     } catch (err) {
       setError(String(err))
@@ -161,7 +165,7 @@ export function RemoteAccessSettings() {
   const handleStop = async () => {
     setError(null)
     try {
-      setStatus(await api.stopListen())
+      setStatus(await api.remote.stop())
       await adoptConfig()
     } catch (err) {
       setError(String(err))
@@ -178,12 +182,12 @@ export function RemoteAccessSettings() {
       return
     setError(null)
     try {
-      const next = await api.regenerateListenToken()
+      const next = await api.remote.resetToken()
       const nextPort = next.port.toString()
       setConfig(next)
       setPortInput(nextPort)
       setSavedDraft(JSON.stringify({ ...next, token: undefined, port: nextPort }))
-      setStatus(await api.getListenStatus())
+      setStatus(await api.remote.getStatus())
     } catch (err) {
       setError(String(err))
     }

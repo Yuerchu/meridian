@@ -50,7 +50,7 @@ export function VoiceCorpusSettings() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setSessions(await api.listVoiceCorpus())
+      setSessions(await api.voice.listCorpus())
     } catch (err) {
       setError(String(err))
     } finally {
@@ -95,7 +95,7 @@ export function VoiceCorpusSettings() {
     )
       return
     await run(async () =>
-      deleteMessage(await api.deleteVoiceCorpus({ selector: { kind: 'session', handle: session.handle } }), 'deleted'),
+      deleteMessage(await api.voice.deleteCorpus({ selector: { kind: 'session', handle: session.handle } }), 'deleted'),
     )
   }
 
@@ -115,7 +115,7 @@ export function VoiceCorpusSettings() {
       // this button means both — but sent as two calls the barrier comes down
       // between them while the opt-out is not yet in force, so anything
       // recorded in the gap is a recording nothing will go back for.
-      const report = await api.forgetVoiceSender({ senderId: id })
+      const report = await api.voice.deleteSender({ sender_id: id })
       setSenderInput('')
       return deleteMessage(report, 'forgot')
     })
@@ -125,10 +125,10 @@ export function VoiceCorpusSettings() {
     run(async () => {
       const dir = await save({ title: t('settings.voiceCorpus.export'), defaultPath: 'voice-corpus' })
       if (!dir) return null
-      const report = await api.exportVoiceCorpus({
-        outputDir: dir,
-        includeSender,
-        includeUntranscribed,
+      const report = await api.voice.exportCorpus({
+        output_dir: dir,
+        include_sender: includeSender,
+        include_untranscribed: includeUntranscribed,
       })
       return t('settings.voiceCorpus.exported', { clips: report.clips, skipped: report.skipped })
     })

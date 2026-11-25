@@ -186,10 +186,10 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
             icon={<Bookmark />}
             variant="secondary"
             onPress={async () => {
-              await api.setMemorySubjectFlags({
-                subjectScopeId: selectedPerson.scope_id,
-                isPinned: !selectedPerson.is_pinned,
-                optedOut: null,
+              await api.memories.updateSubject({
+                subject_scope_id: selectedPerson.scope_id,
+                is_pinned: !selectedPerson.is_pinned,
+                opted_out: null,
               })
               onChanged()
             }}
@@ -209,7 +209,7 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
                 tone: 'danger',
               })
               if (!ok) return
-              await api.forgetMemorySubject(selectedPerson.scope_id)
+              await api.memories.deleteSubject({ subject_scope_id: selectedPerson.scope_id })
               onChanged()
             }}
           >

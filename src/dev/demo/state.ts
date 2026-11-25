@@ -10,7 +10,6 @@ import type {
   HookConfigInfoResponse,
   ImeConfigInfoResponse,
   ImeDictionaryInfoResponse,
-  ListenConfigInfoResponse,
   LogEntryInfoResponse,
   LogLevel,
   McpServerInfoResponse,
@@ -23,6 +22,7 @@ import type {
   ProjectInfoResponse,
   ProviderInfoResponse,
   QueuedPromptInfoResponse,
+  RemoteConfigInfoResponse,
   SkillInfoResponse,
   ToolPresetInfoResponse,
   VoiceCorpusSessionInfoResponse,
@@ -48,7 +48,7 @@ import {
   buildEmojiPacks,
   buildEmojis,
   buildHooksConfig,
-  buildListenConfig,
+  buildRemoteConfig,
   buildLogs,
   buildMcpServers,
   buildMemories,
@@ -101,8 +101,8 @@ export interface DemoState {
   onebotRunning: boolean
   voiceCorpus: VoiceCorpusSessionInfoResponse[]
   hooks: HookConfigInfoResponse
-  listen: ListenConfigInfoResponse
-  listenRunning: boolean
+  remote: RemoteConfigInfoResponse
+  remoteRunning: boolean
   ime: ImeConfigInfoResponse
   imeDictionaries: ImeDictionaryInfoResponse[]
   emojiPacks: EmojiPackInfoResponse[]
@@ -372,8 +372,8 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     onebotRunning: true,
     voiceCorpus: buildVoiceCorpus(now),
     hooks: buildHooksConfig(),
-    listen: buildListenConfig(),
-    listenRunning: false,
+    remote: buildRemoteConfig(),
+    remoteRunning: false,
     ime: { ...IME_CONFIG },
     imeDictionaries: IME_DICTIONARIES.map((d) => ({ ...d })),
     emojiPacks: buildEmojiPacks(now),

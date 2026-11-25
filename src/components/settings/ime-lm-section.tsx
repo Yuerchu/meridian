@@ -33,7 +33,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
 
   const load = useCallback(async () => {
     try {
-      setStatus(await api.getImeLmStatus())
+      setStatus(await api.ime.getLmStatus())
     } catch (err) {
       setError(String(err))
     }
@@ -49,7 +49,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
     if (!dir) return
     setBusy(true)
     try {
-      setStatus(await api.importImeLm({ path: dir }))
+      setStatus(await api.ime.importLm({ path: dir }))
     } catch (err) {
       setError(String(err))
     } finally {
@@ -69,7 +69,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
       return
     setError(null)
     try {
-      setStatus(await api.removeImeLm({ dir_name: bundle.dir_name }))
+      setStatus(await api.ime.deleteLm({ dir_name: bundle.dir_name }))
     } catch (err) {
       setError(String(err))
     }
@@ -78,7 +78,7 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
   const handleRefreshHints = async () => {
     setError(null)
     try {
-      setHints((await api.refreshImeMemoryHints()).count)
+      setHints((await api.ime.refreshMemoryHints()).count)
     } catch (err) {
       setError(String(err))
     }
