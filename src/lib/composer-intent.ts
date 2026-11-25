@@ -142,8 +142,8 @@ export function activeComposerToken(value: string, caret: number): ActiveCompose
 export function referenceInputs(references: ComposerReference[]): WorkspaceReferenceRequest[] {
   return references.map((reference) => ({
     path: reference.path,
-    lineStart: reference.lineStart ?? null,
-    lineEnd: reference.lineEnd ?? null,
+    line_start: reference.lineStart ?? null,
+    line_end: reference.lineEnd ?? null,
   }))
 }
 

@@ -30,7 +30,7 @@ export type UsageBucketListResponse = UsageBucketInfoResponse[]
 export type WorkspaceTreeEntryListResponse = WorkspaceTreeEntryInfoResponse[]
 export type WorkspaceReferenceSuggestionListResponse = WorkspaceReferenceSuggestionInfoResponse[]
 export type AcpLiveConversationIdsResponse = string[]
-export type ListenAddressesResponse = string[]
+export type RemoteAddressesResponse = string[]
 
 export type SecretKey = 'REMOTE_TOKEN'
 
@@ -47,50 +47,40 @@ export interface SecretDeleteRequest {
   key: SecretKey
 }
 
+export interface ConversationListRequest {
+  archived: boolean
+  project_id: string | null
+}
+
 export interface ConversationCreateRequest {
   title: string | null
-  projectId: string | null
+  project_id: string | null
+}
+
+export interface ConversationUpdateRequest {
+  id: string
+  title?: string
+  is_pinned?: boolean
+  is_archived?: boolean
+  mode?: ChatMode | null
+  assistant_id?: string | null
+  thinking_level?: StoredThinkingLevel | null
+  fast_mode?: boolean
+  accept_edits?: boolean
+  project_id?: string | null
+}
+
+export interface ConversationDeleteRequest {
+  id: string
 }
 
 export interface ConversationCompactionRequest {
-  conversationId: string
-  customInstructions: string | null
+  conversation_id: string
+  custom_instructions: string | null
 }
 
-export interface ConversationAssistantUpdateRequest {
-  id: string
-  assistantId: string | null
-}
-
-export interface ConversationTitleUpdateRequest {
-  id: string
-  title: string
-}
-
-export interface ConversationReasoningPreferencesUpdateRequest {
-  id: string
-  thinkingLevel: StoredThinkingLevel | null
-  fastMode: boolean
-}
-
-export interface ConversationModeUpdateRequest {
-  id: string
-  mode: ChatMode | null
-}
-
-export interface ConversationAcceptEditsUpdateRequest {
-  id: string
-  acceptEdits: boolean
-}
-
-export interface ConversationProjectUpdateRequest {
-  id: string
-  projectId: string | null
-}
-
-export interface ConversationListByProjectRequest {
-  projectId: string
-  archived: boolean
+export interface ConversationContextReadRequest {
+  conversation_id: string
 }
 
 export interface ConversationSearchRequest {
@@ -100,26 +90,34 @@ export interface ConversationSearchRequest {
 
 export interface AssistantCreateRequest {
   name: string
-  systemPrompt: string
-  modelId: string | null
+  system_prompt: string
+  model_id: string | null
   temperature: number | null
-  topP: number | null
-  maxTokens: number | null
+  top_p: number | null
+  max_tokens: number | null
 }
 
 export interface AssistantUpdateRequest {
   id: string
   name?: string
-  systemPrompt?: string
-  providerId?: string | null
-  modelId?: string | null
+  system_prompt?: string
+  provider_id?: string | null
+  model_id?: string | null
   temperature?: number | null
-  contextLimit?: number
-  enabledTools?: string[] | null
-  thinkingEnabled?: boolean
-  thinkingBudget?: number | null
-  toolPresetId?: string | null
-  autoCompactEnabled?: boolean
+  context_limit?: number
+  enabled_tools?: string[] | null
+  thinking_enabled?: boolean
+  thinking_budget?: number | null
+  tool_preset_id?: string | null
+  auto_compact_enabled?: boolean
+}
+
+export interface AssistantDeleteRequest {
+  id: string
+}
+
+export interface EmojiPackListRequest {
+  assistant_id: string | null
 }
 
 export interface EmojiPackCreateRequest {
@@ -127,30 +125,50 @@ export interface EmojiPackCreateRequest {
   description: string | null
 }
 
+export interface EmojiPackDeleteRequest {
+  id: string
+}
+
+export type EmojiListFilter = { kind: 'pack'; pack_id: string } | { kind: 'search'; query: string }
+
+export interface EmojiListRequest {
+  filter: EmojiListFilter
+}
+
 export interface EmojiImportRequest {
-  packId: string
-  filePaths: string[]
+  pack_id: string
+  file_paths: string[]
 }
 
-export interface EmojiRenameRequest {
+export interface EmojiDeleteRequest {
   id: string
-  newName: string
 }
 
-export interface EmojiSemanticsConfirmRequest {
+export type EmojiUpdateAction =
+  { kind: 'rename'; name: string } | { kind: 'confirm_semantics'; name: string; tags: string | null }
+
+export interface EmojiUpdateRequest {
   id: string
-  name: string
-  tags: string | null
+  action: EmojiUpdateAction
 }
 
-export interface AssistantEmojiPackAssignmentRequest {
-  assistantId: string
-  packId: string
+export interface EmojiSemanticsSuggestRequest {
+  id: string
+}
+
+export interface EmojiPackAssignmentUpdateRequest {
+  assistant_id: string
+  pack_id: string
+  assigned: boolean
+}
+
+export interface EmojiFileUrlReadRequest {
+  emoji_id: string
 }
 
 export interface McpServerCreateRequest {
   name: string
-  transportType: McpTransport
+  transport_type: McpTransport
   command: string | null
   args: string[] | null
   env: Record<string, string> | null
@@ -161,57 +179,86 @@ export interface McpServerCreateRequest {
 export interface McpServerUpdateRequest {
   id: string
   name?: string
-  transportType?: McpTransport
+  transport_type?: McpTransport
   command?: string | null
   args?: string[] | null
   env?: Record<string, string> | null
   url?: string | null
   headers?: Record<string, string> | null
-  isEnabled?: boolean
+  is_enabled?: boolean
+}
+
+export interface McpServerDeleteRequest {
+  id: string
+}
+
+export interface McpServerConnectRequest {
+  id: string
+}
+
+export interface McpServerDisconnectRequest {
+  id: string
 }
 
 export interface McpToolEnabledUpdateRequest {
-  serverId: string
-  toolName: string
+  server_id: string
+  tool_name: string
   enabled: boolean
 }
 
-export interface MemoryUpsertRequest {
-  projectId: string
-  key: string
-  content: string
-  memoryType: MemoryType | null
+export interface McpToolListRequest {
+  server_id: string | null
 }
 
-export interface MemoryScopedUpsertRequest {
+export type MemoryListFilter =
+  { kind: 'all' } | { kind: 'project'; project_id: string } | { kind: 'trash'; limit: number | null }
+
+export interface MemoryListRequest {
+  filter: MemoryListFilter
+}
+
+export interface MemoryCreateRequest {
   scope: MemoryScope
-  projectId: string | null
-  subjectScopeId: string | null
+  project_id: string | null
+  subject_scope_id: string | null
   key: string
   content: string
-  memoryType: MemoryType | null
-  ownerOnly: boolean | null
+  memory_type: MemoryType | null
+  owner_only: boolean | null
 }
 
 export interface MemoryUpdateRequest {
   id: string
   content?: string
-  memoryType?: MemoryType
-  ownerOnly?: boolean
+  memory_type?: MemoryType
+  owner_only?: boolean
 }
 
-export interface MemorySubjectFlagsUpdateRequest {
-  subjectScopeId: string
-  isPinned: boolean | null
-  optedOut: boolean | null
+export interface MemoryDeleteRequest {
+  ids: string[]
+  permanent: boolean
+}
+
+export interface MemoryRestoreRequest {
+  ids: string[]
+}
+
+export interface MemorySubjectDeleteRequest {
+  subject_scope_id: string
+}
+
+export interface MemorySubjectUpdateRequest {
+  subject_scope_id: string
+  is_pinned: boolean | null
+  opted_out: boolean | null
 }
 
 export interface ProjectCreateRequest {
   name: string
   path: string | null
-  sourceType: ProjectSource
-  sourceId: string | null
-  assistantId: string | null
+  source_type: ProjectSource
+  source_id: string | null
+  assistant_id: string | null
   description: string | null
 }
 
@@ -219,29 +266,33 @@ export interface ProjectUpdateRequest {
   id: string
   name?: string
   path?: string
-  assistantId?: string
+  assistant_id?: string
   description?: string
+}
+
+export interface ProjectDeleteRequest {
+  id: string
 }
 
 export interface ProviderCreateRequest {
   name: string
-  providerType: ProviderType
-  baseUrl: string
-  apiFormat: ProviderApiFormat | null
-  catalogId: string | null
-  authOption: string | null
-  localBackend: LocalInferenceBackend | null
+  provider_type: ProviderType
+  base_url: string
+  api_format: ProviderApiFormat | null
+  catalog_id: string | null
+  auth_option: string | null
+  local_backend: LocalInferenceBackend | null
 }
 
 export interface ProviderUpdateRequest {
   id: string
   name?: string
-  providerType?: ProviderType
-  baseUrl?: string
-  isEnabled?: boolean
-  apiFormat?: ProviderApiFormat
-  credentialKind?: ProviderCredentialKind
-  transportProfile?: ProviderTransportProfile
+  provider_type?: ProviderType
+  base_url?: string
+  is_enabled?: boolean
+  api_format?: ProviderApiFormat
+  credential_kind?: ProviderCredentialKind
+  transport_profile?: ProviderTransportProfile
   /**
    * Which logo the provider draws.
    *
@@ -256,54 +307,132 @@ export interface ProviderUpdateRequest {
    * values, so omitted means "leave it alone" and there is no third answer to
    * be confused with.
    */
-  codexRequestShape?: boolean
-  localBackend?: LocalInferenceBackend | null
+  codex_request_shape?: boolean
+  local_backend?: LocalInferenceBackend | null
+}
+
+export interface ProviderDeleteRequest {
+  id: string
 }
 
 export interface ProviderKeyUpdateRequest {
-  providerId: string
-  apiKey: string
+  provider_id: string
+  api_key: string
 }
+
+export interface ProviderKeyTestRequest {
+  provider_id: string
+}
+
+export type ProviderModelFetchPolicy = 'cache_only' | 'cache_first' | 'force_remote'
 
 export interface ProviderModelListRequest {
-  providerId: string
-  forceRefresh: boolean | null
-}
-
-export interface ProviderCachedModelListRequest {
-  providerId: string
+  provider_id: string
+  fetch_policy: ProviderModelFetchPolicy
 }
 
 export interface ProviderCapabilitiesReadRequest {
-  providerId: string
-  modelId: string
+  provider_id: string
+  model_id: string
+}
+
+export interface ProviderBalanceReadRequest {
+  provider_id: string
+}
+
+export interface ModelConfigListRequest {
+  provider_id: string
+}
+
+export interface ModelConfigDeleteRequest {
+  id: string
+}
+
+export interface SkillBodyReadRequest {
+  dir_name: string
 }
 
 export interface SkillCreateRequest {
-  dirName: string
-  llmDescription: string
+  dir_name: string
+  llm_description: string
   body: string
-  displayName: string | null
+  display_name: string | null
 }
 
 export interface SkillUpdateRequest {
-  dirName: string
-  displayName?: string
-  llmDescription?: string
+  dir_name: string
+  display_name?: string
+  llm_description?: string
   body?: string
-  isEnabled?: boolean
+  is_enabled?: boolean
+}
+
+export interface SkillDeleteRequest {
+  dir_name: string
 }
 
 export interface SkillBindingListRequest {
   layer: SkillLayer
-  anchorId: string | null
+  anchor_id: string | null
 }
 
 export interface SkillBindingUpdateRequest {
   layer: SkillLayer
-  anchorId: string | null
-  dirName: string
+  anchor_id: string | null
+  dir_name: string
   bound: boolean
+}
+
+export interface CustomToolDeleteRequest {
+  id: string
+}
+
+export interface ToolPresetDeleteRequest {
+  id: string
+}
+
+export interface ServiceKeyTestRequest {
+  service: ServiceKey
+}
+
+export interface UserCommandActiveReadRequest {
+  conversation_id: string
+}
+
+export interface TodoListReadRequest {
+  conversation_id: string
+}
+
+export interface BackgroundTaskListRequest {
+  conversation_id: string
+}
+
+export interface AcpSessionReadRequest {
+  conversation_id: string
+}
+
+export interface AcpTurnStopRequest {
+  conversation_id: string
+}
+
+export interface AcpSessionCloseRequest {
+  conversation_id: string
+}
+
+export interface QueuedPromptListRequest {
+  conversation_id: string
+}
+
+export interface QueuedPromptReleaseRequest {
+  conversation_id: string
+}
+
+export interface SafRootDeleteRequest {
+  uri: string
+}
+
+export interface FileNameResolveRequest {
+  path: string
 }
 
 export type CustomToolArgument =
@@ -317,12 +446,12 @@ export interface CustomToolCreateRequest {
   name: string
   description: string
   command: string
-  categoryId: string | null
-  parametersSchema: Record<string, unknown> | null
-  argsTemplate: string | null
+  category_id: string | null
+  parameters_schema: Record<string, unknown> | null
+  args_template: string | null
   execution: CustomToolExecution | null
-  workingDirectory: string | null
-  timeoutMs: number | null
+  working_directory: string | null
+  timeout_ms: number | null
   permission: ToolPermission | null
 }
 
@@ -331,14 +460,14 @@ export interface CustomToolUpdateRequest {
   name?: string
   description?: string
   command?: string
-  categoryId?: string | null
-  parametersSchema?: Record<string, unknown>
-  argsTemplate?: string | null
+  category_id?: string | null
+  parameters_schema?: Record<string, unknown>
+  args_template?: string | null
   execution?: CustomToolExecution | null
-  workingDirectory?: string | null
-  timeoutMs?: number | null
+  working_directory?: string | null
+  timeout_ms?: number | null
   permission?: ToolPermission
-  isEnabled?: boolean
+  is_enabled?: boolean
 }
 
 export type ToolPermission = 'always' | 'ask' | 'never'
@@ -346,14 +475,14 @@ export type ToolPermission = 'always' | 'ask' | 'never'
 export interface ToolPresetCreateRequest {
   name: string
   description: string | null
-  toolNames: string[]
+  tool_names: string[]
 }
 
 export interface ToolPresetUpdateRequest {
   id: string
   name?: string
   description?: string | null
-  toolNames?: string[]
+  tool_names?: string[]
 }
 
 export interface ProjectInfoResponse {
@@ -400,30 +529,30 @@ export interface BoardTaskStartResponse {
 }
 
 export interface BoardTaskCreateRequest {
-  projectId: string
+  project_id: string
   title: string
   request: string | null
   stage: BoardStage
 }
 
-export interface BoardTaskUpdateRequest {
-  id: string
-  title: string
-  request: string | null
-}
-
-export interface BoardTaskMoveRequest {
-  id: string
+export interface BoardTaskPositionRequest {
   stage: BoardStage
   index: number
 }
 
-export interface BoardTaskStartRequest {
+export interface BoardTaskUpdateRequest {
   id: string
-  agentKind: BoardAgentKind
+  title?: string
+  request?: string | null
+  position?: BoardTaskPositionRequest
 }
 
-export interface BoardTaskWorktreeRemoveRequest {
+export interface BoardTaskStartRequest {
+  id: string
+  agent_kind: BoardAgentKind
+}
+
+export interface BoardTaskWorktreeDeleteRequest {
   id: string
 }
 
@@ -458,8 +587,8 @@ export type SearchProvider = 'tavily' | 'zhipu'
 export type VoiceFilterLevel = 'off' | 'standard' | 'aggressive'
 
 export interface PreferenceModelSelectionRequest {
-  providerId: string
-  modelId: string
+  provider_id: string
+  model_id: string
 }
 
 export interface PreferenceModelSelectionInfoResponse {
@@ -541,7 +670,7 @@ export type PreferenceUpdateRequest = {
 }[PreferenceKey]
 
 export interface WorkspaceRootRequest {
-  conversationId: string
+  conversation_id: string
 }
 
 /** Where a conversation's files live, or which of the three reasons there is
@@ -554,7 +683,7 @@ export type WorkspaceRootResponse =
   | { state: 'missing_dir'; path: string }
 
 export interface WorkspaceTreeRequest {
-  conversationId: string
+  conversation_id: string
   dir: string | null
 }
 
@@ -566,8 +695,8 @@ export interface WorkspaceTreeEntryInfoResponse {
 }
 
 export interface WorkspaceFileReadRequest {
-  conversationId: string
-  relPath: string
+  conversation_id: string
+  rel_path: string
 }
 
 export interface WorkspaceFileContentResponse {
@@ -580,13 +709,13 @@ export interface WorkspaceFileContentResponse {
 
 export interface WorkspaceReferenceRequest {
   path: string
-  lineStart: number | null
-  lineEnd: number | null
+  line_start: number | null
+  line_end: number | null
 }
 
 export interface WorkspaceReferenceSuggestRequest {
-  conversationId: string | null
-  projectId: string | null
+  conversation_id: string | null
+  project_id: string | null
   query: string
   limit: number | null
 }
@@ -601,11 +730,11 @@ export type WorkspaceReferenceKind = 'project_file' | 'project_directory'
 export type MessageContextKind = WorkspaceReferenceKind | 'shell_output' | 'conversation'
 
 export interface WorkspaceReferenceResolveRequest {
-  conversationId: string | null
-  projectId: string | null
+  conversation_id: string | null
+  project_id: string | null
   path: string
-  lineStart: number | null
-  lineEnd: number | null
+  line_start: number | null
+  line_end: number | null
 }
 
 export interface WorkspaceReferencePreviewResponse {
@@ -621,8 +750,8 @@ export interface WorkspaceReferencePreviewResponse {
 }
 
 export interface WorkspaceReferenceProbeRequest {
-  conversationId: string | null
-  projectId: string | null
+  conversation_id: string | null
+  project_id: string | null
   path: string
 }
 
@@ -651,32 +780,32 @@ export interface MessageContextContentResponse {
 }
 
 export interface MessageContextReadRequest {
-  conversationId: string
-  itemId: string
+  conversation_id: string
+  item_id: string
 }
 
-export interface ChatRequest {
-  conversationId: string
+export interface ChatStartRequest {
+  conversation_id: string
   message: string | null
-  turnId: string | null
+  turn_id: string | null
   replaces: string | null
-  modelOverride: string | null
-  providerOverride: string | null
-  thinkingLevel: StoredThinkingLevel | null
-  assistantId: string | null
+  model_override: string | null
+  provider_override: string | null
+  thinking_level: StoredThinkingLevel | null
+  assistant_id: string | null
   fast: boolean | null
   mode: ChatMode | null
   voice: boolean | null
-  contextRefs: WorkspaceReferenceRequest[] | null
+  context_refs: WorkspaceReferenceRequest[] | null
   /** Conversations dragged into the composer, as ids. Separate from
    *  `contextRefs`: a drag leaves no `@` marker in the text for the backend's
    *  reconcile step, so these are validated on their own terms. */
-  conversationRefs: string[] | null
+  conversation_refs: string[] | null
 }
 
 export interface ChatStopRequest {
-  conversationId: string
-  turnId: string | null
+  conversation_id: string
+  turn_id: string | null
 }
 
 export type UserCommandStatus =
@@ -684,15 +813,15 @@ export type UserCommandStatus =
 export type SandboxBackend = 'host' | 'windows_restricted_token' | 'container'
 
 export interface UserCommandRunRequest {
-  conversationId: string
-  turnId: string
+  conversation_id: string
+  turn_id: string
   command: string
-  retryWithoutSandbox: boolean | null
+  retry_without_sandbox: boolean | null
 }
 
 export interface UserCommandResultReadRequest {
-  conversationId: string
-  messageId: string
+  conversation_id: string
+  message_id: string
 }
 
 /** The structured result of a literal `!` command. The model is not queried;
@@ -730,7 +859,7 @@ export type UserCommandEvent =
   | { type: 'finish'; result: UserCommandResultResponse }
 
 export interface WorkspaceGitStatusRequest {
-  conversationId: string
+  conversation_id: string
 }
 
 export type WorkspaceGitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
@@ -747,8 +876,8 @@ export type WorkspaceGitStatusResponse =
   | { state: 'not_repo' }
 
 export interface WorkspaceGitDiffRequest {
-  conversationId: string
-  relPath: string | null
+  conversation_id: string
+  rel_path: string | null
 }
 
 export interface WorkspaceGitDiffResponse {
@@ -757,25 +886,25 @@ export interface WorkspaceGitDiffResponse {
 }
 
 export interface WorkspaceEditorOpenRequest {
-  conversationId: string
-  relPath: string
+  conversation_id: string
+  rel_path: string
   line: number | null
 }
 
 export type JournalBlameKind = 'conversation' | 'inferred' | 'external' | 'preexisting'
 
 export interface JournalBlameRequest {
-  conversationId: string
-  relPath: string
+  conversation_id: string
+  rel_path: string
 }
 
 export interface JournalFileHistoryRequest {
-  conversationId: string
-  relPath: string
+  conversation_id: string
+  rel_path: string
 }
 
 export interface JournalVersionContentRequest {
-  versionId: string
+  version_id: string
 }
 
 /** One contiguous run of lines with one origin. 1-based, inclusive. */
@@ -969,16 +1098,16 @@ export interface AcpSessionOpenRequest {
 }
 
 export interface AcpPromptSendRequest {
-  conversationId: string
+  conversation_id: string
   message: string
-  turnId: string | null
-  contextRefs: WorkspaceReferenceRequest[] | null
-  conversationRefs: string[] | null
+  turn_id: string | null
+  context_refs: WorkspaceReferenceRequest[] | null
+  conversation_refs: string[] | null
 }
 
 export interface AcpSessionAttachRequest {
-  conversationId: string
-  sessionId: string
+  conversation_id: string
+  session_id: string
   cwd: string
 }
 
@@ -999,7 +1128,7 @@ export interface AcpConfigOptionInfoResponse {
   /** `select` | `boolean`. Only `select` is drawn as a picker. */
   type: string | null
   /** A value id for a select, a boolean for a toggle. */
-  currentValue: unknown
+  current_value: unknown
   options: AcpConfigOptionValueInfoResponse[]
 }
 
@@ -1012,12 +1141,12 @@ export interface AcpConfigOptionValueInfoResponse {
 export type AcpConfigOptionListResponse = AcpConfigOptionInfoResponse[]
 
 export interface AcpSessionConfigReadRequest {
-  conversationId: string
+  conversation_id: string
 }
 
 export interface AcpSessionConfigUpdateRequest {
-  conversationId: string
-  configId: string
+  conversation_id: string
+  config_id: string
   value: unknown
 }
 
@@ -1028,21 +1157,21 @@ export interface AcpSessionConfigUpdateRequest {
  * through, the way `AcpConfigOptionInfoResponse` is.
  */
 export interface AcpDiscoveredSessionInfoResponse {
-  sessionId: string
+  session_id: string
   /** Absolute, and where the session's work happened. */
   cwd: string
   /** The SDK's own summary: a `/rename` if there was one, else a generated
    *  line, else the first prompt. Absent for a session too new to have one. */
   title: string | null
   /** ISO 8601. */
-  updatedAt: string | null
+  updated_at: string | null
   /**
    * The conversation here that already resumes this session.
    *
    * Sessions Meridian started come back in this list too — the adapter has no
    * way to leave them out — so they are marked rather than hidden.
    */
-  ownedBy: string | null
+  owned_by: string | null
 }
 
 export type AcpDiscoveredSessionListResponse = AcpDiscoveredSessionInfoResponse[]
@@ -1054,15 +1183,15 @@ export interface AcpSessionListRequest {
 
 /** Complete description of the discovered session selected for import. */
 export interface AcpImportSessionRequest {
-  sessionId: string
+  session_id: string
   cwd: string
   title: string | null
-  updatedAt: string | null
+  updated_at: string | null
 }
 
 /** What one import produced. */
 export interface AcpImportSessionResponse {
-  conversationId: string
+  conversation_id: string
   /**
    * Only the tail of the session came back.
    *
@@ -1095,26 +1224,26 @@ export interface AcpConversationSessionInfoResponse {
 export type QueueDelivery = 'follow_up' | 'interject'
 
 export interface QueuedPromptCreateRequest {
-  conversationId: string
+  conversation_id: string
   content: string
   delivery: QueueDelivery
-  contextRefs: WorkspaceReferenceRequest[] | null
-  conversationRefs: string[] | null
+  context_refs: WorkspaceReferenceRequest[] | null
+  conversation_refs: string[] | null
 }
 
-export interface QueuedPromptDeliveryUpdateRequest {
-  conversationId: string
+export interface QueuedPromptUpdateRequest {
+  conversation_id: string
   id: string
   delivery: QueueDelivery
 }
 
-export interface QueuedPromptRemoveRequest {
-  conversationId: string
+export interface QueuedPromptDeleteRequest {
+  conversation_id: string
   id: string
 }
 
 export interface QueuedPromptReorderRequest {
-  conversationId: string
+  conversation_id: string
   ids: string[]
 }
 
@@ -1187,19 +1316,19 @@ export interface BackgroundTaskOutputInfoResponse {
 }
 
 export interface BackgroundTaskStopRequest {
-  conversationId: string
+  conversation_id: string
   id: string
 }
 
 export interface BackgroundTaskOutputReadRequest {
-  conversationId: string
+  conversation_id: string
   id: string
   offset: number
 }
 
 /** `conversationId: null` is the welcome composer, before a conversation exists. */
 export interface ComposerDraftReadRequest {
-  conversationId: string | null
+  conversation_id: string | null
 }
 
 export interface ComposerDraftAttachmentRequest {
@@ -1209,17 +1338,17 @@ export interface ComposerDraftAttachmentRequest {
 }
 
 export interface ComposerDraftUpsertRequest {
-  conversationId: string | null
+  conversation_id: string | null
   body: string
   attachments: ComposerDraftAttachmentRequest[]
-  conversationRefs: string[]
-  stickerId: string | null
+  conversation_refs: string[]
+  sticker_id: string | null
   /** Strictly increasing per composer; a lower or equal one changes nothing. */
   revision: number
 }
 
 export interface ComposerDraftDeleteRequest {
-  conversationId: string | null
+  conversation_id: string | null
   revision: number
 }
 
@@ -1284,12 +1413,12 @@ export interface MessageTreeResponse {
 }
 
 export interface MessageBranchSwitchRequest {
-  conversationId: string
-  messageId: string
+  conversation_id: string
+  message_id: string
 }
 
 export interface MessageDeleteRequest {
-  conversationId: string
+  conversation_id: string
   id: string
 }
 
@@ -1391,7 +1520,7 @@ export interface SubAgentRunDisplay {
 }
 
 export interface ConversationSteerRequest {
-  conversationId: string
+  conversation_id: string
   text: string
 }
 
@@ -1605,11 +1734,11 @@ export interface PlanReviewInfoResponse {
 }
 
 export interface PlanReviewReadRequest {
-  reviewId: string
+  review_id: string
 }
 
 export interface PlanRevisionListRequest {
-  documentId: string
+  document_id: string
 }
 
 export interface PlanCommentDraftRequest {
@@ -1620,22 +1749,22 @@ export interface PlanCommentDraftRequest {
 }
 
 export interface PlanReviewDraftSaveRequest {
-  reviewId: string
-  expectedGeneration: number
+  review_id: string
+  expected_generation: number
   mode: PlanReviewDraftMode
-  baseEditorJson: JsonValue | null
-  baseNormalizedMarkdown: string
-  editorJson: JsonValue | null
-  sourceText: string | null
-  normalizedMarkdown: string
+  base_editor_json: JsonValue | null
+  base_normalized_markdown: string
+  editor_json: JsonValue | null
+  source_text: string | null
+  normalized_markdown: string
   comments: PlanCommentDraftRequest[]
-  globalNote: string | null
+  global_note: string | null
   selection: PlanCommentAnchor | null
-  editorSchemaVersion: number | null
-  editorSchemaHash: string | null
-  editorSchemaFallback: {
-    fromVersion: number
-    fromHash: string | null
+  editor_schema_version: number | null
+  editor_schema_hash: string | null
+  editor_schema_fallback: {
+    from_version: number
+    from_hash: string | null
   } | null
 }
 
@@ -1646,22 +1775,22 @@ export interface PlanReviewDraftSaveResponse {
   updated_at: number
 }
 
-export interface PlanReviewDraftDiscardRequest {
-  reviewId: string
-  expectedGeneration: number
+export interface PlanReviewDraftDeleteRequest {
+  review_id: string
+  expected_generation: number
 }
 
 export type PlanReviewDecisionAction = 'approve' | 'request_changes'
 export type PlanApprovalMode = 'default' | 'accept_edits'
 
 export interface PlanReviewDecisionRequest {
-  reviewId: string
-  decisionId: string
-  expectedGeneration: number
-  expectedDraftHash: string
+  review_id: string
+  decision_id: string
+  expected_generation: number
+  expected_draft_hash: string
   action: PlanReviewDecisionAction
-  approvalMode: PlanApprovalMode | null
-  clearContext: boolean
+  approval_mode: PlanApprovalMode | null
+  clear_context: boolean
 }
 
 export interface PlanReviewDecisionResponse {
@@ -1670,7 +1799,7 @@ export interface PlanReviewDecisionResponse {
 }
 
 export interface PlanFileConflictResolveRequest {
-  documentId: string
+  document_id: string
   action: 'restore_db'
 }
 
@@ -1724,7 +1853,7 @@ export interface AcpSessionNoticeInfoResponse {
 export type AcpSessionNoticeListResponse = AcpSessionNoticeInfoResponse[]
 
 export interface ConversationSnapshotRequest {
-  conversationId: string
+  conversation_id: string
 }
 
 export type TurnListResponse = TurnInfoResponse[]
@@ -1795,14 +1924,12 @@ export interface ApprovalRetry extends ApprovalEscalation {
   origin_call_id: string
 }
 
-export interface ToolCallDenyRequest {
-  approvalId: string
-  reason: string | null
-}
+export type ApprovalDecisionInput =
+  { kind: 'approve' } | { kind: 'deny'; reason: string | null } | { kind: 'respond'; response: string }
 
-export interface AskResponseRequest {
-  approvalId: string
-  response: string
+export interface ApprovalDecisionRequest {
+  approval_id: string
+  decision: ApprovalDecisionInput
 }
 
 export type ContentBlock =
@@ -1831,37 +1958,39 @@ export interface MessageRatingUpdateRequest {
 export type ConversationExportFormat = 'sft' | 'dpo'
 
 export interface ConversationExportRequest {
-  conversationId: string
+  conversation_id: string
   format: ConversationExportFormat
-  outputPath: string | null
+  output_path: string | null
 }
 
-export interface MediaFileExportRequest {
-  conversationId: string
+export interface MessageMediaExportRequest {
+  conversation_id: string
   /** A `file://` URI from a tool row's media of this conversation. */
   uri: string
-  outputPath: string
+  output_path: string
 }
 
 export interface ConversationExportResponse {
   path: string
 }
 
-export interface MessageFileUploadRequest {
-  conversationId: string
-  filePath: string
-}
+export type MessageFileUploadSource =
+  | { kind: 'path'; file_path: string }
+  | {
+      kind: 'bytes'
+      file_name: string
+      /** The file's bytes, base64-encoded — Android has no raw IPC, and one
+       *  encoding shared by every platform beats a fast path only some have. */
+      data_base64: string
+    }
 
-export interface MessageFileBytesUploadRequest {
-  conversationId: string
-  fileName: string
-  /** The file's bytes, base64-encoded — Android has no raw IPC, and one
-   *  encoding shared by every platform beats a fast path only some have. */
-  dataBase64: string
+export interface MessageFileUploadRequest {
+  conversation_id: string
+  source: MessageFileUploadSource
 }
 
 export interface LocalImagePreviewRequest {
-  filePath: string
+  file_path: string
 }
 
 export interface LocalImagePreviewResponse {
@@ -1881,16 +2010,16 @@ export interface VoiceModelDownloadRequest {
 }
 
 export interface VoiceModelImportRequest {
-  archivePath: string
+  archive_path: string
 }
 
 export interface VoicePcmTranscriptionRequest {
-  sampleRate: number
+  sample_rate: number
   pcm: string
 }
 
 export interface VoiceProbeEchoRequest {
-  sampleRate: number
+  sample_rate: number
   pcm: string
 }
 
@@ -1923,18 +2052,18 @@ export interface VoiceCorpusDeleteRequest {
 }
 
 export interface VoiceCorpusOptoutUpdateRequest {
-  senderId: string
+  sender_id: string
   enabled: boolean
 }
 
 export interface VoiceCorpusForgetRequest {
-  senderId: string
+  sender_id: string
 }
 
 export interface VoiceCorpusExportRequest {
-  outputDir: string
-  includeSender: boolean
-  includeUntranscribed: boolean
+  output_dir: string
+  include_sender: boolean
+  include_untranscribed: boolean
 }
 
 export interface VoiceCorpusDeleteResponse {
@@ -2146,14 +2275,14 @@ export interface LocalModelInfoResponse {
 }
 
 export interface LocalModelInspectRequest {
-  modelPath: string
+  model_path: string
   backend: LocalInferenceBackend
-  forceRefresh: boolean
+  force_refresh: boolean
 }
 
-export interface ProviderLocalModelInfoReadRequest {
-  providerId: string
-  forceRefresh: boolean
+export interface ProviderLocalModelReadRequest {
+  provider_id: string
+  force_refresh: boolean
 }
 
 export interface ProviderInfoResponse {
@@ -2354,15 +2483,13 @@ export interface WindowInsetsInfoResponse {
   right: number
   bottom: number
   left: number
-  imeBottom: number
+  ime_bottom: number
 }
 
 export type PlatformInfoResponse = 'android' | 'windows' | 'macos' | 'linux' | 'ios'
 
 /** Families installed on this device, for the settings font picker. */
-export interface FontFamilyListResponse {
-  families: string[]
-}
+export type FontFamilyListResponse = string[]
 
 /** A settings page something outside the window asked for: the keyboard's toolbar. */
 export type LaunchSettingsTab = 'ime'
@@ -2412,7 +2539,7 @@ export interface HookStatusInfoResponse {
 }
 
 /** Remote-listener configuration returned by the host. */
-export interface ListenConfigInfoResponse {
+export interface RemoteConfigInfoResponse {
   enabled: boolean
   /** `0.0.0.0` by default: a remote access server on loopback is reachable only
    *  by the machine that already has the app open. */
@@ -2425,14 +2552,14 @@ export interface ListenConfigInfoResponse {
 }
 
 /** Complete remote-listener settings accepted by the host. Nullable keys remain required. */
-export interface ListenConfigUpdateRequest {
+export interface RemoteConfigUpdateRequest {
   enabled: boolean
   host: string
   port: number
   token: string | null
 }
 
-export interface ListenStatusResponse {
+export interface RemoteStatusResponse {
   enabled: boolean
   running: boolean
   host: string
@@ -2884,8 +3011,8 @@ export interface ModelConfigUpsertRequest {
 }
 
 export interface ModelConfigReadRequest {
-  providerId: string
-  modelId: string
+  provider_id: string
+  model_id: string
 }
 
 /**
@@ -2911,18 +3038,18 @@ export type UsageDimension =
 
 export interface UsageReportRequest {
   dimension: UsageDimension
-  sinceMs: number | null
-  untilMs: number | null
+  since_ms: number | null
+  until_ms: number | null
   origin: TurnOrigin | null
-  conversationId: string | null
+  conversation_id: string | null
 }
 
 /** `usage_report`'s filter, without the grouping: gaps are listed one reply at a time. */
 export interface UsageGapListRequest {
-  sinceMs: number | null
-  untilMs: number | null
+  since_ms: number | null
+  until_ms: number | null
   origin: TurnOrigin | null
-  conversationId: string | null
+  conversation_id: string | null
 }
 
 export type UsageGapBillingMode = 'metered' | 'subscription' | 'external'
@@ -2955,10 +3082,10 @@ export interface UsageGapListResponse {
 
 /** `usage_cache_misses`'s filter: the same window and origin as a report. */
 export interface UsageCacheMissRequest {
-  sinceMs: number | null
-  untilMs: number | null
+  since_ms: number | null
+  until_ms: number | null
   origin: TurnOrigin | null
-  conversationId: string | null
+  conversation_id: string | null
 }
 
 /**
@@ -3066,21 +3193,21 @@ export type LogRecordLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG'
 
 /** Where a page request resumes. */
 export interface LogCursorRequest {
-  fileIndex: number
-  byteOffset: number
+  file_index: number
+  byte_offset: number
 }
 
 /** Where a response page stopped, so the next one can resume exactly there. */
 export interface LogCursorInfoResponse {
-  fileIndex: number
-  byteOffset: number
+  file_index: number
+  byte_offset: number
 }
 
 /** One line of the application log, already parsed and redacted by the backend. */
 export interface LogEntryInfoResponse {
   /** RFC3339, UTC. */
   ts: string
-  tsMs: number
+  ts_ms: number
   level: LogRecordLevel
   /** Tracing target, e.g. "meridian_lib::provider::openai_compat". */
   target: string
@@ -3090,7 +3217,7 @@ export interface LogEntryInfoResponse {
   /** Enclosing span names, outermost first. */
   spans: string[]
   /** Fields inherited from those spans, such as conversation_id. */
-  spanFields: Record<string, unknown>
+  span_fields: Record<string, unknown>
   file: string | null
   line: number | null
   cursor: LogCursorInfoResponse
@@ -3099,20 +3226,20 @@ export interface LogEntryInfoResponse {
 export interface LogPageResponse {
   entries: LogEntryInfoResponse[]
   /** Null once the scan reached the oldest available record. */
-  nextCursor: LogCursorInfoResponse | null
+  next_cursor: LogCursorInfoResponse | null
   /** The scan stopped on its size budget, so older matches may exist. */
-  scanTruncated: boolean
-  filesScanned: string[]
+  scan_truncated: boolean
+  files_scanned: string[]
 }
 
 export interface LogQueryRequest {
-  minLevel?: LogLevel | null
+  min_level?: LogLevel | null
   limit?: number | null
   contains?: string | null
-  targetPrefix?: string | null
-  conversationId?: string | null
-  sinceTsMs?: number | null
-  untilTsMs?: number | null
+  target_prefix?: string | null
+  conversation_id?: string | null
+  since_ts_ms?: number | null
+  until_ts_ms?: number | null
   cursor?: LogCursorRequest | null
 }
 
@@ -3121,11 +3248,11 @@ export interface LogLevelUpdateRequest {
 }
 
 export interface LogExportRequest {
-  outputPath: string
+  output_path: string
 }
 
 export interface LogExportResponse {
-  bytesWritten: number
+  bytes_written: number
 }
 
 /**
@@ -3136,10 +3263,10 @@ export interface LogExportResponse {
  */
 export interface AppInfoResponse {
   version: string
-  tauriVersion: string
+  tauri_version: string
   os: PlatformInfoResponse
   arch: string
-  dataDir: string
+  data_dir: string
 }
 
 export interface LogFileInfoResponse {
@@ -3151,8 +3278,8 @@ export interface LogSettingsResponse {
   level: LogLevel
   levels: LogLevel[]
   directory: string
-  maxFileBytes: number
-  maxFiles: number
+  max_file_bytes: number
+  max_files: number
   /** False when the log file could not be opened; the panel says so. */
   available: boolean
 }
@@ -3385,7 +3512,7 @@ export interface ImeDictionaryUpgradeFailureInfoResponse {
   error: string
 }
 
-export interface SystemNoticeDismissRequest {
+export interface SystemNoticeDeleteRequest {
   id: string
 }
 
@@ -3457,7 +3584,7 @@ export interface ImeLmImportRequest {
   path: string
 }
 
-export interface ImeLmRemoveRequest {
+export interface ImeLmDeleteRequest {
   dir_name: string
 }
 
@@ -3485,8 +3612,8 @@ export interface ImeLearningInfoResponse {
   pending: number
 }
 
-export interface ImeLearnedWordForgetRequest {
-  text: string
+export interface ImeLearningDeleteRequest {
+  word: string | null
 }
 
 export interface ImeLearningExportRequest {
@@ -3504,7 +3631,7 @@ export interface ImeLearningImportRequest {
   mode: ImeLearningImportMode
 }
 
-export interface ImeDictionaryRemoveRequest {
+export interface ImeDictionaryDeleteRequest {
   file: string
 }
 

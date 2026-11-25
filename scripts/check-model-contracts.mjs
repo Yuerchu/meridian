@@ -712,46 +712,41 @@ requireRustFields('src-tauri/src/commands/memory.rs', 'MemorySubjectUpdateReques
   opted_out: /^RequiredNullable<bool>$/,
 })
 requireTypescriptFields('src/types.ts', 'EmojiImportRequest', {
-  packId: /^string$/,
-  filePaths: /^string\[\]$/,
+  pack_id: /^string$/,
+  file_paths: /^string\[\]$/,
 })
-requireTypescriptFields('src/types.ts', 'EmojiRenameRequest', {
+requireTypescriptFields('src/types.ts', 'EmojiUpdateRequest', {
   id: /^string$/,
-  newName: /^string$/,
+  action: /^EmojiUpdateAction$/,
 })
-requireTypescriptFields('src/types.ts', 'EmojiSemanticsConfirmRequest', {
-  id: /^string$/,
-  name: /^string$/,
-  tags: /^string \| null$/,
-})
-requireTypescriptFields('src/types.ts', 'AssistantEmojiPackAssignmentRequest', {
-  assistantId: /^string$/,
-  packId: /^string$/,
+requireTypescriptFields('src/types.ts', 'EmojiPackAssignmentUpdateRequest', {
+  assistant_id: /^string$/,
+  pack_id: /^string$/,
+  assigned: /^boolean$/,
 })
 requireTypescriptFields('src/types.ts', 'ServiceKeyUpdateRequest', {
   service: /^ServiceKey$/,
   key: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'VoiceProbeEchoRequest', {
-  sampleRate: /^number$/,
+  sample_rate: /^number$/,
   pcm: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'MemoryUpdateRequest', {
-  memoryType: /^MemoryType$/,
+  memory_type: /^MemoryType$/,
 })
-requireTypescriptFields('src/types.ts', 'MemorySubjectFlagsUpdateRequest', {
-  subjectScopeId: /^string$/,
-  isPinned: /^boolean \| null$/,
-  optedOut: /^boolean \| null$/,
+requireTypescriptFields('src/types.ts', 'MemorySubjectUpdateRequest', {
+  subject_scope_id: /^string$/,
+  is_pinned: /^boolean \| null$/,
+  opted_out: /^boolean \| null$/,
 })
 for (const [name, fields] of [
-  ['EmojiImportRequest', ['packId', 'filePaths']],
-  ['EmojiRenameRequest', ['id', 'newName']],
-  ['EmojiSemanticsConfirmRequest', ['id', 'name', 'tags']],
-  ['AssistantEmojiPackAssignmentRequest', ['assistantId', 'packId']],
+  ['EmojiImportRequest', ['pack_id', 'file_paths']],
+  ['EmojiUpdateRequest', ['id', 'action']],
+  ['EmojiPackAssignmentUpdateRequest', ['assistant_id', 'pack_id', 'assigned']],
   ['ServiceKeyUpdateRequest', ['service', 'key']],
-  ['VoiceProbeEchoRequest', ['sampleRate', 'pcm']],
-  ['MemorySubjectFlagsUpdateRequest', ['subjectScopeId', 'isPinned', 'optedOut']],
+  ['VoiceProbeEchoRequest', ['sample_rate', 'pcm']],
+  ['MemorySubjectUpdateRequest', ['subject_scope_id', 'is_pinned', 'opted_out']],
 ]) {
   requireTypescriptRequiredFields('src/types.ts', name, fields)
 }
@@ -877,8 +872,8 @@ if (
   add(onebotCommandFile, 'onebot core status/readiness 禁止直接作为 IPC response')
 }
 
-if (!/updateMcpServer:\s*\(request:\s*McpServerUpdateRequest\)\s*=>/.test(namedWriteApiSource ?? '')) {
-  add('src/api.ts', 'updateMcpServer 必须只接收 McpServerUpdateRequest')
+if (!/updateServer:\s*\(request:\s*McpServerUpdateRequest\)\s*=>/.test(namedWriteApiSource ?? '')) {
+  add('src/api.ts', 'mcp.updateServer 必须只接收 McpServerUpdateRequest')
 }
 
 const secretCommandFile = 'src-tauri/src/commands/secret.rs'
@@ -912,8 +907,8 @@ requireTypescriptFields('src/types.ts', 'PreferenceReadRequest', {
   key: /^K$/,
 })
 requireTypescriptFields('src/types.ts', 'PreferenceModelSelectionRequest', {
-  providerId: /^string$/,
-  modelId: /^string$/,
+  provider_id: /^string$/,
+  model_id: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'PreferenceModelSelectionInfoResponse', {
   provider_id: /^string$/,
@@ -1027,22 +1022,20 @@ if (
   add('src-tauri/src/command_table.rs', 'set_preference 必须且只能注册 PreferenceUpdateRequest')
 }
 if (
-  !/setPreference:\s*\(request:\s*PreferenceUpdateRequest\)\s*=>[\s\S]{0,100}?['"]set_preference['"]\s*,\s*\{\s*request\s*\}/.test(
+  !/set:\s*\(request:\s*PreferenceUpdateRequest\)\s*=>[\s\S]{0,100}?['"]set_preference['"]\s*,\s*\{\s*request\s*\}/.test(
     namedWriteApiSource ?? '',
   )
 ) {
-  add('src/api.ts', 'setPreference 必须只接收 PreferenceUpdateRequest 并发送 { request }')
+  add('src/api.ts', 'preferences.set 必须只接收 PreferenceUpdateRequest 并发送 { request }')
 }
 if (
-  !/getPreference:\s*<K extends PreferenceKey>\(request:\s*PreferenceReadRequest<K>\)[\s\S]{0,120}?invoke<PreferenceInfoResponse<K>>\(['"]get_preference['"]\s*,\s*\{\s*request\s*\}/.test(
+  !/get:\s*<K extends PreferenceKey>\(request:\s*PreferenceReadRequest<K>\)[\s\S]{0,120}?invoke<PreferenceInfoResponse<K>>\(['"]get_preference['"]\s*,\s*\{\s*request\s*\}/.test(
     namedWriteApiSource ?? '',
   )
 ) {
-  add('src/api.ts', 'getPreference 必须使用 PreferenceReadRequest 与对应的 typed PreferenceInfoResponse')
+  add('src/api.ts', 'preferences.get 必须使用 PreferenceReadRequest 与对应的 typed PreferenceInfoResponse')
 }
-if (
-  /getPreference:\s*\(key:\s*string|setPreference:\s*\(key:\s*string|value:\s*string/.test(namedWriteApiSource ?? '')
-) {
+if (/(?:getPreference|setPreference|get|set):\s*\(key:\s*string|value:\s*string/.test(namedWriteApiSource ?? '')) {
   add('src/api.ts', 'preference API 禁止兼容旧 String/String 调用')
 }
 
@@ -1114,35 +1107,35 @@ requireTypescriptFields('src/types.ts', 'AcpSessionOpenRequest', {
   cwd: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpPromptSendRequest', {
-  conversationId: /^string$/,
+  conversation_id: /^string$/,
   message: /^string$/,
-  turnId: /^string \| null$/,
-  contextRefs: /^WorkspaceReferenceRequest\[\] \| null$/,
+  turn_id: /^string \| null$/,
+  context_refs: /^WorkspaceReferenceRequest\[\] \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpSessionAttachRequest', {
-  conversationId: /^string$/,
-  sessionId: /^string$/,
+  conversation_id: /^string$/,
+  session_id: /^string$/,
   cwd: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpImportSessionRequest', {
-  sessionId: /^string$/,
+  session_id: /^string$/,
   cwd: /^string$/,
   title: /^string \| null$/,
-  updatedAt: /^string \| null$/,
+  updated_at: /^string \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpSessionConfigReadRequest', {
-  conversationId: /^string$/,
+  conversation_id: /^string$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpSessionConfigUpdateRequest', {
-  conversationId: /^string$/,
-  configId: /^string$/,
+  conversation_id: /^string$/,
+  config_id: /^string$/,
   value: /^unknown$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpConfigOptionInfoResponse', {
   description: /^string \| null$/,
   category: /^string \| null$/,
   type: /^string \| null$/,
-  currentValue: /^unknown$/,
+  current_value: /^unknown$/,
   options: /^AcpConfigOptionValueInfoResponse\[\]$/,
 })
 requireTypescriptFields('src/types.ts', 'AcpConfigOptionValueInfoResponse', {
@@ -1151,24 +1144,24 @@ requireTypescriptFields('src/types.ts', 'AcpConfigOptionValueInfoResponse', {
 requireTypescriptRequiredFields('src/types.ts', 'AcpSessionListRequest', ['cwd'])
 requireTypescriptRequiredFields('src/types.ts', 'AcpSessionOpenRequest', ['cwd'])
 requireTypescriptRequiredFields('src/types.ts', 'AcpPromptSendRequest', [
-  'conversationId',
+  'conversation_id',
   'message',
-  'turnId',
-  'contextRefs',
+  'turn_id',
+  'context_refs',
 ])
-requireTypescriptRequiredFields('src/types.ts', 'AcpSessionAttachRequest', ['conversationId', 'sessionId', 'cwd'])
-requireTypescriptRequiredFields('src/types.ts', 'AcpImportSessionRequest', ['sessionId', 'cwd', 'title', 'updatedAt'])
-requireTypescriptRequiredFields('src/types.ts', 'AcpSessionConfigReadRequest', ['conversationId'])
+requireTypescriptRequiredFields('src/types.ts', 'AcpSessionAttachRequest', ['conversation_id', 'session_id', 'cwd'])
+requireTypescriptRequiredFields('src/types.ts', 'AcpImportSessionRequest', ['session_id', 'cwd', 'title', 'updated_at'])
+requireTypescriptRequiredFields('src/types.ts', 'AcpSessionConfigReadRequest', ['conversation_id'])
 requireTypescriptRequiredFields('src/types.ts', 'AcpSessionConfigUpdateRequest', [
-  'conversationId',
-  'configId',
+  'conversation_id',
+  'config_id',
   'value',
 ])
 requireTypescriptRequiredFields('src/types.ts', 'AcpConfigOptionInfoResponse', [
   'description',
   'category',
   'type',
-  'currentValue',
+  'current_value',
   'options',
 ])
 requireTypescriptRequiredFields('src/types.ts', 'AcpConfigOptionValueInfoResponse', ['description'])
@@ -1310,17 +1303,17 @@ if (
 }
 requireTypescriptFields('src/types.ts', 'WorkspaceReferenceRequest', {
   path: /^string$/,
-  lineStart: /^number \| null$/,
-  lineEnd: /^number \| null$/,
+  line_start: /^number \| null$/,
+  line_end: /^number \| null$/,
 })
-requireTypescriptRequiredFields('src/types.ts', 'WorkspaceReferenceRequest', ['lineStart', 'lineEnd'])
+requireTypescriptRequiredFields('src/types.ts', 'WorkspaceReferenceRequest', ['line_start', 'line_end'])
 const composerIntentFile = 'src/lib/composer-intent.ts'
 const composerIntentSource = readAt(composerIntentFile)
 if (
-  !/lineStart:\s*reference\.lineStart\s*\?\?\s*null/.test(composerIntentSource ?? '') ||
-  !/lineEnd:\s*reference\.lineEnd\s*\?\?\s*null/.test(composerIntentSource ?? '')
+  !/line_start:\s*reference\.lineStart\s*\?\?\s*null/.test(composerIntentSource ?? '') ||
+  !/line_end:\s*reference\.lineEnd\s*\?\?\s*null/.test(composerIntentSource ?? '')
 ) {
-  add(composerIntentFile, 'workspace reference producer 必须显式发送 nullable lineStart/lineEnd')
+  add(composerIntentFile, 'workspace reference producer 必须显式发送 nullable line_start/line_end')
 }
 for (const [file, nullToEmpty] of [
   ['src-tauri/src/commands/chat.rs', /context_refs\.unwrap_or_default\(\)/],
@@ -1420,43 +1413,43 @@ requireRustFields('src-tauri/src/commands/conversation.rs', 'ConversationSearchR
 })
 requireTypescriptFields('src/types.ts', 'ConversationCreateRequest', {
   title: /^string \| null$/,
-  projectId: /^string \| null$/,
+  project_id: /^string \| null$/,
 })
-requireTypescriptRequiredFields('src/types.ts', 'ConversationCreateRequest', ['title', 'projectId'])
+requireTypescriptRequiredFields('src/types.ts', 'ConversationCreateRequest', ['title', 'project_id'])
 requireTypescriptFields('src/types.ts', 'ConversationCompactionRequest', {
-  conversationId: /^string$/,
-  customInstructions: /^string \| null$/,
+  conversation_id: /^string$/,
+  custom_instructions: /^string \| null$/,
 })
-requireTypescriptRequiredFields('src/types.ts', 'ConversationCompactionRequest', ['customInstructions'])
-requireTypescriptFields('src/types.ts', 'ConversationAssistantUpdateRequest', {
-  id: /^string$/,
-  assistantId: /^string \| null$/,
-})
-requireTypescriptRequiredFields('src/types.ts', 'ConversationAssistantUpdateRequest', ['assistantId'])
-requireTypescriptFields('src/types.ts', 'ConversationReasoningPreferencesUpdateRequest', {
-  id: /^string$/,
-  thinkingLevel: /^StoredThinkingLevel \| null$/,
-  fastMode: /^boolean$/,
-})
-requireTypescriptRequiredFields('src/types.ts', 'ConversationReasoningPreferencesUpdateRequest', ['thinkingLevel'])
-requireTypescriptFields('src/types.ts', 'ConversationModeUpdateRequest', {
-  id: /^string$/,
-  mode: /^ChatMode \| null$/,
-})
-requireTypescriptRequiredFields('src/types.ts', 'ConversationModeUpdateRequest', ['mode'])
-requireTypescriptFields('src/types.ts', 'ConversationAcceptEditsUpdateRequest', {
-  id: /^string$/,
-  acceptEdits: /^boolean$/,
-})
-requireTypescriptFields('src/types.ts', 'ConversationProjectUpdateRequest', {
-  id: /^string$/,
-  projectId: /^string \| null$/,
-})
-requireTypescriptRequiredFields('src/types.ts', 'ConversationProjectUpdateRequest', ['projectId'])
-requireTypescriptFields('src/types.ts', 'ConversationListByProjectRequest', {
-  projectId: /^string$/,
+requireTypescriptRequiredFields('src/types.ts', 'ConversationCompactionRequest', ['custom_instructions'])
+requireTypescriptFields('src/types.ts', 'ConversationListRequest', {
   archived: /^boolean$/,
+  project_id: /^string \| null$/,
 })
+requireTypescriptRequiredFields('src/types.ts', 'ConversationListRequest', ['archived', 'project_id'])
+requireTypescriptFields('src/types.ts', 'ConversationUpdateRequest', {
+  id: /^string$/,
+  title: /^string$/,
+  is_pinned: /^boolean$/,
+  is_archived: /^boolean$/,
+  mode: /^ChatMode \| null$/,
+  assistant_id: /^string \| null$/,
+  thinking_level: /^StoredThinkingLevel \| null$/,
+  fast_mode: /^boolean$/,
+  accept_edits: /^boolean$/,
+  project_id: /^string \| null$/,
+})
+requireTypescriptRequiredFields('src/types.ts', 'ConversationUpdateRequest', ['id'])
+requireTypescriptOptionalFields('src/types.ts', 'ConversationUpdateRequest', [
+  'title',
+  'is_pinned',
+  'is_archived',
+  'mode',
+  'assistant_id',
+  'thinking_level',
+  'fast_mode',
+  'accept_edits',
+  'project_id',
+])
 requireTypescriptFields('src/types.ts', 'ConversationSearchRequest', {
   query: /^string$/,
   limit: /^number \| null$/,
@@ -1481,39 +1474,39 @@ requireRustFields('src-tauri/src/commands/chat.rs', 'ChatStopRequest', {
   conversation_id: /^String$/,
   turn_id: /^RequiredNullable<String>$/,
 })
-requireTypescriptFields('src/types.ts', 'ChatRequest', {
-  conversationId: /^string$/,
+requireTypescriptFields('src/types.ts', 'ChatStartRequest', {
+  conversation_id: /^string$/,
   message: /^string \| null$/,
-  turnId: /^string \| null$/,
+  turn_id: /^string \| null$/,
   replaces: /^string \| null$/,
-  modelOverride: /^string \| null$/,
-  providerOverride: /^string \| null$/,
-  thinkingLevel: /^StoredThinkingLevel \| null$/,
-  assistantId: /^string \| null$/,
+  model_override: /^string \| null$/,
+  provider_override: /^string \| null$/,
+  thinking_level: /^StoredThinkingLevel \| null$/,
+  assistant_id: /^string \| null$/,
   fast: /^boolean \| null$/,
   mode: /^ChatMode \| null$/,
   voice: /^boolean \| null$/,
-  contextRefs: /^WorkspaceReferenceRequest\[\] \| null$/,
+  context_refs: /^WorkspaceReferenceRequest\[\] \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'ChatStopRequest', {
-  conversationId: /^string$/,
-  turnId: /^string \| null$/,
+  conversation_id: /^string$/,
+  turn_id: /^string \| null$/,
 })
-requireTypescriptRequiredFields('src/types.ts', 'ChatRequest', [
-  'conversationId',
+requireTypescriptRequiredFields('src/types.ts', 'ChatStartRequest', [
+  'conversation_id',
   'message',
-  'turnId',
+  'turn_id',
   'replaces',
-  'modelOverride',
-  'providerOverride',
-  'thinkingLevel',
-  'assistantId',
+  'model_override',
+  'provider_override',
+  'thinking_level',
+  'assistant_id',
   'fast',
   'mode',
   'voice',
-  'contextRefs',
+  'context_refs',
 ])
-requireTypescriptRequiredFields('src/types.ts', 'ChatStopRequest', ['conversationId', 'turnId'])
+requireTypescriptRequiredFields('src/types.ts', 'ChatStopRequest', ['conversation_id', 'turn_id'])
 if (/pub async fn start_chat\([^)]*\b(?:conversation_id|message|thinking_level|mode):/.test(chatCommandSource ?? '')) {
   add('src-tauri/src/commands/chat.rs', 'start_chat 必须只接收严格 ChatStartRequest，禁止散装参数')
 }
@@ -1543,22 +1536,22 @@ for (const file of ['src-tauri/src/commands/user_command.rs', 'src-tauri/src/com
   }
 }
 requireTypescriptFields('src/types.ts', 'UserCommandRunRequest', {
-  conversationId: /^string$/,
-  turnId: /^string$/,
+  conversation_id: /^string$/,
+  turn_id: /^string$/,
   command: /^string$/,
-  retryWithoutSandbox: /^boolean \| null$/,
+  retry_without_sandbox: /^boolean \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'UserCommandResultReadRequest', {
-  conversationId: /^string$/,
-  messageId: /^string$/,
+  conversation_id: /^string$/,
+  message_id: /^string$/,
 })
 requireTypescriptRequiredFields('src/types.ts', 'UserCommandRunRequest', [
-  'conversationId',
-  'turnId',
+  'conversation_id',
+  'turn_id',
   'command',
-  'retryWithoutSandbox',
+  'retry_without_sandbox',
 ])
-requireTypescriptRequiredFields('src/types.ts', 'UserCommandResultReadRequest', ['conversationId', 'messageId'])
+requireTypescriptRequiredFields('src/types.ts', 'UserCommandResultReadRequest', ['conversation_id', 'message_id'])
 requireTypescriptFields('src/types.ts', 'ContextInfoResponse', {
   circuit_breaker_state: /^CompactCircuitBreakerState$/,
   agent_kind: /^ConversationAgentKind \| null$/,
@@ -1603,12 +1596,12 @@ requireTypescriptFields('src/types.ts', 'LogEntryInfoResponse', {
   cursor: /^LogCursorInfoResponse$/,
 })
 requireTypescriptFields('src/types.ts', 'LogQueryRequest', {
-  minLevel: /^LogLevel \| null$/,
+  min_level: /^LogLevel \| null$/,
   cursor: /^LogCursorRequest \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'LogPageResponse', {
   entries: /^LogEntryInfoResponse\[\]$/,
-  nextCursor: /^LogCursorInfoResponse \| null$/,
+  next_cursor: /^LogCursorInfoResponse \| null$/,
 })
 requireTypescriptFields('src/types.ts', 'LogSettingsResponse', {
   level: /^LogLevel$/,
@@ -1689,10 +1682,10 @@ for (const [command, request] of [
 }
 for (const [request, fields] of [
   ['WorkspaceTreeRequest', ['dir']],
-  ['WorkspaceReferenceSuggestRequest', ['conversationId', 'projectId', 'limit']],
-  ['WorkspaceReferenceResolveRequest', ['conversationId', 'projectId', 'lineStart', 'lineEnd']],
-  ['WorkspaceReferenceProbeRequest', ['conversationId', 'projectId']],
-  ['WorkspaceGitDiffRequest', ['relPath']],
+  ['WorkspaceReferenceSuggestRequest', ['conversation_id', 'project_id', 'limit']],
+  ['WorkspaceReferenceResolveRequest', ['conversation_id', 'project_id', 'line_start', 'line_end']],
+  ['WorkspaceReferenceProbeRequest', ['conversation_id', 'project_id']],
+  ['WorkspaceGitDiffRequest', ['rel_path']],
   ['WorkspaceEditorOpenRequest', ['line']],
 ]) {
   requireTypescriptRequiredFields('src/types.ts', request, fields)
@@ -2140,7 +2133,7 @@ if (publicTypes != null) {
     if (match[2].endsWith('InfoResponse') && !match[1].endsWith('ListResponse')) {
       add(typesFile, `${match[1]} 是实体列表，必须以 ListResponse 结尾`)
     }
-    if (match[1].endsWith('ListResponse') && !match[2].endsWith('InfoResponse')) {
+    if (match[1].endsWith('ListResponse') && match[2] !== 'string' && !match[2].endsWith('InfoResponse')) {
       add(typesFile, `${match[1]} 的元素必须是 *InfoResponse`)
     }
   }
@@ -2236,39 +2229,34 @@ requireRustFields('src-tauri/src/commands/sub_agent.rs', 'ConversationSteerReque
 })
 requireTypescriptFields(typesFile, 'QueuedPromptCreateRequest', {
   delivery: /^QueueDelivery$/,
-  contextRefs: /^WorkspaceReferenceRequest\[\] \| null$/,
+  context_refs: /^WorkspaceReferenceRequest\[\] \| null$/,
 })
-requireTypescriptFields(typesFile, 'QueuedPromptDeliveryUpdateRequest', {
+requireTypescriptFields(typesFile, 'QueuedPromptUpdateRequest', {
   delivery: /^QueueDelivery$/,
 })
-requireTypescriptFields(typesFile, 'QueuedPromptRemoveRequest', {
-  conversationId: /^string$/,
+requireTypescriptFields(typesFile, 'QueuedPromptDeleteRequest', {
+  conversation_id: /^string$/,
   id: /^string$/,
 })
 requireTypescriptFields(typesFile, 'QueuedPromptReorderRequest', {
-  conversationId: /^string$/,
+  conversation_id: /^string$/,
   ids: /^string\[\]$/,
 })
-requireTypescriptFields(typesFile, 'ToolCallDenyRequest', {
-  approvalId: /^string$/,
-  reason: /^string \| null$/,
-})
-requireTypescriptFields(typesFile, 'AskResponseRequest', {
-  approvalId: /^string$/,
-  response: /^string$/,
+requireTypescriptFields(typesFile, 'ApprovalDecisionRequest', {
+  approval_id: /^string$/,
+  decision: /^ApprovalDecisionInput$/,
 })
 requireTypescriptFields(typesFile, 'ConversationSteerRequest', {
-  conversationId: /^string$/,
+  conversation_id: /^string$/,
   text: /^string$/,
 })
 for (const [request, fields] of [
-  ['QueuedPromptCreateRequest', ['conversationId', 'content', 'delivery', 'contextRefs']],
-  ['QueuedPromptRemoveRequest', ['conversationId', 'id']],
-  ['QueuedPromptReorderRequest', ['conversationId', 'ids']],
-  ['QueuedPromptDeliveryUpdateRequest', ['conversationId', 'id', 'delivery']],
-  ['ToolCallDenyRequest', ['approvalId', 'reason']],
-  ['AskResponseRequest', ['approvalId', 'response']],
-  ['ConversationSteerRequest', ['conversationId', 'text']],
+  ['QueuedPromptCreateRequest', ['conversation_id', 'content', 'delivery', 'context_refs']],
+  ['QueuedPromptDeleteRequest', ['conversation_id', 'id']],
+  ['QueuedPromptReorderRequest', ['conversation_id', 'ids']],
+  ['QueuedPromptUpdateRequest', ['conversation_id', 'id', 'delivery']],
+  ['ApprovalDecisionRequest', ['approval_id', 'decision']],
+  ['ConversationSteerRequest', ['conversation_id', 'text']],
 ]) {
   requireTypescriptRequiredFields(typesFile, request, fields)
 }
@@ -2291,7 +2279,7 @@ requireTypescriptFields(typesFile, 'VoiceCorpusDeleteResponse', {
   failures: /^string\[\]$/,
 })
 requireTypescriptFields(typesFile, 'VoiceCorpusExportRequest', {
-  outputDir: /^string$/,
+  output_dir: /^string$/,
 })
 const voiceCorpusCommandSource = readAt('src-tauri/src/commands/voice_corpus.rs')
 if (/Result<(?:DeleteReport|ExportReport),\s*String>/.test(voiceCorpusCommandSource ?? '')) {
@@ -2299,10 +2287,10 @@ if (/Result<(?:DeleteReport|ExportReport),\s*String>/.test(voiceCorpusCommandSou
 }
 requireTypescriptFields(typesFile, 'UsageReportRequest', {
   dimension: /^UsageDimension$/,
-  sinceMs: /^number \| null$/,
-  untilMs: /^number \| null$/,
+  since_ms: /^number \| null$/,
+  until_ms: /^number \| null$/,
   origin: /^TurnOrigin \| null$/,
-  conversationId: /^string \| null$/,
+  conversation_id: /^string \| null$/,
 })
 requireTypescriptFields(typesFile, 'MessageInfoResponse', {
   rating: /^MessageRating \| null$/,
@@ -2432,15 +2420,15 @@ requireTypescriptFields(typesFile, 'CustomToolInfoResponse', {
 })
 requireTypescriptFields(typesFile, 'AssistantUpdateRequest', {
   id: /^string$/,
-  enabledTools: /^string\[\] \| null$/,
+  enabled_tools: /^string\[\] \| null$/,
 })
 requireTypescriptFields(typesFile, 'AssistantCreateRequest', {
-  modelId: /^string \| null$/,
+  model_id: /^string \| null$/,
   temperature: /^number \| null$/,
-  topP: /^number \| null$/,
-  maxTokens: /^number \| null$/,
+  top_p: /^number \| null$/,
+  max_tokens: /^number \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'AssistantCreateRequest', ['modelId', 'temperature', 'topP', 'maxTokens'])
+requireTypescriptRequiredFields(typesFile, 'AssistantCreateRequest', ['model_id', 'temperature', 'top_p', 'max_tokens'])
 requireTypescriptFields(typesFile, 'EmojiPackCreateRequest', {
   description: /^string \| null$/,
 })
@@ -2453,54 +2441,52 @@ requireTypescriptFields(typesFile, 'McpServerCreateRequest', {
   headers: /^Record<string, string> \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'McpServerCreateRequest', ['command', 'args', 'env', 'url', 'headers'])
-requireTypescriptFields(typesFile, 'MemoryUpsertRequest', {
-  memoryType: /^MemoryType \| null$/,
+requireTypescriptFields(typesFile, 'MemoryCreateRequest', {
+  scope: /^MemoryScope$/,
+  project_id: /^string \| null$/,
+  subject_scope_id: /^string \| null$/,
+  memory_type: /^MemoryType \| null$/,
+  owner_only: /^boolean \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'MemoryUpsertRequest', ['memoryType'])
-requireTypescriptFields(typesFile, 'MemoryScopedUpsertRequest', {
-  projectId: /^string \| null$/,
-  subjectScopeId: /^string \| null$/,
-  memoryType: /^MemoryType \| null$/,
-  ownerOnly: /^boolean \| null$/,
-})
-requireTypescriptRequiredFields(typesFile, 'MemoryScopedUpsertRequest', [
-  'projectId',
-  'subjectScopeId',
-  'memoryType',
-  'ownerOnly',
+requireTypescriptRequiredFields(typesFile, 'MemoryCreateRequest', [
+  'scope',
+  'project_id',
+  'subject_scope_id',
+  'memory_type',
+  'owner_only',
 ])
 requireTypescriptFields(typesFile, 'ProjectCreateRequest', {
   path: /^string \| null$/,
-  sourceId: /^string \| null$/,
-  assistantId: /^string \| null$/,
+  source_id: /^string \| null$/,
+  assistant_id: /^string \| null$/,
   description: /^string \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'ProjectCreateRequest', ['path', 'sourceId', 'assistantId', 'description'])
+requireTypescriptRequiredFields(typesFile, 'ProjectCreateRequest', ['path', 'source_id', 'assistant_id', 'description'])
 requireTypescriptFields(typesFile, 'SkillCreateRequest', {
-  displayName: /^string \| null$/,
+  display_name: /^string \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'SkillCreateRequest', ['displayName'])
+requireTypescriptRequiredFields(typesFile, 'SkillCreateRequest', ['display_name'])
 requireTypescriptFields(typesFile, 'SkillUpdateRequest', {
-  dirName: /^string$/,
+  dir_name: /^string$/,
 })
 requireTypescriptFields(typesFile, 'CustomToolUpdateRequest', {
   id: /^string$/,
-  parametersSchema: /^Record<string, unknown>$/,
+  parameters_schema: /^Record<string, unknown>$/,
 })
 requireTypescriptFields(typesFile, 'CustomToolCreateRequest', {
-  categoryId: /^string \| null$/,
-  parametersSchema: /^Record<string, unknown> \| null$/,
-  argsTemplate: /^string \| null$/,
-  workingDirectory: /^string \| null$/,
-  timeoutMs: /^number \| null$/,
+  category_id: /^string \| null$/,
+  parameters_schema: /^Record<string, unknown> \| null$/,
+  args_template: /^string \| null$/,
+  working_directory: /^string \| null$/,
+  timeout_ms: /^number \| null$/,
   permission: /^ToolPermission \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'CustomToolCreateRequest', [
-  'categoryId',
-  'parametersSchema',
-  'argsTemplate',
-  'workingDirectory',
-  'timeoutMs',
+  'category_id',
+  'parameters_schema',
+  'args_template',
+  'working_directory',
+  'timeout_ms',
   'permission',
 ])
 requireTypescriptFields(typesFile, 'ToolPresetInfoResponse', {
@@ -2508,7 +2494,7 @@ requireTypescriptFields(typesFile, 'ToolPresetInfoResponse', {
 })
 requireTypescriptFields(typesFile, 'ToolPresetUpdateRequest', {
   id: /^string$/,
-  toolNames: /^string\[\]$/,
+  tool_names: /^string\[\]$/,
 })
 requireTypescriptFields(typesFile, 'ToolPresetCreateRequest', {
   description: /^string \| null$/,
@@ -2537,44 +2523,44 @@ requireTypescriptFields(typesFile, 'ProviderCapabilityOverrides', {
 })
 requireTypescriptFields(typesFile, 'ProviderCreateRequest', {
   name: /^string$/,
-  providerType: /^ProviderType$/,
-  baseUrl: /^string$/,
-  apiFormat: /^ProviderApiFormat \| null$/,
-  catalogId: /^string \| null$/,
-  authOption: /^string \| null$/,
+  provider_type: /^ProviderType$/,
+  base_url: /^string$/,
+  api_format: /^ProviderApiFormat \| null$/,
+  catalog_id: /^string \| null$/,
+  auth_option: /^string \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'ProviderCreateRequest', ['apiFormat', 'catalogId', 'authOption'])
+requireTypescriptRequiredFields(typesFile, 'ProviderCreateRequest', ['api_format', 'catalog_id', 'auth_option'])
 requireTypescriptFields(typesFile, 'ProviderUpdateRequest', {
   id: /^string$/,
   name: /^string$/,
-  providerType: /^ProviderType$/,
-  baseUrl: /^string$/,
-  isEnabled: /^boolean$/,
-  apiFormat: /^ProviderApiFormat$/,
-  credentialKind: /^ProviderCredentialKind$/,
-  transportProfile: /^ProviderTransportProfile$/,
+  provider_type: /^ProviderType$/,
+  base_url: /^string$/,
+  is_enabled: /^boolean$/,
+  api_format: /^ProviderApiFormat$/,
+  credential_kind: /^ProviderCredentialKind$/,
+  transport_profile: /^ProviderTransportProfile$/,
 })
 requireTypescriptOptionalFields(typesFile, 'ProviderUpdateRequest', [
   'name',
-  'providerType',
-  'baseUrl',
-  'isEnabled',
-  'apiFormat',
-  'credentialKind',
-  'transportProfile',
+  'provider_type',
+  'base_url',
+  'is_enabled',
+  'api_format',
+  'credential_kind',
+  'transport_profile',
 ])
 requireTypescriptFields(typesFile, 'ProviderKeyUpdateRequest', {
-  providerId: /^string$/,
-  apiKey: /^string$/,
+  provider_id: /^string$/,
+  api_key: /^string$/,
 })
 requireTypescriptFields(typesFile, 'ProviderModelListRequest', {
-  providerId: /^string$/,
-  forceRefresh: /^boolean \| null$/,
+  provider_id: /^string$/,
+  fetch_policy: /^ProviderModelFetchPolicy$/,
 })
-requireTypescriptRequiredFields(typesFile, 'ProviderModelListRequest', ['forceRefresh'])
+requireTypescriptRequiredFields(typesFile, 'ProviderModelListRequest', ['provider_id', 'fetch_policy'])
 requireTypescriptFields(typesFile, 'ProviderCapabilitiesReadRequest', {
-  providerId: /^string$/,
-  modelId: /^string$/,
+  provider_id: /^string$/,
+  model_id: /^string$/,
 })
 requireTypescriptFields(typesFile, 'ModelConfigUpsertRequest', {
   provider_id: /^string$/,
@@ -2593,8 +2579,8 @@ requireTypescriptFields(typesFile, 'ModelProfileUpsertRequest', {
 })
 requireTypescriptRequiredFields(typesFile, 'ModelProfileUpsertRequest', ['id', 'max_output_tokens'])
 requireTypescriptFields(typesFile, 'ModelConfigReadRequest', {
-  providerId: /^string$/,
-  modelId: /^string$/,
+  provider_id: /^string$/,
+  model_id: /^string$/,
 })
 requireTypescriptFields(typesFile, 'PriceTier', {
   input_price: /^DecimalString$/,
@@ -2647,18 +2633,18 @@ for (const match of apiSource?.matchAll(/invoke<(\w+InfoResponse)\[\]>/g) ?? [])
   add(apiFile, `IPC 实体列表不得直接使用 ${match[1]}[]，请使用 *ListResponse`)
 }
 for (const [method, command] of [
-  ['pickSafDirectory', 'pick_saf_directory'],
+  ['selectSafDirectory', 'select_saf_directory'],
   ['listSafRoots', 'list_saf_roots'],
-  ['removeSafRoot', 'remove_saf_root'],
+  ['deleteSafRoot', 'delete_saf_root'],
 ]) {
   const responsePattern = new RegExp(`${method}:[\\s\\S]{0,160}?invoke<SafRootListResponse>\\('${command}'`)
   if (!responsePattern.test(apiSource ?? '')) add(apiFile, `${method} 必须使用 SafRootListResponse`)
 }
 for (const [method, command, response] of [
-  ['usageReport', 'usage_report', 'UsageBucketListResponse'],
-  ['voiceModelStatus', 'voice_model_status', 'VoiceModelStatusInfoResponse'],
-  ['voiceImportModel', 'voice_import_model', 'VoiceModelStatusInfoResponse'],
-  ['exportConversation', 'export_conversation', 'ConversationExportResponse'],
+  ['getReport', 'get_usage_report', 'UsageBucketListResponse'],
+  ['getModelStatus', 'get_voice_model_status', 'VoiceModelStatusInfoResponse'],
+  ['importModel', 'import_voice_model', 'VoiceModelStatusInfoResponse'],
+  ['export', 'export_conversation', 'ConversationExportResponse'],
 ]) {
   const responsePattern = new RegExp(`${method}:[\\s\\S]{0,220}?invoke<${response}>\\('${command}'`)
   if (!responsePattern.test(apiSource ?? '')) add(apiFile, `${method} 必须使用 ${response}`)
@@ -2695,17 +2681,14 @@ if ((transportSource?.match(/assertInvokeResponse<T>\(cmd, args, value\)/g)?.len
 if (/body\.ok\s+as\s+T\b/.test(transportSource ?? '') || /return\s+body\.ok\b/.test(transportSource ?? '')) {
   add(transportFile, 'invoke response 禁止 generic cast / unknown passthrough')
 }
-// Backend IPC v4 landed ahead of the frontend UI refactor (`refactor/yuerchu-ui`).
-// Once frontend aligns to the 250-command snake_case contract, bump CLIENT_API_REV to 4
-// and tighten the TypeScript checks above to match.
 if (
   !/pub\(crate\) const API_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '') ||
   !/pub\(crate\) const MIN_CLIENT_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '')
 ) {
   add(remoteHttpFile, 'Rust API_REV 与 MIN_CLIENT_REV 必须共同锁定为 4')
 }
-if (!/export const CLIENT_API_REV\s*=\s*(?:3|4)\b/.test(transportSource ?? '')) {
-  add(transportFile, 'TypeScript CLIENT_API_REV 必须声明为受支持的协议版本')
+if (!/export const CLIENT_API_REV\s*=\s*4\b/.test(transportSource ?? '')) {
+  add(transportFile, 'TypeScript CLIENT_API_REV 必须与 Rust API_REV 共同锁定为 4')
 }
 
 // IPC standardization gate (`.claude/rules/ipc.md`):

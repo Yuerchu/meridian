@@ -29,7 +29,7 @@ function announceDone() {
   // Failure is deliberately silent. A splash that cannot reach the backend is
   // already being cleaned up by the timeout on the other side, and an error
   // dialog over a launch screen helps nobody.
-  void invoke('splash_animation_done').catch(() => {})
+  void invoke('complete_splash_animation').catch(() => {})
 }
 
 if (prefersReducedMotion()) {

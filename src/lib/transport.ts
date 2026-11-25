@@ -43,12 +43,12 @@ const LOCAL_COMMANDS = new Set([
   // What this device was launched to show.
   'take_launch_request',
   'get_manage_storage_status',
-  'request_manage_storage',
-  'pick_saf_directory',
+  'open_manage_storage_settings',
+  'select_saf_directory',
   'list_saf_roots',
-  'remove_saf_root',
-  'take_photo',
-  'pick_gallery_image',
+  'delete_saf_root',
+  'select_camera_photo',
+  'select_gallery_image',
   'resolve_file_name',
   // This device's own keychain. The remote token itself is in there, so
   // sending these away would be circular as well as wrong.
@@ -154,7 +154,7 @@ export function writeRemoteConfig(config: RemoteConfig | null): void {
  * ignore. Kept here rather than in the settings panel because it is a fact
  * about this file's protocol.
  */
-export const CLIENT_API_REV = 3
+export const CLIENT_API_REV = 4
 
 /**
  * What `/healthz` said, reduced to the decision the user is waiting on.

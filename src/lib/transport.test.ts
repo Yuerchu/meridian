@@ -43,7 +43,7 @@ class FakeSocket {
   }
 
   /** What the server sends the moment it has accepted the token. */
-  ready(assetTicket = 'ticket-1', apiRev = 3) {
+  ready(assetTicket = 'ticket-1', apiRev = 4) {
     this.onmessage?.({ data: JSON.stringify({ channel: 'remote-ready', payload: { assetTicket, apiRev } }) })
   }
 }
@@ -118,14 +118,14 @@ describe('remote invoke', () => {
     const { invoke } = await loadRemote()
     respondWith({ ok: 'new-token' })
 
-    await expect(invoke('regenerate_hooks_token')).resolves.toBe('new-token')
+    await expect(invoke('reset_hooks_token')).resolves.toBe('new-token')
   })
 
   it('unwraps an ok that is null rather than treating it as absent', async () => {
     const { invoke } = await loadRemote()
     respondWith({ ok: null })
 
-    await expect(invoke('rate_message', { id: '1', rating: null })).resolves.toBeNull()
+    await expect(invoke('update_message_rating', { request: { id: '1', rating: null } })).resolves.toBeNull()
   })
 
   // Every existing call site catches with `String(err)`, which Tauri's own
@@ -135,7 +135,7 @@ describe('remote invoke', () => {
     const { invoke } = await loadRemote()
     respondWith({ err: 'model is not configured' })
 
-    await expect(invoke('chat', {})).rejects.toBe('model is not configured')
+    await expect(invoke('start_chat', {})).rejects.toBe('model is not configured')
   })
 
   it('rejects a body it cannot read', async () => {
@@ -147,14 +147,14 @@ describe('remote invoke', () => {
       },
     } as unknown as Response)
 
-    await expect(invoke('chat', {})).rejects.toThrow('unreadable response (502)')
+    await expect(invoke('start_chat', {})).rejects.toThrow('unreadable response (502)')
   })
 
   it('rejects missing, mixed, and unknown response fields', async () => {
     const { invoke } = await loadRemote()
     for (const body of [{}, { ok: 1, err: 'no' }, { ok: 1, future: true }, { err: 7 }]) {
       respondWith(body)
-      await expect(invoke('chat', {})).rejects.toThrow(/malformed response|err must be a string/)
+      await expect(invoke('start_chat', {})).rejects.toThrow(/malformed response|err must be a string/)
     }
   })
 
@@ -169,7 +169,7 @@ describe('remote invoke', () => {
     const { invoke } = await loadRemote()
     vi.mocked(globalThis.fetch).mockRejectedValueOnce(new TypeError('Failed to fetch'))
 
-    await expect(invoke('chat', {})).rejects.toThrow('Meridian is not reachable')
+    await expect(invoke('start_chat', {})).rejects.toThrow('Meridian is not reachable')
   })
 })
 
@@ -179,9 +179,9 @@ describe('commands that belong to this device', () => {
     ['set_secret', null],
     ['delete_secret', true],
     ['get_platform', 'windows'],
-    ['get_window_insets', { top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0 }],
-    ['list_system_fonts', { families: ['Segoe UI'] }],
-    ['take_photo', 'file:///photo.jpg'],
+    ['get_window_insets', { top: 0, right: 0, bottom: 0, left: 0, ime_bottom: 0 }],
+    ['list_system_fonts', ['Segoe UI']],
+    ['select_camera_photo', 'file:///photo.jpg'],
   ])('%s never leaves the device', async (cmd, answer) => {
     const { invoke } = await loadRemote()
     mockInvoke.mockClear()
@@ -529,7 +529,7 @@ describe('the stored configuration', () => {
   })
 
   it('rejects a malformed local Tauri response at the same boundary', async () => {
-    mockInvoke.mockResolvedValueOnce({ top: 0, right: 0, bottom: 0, left: 0, imeBottom: 0, future: true })
+    mockInvoke.mockResolvedValueOnce({ top: 0, right: 0, bottom: 0, left: 0, ime_bottom: 0, future: true })
     const { invoke } = await import('./transport')
 
     await expect(invoke('get_window_insets')).rejects.toThrow('unknown field "future"')
