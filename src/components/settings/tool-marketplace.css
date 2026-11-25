@@ -75,6 +75,11 @@
     font-variant-ligatures: none;
   }
 
+  .m-tools__mono-input textarea {
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
   .m-tools__desc,
   .m-tools__hint {
     max-width: 12rem;

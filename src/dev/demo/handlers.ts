@@ -1,7 +1,11 @@
 import { demoLocalModel } from './local-model'
 import { decimal } from '@/lib/decimal'
+import { parseCustomToolExecution } from '@/lib/custom-tool-execution'
 import type {
   AssistantCreateRequest,
+  CustomToolCreateRequest,
+  CustomToolInfoResponse,
+  CustomToolUpdateRequest,
   BoardAgentKind,
   BoardStage,
   BoardTaskInfoResponse,
@@ -1055,6 +1059,54 @@ const assistants: Record<string, DemoHandler> = {
   },
   list_tool_categories: (_args, { state }) => buildToolCategories(state.now),
   list_custom_tools: (_args, { state }) => state.customTools,
+  create_custom_tool: (args, { state }) => {
+    const r = request<CustomToolCreateRequest>(args)
+    const execution = r.execution === null ? null : parseCustomToolExecution(r.execution)
+    if (execution && r.timeoutMs !== null && (!Number.isInteger(r.timeoutMs) || r.timeoutMs <= 0)) {
+      throw new Error('Custom tool timeout must be positive')
+    }
+    const now = Date.now()
+    const row: CustomToolInfoResponse = {
+      id: mintId(state, 'custom-tool'),
+      name: r.name,
+      description: r.description,
+      command: r.command,
+      args_template: r.argsTemplate,
+      execution,
+      category_id: r.categoryId,
+      parameters_schema: r.parametersSchema ?? { type: 'object', properties: {} },
+      working_directory: r.workingDirectory,
+      timeout_ms: r.timeoutMs,
+      permission: r.permission ?? 'ask',
+      is_enabled: execution !== null,
+      sort_order: 0,
+      created_at: now,
+      updated_at: now,
+    }
+    state.customTools.push(row)
+    return row
+  },
+  update_custom_tool: (args, { state }) => {
+    const r = request<CustomToolUpdateRequest>(args)
+    const index = state.customTools.findIndex((row) => row.id === r.id)
+    if (index < 0) throw new Error('Custom tool not found')
+    const row = { ...state.customTools[index] }
+    const execution =
+      r.execution === undefined ? row.execution : r.execution === null ? null : parseCustomToolExecution(r.execution)
+    const enabled = r.isEnabled ?? row.is_enabled
+    const timeout = r.timeoutMs === undefined ? row.timeout_ms : r.timeoutMs
+    if (enabled && execution === null)
+      throw new Error('Legacy custom tools cannot be enabled without a safe execution definition')
+    if (execution && timeout !== null && (!Number.isInteger(timeout) || timeout <= 0))
+      throw new Error('Custom tool timeout must be positive')
+    for (const [key, value] of Object.entries(r)) {
+      if (key !== 'id' && value !== undefined) patch(row, { [camelToSnake(key)]: value })
+    }
+    row.execution = execution
+    row.updated_at = Date.now()
+    state.customTools[index] = row
+    return row
+  },
   delete_custom_tool: (args, { state }) => {
     const id = field<string>(args, 'id')
     state.customTools = state.customTools.filter((t) => t.id !== id)

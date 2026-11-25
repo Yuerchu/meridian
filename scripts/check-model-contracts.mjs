@@ -2374,7 +2374,7 @@ if (/^\s*\w+\?\s*:/m.test(chatStreamTypes ?? '')) {
   add(typesFile, 'ChatStreamEvent 禁止 optional key；可空字段必须 required-null')
 }
 if (
-  !/type:\s*'tool_approval_req'[\s\S]{0,700}?delegation:\s*\{[^}]+\}\s*\|\s*null[\s\S]{0,120}?retry:\s*ApprovalRetry\s*\|\s*null[\s\S]{0,200}?asked_at:\s*number\n/.test(
+  !/type:\s*'tool_approval_req'[\s\S]{0,700}?delegation:\s*\{[^}]+\}\s*\|\s*null[\s\S]{0,120}?retry:\s*ApprovalRetry\s*\|\s*null[\s\S]{0,200}?asked_at:\s*number\r?\n/.test(
     chatStreamTypes ?? '',
   ) ||
   !/type:\s*'stop'[\s\S]{0,350}?message_id:\s*string\s*\|\s*null[\s\S]{0,250}?input_tokens:\s*number\s*\|\s*null[\s\S]{0,120}?output_tokens:\s*number\s*\|\s*null/.test(

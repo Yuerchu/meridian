@@ -147,6 +147,7 @@ fn sanitize_remote_output(cmd: &str, mut value: serde_json::Value) -> serde_json
             if let Some(obj) = value.as_object_mut() {
                 obj.insert("access_token".into(), serde_json::Value::Null);
                 obj.insert("admin_users".into(), serde_json::Value::Array(Vec::new()));
+                obj.insert("private_media_origins".into(), serde_json::Value::Array(Vec::new()));
             }
         }
         "list_mcp_servers" => {
@@ -325,6 +326,7 @@ mod tests {
             "hooks.enabled",
             "onebot.access_token",
             "onebot.admin_users",
+            "onebot.private_media_origins",
             // Not self-lockout: whoever writes these picks the model that
             // answers approvals, and what it is told to allow.
             "autoreview.model",
@@ -454,11 +456,13 @@ mod tests {
             serde_json::json!({
                 "enabled": true,
                 "access_token": "sekrit",
-                "admin_users": [123]
+                "admin_users": [123],
+                "private_media_origins": [{"origin": "http://adapter.lan:8080", "ip": "192.168.1.2"}]
             }),
         );
         assert_eq!(onebot["access_token"], serde_json::Value::Null);
         assert_eq!(onebot["admin_users"], serde_json::json!([]));
+        assert_eq!(onebot["private_media_origins"], serde_json::json!([]));
 
         let mcp = sanitize_remote_output(
             "list_mcp_servers",

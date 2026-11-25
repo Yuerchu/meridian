@@ -1047,6 +1047,7 @@ pub struct CustomToolInfoResponse {
     pub parameters_schema: serde_json::Map<String, serde_json::Value>,
     pub command: String,
     pub args_template: Option<String>,
+    pub execution: Option<meridian_core::tools::custom::CustomToolExecution>,
     pub working_directory: Option<String>,
     pub timeout_ms: Option<i32>,
     pub permission: meridian_core::tools::Permission,
@@ -1066,6 +1067,7 @@ impl From<custom_tool::Model> for CustomToolInfoResponse {
             parameters_schema: row.parameters_schema.into_inner(),
             command: row.command,
             args_template: row.args_template,
+            execution: row.execution.map(Json::into_inner),
             working_directory: row.working_directory,
             timeout_ms: row.timeout_ms,
             permission: row.permission,
@@ -1197,8 +1199,11 @@ mod tests {
             category_id: None,
             parameters_schema: Json(schema.as_object().unwrap().clone()),
             command: "tool".into(),
-            execution: None,
             args_template: None,
+            execution: Some(Json(meridian_core::tools::custom::CustomToolExecution::Executable {
+                program: "tool".into(),
+                args: vec![],
+            })),
             working_directory: None,
             timeout_ms: None,
             permission: meridian_core::tools::Permission::Ask,
@@ -1212,6 +1217,12 @@ mod tests {
         assert_eq!(value["parameters_schema"]["type"], "object");
         assert_eq!(value["permission"], "ask");
         assert_eq!(value["is_enabled"], true);
+        assert_eq!(
+            value["execution"],
+            serde_json::json!({
+                "kind": "executable", "program": "tool", "args": []
+            })
+        );
     }
 
     fn model_config_row() -> model_config::Model {

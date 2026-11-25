@@ -5,6 +5,7 @@ import { Bin, ChevronRight, Plus, Terminal, Wrench } from '@keyline-icons/react/
 import { Button as AriaButton, Disclosure, DisclosureGroup, DisclosurePanel, Heading } from 'react-aria-components'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
 import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
 import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
@@ -14,14 +15,21 @@ import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import type { CustomToolInfoResponse, McpToolInfoResponse, ToolPermission, ToolPresetInfoResponse } from '@/types'
+import type {
+  CustomToolExecution,
+  CustomToolInfoResponse,
+  McpToolInfoResponse,
+  ToolPermission,
+  ToolPresetInfoResponse,
+} from '@/types'
+import { parseCustomToolExecution } from '@/lib/custom-tool-execution'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsDrilldown } from './settings-drilldown'
 import { useSettingsDirtyRegistration } from './dirty-guard'
 import { titleIfTruncated } from '@/lib/truncation'
 
-function CustomToolEditor({
+export function CustomToolEditor({
   tool,
   onSave,
   onDelete,
@@ -35,8 +43,13 @@ function CustomToolEditor({
   const [description, setDescription] = useState(tool?.description ?? '')
   const [command, setCommand] = useState(tool?.command ?? '')
   const [argsTemplate, setArgsTemplate] = useState(tool?.args_template ?? '')
+  const [executionText, setExecutionText] = useState(tool?.execution ? JSON.stringify(tool.execution, null, 2) : '')
+  const [schemaText, setSchemaText] = useState(
+    JSON.stringify(tool?.parameters_schema ?? { type: 'object', properties: {} }, null, 2),
+  )
+  const [workingDirectory, setWorkingDirectory] = useState(tool?.working_directory ?? '')
   const [permission, setPermission] = useState<ToolPermission>(tool?.permission ?? 'ask')
-  const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
+  const [timeoutMs, setTimeoutMs] = useState(tool ? (tool.timeout_ms?.toString() ?? '') : '30000')
   const [saved, markSaved] = useTemporaryFlag()
   const [savedDraft, setSavedDraft] = useState(() =>
     JSON.stringify({
@@ -44,24 +57,36 @@ function CustomToolEditor({
       description: tool?.description ?? '',
       command: tool?.command ?? '',
       argsTemplate: tool?.args_template ?? '',
+      executionText: tool?.execution ? JSON.stringify(tool.execution, null, 2) : '',
+      schemaText: JSON.stringify(tool?.parameters_schema ?? { type: 'object', properties: {} }, null, 2),
+      workingDirectory: tool?.working_directory ?? '',
       permission: tool?.permission ?? 'ask',
-      timeoutMs: tool?.timeout_ms?.toString() ?? '30000',
+      timeoutMs: tool ? (tool.timeout_ms?.toString() ?? '') : '30000',
     }),
   )
   const [invalid, setInvalid] = useState<Set<'name' | 'description' | 'command' | 'timeout'>>(new Set())
   const [saveError, setSaveError] = useState<string | null>(null)
   const nameRef = useRef<HTMLInputElement>(null)
   const descriptionRef = useRef<HTMLInputElement>(null)
-  const commandRef = useRef<HTMLInputElement>(null)
+  const commandRef = useRef<HTMLTextAreaElement>(null)
   const timeoutRef = useRef<HTMLInputElement>(null)
-  const draft = JSON.stringify({ name, description, command, argsTemplate, permission, timeoutMs })
+  const draft = JSON.stringify({
+    name,
+    description,
+    command,
+    argsTemplate,
+    executionText,
+    schemaText,
+    workingDirectory,
+    permission,
+    timeoutMs,
+  })
   useSettingsDirtyRegistration('tools', tool ? `custom-tool-${tool.id}` : 'custom-tool-new', draft !== savedDraft)
 
   async function handleSave() {
     const nextInvalid = new Set<'name' | 'description' | 'command' | 'timeout'>()
     if (!name.trim()) nextInvalid.add('name')
     if (!description.trim()) nextInvalid.add('description')
-    if (!command.trim()) nextInvalid.add('command')
     if (timeoutMs.trim() && (!Number.isInteger(Number(timeoutMs)) || Number(timeoutMs) <= 0)) {
       nextInvalid.add('timeout')
     }
@@ -76,27 +101,45 @@ function CustomToolEditor({
 
     setSaveError(null)
     try {
+      const execution: CustomToolExecution | null = executionText.trim()
+        ? parseCustomToolExecution(JSON.parse(executionText))
+        : null
+      if (!tool && !execution) throw new Error(t('settings.tools.executionRequired'))
+      const rawSchema: unknown = JSON.parse(schemaText)
+      if (typeof rawSchema !== 'object' || rawSchema === null || Array.isArray(rawSchema)) {
+        throw new Error(t('settings.tools.invalidSchema'))
+      }
+      const parametersSchema = Object.fromEntries(Object.entries(rawSchema))
+      const timeout = timeoutMs.trim() ? Number(timeoutMs) : null
+      if (timeout !== null && (!Number.isInteger(timeout) || timeout <= 0 || timeout > 2147483647)) {
+        throw new Error(t('settings.tools.invalidTimeout'))
+      }
       if (tool) {
         await api.updateCustomTool({
           id: tool.id,
           name: name.trim(),
           description: description.trim(),
-          command: command.trim(),
-          argsTemplate: argsTemplate.trim() || null,
+          command,
+          argsTemplate: argsTemplate === '' && tool.args_template === null ? null : argsTemplate,
+          execution,
+          isEnabled: execution === null ? false : tool.execution === null ? true : tool.is_enabled,
+          parametersSchema,
+          workingDirectory: workingDirectory || null,
           permission,
-          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
+          timeoutMs: timeout,
         })
       } else {
         await api.createCustomTool({
           name: name.trim(),
           description: description.trim(),
-          command: command.trim(),
+          command,
           categoryId: null,
-          parametersSchema: null,
-          argsTemplate: argsTemplate.trim() || null,
-          workingDirectory: null,
+          parametersSchema,
+          argsTemplate: null,
+          execution,
+          workingDirectory: workingDirectory || null,
           permission,
-          timeoutMs: timeoutMs ? Number(timeoutMs) : null,
+          timeoutMs: timeout,
         })
       }
       setSavedDraft(draft)
@@ -124,6 +167,7 @@ function CustomToolEditor({
         void handleSave()
       }}
     >
+      {tool?.execution === null && <Alert tone="warning">{t('settings.tools.legacyWarning')}</Alert>}
       <SettingsGroup>
         <SettingsRow label={t('settings.tools.name')} layout="stacked">
           <TextField
@@ -154,28 +198,62 @@ function CustomToolEditor({
             onChange={setDescription}
           />
         </SettingsRow>
-        <SettingsRow label={t('settings.tools.command')} layout="stacked">
-          <TextField
-            isInvalid={invalid.has('command')}
-            ref={commandRef}
-            name="customToolCommand"
-            value={command}
-            onChange={setCommand}
-            placeholder="python script.py"
-          />
-        </SettingsRow>
         <SettingsRow
-          label={t('settings.tools.argsTemplate')}
-          description={t('settings.tools.argsTemplateHint')}
+          label={t('settings.tools.execution')}
+          description={t('settings.tools.executionHint')}
           layout="stacked"
         >
-          <TextField
-            name="customToolArgs"
-            value={argsTemplate}
-            onChange={setArgsTemplate}
-            placeholder="--input {{input}} --output {{output}}"
+          <TextArea
+            name="customToolExecution"
+            value={executionText}
+            onChange={setExecutionText}
+            rows={8}
+            placeholder={
+              '{"kind":"executable","program":"python","args":[{"kind":"literal","value":"script.py"},{"kind":"parameter","name":"input"}]}'
+            }
+            className="m-tools__mono-input"
           />
         </SettingsRow>
+        <SettingsRow label={t('settings.tools.parametersSchema')} layout="stacked">
+          <TextArea
+            name="customToolSchema"
+            rows={4}
+            value={schemaText}
+            onChange={setSchemaText}
+            className="m-tools__mono-input"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.tools.workingDirectory')} layout="stacked">
+          <TextField name="customToolWorkingDirectory" value={workingDirectory} onChange={setWorkingDirectory} />
+        </SettingsRow>
+        {tool && (
+          <SettingsRow label={t('settings.tools.command')} layout="stacked">
+            <TextArea
+              isInvalid={invalid.has('command')}
+              ref={commandRef}
+              name="customToolCommand"
+              rows={3}
+              value={command}
+              onChange={setCommand}
+              className="m-tools__mono-input"
+            />
+          </SettingsRow>
+        )}
+        {tool && (
+          <SettingsRow
+            label={t('settings.tools.argsTemplate')}
+            description={t('settings.tools.argsTemplateHint')}
+            layout="stacked"
+          >
+            <TextArea
+              name="customToolArgs"
+              rows={3}
+              value={argsTemplate}
+              onChange={setArgsTemplate}
+              className="m-tools__mono-input"
+            />
+          </SettingsRow>
+        )}
         <SettingsRow label={t('settings.tools.timeout')}>
           <div className="m-tools__compact-field">
             <NumberField
@@ -374,7 +452,11 @@ export function ToolMarketplace() {
                         {ct.name}
                       </span>
                       <span data-slot="custom-tool-command" onPointerEnter={titleIfTruncated} className="m-tools__desc">
-                        {ct.command}
+                        {ct.execution?.kind === 'executable'
+                          ? ct.execution.program
+                          : ct.execution?.kind === 'script'
+                            ? t('settings.tools.fixedScript')
+                            : ct.command}
                       </span>
                       {!ct.is_enabled && <Badge>{t('settings.tools.disabled')}</Badge>}
                       <ChevronRight size={14} aria-hidden className="m-tools__chevron" />
