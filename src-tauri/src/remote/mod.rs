@@ -64,7 +64,7 @@ impl Default for ListenConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct ListenStatusResponse {
+pub struct RemoteStatusResponse {
     pub enabled: bool,
     pub running: bool,
     pub host: String,
@@ -99,7 +99,7 @@ fn parse_stored_port(key: &str, raw: Option<String>, default: u16) -> Result<u16
 }
 
 async fn read_preference(db: &Db, key: &str) -> Result<Option<String>, String> {
-    meridian_core::db::sea::ops::preference::get_preference(db, key)
+    meridian_core::db::sea::ops::preference::get(db, key)
         .await
         .map_err(|error| format!("failed to read preference {key}: {error}"))
 }
@@ -118,14 +118,14 @@ pub async fn load_config(db: &Db) -> Result<ListenConfig, String> {
 /// The four keys land in one transaction: a config half-written when the
 /// process dies is one the next start refuses, not one it half-applies.
 pub async fn save_config(db: &Db, config: &ListenConfig) -> Result<(), String> {
-    use meridian_core::db::sea::ops::preference::set_preference;
+    use meridian_core::db::sea::ops::preference;
 
     let now = meridian_core::util::now_ms();
     db.write(async |tx| {
-        set_preference(tx, "remote.enabled", if config.enabled { "true" } else { "false" }, now).await?;
-        set_preference(tx, "remote.host", &config.host, now).await?;
-        set_preference(tx, "remote.port", &config.port.to_string(), now).await?;
-        set_preference(tx, "remote.token", config.token.as_deref().unwrap_or(""), now).await
+        preference::set(tx, "remote.enabled", if config.enabled { "true" } else { "false" }, now).await?;
+        preference::set(tx, "remote.host", &config.host, now).await?;
+        preference::set(tx, "remote.port", &config.port.to_string(), now).await?;
+        preference::set(tx, "remote.token", config.token.as_deref().unwrap_or(""), now).await
     })
     .await
     .map_err(|error| error.to_string())
@@ -194,8 +194,8 @@ impl RemoteServer {
         self.running.load(Ordering::Relaxed)
     }
 
-    pub fn status(&self) -> ListenStatusResponse {
-        ListenStatusResponse {
+    pub fn status(&self) -> RemoteStatusResponse {
+        RemoteStatusResponse {
             enabled: self.state.config.enabled,
             running: self.is_running(),
             host: self.state.config.host.clone(),

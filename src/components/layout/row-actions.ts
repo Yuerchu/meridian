@@ -50,7 +50,7 @@ async function exportConversation(
   }).catch(() => null)
   if (!path) return
   try {
-    await api.exportConversation({ conversationId: conv.id, format, outputPath: path })
+    await api.conversations.export({ conversation_id: conv.id, format, output_path: path })
   } catch (error) {
     onError(error)
   }

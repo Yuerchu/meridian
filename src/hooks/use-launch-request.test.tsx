@@ -18,7 +18,7 @@ vi.mock('@/lib/transport', () => ({
   }),
 }))
 
-vi.mock('@/api', () => ({ api: { takeLaunchRequest: mocks.take } }))
+vi.mock('@/api', () => ({ api: { platform: { takeLaunchRequest: mocks.take } } }))
 
 import { useLaunchRequest } from './use-launch-request'
 

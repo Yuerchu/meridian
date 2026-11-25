@@ -82,20 +82,20 @@ pub enum SystemNoticeEvent {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SystemNoticeDismissRequest {
+pub struct SystemNoticeDeleteRequest {
     pub id: String,
 }
 
 /// Every notice this process is holding, oldest first. What the inbox
 /// rebuilds from after a reload; the event is never replayed.
 #[tauri::command]
-pub fn list_system_notices(app: tauri::AppHandle) -> SystemNoticeListResponse {
-    app.state::<SystemNotices>().list()
+pub fn list_system_notices(app: tauri::AppHandle) -> Result<SystemNoticeListResponse, String> {
+    Ok(app.state::<SystemNotices>().list())
 }
 
 /// Takes a finished notice out of the inbox. One still running cannot be:
 /// it would come straight back with its next change.
 #[tauri::command]
-pub fn dismiss_system_notice(app: tauri::AppHandle, request: SystemNoticeDismissRequest) -> Result<(), String> {
+pub fn delete_system_notice(app: tauri::AppHandle, request: SystemNoticeDeleteRequest) -> Result<(), String> {
     app.state::<SystemNotices>().dismiss(&request.id)
 }

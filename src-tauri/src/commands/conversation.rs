@@ -16,7 +16,7 @@ use meridian_core::db::sea::cap::{Db, WriteTx};
 use meridian_core::db::sea::ops::conversation as conversation_ops;
 use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
-use meridian_core::util::now_ms;
+use meridian_core::util::{double_option, now_ms};
 
 /// Summarise the conversation's history down to a summary row.
 ///
@@ -25,14 +25,17 @@ use meridian_core::util::now_ms;
 /// anchor the survivor to ids that are no longer on the path. The OneBot side
 /// has refused this since it was written; the desktop side never did.
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationCompactionRequest {
     pub conversation_id: String,
     pub custom_instructions: RequiredNullable<String>,
 }
 
 #[tauri::command]
-pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionRequest) -> Result<(), String> {
+pub async fn invoke_conversation_compaction(
+    app: tauri::AppHandle,
+    request: ConversationCompactionRequest,
+) -> Result<(), String> {
     let conversation_id = request.conversation_id;
     let custom_instructions = request.custom_instructions.0;
     let services = app.services();
@@ -46,12 +49,12 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
     let (assistant, keep_recent) = services
         .db
         .read(async |tx| {
-            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = conversation_ops::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             // An assistant that cannot be read is no assistant, as before.
             let assistant = match conv.assistant_id.as_deref() {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
             let keep_recent = assistant
@@ -115,16 +118,28 @@ pub async fn compact(app: tauri::AppHandle, request: ConversationCompactionReque
 // the same question, and the caller had to ask all three and hope nothing moved
 // in between. `conversation_snapshot` answers it once.
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationListRequest {
+    pub archived: bool,
+    pub project_id: RequiredNullable<String>,
+}
+
 #[tauri::command]
-pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<ConversationListResponse, String> {
-    let rows = conversation_ops::list_conversations(&app.services().db, archived)
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn list_conversations(
+    app: tauri::AppHandle,
+    request: ConversationListRequest,
+) -> Result<ConversationListResponse, String> {
+    let rows = match request.project_id.0.as_deref() {
+        Some(project_id) => conversation_ops::list_by_project(&app.services().db, project_id, request.archived).await,
+        None => conversation_ops::list(&app.services().db, request.archived).await,
+    }
+    .map_err(|e| e.to_string())?;
     rows.into_iter().map(TryInto::try_into).collect()
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationCreateRequest {
     title: RequiredNullable<String>,
     project_id: RequiredNullable<String>,
@@ -141,8 +156,8 @@ pub async fn create_conversation(
         .services()
         .db
         .write(async |tx| {
-            let default_assistant = db::sea::ops::assistant::get_default_assistant(tx).await?;
-            conversation_ops::create_conversation(
+            let default_assistant = db::sea::ops::assistant::get_default(tx).await?;
+            conversation_ops::create(
                 tx,
                 &id,
                 request.title.0.as_deref(),
@@ -157,203 +172,113 @@ pub async fn create_conversation(
     row.try_into()
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationAssistantUpdateRequest {
+#[derive(Debug, Default, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationUpdateRequest {
     pub id: String,
-    pub assistant_id: RequiredNullable<String>,
+    pub title: Option<String>,
+    pub is_pinned: Option<bool>,
+    pub is_archived: Option<bool>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub mode: Option<Option<meridian_core::agent::modes::ChatMode>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub assistant_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub thinking_level: Option<Option<meridian_core::provider::capabilities::StoredThinkingLevel>>,
+    pub fast_mode: Option<bool>,
+    pub accept_edits: Option<bool>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub project_id: Option<Option<String>>,
 }
 
-#[tauri::command]
-pub async fn set_conversation_assistant(
-    app: tauri::AppHandle,
-    request: ConversationAssistantUpdateRequest,
-) -> Result<(), String> {
-    let services = app.services();
-    let _lease = services
-        .turns
-        .clone()
-        .try_acquire_mutation(&request.id, "an assistant change")
-        .map_err(|busy| busy.to_string())?;
-    let setting = ConversationSetting::Assistant(request.assistant_id.0);
-    set_unless_plan_barrier(&services.db, &request.id, setting).await
+impl ConversationUpdateRequest {
+    fn needs_turn_guard(&self) -> bool {
+        self.assistant_id.is_some()
+            || self.thinking_level.is_some()
+            || self.fast_mode.is_some()
+            || self.accept_edits.is_some()
+            || self.project_id.is_some()
+    }
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationReasoningPreferencesUpdateRequest {
-    pub id: String,
-    pub thinking_level: RequiredNullable<meridian_core::provider::capabilities::StoredThinkingLevel>,
-    pub fast_mode: bool,
-}
-
-#[tauri::command]
-pub async fn set_conversation_reasoning_prefs(
-    app: tauri::AppHandle,
-    request: ConversationReasoningPreferencesUpdateRequest,
-) -> Result<(), String> {
-    let thinking_level = request.thinking_level.0.map(|level| level.as_str().to_string());
-    let services = app.services();
-    let _lease = services
-        .turns
-        .clone()
-        .try_acquire_mutation(&request.id, "a reasoning preference change")
-        .map_err(|busy| busy.to_string())?;
-    let setting = ConversationSetting::ReasoningPrefs {
-        thinking_level,
-        fast_mode: request.fast_mode,
-    };
-    set_unless_plan_barrier(&services.db, &request.id, setting).await
-}
-
-/// Switch the conversation's collaboration mode. `None` is the canonical
-/// default (work) mode; a present id must name a declared mode exactly.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationModeUpdateRequest {
-    pub id: String,
-    pub mode: RequiredNullable<meridian_core::agent::modes::ChatMode>,
-}
-
-#[tauri::command]
-pub async fn set_conversation_mode(
-    app: tauri::AppHandle,
-    request: ConversationModeUpdateRequest,
-) -> Result<(), String> {
-    let mode = request
-        .mode
-        .0
-        .and_then(meridian_core::agent::modes::ChatMode::canonical_storage)
-        .map(str::to_string);
-    app.services()
-        .db
-        .write(async |tx| conversation_ops::update_mode(tx, &request.id, mode.as_deref(), now_ms()).await)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
-/// Turn the standing approval for ordinary edits on or off.
-///
-/// What this widens is bounded by `tools::reach`, not by this call: edits
-/// outside the project, anything irreversible, and paths that make code run
-/// later keep asking however this is set. Per-conversation, like the mode and
-/// the todo list, because it describes this stretch of work rather than a
-/// general preference.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationAcceptEditsUpdateRequest {
-    pub id: String,
-    pub accept_edits: bool,
-}
-
-#[tauri::command]
-pub async fn set_conversation_accept_edits(
-    app: tauri::AppHandle,
-    request: ConversationAcceptEditsUpdateRequest,
-) -> Result<(), String> {
-    let services = app.services();
-    let _lease = services
-        .turns
-        .clone()
-        .try_acquire_mutation(&request.id, "an edit-approval change")
-        .map_err(|busy| busy.to_string())?;
-    let setting = ConversationSetting::AcceptEdits(request.accept_edits);
-    set_unless_plan_barrier(&services.db, &request.id, setting).await
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationTitleUpdateRequest {
-    id: String,
-    title: String,
-}
-
-#[tauri::command]
-pub async fn update_conversation_title(
-    app: tauri::AppHandle,
-    request: ConversationTitleUpdateRequest,
-) -> Result<(), String> {
-    app.services()
-        .db
-        .write(async |tx| conversation_ops::update_title(tx, &request.id, &request.title, now_ms()).await)
-        .await
-        .map(|_| ())
-        .map_err(|e| e.to_string())
-}
-
-/// Refile a conversation under another project, or under none (`None`).
-///
-/// For a native conversation this also moves what the next turn resolves its
-/// working directory and file access against — see `update_project`.
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationProjectUpdateRequest {
-    pub id: String,
-    pub project_id: RequiredNullable<String>,
-}
-
-/// The per-conversation settings a turn reads.
-#[derive(Debug)]
-enum ConversationSetting {
-    Assistant(Option<String>),
-    ReasoningPrefs {
-        thinking_level: Option<String>,
-        fast_mode: bool,
-    },
-    AcceptEdits(bool),
-    Project(Option<String>),
-}
-
-async fn write_setting_unless_plan_barrier(
+/// Applies every requested conversation field in one write transaction.
+async fn update_conversation_fields(
     tx: &WriteTx,
-    conversation_id: &str,
-    setting: ConversationSetting,
+    patch: &ConversationUpdateRequest,
     now: i64,
-) -> Result<bool, DbErr> {
-    match setting {
-        ConversationSetting::Assistant(assistant_id) => {
-            conversation_ops::update_assistant(tx, conversation_id, assistant_id, now).await?
-        }
-        ConversationSetting::ReasoningPrefs {
-            thinking_level,
-            fast_mode,
-        } => conversation_ops::update_reasoning_prefs(tx, conversation_id, thinking_level, fast_mode, now).await?,
-        ConversationSetting::AcceptEdits(accept_edits) => {
-            conversation_ops::update_accept_edits(tx, conversation_id, accept_edits, now).await?
-        }
-        ConversationSetting::Project(project_id) => {
-            conversation_ops::update_project(tx, conversation_id, project_id, now).await?
-        }
-    };
-    Ok(true)
+) -> Result<db::entity::conversation::Model, DbErr> {
+    let id = &patch.id;
+    let current = conversation_ops::get(tx, id)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))?;
+    if let Some(ref title) = patch.title {
+        conversation_ops::update_title(tx, id, title, now).await?;
+    }
+    if let Some(ref mode) = patch.mode {
+        let canonical = mode.and_then(meridian_core::agent::modes::ChatMode::canonical_storage);
+        conversation_ops::update_mode(tx, id, canonical, now).await?;
+    }
+    if let Some(is_pinned) = patch.is_pinned {
+        conversation_ops::set_pinned(tx, id, is_pinned, now).await?;
+    }
+    if let Some(is_archived) = patch.is_archived {
+        conversation_ops::set_archived(tx, id, is_archived, now).await?;
+    }
+    if let Some(ref assistant_id) = patch.assistant_id {
+        conversation_ops::update_assistant(tx, id, assistant_id.clone(), now).await?;
+    }
+    if patch.thinking_level.is_some() || patch.fast_mode.is_some() {
+        let thinking_level = match &patch.thinking_level {
+            Some(level) => level.map(|l| l.as_str().to_string()),
+            None => current.thinking_level.clone(),
+        };
+        let fast_mode = patch.fast_mode.unwrap_or_else(|| current.fast_mode.get());
+        conversation_ops::update_reasoning_prefs(tx, id, thinking_level, fast_mode, now).await?;
+    }
+    if let Some(accept_edits) = patch.accept_edits {
+        conversation_ops::update_accept_edits(tx, id, accept_edits, now).await?;
+    }
+    if let Some(ref project_id) = patch.project_id {
+        conversation_ops::update_project(tx, id, project_id.clone(), now).await?;
+    }
+    conversation_ops::get(tx, id)
+        .await?
+        .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))
 }
 
-/// The caller holds the conversation's turn lease.
-async fn set_unless_plan_barrier(db: &Db, conversation_id: &str, setting: ConversationSetting) -> Result<(), String> {
-    db.write(async |tx| write_setting_unless_plan_barrier(tx, conversation_id, setting, now_ms()).await)
+/// The caller holds the conversation's turn lease whenever `patch.needs_turn_guard()`.
+async fn apply_conversation_update(
+    db: &Db,
+    patch: &ConversationUpdateRequest,
+) -> Result<db::entity::conversation::Model, String> {
+    db.write(async |tx| update_conversation_fields(tx, patch, now_ms()).await)
         .await
-        .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn set_conversation_project(
+pub async fn update_conversation(
     app: tauri::AppHandle,
-    request: ConversationProjectUpdateRequest,
-) -> Result<(), String> {
+    request: ConversationUpdateRequest,
+) -> Result<ConversationInfoResponse, String> {
     let services = app.services();
-    let _lease = services
-        .turns
-        .clone()
-        .try_acquire_mutation(&request.id, "a project move")
-        .map_err(|busy| busy.to_string())?;
-    let setting = ConversationSetting::Project(request.project_id.0);
-    set_unless_plan_barrier(&services.db, &request.id, setting).await
+    let _lease = if request.needs_turn_guard() {
+        Some(
+            services
+                .turns
+                .clone()
+                .try_acquire_mutation(&request.id, "a conversation update")
+                .map_err(|busy| busy.to_string())?,
+        )
+    } else {
+        None
+    };
+    let row = apply_conversation_update(&services.db, &request).await?;
+    row.try_into()
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationSearchRequest {
     query: String,
     limit: RequiredNullable<u32>,
@@ -418,29 +343,10 @@ pub async fn search_conversations(
     hits.into_iter().map(TryInto::try_into).collect()
 }
 
-#[tauri::command]
-pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<ConversationInfoResponse, String> {
-    let row = app
-        .services()
-        .db
-        .write(async |tx| conversation_ops::toggle_pin(tx, &id, now_ms()).await)
-        .await
-        .map_err(|e| e.to_string())?;
-    row.try_into()
-}
-
-#[tauri::command]
-pub async fn toggle_archive_conversation(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<ConversationInfoResponse, String> {
-    let row = app
-        .services()
-        .db
-        .write(async |tx| conversation_ops::toggle_archive(tx, &id, now_ms()).await)
-        .await
-        .map_err(|e| e.to_string())?;
-    row.try_into()
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationDeleteRequest {
+    pub id: String,
 }
 
 /// Delete a conversation and everything in it.
@@ -452,7 +358,8 @@ pub async fn toggle_archive_conversation(
 /// actually exit needs a turn that can be waited on, which is phase 1's job;
 /// until then this refuses rather than races.
 #[tauri::command]
-pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_conversation(app: tauri::AppHandle, request: ConversationDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     // A board card's conversation goes with its card, from the board: deleted
     // on its own it would leave a card pointing at nothing, and the card is
@@ -537,7 +444,7 @@ pub(crate) async fn delete_conversation_tree(
         }
     }
 
-    sea.write(async |tx| conversation_ops::delete_conversation(tx, &id).await)
+    sea.write(async |tx| conversation_ops::delete(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
@@ -586,7 +493,7 @@ fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: 
 }
 
 /// The persona and the checklist block — the parts of a request that come
-/// straight out of the Diesel tables. Split out from `assemble_system_prompt`
+/// straight out of the database. Split out from `assemble_system_prompt`
 /// so it can be exercised without an app handle. `live` is what a turn starting
 /// now would actually carry, which is what makes the checklist figure honest:
 /// with it frozen into the history, most turns inject nothing at all, and
@@ -752,24 +659,34 @@ fn context_info_messages(
     build_messages_with_context_items(system_prompt, context, trailing, &Default::default(), context_items)
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConversationContextReadRequest {
+    pub conversation_id: String,
+}
+
 #[tauri::command]
-pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfoResponse, String> {
+pub async fn get_conversation_context(
+    app: tauri::AppHandle,
+    request: ConversationContextReadRequest,
+) -> Result<ContextInfoResponse, String> {
+    let conversation_id = request.conversation_id;
     let services = app.services();
 
     let (assistant, ctx, context_items, project_path, project_id, conv_mode, agent_kind) = services
         .db
         .read(async |tx| {
-            let Some(conv) = conversation_ops::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = conversation_ops::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             // An assistant or project that cannot be read is none, as before.
             let assistant = match conv.assistant_id.as_deref() {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
-            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let history = db::sea::ops::message::list(tx, &conversation_id).await?;
             let project = match conv.project_id.as_deref() {
-                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                Some(pid) => db::sea::ops::project::get(tx, pid).await.ok().flatten(),
                 None => None,
             };
             let project_path = project.as_ref().and_then(|p| p.path.clone());
@@ -903,25 +820,6 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     })
 }
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationListByProjectRequest {
-    pub project_id: String,
-    pub archived: bool,
-}
-
-#[tauri::command]
-pub async fn list_conversations_by_project(
-    app: tauri::AppHandle,
-    request: ConversationListByProjectRequest,
-) -> Result<ConversationListResponse, String> {
-    let rows =
-        conversation_ops::list_conversations_by_project(&app.services().db, &request.project_id, request.archived)
-            .await
-            .map_err(|e| e.to_string())?;
-    rows.into_iter().map(TryInto::try_into).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -933,7 +831,7 @@ mod tests {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             for (id, path) in [("project-a", "A"), ("project-b", "B")] {
-                db::sea::ops::project::create_project(
+                db::sea::ops::project::create(
                     tx,
                     project_entity::Model {
                         id: id.into(),
@@ -949,27 +847,38 @@ mod tests {
                 )
                 .await?;
             }
-            conversation_ops::create_conversation(tx, "conversation-1", None, None, Some("project-a"), 1).await?;
+            conversation_ops::create(tx, "conversation-1", None, None, Some("project-a"), 1).await?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let settings = [
-            ConversationSetting::Assistant(None),
-            ConversationSetting::ReasoningPrefs {
-                thinking_level: Some("high".into()),
-                fast_mode: true,
+        let patches = [
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                assistant_id: Some(None),
+                ..Default::default()
             },
-            ConversationSetting::AcceptEdits(true),
-            ConversationSetting::Project(Some("project-b".into())),
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                thinking_level: Some(Some(meridian_core::provider::capabilities::StoredThinkingLevel::High)),
+                fast_mode: Some(true),
+                ..Default::default()
+            },
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                accept_edits: Some(true),
+                ..Default::default()
+            },
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                project_id: Some(Some("project-b".into())),
+                ..Default::default()
+            },
         ];
-        for setting in settings {
-            set_unless_plan_barrier(&sea, "conversation-1", setting).await.unwrap();
+        for patch in patches {
+            apply_conversation_update(&sea, &patch).await.unwrap();
         }
-        let updated = conversation_ops::get_conversation(&sea, "conversation-1")
-            .await
-            .unwrap()
-            .unwrap();
+        let updated = conversation_ops::get(&sea, "conversation-1").await.unwrap().unwrap();
         assert_eq!(
             (
                 updated.project_id.as_deref(),
@@ -984,17 +893,17 @@ mod tests {
     fn conversation_requests_reject_unknown_fields() {
         let create = serde_json::json!({
             "title": null,
-            "projectId": null,
-            "futureField": true,
+            "project_id": null,
+            "future_field": true,
         });
         assert!(serde_json::from_value::<ConversationCreateRequest>(create).is_err());
 
         let update = serde_json::json!({
             "id": "conversation-1",
             "title": "renamed",
-            "legacyTitle": "old",
+            "legacy_title": "old",
         });
-        assert!(serde_json::from_value::<ConversationTitleUpdateRequest>(update).is_err());
+        assert!(serde_json::from_value::<ConversationUpdateRequest>(update).is_err());
 
         let search = serde_json::json!({
             "query": "needle",
@@ -1023,42 +932,48 @@ mod tests {
 
     #[test]
     fn conversation_actions_require_explicit_nullable_fields() {
-        let mut create = serde_json::json!({ "title": null, "projectId": null });
+        let mut create = serde_json::json!({ "title": null, "project_id": null });
         assert!(serde_json::from_value::<ConversationCreateRequest>(create.clone()).is_ok());
-        create.as_object_mut().unwrap().remove("projectId");
+        create.as_object_mut().unwrap().remove("project_id");
         assert!(serde_json::from_value::<ConversationCreateRequest>(create).is_err());
 
+        let mut list = serde_json::json!({ "archived": false, "project_id": null });
+        assert!(serde_json::from_value::<ConversationListRequest>(list.clone()).is_ok());
+        list.as_object_mut().unwrap().remove("project_id");
+        assert!(serde_json::from_value::<ConversationListRequest>(list).is_err());
+
         let mut compaction = serde_json::json!({
-            "conversationId": "conversation-1",
-            "customInstructions": null
+            "conversation_id": "conversation-1",
+            "custom_instructions": null
         });
         assert!(serde_json::from_value::<ConversationCompactionRequest>(compaction.clone()).is_ok());
-        compaction.as_object_mut().unwrap().remove("customInstructions");
+        compaction.as_object_mut().unwrap().remove("custom_instructions");
         assert!(serde_json::from_value::<ConversationCompactionRequest>(compaction).is_err());
 
-        let mut assistant = serde_json::json!({ "id": "conversation-1", "assistantId": null });
-        assert!(serde_json::from_value::<ConversationAssistantUpdateRequest>(assistant.clone()).is_ok());
-        assistant.as_object_mut().unwrap().remove("assistantId");
-        assert!(serde_json::from_value::<ConversationAssistantUpdateRequest>(assistant).is_err());
-
-        let mut reasoning = serde_json::json!({
+        let update: ConversationUpdateRequest = serde_json::from_value(serde_json::json!({
             "id": "conversation-1",
-            "thinkingLevel": null,
-            "fastMode": false
-        });
-        assert!(serde_json::from_value::<ConversationReasoningPreferencesUpdateRequest>(reasoning.clone()).is_ok());
-        reasoning.as_object_mut().unwrap().remove("thinkingLevel");
-        assert!(serde_json::from_value::<ConversationReasoningPreferencesUpdateRequest>(reasoning).is_err());
+            "assistant_id": null,
+            "thinking_level": null,
+            "mode": null,
+            "project_id": null,
+            "fast_mode": false,
+            "accept_edits": true,
+            "is_pinned": true,
+            "is_archived": false
+        }))
+        .unwrap();
+        assert_eq!(update.assistant_id, Some(None));
+        assert_eq!(update.thinking_level, Some(None));
+        assert_eq!(update.mode, Some(None));
+        assert_eq!(update.project_id, Some(None));
+        assert!(update.needs_turn_guard());
 
-        let mut mode = serde_json::json!({ "id": "conversation-1", "mode": null });
-        assert!(serde_json::from_value::<ConversationModeUpdateRequest>(mode.clone()).is_ok());
-        mode.as_object_mut().unwrap().remove("mode");
-        assert!(serde_json::from_value::<ConversationModeUpdateRequest>(mode).is_err());
-
-        let mut project = serde_json::json!({ "id": "conversation-1", "projectId": null });
-        assert!(serde_json::from_value::<ConversationProjectUpdateRequest>(project.clone()).is_ok());
-        project.as_object_mut().unwrap().remove("projectId");
-        assert!(serde_json::from_value::<ConversationProjectUpdateRequest>(project).is_err());
+        let title_only: ConversationUpdateRequest = serde_json::from_value(serde_json::json!({
+            "id": "conversation-1",
+            "title": "hello"
+        }))
+        .unwrap();
+        assert!(!title_only.needs_turn_guard());
 
         let mut search = serde_json::json!({ "query": "needle", "limit": null });
         assert!(serde_json::from_value::<ConversationSearchRequest>(search.clone()).is_ok());
@@ -1069,16 +984,16 @@ mod tests {
     #[test]
     fn remaining_conversation_request_objects_reject_unknown_fields() {
         assert!(
-            serde_json::from_value::<ConversationAcceptEditsUpdateRequest>(serde_json::json!({
+            serde_json::from_value::<ConversationUpdateRequest>(serde_json::json!({
                 "id": "conversation-1",
-                "acceptEdits": true,
-                "futureField": true
+                "accept_edits": true,
+                "future_field": true
             }))
             .is_err()
         );
         assert!(
-            serde_json::from_value::<ConversationListByProjectRequest>(serde_json::json!({
-                "projectId": "project-1",
+            serde_json::from_value::<ConversationListRequest>(serde_json::json!({
+                "project_id": "project-1",
                 "archived": false,
                 "cursor": null
             }))
@@ -1202,7 +1117,7 @@ mod tests {
             created_at: 1000,
             updated_at: 1000,
         };
-        db.write(async |tx| meridian_core::db::sea::ops::memory::upsert_memory(tx, row).await)
+        db.write(async |tx| meridian_core::db::sea::ops::memory::upsert(tx, row).await)
             .await
             .unwrap();
         db

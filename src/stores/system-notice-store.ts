@@ -27,7 +27,7 @@ export const useSystemNoticeStore = create<SystemNoticeState>((set) => ({
   load: async () => {
     if (isRemote) return
     try {
-      set({ notices: await api.listSystemNotices() })
+      set({ notices: await api.systemNotices.list() })
     } catch (err) {
       console.error('system notices not loaded', err)
     }
@@ -42,7 +42,7 @@ export const useSystemNoticeStore = create<SystemNoticeState>((set) => ({
       return { notices: next }
     }),
   dismiss: async (id) => {
-    await api.dismissSystemNotice({ id })
+    await api.systemNotices.delete({ id })
     set(({ notices }) => ({ notices: notices.filter((n) => n.id !== id) }))
   },
 }))

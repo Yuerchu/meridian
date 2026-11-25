@@ -38,8 +38,8 @@ export function useEditLocation(data: ToolCallDisplay, path: string | null, oldS
     const callId = data.call_id
     // `catch` rather than a returned error: outside the desktop the transport
     // itself throws, and either way the answer is the same — no gutter.
-    api
-      .workspaceResolveRef({ conversationId, projectId: null, path: path!, lineStart: null, lineEnd: null })
+    api.workspace
+      .resolveRef({ conversation_id: conversationId, project_id: null, path: path!, line_start: null, line_end: null })
       .then((preview) => {
         if (cancelled) return
         const content = preview.content.replace(/\r\n/g, '\n')

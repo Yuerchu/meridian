@@ -35,7 +35,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
     setLoading(true)
     setError(null)
     try {
-      setRows(await api.listMemoryTrash(200))
+      setRows(await api.memories.list({ filter: { kind: 'trash', limit: 200 } }))
     } catch (reason) {
       setError(String(reason))
     } finally {
@@ -118,7 +118,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                       size="sm"
                       aria-label={t('settings.memory.trash.restore')}
                       onPress={async () => {
-                        await api.restoreMemories([m.id])
+                        await api.memories.restore({ ids: [m.id] })
                         void load()
                         onChanged()
                       }}
@@ -139,7 +139,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                           tone: 'danger',
                         })
                         if (!accepted) return
-                        await api.purgeMemories([m.id])
+                        await api.memories.delete({ ids: [m.id], permanent: true })
                         void load()
                         onChanged()
                       }}

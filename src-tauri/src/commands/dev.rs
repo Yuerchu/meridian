@@ -9,7 +9,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct VoiceProbeEchoRequest {
     pub sample_rate: u32,
     pub pcm: String,
@@ -27,7 +27,7 @@ pub struct VoiceProbeEchoRequest {
 /// and a scalar travelling together is itself part of what needs proving: with
 /// a raw body they could not.
 #[tauri::command]
-pub async fn voice_probe_echo(request: VoiceProbeEchoRequest) -> Result<usize, String> {
+pub async fn test_voice_echo(request: VoiceProbeEchoRequest) -> Result<usize, String> {
     if !(8_000..=192_000).contains(&request.sample_rate) {
         return Err(format!("implausible sample rate: {}", request.sample_rate));
     }
@@ -48,20 +48,20 @@ mod tests {
     fn voice_probe_request_is_closed_and_complete() {
         assert!(
             serde_json::from_value::<VoiceProbeEchoRequest>(serde_json::json!({
-                "sampleRate": 16_000,
+                "sample_rate": 16_000,
                 "pcm": "AAAAAA=="
             }))
             .is_ok()
         );
         assert!(
             serde_json::from_value::<VoiceProbeEchoRequest>(serde_json::json!({
-                "sampleRate": 16_000
+                "sample_rate": 16_000
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<VoiceProbeEchoRequest>(serde_json::json!({
-                "sampleRate": 16_000,
+                "sample_rate": 16_000,
                 "pcm": "AAAAAA==",
                 "format": "pcm16"
             }))

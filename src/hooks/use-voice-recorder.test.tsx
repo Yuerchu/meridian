@@ -12,11 +12,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({
   api: {
-    voiceStartRecording: mocks.start,
-    voiceStopAndTranscribe: mocks.stop,
-    voiceCancelRecording: mocks.cancel,
-    voicePrewarm: mocks.prewarm,
-    voiceReleasePrewarm: mocks.releasePrewarm,
+    voice: {
+      startRecording: mocks.start,
+      stopRecording: mocks.stop,
+      cancelRecording: mocks.cancel,
+      startPrewarm: mocks.prewarm,
+      stopPrewarm: mocks.releasePrewarm,
+    },
   },
 }))
 

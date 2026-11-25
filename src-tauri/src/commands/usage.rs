@@ -65,7 +65,7 @@ impl From<TurnOrigin> for CoreTurnOrigin {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UsageReportRequest {
     pub dimension: UsageDimension,
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
@@ -180,7 +180,7 @@ pub type UsageBucketListResponse = Vec<UsageBucketInfoResponse>;
 /// the same query with a constant key, which is what stops a summary and the
 /// breakdown beneath it from being computed two different ways.
 #[tauri::command]
-pub async fn usage_report(
+pub async fn get_usage_report(
     app: tauri::AppHandle,
     request: UsageReportRequest,
 ) -> Result<UsageBucketListResponse, String> {
@@ -197,7 +197,7 @@ pub async fn usage_report(
 /// The same window and origin as a report, without a dimension: a miss is a
 /// property of one request relative to the one before it.
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UsageCacheMissRequest {
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     pub since_ms: Option<i64>,
@@ -221,7 +221,7 @@ pub struct UsageCacheMissInfoResponse {
 /// Prompt tokens that were in the previous request but billed again instead of
 /// read from cache.
 #[tauri::command]
-pub async fn usage_cache_misses(
+pub async fn get_usage_cache_misses(
     app: tauri::AppHandle,
     request: UsageCacheMissRequest,
 ) -> Result<UsageCacheMissInfoResponse, String> {
@@ -249,7 +249,7 @@ pub async fn usage_cache_misses(
 /// The same filter as a report, without the dimension: the gaps are listed one
 /// reply at a time.
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UsageGapListRequest {
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
     pub since_ms: Option<i64>,
@@ -344,7 +344,10 @@ pub struct UsageGapListResponse {
 /// The replies behind the usage page's two warnings, so that "3 replies are
 /// incomplete" can be followed to the three.
 #[tauri::command]
-pub async fn usage_gaps(app: tauri::AppHandle, request: UsageGapListRequest) -> Result<UsageGapListResponse, String> {
+pub async fn list_usage_gaps(
+    app: tauri::AppHandle,
+    request: UsageGapListRequest,
+) -> Result<UsageGapListResponse, String> {
     let services = app.services();
     let filter = request.into_core();
     services
@@ -414,10 +417,10 @@ mod tests {
     fn usage_report_request_is_strict_and_maps_closed_enums() {
         let request: UsageReportRequest = serde_json::from_value(serde_json::json!({
             "dimension": "kind",
-            "sinceMs": 10,
-            "untilMs": null,
+            "since_ms": 10,
+            "until_ms": null,
             "origin": "sub_agent",
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
         }))
         .unwrap();
         let (dimension, filter) = request.into_core();
@@ -430,24 +433,24 @@ mod tests {
         for invalid in [
             serde_json::json!({
                 "dimension": "future",
-                "sinceMs": null,
-                "untilMs": null,
+                "since_ms": null,
+                "until_ms": null,
                 "origin": null,
-                "conversationId": null,
+                "conversation_id": null,
             }),
             serde_json::json!({
                 "dimension": "total",
-                "sinceMs": null,
-                "untilMs": null,
+                "since_ms": null,
+                "until_ms": null,
                 "origin": null,
-                "conversationId": null,
-                "legacyFilter": true,
+                "conversation_id": null,
+                "legacy_filter": true,
             }),
             serde_json::json!({
                 "dimension": "total",
-                "untilMs": null,
+                "until_ms": null,
                 "origin": null,
-                "conversationId": null,
+                "conversation_id": null,
             }),
         ] {
             assert!(serde_json::from_value::<UsageReportRequest>(invalid).is_err());

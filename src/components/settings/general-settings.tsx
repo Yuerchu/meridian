@@ -86,9 +86,9 @@ export function GeneralSettings() {
     setPrefsState('loading')
     setPrefsLoadError(null)
     Promise.all([
-      api.getPreference({ key: 'shell' }),
-      api.getPreference({ key: 'sandbox.enabled' }),
-      api.getPreference({ key: 'search_provider' }),
+      api.preferences.get({ key: 'shell' }),
+      api.preferences.get({ key: 'sandbox.enabled' }),
+      api.preferences.get({ key: 'search_provider' }),
     ])
       .then(([shellPref, sandboxPref, searchPref]) => {
         if (cancelled) return
@@ -109,11 +109,11 @@ export function GeneralSettings() {
 
   useEffect(() => {
     let cancelled = false
-    api
+    api.platform
       .listSystemFonts()
       .then((res) => {
         if (cancelled) return
-        setFontFamilies(res.families)
+        setFontFamilies(res)
       })
       .catch(() => {
         if (cancelled) return
@@ -127,8 +127,8 @@ export function GeneralSettings() {
   useEffect(() => {
     const provider = SEARCH_PROVIDERS.find((p) => p.value === searchProvider)
     if (provider) {
-      api
-        .getServiceKeyExists(provider.keyService)
+      api.tools
+        .testServiceKey({ service: provider.keyService })
         .then(setSearchKeyExists)
         .catch((reason: unknown) => setSearchKeyError(String(reason)))
     }
@@ -139,13 +139,13 @@ export function GeneralSettings() {
   const handleShellChange = (value: ShellType) => {
     setShell(value)
     setPrefError(null)
-    api.setPreference({ key: 'shell', value }).catch((err: unknown) => setPrefError(String(err)))
+    api.preferences.set({ key: 'shell', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
   const handleSandboxChange = (value: SandboxMode) => {
     setSandboxMode(value)
     setPrefError(null)
-    api.setPreference({ key: 'sandbox.enabled', value }).catch((err: unknown) => setPrefError(String(err)))
+    api.preferences.set({ key: 'sandbox.enabled', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
   const handleSearchProviderChange = async (value: SearchProvider) => {
@@ -159,7 +159,7 @@ export function GeneralSettings() {
     searchProviderTouched.current = true
     setSearchProvider(value)
     setPrefError(null)
-    api.setPreference({ key: 'search_provider', value }).catch((err: unknown) => setPrefError(String(err)))
+    api.preferences.set({ key: 'search_provider', value }).catch((err: unknown) => setPrefError(String(err)))
   }
 
   const handleSaveSearchKey = async () => {
@@ -167,7 +167,7 @@ export function GeneralSettings() {
     if (!provider || !searchApiKey.trim()) return
     setSearchKeyError(null)
     try {
-      await api.setServiceKey({ service: provider.keyService, key: searchApiKey.trim() })
+      await api.tools.setServiceKey({ service: provider.keyService, key: searchApiKey.trim() })
       setSearchKeyExists(true)
       setSearchApiKey('')
       markSearchKeySaved()

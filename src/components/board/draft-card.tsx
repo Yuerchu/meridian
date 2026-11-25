@@ -65,7 +65,7 @@ export function DraftCard({
     if (!text || projectId === null) return
     const title = text.split('\n')[0]
     try {
-      await api.boardTaskCreate({ projectId, title, request: text, stage })
+      await api.board.createTask({ project_id: projectId, title, request: text, stage })
       if (typeof localStorage !== 'undefined') localStorage.setItem(PROJECT_KEY, projectId)
       setComposerText(draftId, '')
       setDraftProjectId(draftId, null)

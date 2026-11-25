@@ -7,11 +7,13 @@ import { useProjectBranch, type ProjectBranch } from './use-project-branch'
 
 vi.mock('@/api', () => ({
   api: {
-    workspaceGitStatus: vi.fn(),
+    workspace: {
+      getGitStatus: vi.fn(),
+    },
   },
 }))
 
-const gitStatus = vi.mocked(api.workspaceGitStatus)
+const gitStatus = vi.mocked(api.workspace.getGitStatus)
 const REPO = 'C:/code/meridian'
 
 function onBranch(branch: string | null): WorkspaceGitStatusResponse {
@@ -35,7 +37,7 @@ test('reads the branch the status names', async () => {
   const { result } = renderHook(() => useProjectBranch('c1', REPO, false))
   expect(result.current).toEqual({ status: 'loading' })
   await waitFor(() => expect(result.current).toEqual({ status: 'branch', name: 'feat/x' }))
-  expect(gitStatus).toHaveBeenCalledWith({ conversationId: 'c1' })
+  expect(gitStatus).toHaveBeenCalledWith({ conversation_id: 'c1' })
 })
 
 test("git's detached spelling is a state, not a branch name", async () => {
@@ -114,7 +116,7 @@ test('another conversation starts from loading, not from the last branch', async
   rerender({ id: 'c2' })
   expect(seen.slice(before)).not.toContainEqual({ status: 'branch', name: 'main' })
   expect(result.current).toEqual({ status: 'loading' })
-  expect(gitStatus).toHaveBeenLastCalledWith({ conversationId: 'c2' })
+  expect(gitStatus).toHaveBeenLastCalledWith({ conversation_id: 'c2' })
 })
 
 /** Moving a conversation to another project keeps its id; the repository is

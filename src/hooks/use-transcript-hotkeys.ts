@@ -108,7 +108,7 @@ export function useTranscriptHotkeys(conversationId: string, turns: Turn[]): voi
       const target = targetApproval(turns)
       if (!target) return
       const { retireAnsweredApproval, markApprovalOrphaned } = useConversationStore.getState()
-      api.approveToolCall(target.approvalId).then(
+      api.approvals.submitDecision({ approval_id: target.approvalId, decision: { kind: 'approve' } }).then(
         () => retireAnsweredApproval(target.approvalId),
         (err: unknown) => markApprovalOrphaned(target.approvalId, errorMessage(err)),
       )

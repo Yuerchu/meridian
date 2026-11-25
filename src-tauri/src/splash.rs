@@ -97,14 +97,16 @@ fn signal(app: &AppHandle, set: impl FnOnce(&mut State)) {
 
 /// Called by the splash window once its animation has played out.
 #[tauri::command]
-pub fn splash_animation_done(app: AppHandle) {
+pub fn complete_splash_animation(app: AppHandle) -> Result<(), String> {
     signal(&app, |s| s.animation_done = true);
+    Ok(())
 }
 
 /// Called by the app once it has mounted.
 #[tauri::command]
-pub fn splash_app_ready(app: AppHandle) {
+pub fn complete_splash_app_ready(app: AppHandle) -> Result<(), String> {
     signal(&app, |s| s.app_ready = true);
+    Ok(())
 }
 
 /// Arm the deadline. Called once from `setup`.

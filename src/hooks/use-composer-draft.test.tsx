@@ -9,9 +9,11 @@ import { COMPOSER_DRAFT_DEBOUNCE_MS, useComposerDraft, type ComposerDraftState }
 
 vi.mock('@/api', () => ({
   api: {
-    getComposerDraft: vi.fn(),
-    saveComposerDraft: vi.fn(),
-    clearComposerDraft: vi.fn(),
+    composerDrafts: {
+      get: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+    },
   },
 }))
 
@@ -72,8 +74,8 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   resetComposerDraftSync()
-  vi.mocked(api.saveComposerDraft).mockImplementation((request) => Promise.resolve(applied(request.revision)))
-  vi.mocked(api.clearComposerDraft).mockImplementation((request) => Promise.resolve(applied(request.revision)))
+  vi.mocked(api.composerDrafts.set).mockImplementation((request) => Promise.resolve(applied(request.revision)))
+  vi.mocked(api.composerDrafts.delete).mockImplementation((request) => Promise.resolve(applied(request.revision)))
 })
 
 afterEach(() => {
@@ -88,7 +90,7 @@ afterEach(() => {
  */
 test('writes nothing before the stored draft has been read, then restores it', async () => {
   const read = deferred<ComposerDraftInfoResponse | null>()
-  vi.mocked(api.getComposerDraft).mockReturnValue(read.promise)
+  vi.mocked(api.composerDrafts.get).mockReturnValue(read.promise)
 
   const { rerender, onRestore } = mount(EMPTY)
   // Re-renders with the same empty state, and time passing, while the read is out.
@@ -96,8 +98,8 @@ test('writes nothing before the stored draft has been read, then restores it', a
   await act(async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS * 3)
   })
-  expect(api.saveComposerDraft).not.toHaveBeenCalled()
-  expect(api.clearComposerDraft).not.toHaveBeenCalled()
+  expect(api.composerDrafts.set).not.toHaveBeenCalled()
+  expect(api.composerDrafts.delete).not.toHaveBeenCalled()
 
   read.resolve(stored('half a thought'))
   await settle()
@@ -107,14 +109,14 @@ test('writes nothing before the stored draft has been read, then restores it', a
   await act(async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS * 2)
   })
-  expect(api.saveComposerDraft).not.toHaveBeenCalled()
-  expect(api.clearComposerDraft).not.toHaveBeenCalled()
+  expect(api.composerDrafts.set).not.toHaveBeenCalled()
+  expect(api.composerDrafts.delete).not.toHaveBeenCalled()
 })
 
 /** Typing that beat the read is newer than anything stored, and is kept. */
 test('text typed before the read returns wins over the stored draft', async () => {
   const read = deferred<ComposerDraftInfoResponse | null>()
-  vi.mocked(api.getComposerDraft).mockReturnValue(read.promise)
+  vi.mocked(api.composerDrafts.get).mockReturnValue(read.promise)
 
   const { rerender, onRestore } = mount(EMPTY)
   rerender({ s: state('typed quickly') })
@@ -122,9 +124,9 @@ test('text typed before the read returns wins over the stored draft', async () =
   await settle()
 
   expect(onRestore).not.toHaveBeenCalled()
-  expect(api.saveComposerDraft).toHaveBeenCalledTimes(1)
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0]).toMatchObject({
-    conversationId: CONV,
+  expect(api.composerDrafts.set).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0]).toMatchObject({
+    conversation_id: CONV,
     body: 'typed quickly',
     revision: 5,
   })
@@ -132,7 +134,7 @@ test('text typed before the read returns wins over the stored draft', async () =
 
 /** A burst of keystrokes is one write, of the last state, after the pause. */
 test('debounces a burst into one write of the latest text', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const { rerender } = mount(EMPTY)
   await settle()
 
@@ -142,27 +144,27 @@ test('debounces a burst into one write of the latest text', async () => {
       vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS - 100)
     })
   }
-  expect(api.saveComposerDraft).not.toHaveBeenCalled()
+  expect(api.composerDrafts.set).not.toHaveBeenCalled()
 
   await act(async () => {
     vi.advanceTimersByTime(100)
   })
   await settle()
-  expect(api.saveComposerDraft).toHaveBeenCalledTimes(1)
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0]).toMatchObject({ body: 'hello', revision: 1 })
+  expect(api.composerDrafts.set).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0]).toMatchObject({ body: 'hello', revision: 1 })
 })
 
 /** Switching conversation unmounts the composer; the pending write goes now. */
 test('flushes a pending write on unmount', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const { rerender, unmount } = mount(EMPTY)
   await settle()
 
   rerender({ s: state('about to switch away') })
   unmount()
   await settle()
-  expect(api.saveComposerDraft).toHaveBeenCalledTimes(1)
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0]).toMatchObject({ body: 'about to switch away' })
+  expect(api.composerDrafts.set).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0]).toMatchObject({ body: 'about to switch away' })
 })
 
 /**
@@ -171,21 +173,21 @@ test('flushes a pending write on unmount', async () => {
  */
 test('a remount reads after the flush it follows', async () => {
   const save = deferred<ComposerDraftWriteResponse>()
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const first = mount(EMPTY)
   await settle()
-  vi.mocked(api.saveComposerDraft).mockReturnValueOnce(save.promise)
+  vi.mocked(api.composerDrafts.set).mockReturnValueOnce(save.promise)
   first.rerender({ s: state('left behind') })
   first.unmount()
   await settle()
 
-  vi.mocked(api.getComposerDraft).mockClear()
+  vi.mocked(api.composerDrafts.get).mockClear()
   mount(EMPTY)
   await settle()
-  expect(api.getComposerDraft).not.toHaveBeenCalled()
+  expect(api.composerDrafts.get).not.toHaveBeenCalled()
   save.resolve(applied(1))
   await settle()
-  expect(api.getComposerDraft).toHaveBeenCalledTimes(1)
+  expect(api.composerDrafts.get).toHaveBeenCalledTimes(1)
 })
 
 /**
@@ -193,34 +195,34 @@ test('a remount reads after the flush it follows', async () => {
  * moment after sending cannot bring the sent text back as a draft.
  */
 test('emptying the text after a send clears the draft immediately', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(stored('send me', 2))
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(stored('send me', 2))
   const { rerender } = mount(EMPTY)
   await settle()
   rerender({ s: state('send me') })
 
   rerender({ s: EMPTY })
   await settle()
-  expect(api.clearComposerDraft).toHaveBeenCalledWith({ conversationId: CONV, revision: 3 })
-  expect(api.saveComposerDraft).not.toHaveBeenCalled()
+  expect(api.composerDrafts.delete).toHaveBeenCalledWith({ conversation_id: CONV, revision: 3 })
+  expect(api.composerDrafts.set).not.toHaveBeenCalled()
 })
 
 /** The queue path clears only the text; the attachment is still the draft. */
 test('emptying only the text writes what is left at once', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const file = { path: '/work/a.txt', name: 'a.txt' }
   const { rerender } = mount(EMPTY)
   await settle()
   rerender({ s: state('queued', { attachedFiles: [file] }) })
   rerender({ s: state('', { attachedFiles: [file] }) })
   await settle()
-  expect(api.saveComposerDraft).toHaveBeenCalledTimes(1)
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0]).toMatchObject({ body: '', attachments: [file] })
+  expect(api.composerDrafts.set).toHaveBeenCalledTimes(1)
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0]).toMatchObject({ body: '', attachments: [file] })
 })
 
 /** A failed write is shown, and the next change writes again. */
 test('a failed write is reported and retried by the next change', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
-  vi.mocked(api.saveComposerDraft).mockRejectedValueOnce('database is locked')
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.set).mockRejectedValueOnce('database is locked')
   const { rerender, result } = mount(EMPTY)
   await settle()
 
@@ -236,8 +238,8 @@ test('a failed write is reported and retried by the next change', async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
   })
   await settle()
-  expect(api.saveComposerDraft).toHaveBeenCalledTimes(2)
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[1][0]).toMatchObject({ body: 'first!' })
+  expect(api.composerDrafts.set).toHaveBeenCalledTimes(2)
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[1][0]).toMatchObject({ body: 'first!' })
   expect(result.current.error).toBeNull()
 })
 
@@ -246,8 +248,8 @@ test('a failed write is reported and retried by the next change', async () => {
  * write is retried once above the revision that won.
  */
 test('a refused revision is retried above the winner', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
-  vi.mocked(api.saveComposerDraft).mockResolvedValueOnce({ applied: false, revision: 9 })
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.set).mockResolvedValueOnce({ applied: false, revision: 9 })
   const { rerender } = mount(EMPTY)
   await settle()
   rerender({ s: state('mine') })
@@ -255,7 +257,7 @@ test('a refused revision is retried above the winner', async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
   })
   await settle()
-  expect(vi.mocked(api.saveComposerDraft).mock.calls.map(([r]) => r.revision)).toEqual([1, 10])
+  expect(vi.mocked(api.composerDrafts.set).mock.calls.map(([r]) => r.revision)).toEqual([1, 10])
 })
 
 /**
@@ -264,7 +266,7 @@ test('a refused revision is retried above the winner', async () => {
  * marked rather than dropped.
  */
 test('only reopenable attachments are written, and a vanished one comes back marked', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const { rerender } = mount(EMPTY)
   await settle()
   rerender({
@@ -280,12 +282,12 @@ test('only reopenable attachments are written, and a vanished one comes back mar
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
   })
   await settle()
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0].attachments).toEqual([
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0].attachments).toEqual([
     { path: 'C:\\work\\a.txt', name: 'a.txt' },
   ])
 
   resetComposerDraftSync()
-  vi.mocked(api.getComposerDraft).mockResolvedValue(
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(
     stored('files', 2, {
       attachments: [{ path: 'C:\\work\\a.txt', name: 'a.txt', exists: false }],
       conversation_refs: [{ id: 'other', title: null, exists: false }],
@@ -303,15 +305,15 @@ test('only reopenable attachments are written, and a vanished one comes back mar
 
 /** The welcome composer has its own slot and can be cleared once it became a conversation. */
 test('the welcome slot is cleared without its state changing', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const { rerender, result, unmount } = mount(EMPTY, null)
   await settle()
   rerender({ s: state('first question') })
   act(() => result.current.clear())
   unmount()
   await settle()
-  expect(api.saveComposerDraft).not.toHaveBeenCalled()
-  expect(api.clearComposerDraft).toHaveBeenCalledWith({ conversationId: null, revision: 1 })
+  expect(api.composerDrafts.set).not.toHaveBeenCalled()
+  expect(api.composerDrafts.delete).toHaveBeenCalledWith({ conversation_id: null, revision: 1 })
 })
 
 /**
@@ -319,7 +321,7 @@ test('the welcome slot is cleared without its state changing', async () => {
  * saved. The read failure is its own kind; the composer's text is left alone.
  */
 test('a failed read is reported as a failed read', async () => {
-  vi.mocked(api.getComposerDraft).mockRejectedValueOnce('database is locked')
+  vi.mocked(api.composerDrafts.get).mockRejectedValueOnce('database is locked')
   const { result } = mount(EMPTY)
   await settle()
   expect(result.current.error).toEqual({ kind: 'load', message: 'database is locked' })
@@ -333,8 +335,8 @@ test('a failed read is reported as a failed read', async () => {
  * throw, so the conflict became an unhandled rejection and was said nowhere.
  */
 test('a write that loses the race twice is reported, not dropped', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
-  vi.mocked(api.saveComposerDraft)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.set)
     .mockResolvedValueOnce({ applied: false, revision: 9 })
     .mockResolvedValueOnce({ applied: false, revision: 11 })
   const { rerender, result } = mount(EMPTY)
@@ -357,7 +359,7 @@ test('a write that loses the race twice is reported, not dropped', async () => {
  * file" must still be the same file.
  */
 test('attachments are written in the order they are held', async () => {
-  vi.mocked(api.getComposerDraft).mockResolvedValue(null)
+  vi.mocked(api.composerDrafts.get).mockResolvedValue(null)
   const { rerender } = mount(EMPTY)
   await settle()
   rerender({
@@ -372,7 +374,7 @@ test('attachments are written in the order they are held', async () => {
     vi.advanceTimersByTime(COMPOSER_DRAFT_DEBOUNCE_MS)
   })
   await settle()
-  expect(vi.mocked(api.saveComposerDraft).mock.calls[0][0].attachments).toEqual([
+  expect(vi.mocked(api.composerDrafts.set).mock.calls[0][0].attachments).toEqual([
     { path: 'C:\\work\\b.txt', name: 'b.txt' },
     { path: 'C:\\work\\a.txt', name: 'a.txt' },
   ])

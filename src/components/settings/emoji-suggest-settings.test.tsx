@@ -9,10 +9,14 @@ import { EmojiSuggestSettings } from './emoji-suggest-settings'
 vi.mock('@/lib/transport', () => ({ isRemote: false }))
 vi.mock('@/api', () => ({
   api: {
-    getPreference: vi.fn(),
-    setPreference: vi.fn(),
-    listProviders: vi.fn(),
-    fetchProviderModels: vi.fn(),
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    providers: {
+      list: vi.fn(),
+      listModels: vi.fn(),
+    },
   },
 }))
 
@@ -37,10 +41,10 @@ const PROVIDER: ProviderInfoResponse = {
 beforeEach(async () => {
   vi.clearAllMocks()
   await i18n.changeLanguage('en')
-  mockApi.getPreference.mockResolvedValue({ key: 'emoji.suggest.model', value: null })
-  mockApi.setPreference.mockResolvedValue(null)
-  mockApi.listProviders.mockResolvedValue([PROVIDER])
-  mockApi.fetchProviderModels.mockResolvedValue([{ id: 'claude-haiku-5', name: 'claude-haiku-5' }])
+  mockApi.preferences.get.mockResolvedValue({ key: 'emoji.suggest.model', value: null })
+  mockApi.preferences.set.mockResolvedValue(undefined)
+  mockApi.providers.list.mockResolvedValue([PROVIDER])
+  mockApi.providers.listModels.mockResolvedValue([{ id: 'claude-haiku-5', name: 'claude-haiku-5' }])
 })
 
 it('saves a chosen pair as the sticker suggestion model', async () => {
@@ -53,9 +57,9 @@ it('saves a chosen pair as the sticker suggestion model', async () => {
   await user.click(await screen.findByRole('option', { name: /claude-haiku-5/ }))
 
   await waitFor(() => {
-    expect(mockApi.setPreference).toHaveBeenCalledWith({
+    expect(mockApi.preferences.set).toHaveBeenCalledWith({
       key: 'emoji.suggest.model',
-      value: { providerId: 'p1', modelId: 'claude-haiku-5' },
+      value: { provider_id: 'p1', model_id: 'claude-haiku-5' },
     })
   })
 })

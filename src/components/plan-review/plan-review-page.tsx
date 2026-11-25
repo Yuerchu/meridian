@@ -255,7 +255,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       lastPayloadRef.current = JSON.stringify(payload)
       const queue = new PlanDraftSaveQueue(
         reviewId,
-        api.savePlanReviewDraft,
+        api.planReview.setDraft,
         next.draft.generation,
         next.draft.draft_sha256,
         (state, error) => {
@@ -289,8 +289,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     setLoading(true)
     setPageError(null)
     try {
-      const next = await api.getPlanReview({ reviewId })
-      const history = await api.listPlanRevisions({ documentId: next.document.id })
+      const next = await api.planReview.get({ review_id: reviewId })
+      const history = await api.planReview.listRevisions({ document_id: next.document.id })
       if (sequence !== loadSequenceRef.current) return
       applyReview(next)
       setRevisions(history)
@@ -356,8 +356,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       (candidate) => candidate.document_id === info?.document.id && candidate.revision_id === historicalRevision.id,
     )
     if (!linked || linked.review_id === reviewId) return
-    void api
-      .getPlanReview({ reviewId: linked.review_id })
+    void api.planReview
+      .get({ review_id: linked.review_id })
       .then((review) => {
         if (sequence === historySequenceRef.current) setHistoricalReview(review)
       })
@@ -598,19 +598,19 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         return
       }
       const attempt = decisionAttemptRef.current.forAction(action)
-      const result = await api.decidePlanReview({
-        reviewId,
-        decisionId: attempt.id,
-        expectedGeneration: committed.generation,
-        expectedDraftHash: committed.draftHash,
+      const result = await api.planReview.submitDecision({
+        review_id: reviewId,
+        decision_id: attempt.id,
+        expected_generation: committed.generation,
+        expected_draft_hash: committed.draftHash,
         action,
-        approvalMode: action === 'approve' ? approvalOptions.approvalMode : null,
-        clearContext: action === 'approve' ? approvalOptions.clearContext : false,
+        approval_mode: action === 'approve' ? approvalOptions.approvalMode : null,
+        clear_context: action === 'approve' ? approvalOptions.clearContext : false,
       })
       setInfo((current) => (current ? { ...current, review: { ...current.review, state: result.state } } : current))
       decisionAttemptRef.current.reset()
       try {
-        const refreshed = await api.getPlanReview({ reviewId })
+        const refreshed = await api.planReview.get({ review_id: reviewId })
         receivePlanReview(planReviewProjection(refreshed))
       } catch {
         // The decision itself succeeded; the backend event remains the other delivery path.
@@ -642,7 +642,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     setDeciding(true)
     setPageError(null)
     try {
-      const next = await api.discardPlanReviewDraft({ reviewId, expectedGeneration: committed.generation })
+      const next = await api.planReview.deleteDraft({ review_id: reviewId, expected_generation: committed.generation })
       applyReview(next)
     } catch (error) {
       setPageError(String(error))
@@ -656,7 +656,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     setRestoring(true)
     setPageError(null)
     try {
-      const document = await api.resolvePlanFileConflict({ documentId: info.document.id, action: 'restore_db' })
+      const document = await api.planReview.resolveConflict({ document_id: info.document.id, action: 'restore_db' })
       setInfo((current) => (current ? { ...current, document } : current))
     } catch (error) {
       setPageError(String(error))

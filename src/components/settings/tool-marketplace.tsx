@@ -115,31 +115,31 @@ export function CustomToolEditor({
         throw new Error(t('settings.tools.invalidTimeout'))
       }
       if (tool) {
-        await api.updateCustomTool({
+        await api.tools.updateCustom({
           id: tool.id,
           name: name.trim(),
           description: description.trim(),
           command,
-          argsTemplate: argsTemplate === '' && tool.args_template === null ? null : argsTemplate,
+          args_template: argsTemplate === '' && tool.args_template === null ? null : argsTemplate,
           execution,
-          isEnabled: execution === null ? false : tool.execution === null ? true : tool.is_enabled,
-          parametersSchema,
-          workingDirectory: workingDirectory || null,
+          is_enabled: execution === null ? false : tool.execution === null ? true : tool.is_enabled,
+          parameters_schema: parametersSchema,
+          working_directory: workingDirectory || null,
           permission,
-          timeoutMs: timeout,
+          timeout_ms: timeout,
         })
       } else {
-        await api.createCustomTool({
+        await api.tools.createCustom({
           name: name.trim(),
           description: description.trim(),
           command,
-          categoryId: null,
-          parametersSchema,
-          argsTemplate: null,
+          category_id: null,
+          parameters_schema: parametersSchema,
+          args_template: null,
           execution,
-          workingDirectory: workingDirectory || null,
+          working_directory: workingDirectory || null,
           permission,
-          timeoutMs: timeout,
+          timeout_ms: timeout,
         })
       }
       setSavedDraft(draft)
@@ -315,10 +315,10 @@ export function ToolMarketplace() {
     setLoadError(null)
     try {
       const [tools, custom, cats, pres] = await Promise.all([
-        api.listAllToolNames(),
-        api.listCustomTools(),
-        api.listToolCategories(),
-        api.listToolPresets(),
+        api.mcp.listAllTools(),
+        api.tools.listCustom(),
+        api.tools.listCategories(),
+        api.tools.listPresets(),
       ])
       setBuiltinTools(tools)
       setCustomTools(custom)
@@ -479,7 +479,7 @@ export function ToolMarketplace() {
                               }))
                             )
                               return
-                            await api.deleteCustomTool(ct.id)
+                            await api.tools.deleteCustom({ id: ct.id })
                             setExpandedToolId(null)
                             refresh()
                           }}

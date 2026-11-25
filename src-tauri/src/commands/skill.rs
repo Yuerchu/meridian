@@ -12,12 +12,24 @@ use meridian_core::db::types::SqlBool;
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct SkillCreateRequest {
     dir_name: String,
     llm_description: String,
     body: String,
     display_name: RequiredNullable<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkillBodyReadRequest {
+    dir_name: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SkillDeleteRequest {
+    dir_name: String,
 }
 
 pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -30,14 +42,14 @@ pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn list_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let services = app.services();
-    skill_ops::list_skills(&services.db)
+    skill_ops::list(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
+pub async fn invoke_skill_rescan(app: tauri::AppHandle) -> Result<SkillListResponse, String> {
     let root = skills_root(&app)?;
     let services = app.services();
     Ok(skills::sync_index(&services.db, &root)
@@ -48,9 +60,10 @@ pub async fn rescan_skills(app: tauri::AppHandle) -> Result<SkillListResponse, S
 }
 
 #[tauri::command]
-pub fn get_skill_body(app: tauri::AppHandle, dir_name: String) -> Result<String, String> {
+pub fn read_skill_body(app: tauri::AppHandle, request: SkillBodyReadRequest) -> Result<String, String> {
     let root = skills_root(&app)?;
-    skills::read_skill_body(&root, &dir_name).ok_or_else(|| format!("skill '{dir_name}' has no readable SKILL.md"))
+    skills::read_skill_body(&root, &request.dir_name)
+        .ok_or_else(|| format!("skill '{}' has no readable SKILL.md", request.dir_name))
 }
 
 #[tauri::command]
@@ -77,7 +90,7 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
     let row = services
         .db
         .write(async |tx| match display_name {
-            Some(name) => skill_ops::update_skill(
+            Some(name) => skill_ops::update(
                 tx,
                 &dir_name,
                 SkillChangeset {
@@ -88,7 +101,7 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
             )
             .await
             .map(Some),
-            None => skill_ops::get_skill(tx, &dir_name).await,
+            None => skill_ops::get(tx, &dir_name).await,
         })
         .await
         .map_err(|e| e.to_string())?;
@@ -97,7 +110,7 @@ pub async fn create_skill(app: tauri::AppHandle, request: SkillCreateRequest) ->
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct SkillUpdateRequest {
     dir_name: String,
     display_name: Option<String>,
@@ -110,7 +123,7 @@ async fn existing_skill(
     services: &meridian_core::services::Services,
     dir_name: &str,
 ) -> Result<meridian_core::db::entity::skill::Model, String> {
-    skill_ops::get_skill(&services.db, dir_name)
+    skill_ops::get(&services.db, dir_name)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("skill '{dir_name}' is not in the index"))
@@ -152,14 +165,15 @@ pub async fn update_skill(app: tauri::AppHandle, request: SkillUpdateRequest) ->
     };
     services
         .db
-        .write(async |tx| skill_ops::update_skill(tx, &dir_name, changeset).await)
+        .write(async |tx| skill_ops::update(tx, &dir_name, changeset).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(), String> {
+pub async fn delete_skill(app: tauri::AppHandle, request: SkillDeleteRequest) -> Result<(), String> {
+    let dir_name = request.dir_name;
     let root = skills_root(&app)?;
     let services = app.services();
 
@@ -172,21 +186,21 @@ pub async fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(),
     skills::delete_skill_dir(&root, &dir_name)?;
     services
         .db
-        .write(async |tx| skill_ops::delete_skill(tx, &dir_name).await)
+        .write(async |tx| skill_ops::delete(tx, &dir_name).await)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct SkillBindingListRequest {
     pub layer: SkillLayer,
     pub anchor_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct SkillBindingUpdateRequest {
     pub layer: SkillLayer,
     pub anchor_id: Option<String>,
@@ -260,7 +274,7 @@ mod tests {
     fn skill_binding_requests_are_strict_and_typed() {
         let list = serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
             "layer": "project",
-            "anchorId": "project-1"
+            "anchor_id": "project-1"
         }))
         .unwrap();
         assert_eq!(list.layer, SkillLayer::Project);
@@ -269,23 +283,23 @@ mod tests {
         assert!(
             serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
                 "layer": "future",
-                "anchorId": null
+                "anchor_id": null
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<SkillBindingListRequest>(serde_json::json!({
                 "layer": "global",
-                "anchorId": null,
-                "legacyLayer": "project"
+                "anchor_id": null,
+                "legacy_layer": "project"
             }))
             .is_err()
         );
 
         let update = serde_json::from_value::<SkillBindingUpdateRequest>(serde_json::json!({
             "layer": "assistant",
-            "anchorId": "assistant-1",
-            "dirName": "review",
+            "anchor_id": "assistant-1",
+            "dir_name": "review",
             "bound": true
         }))
         .unwrap();

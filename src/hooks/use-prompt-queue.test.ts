@@ -7,7 +7,7 @@ import type { QueuedPromptInfoResponse } from '@/types'
 import { usePromptQueue } from './use-prompt-queue'
 
 vi.mock('@/api', () => ({
-  api: { queueList: vi.fn(), queueRelease: vi.fn() },
+  api: { queue: { list: vi.fn(), start: vi.fn() } },
 }))
 
 /** Captured so a `queue-updated` can be delivered by hand. */
@@ -57,7 +57,7 @@ beforeEach(() => {
  * that prompted it stays put.
  */
 test('drops a row once its message is in the transcript', async () => {
-  vi.mocked(api.queueList).mockResolvedValue([
+  vi.mocked(api.queue.list).mockResolvedValue([
     row('sent', { dispatched_at: 1, settled_at: 1, settled_message_id: 'm1' }),
     row('waiting'),
   ])
@@ -76,7 +76,7 @@ test('drops a row once its message is in the transcript', async () => {
  * message exists, so filtering on `settled_at` would blink it out of view.
  */
 test('keeps a steered message visible until its row is written', async () => {
-  vi.mocked(api.queueList).mockResolvedValue([
+  vi.mocked(api.queue.list).mockResolvedValue([
     row('steered', { dispatched_at: 1, settled_at: 1, settled_message_id: null }),
   ])
 
@@ -90,11 +90,11 @@ test('keeps a steered message visible until its row is written', async () => {
  *  one that runs for the rest of the session — the queue moves without anybody
  *  touching this window, and `queue-updated` is how it says so. */
 test('still filters after the backend announces a change', async () => {
-  vi.mocked(api.queueList).mockResolvedValue([row('waiting')])
+  vi.mocked(api.queue.list).mockResolvedValue([row('waiting')])
   const { result } = renderHook(() => usePromptQueue(CONV, true))
   await waitFor(() => expect(result.current.items).toHaveLength(1))
 
-  vi.mocked(api.queueList).mockResolvedValue([
+  vi.mocked(api.queue.list).mockResolvedValue([
     row('waiting', { dispatched_at: 2, settled_at: 2, settled_message_id: 'm2' }),
   ])
   await act(async () => {
@@ -110,29 +110,29 @@ test('still filters after the backend announces a change', async () => {
  * lost. The rows stay; the reason is kept until a read succeeds.
  */
 test('a failed read keeps the rows on screen and says why until a read succeeds', async () => {
-  vi.mocked(api.queueList).mockResolvedValueOnce([row('a')])
+  vi.mocked(api.queue.list).mockResolvedValueOnce([row('a')])
   const { result } = renderHook(() => usePromptQueue(CONV, true))
   await waitFor(() => expect(result.current.items).toHaveLength(1))
 
-  vi.mocked(api.queueList).mockRejectedValueOnce('database is locked')
+  vi.mocked(api.queue.list).mockRejectedValueOnce('database is locked')
   act(() => notify?.({ conversation_id: CONV, delivered: false }))
   await waitFor(() => expect(result.current.error).toEqual({ kind: 'load', message: 'database is locked' }))
   expect(result.current.items).toHaveLength(1)
 
-  vi.mocked(api.queueList).mockResolvedValueOnce([row('a')])
+  vi.mocked(api.queue.list).mockResolvedValueOnce([row('a')])
   act(() => result.current.retry())
   await waitFor(() => expect(result.current.error).toBeNull())
 })
 
 test('the first read failing is an error, not an empty queue', async () => {
-  vi.mocked(api.queueList).mockRejectedValueOnce('no such conversation')
+  vi.mocked(api.queue.list).mockRejectedValueOnce('no such conversation')
   const { result } = renderHook(() => usePromptQueue(CONV, true))
   await waitFor(() => expect(result.current.error).toEqual({ kind: 'load', message: 'no such conversation' }))
 })
 
 test('a refused change is reported rather than escaping as an unhandled rejection', async () => {
-  vi.mocked(api.queueList).mockResolvedValue([row('a', { held_at: 1 })])
-  vi.mocked(api.queueRelease).mockRejectedValueOnce('a delivery is still in doubt')
+  vi.mocked(api.queue.list).mockResolvedValue([row('a', { held_at: 1 })])
+  vi.mocked(api.queue.start).mockRejectedValueOnce('a delivery is still in doubt')
   const { result } = renderHook(() => usePromptQueue(CONV, true))
   await waitFor(() => expect(result.current.items).toHaveLength(1))
 

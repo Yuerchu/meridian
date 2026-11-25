@@ -48,7 +48,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
       return
     }
     try {
-      const result = await api.voiceStopAndTranscribe()
+      const result = await api.voice.stopRecording()
       if (result.status === 'ok') {
         onSend(result.text)
       } else {
@@ -72,7 +72,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
       } catch {
         return // start failed; no session to cancel
       }
-      api.voiceCancelRecording().catch(console.error)
+      api.voice.cancelRecording().catch(console.error)
     })()
   }, [])
 
@@ -96,7 +96,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
       // getting cut off that way.
       stateRef.current = 'starting'
       setState('starting')
-      startPromiseRef.current = api.voiceStartRecording()
+      startPromiseRef.current = api.voice.startRecording()
       try {
         await startPromiseRef.current
         captureAtRef.current = Date.now()
@@ -146,7 +146,7 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
 
     stateRef.current = 'starting'
     setState('starting')
-    startPromiseRef.current = api.voiceStartRecording()
+    startPromiseRef.current = api.voice.startRecording()
     try {
       await startPromiseRef.current
       captureAtRef.current = Date.now()
@@ -167,11 +167,11 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
   // calls are advisory: prewarm failures are silent, and releasing only ever
   // drops a device that is idling.
   const handlePointerEnter = useCallback(() => {
-    if (stateRef.current === 'idle') api.voicePrewarm().catch(() => {})
+    if (stateRef.current === 'idle') api.voice.startPrewarm().catch(() => {})
   }, [])
 
   const handlePointerLeave = useCallback(() => {
-    if (stateRef.current === 'idle') api.voiceReleasePrewarm().catch(() => {})
+    if (stateRef.current === 'idle') api.voice.stopPrewarm().catch(() => {})
   }, [])
 
   // Escape cancels; the timer drives the elapsed display and the 60s cap.

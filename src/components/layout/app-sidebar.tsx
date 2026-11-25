@@ -708,7 +708,7 @@ export function AppSidebar({
   const hiddenConversations = useUndoStore((s) => s.hidden)
 
   const loadArchived = useCallback(async () => {
-    const archived = await api.listConversations(true)
+    const archived = await api.conversations.list({ archived: true, project_id: null })
     setArchivedConversations(archived)
     archivedLoaded.current = true
   }, [])

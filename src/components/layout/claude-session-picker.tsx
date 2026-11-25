@@ -100,7 +100,7 @@ export function ClaudeSessionPicker({
     setSessions(null)
     setError(null)
     try {
-      const listed = await api.acpListSessions({ cwd: scope.trim() || null })
+      const listed = await api.acp.listSessions({ cwd: scope.trim() || null })
       if (generation.current !== mine) return
       setSessions(listed)
     } catch (err) {
@@ -120,7 +120,7 @@ export function ClaudeSessionPicker({
       if (mode === 'attach' && conversationId) {
         // A conversation with no record falls back to the whole machine, which
         // is the honest answer: nothing here says where to look.
-        const record = await api.acpConversationSession(conversationId).catch(() => null)
+        const record = await api.acp.getSession({ conversation_id: conversationId }).catch(() => null)
         scope = record?.cwd ?? ''
       }
       if (cancelled) return
@@ -153,7 +153,7 @@ export function ClaudeSessionPicker({
     )
     // Most recently worked on first, and a session with no timestamp last
     // rather than first — an unknown time is not a recent one.
-    matching.sort((a, b) => stamp(b.updatedAt) - stamp(a.updatedAt))
+    matching.sort((a, b) => stamp(b.updated_at) - stamp(a.updated_at))
     // Measured: 596 sessions on one working laptop, and every one of them is a
     // React Aria Button that re-renders on each keystroke in the search box.
     // Cut to the most recent, with the remainder counted out loud rather than
@@ -183,38 +183,42 @@ export function ClaudeSessionPicker({
     // the dialog they had just reopened, and — in `import` mode — revise a list
     // belonging to another scope. Nothing below may touch state without asking.
     const mine = generation.current
-    setBusy(session.sessionId)
+    setBusy(session.session_id)
     setRowError(null)
     try {
       if (mode === 'attach') {
         if (!conversationId) return
-        await api.acpAttachSession({ conversationId, sessionId: session.sessionId, cwd: session.cwd })
+        await api.acp.attachSession({
+          conversation_id: conversationId,
+          session_id: session.session_id,
+          cwd: session.cwd,
+        })
         if (generation.current !== mine) return
         onOpenChange(false)
       } else {
-        const created = await api.acpImportSession({
-          sessionId: session.sessionId,
+        const created = await api.acp.importSession({
+          session_id: session.session_id,
           cwd: session.cwd,
           title: session.title,
-          updatedAt: session.updatedAt,
+          updated_at: session.updated_at,
         })
         if (generation.current !== mine) return
         // The row is now owned, so the list has to say so — the dialog stays
         // open because pulling in several at a sitting is the point of it.
         setSessions((current) =>
           (current ?? []).map((s) =>
-            s.sessionId === session.sessionId ? { ...s, ownedBy: created.conversationId } : s,
+            s.session_id === session.session_id ? { ...s, owned_by: created.conversation_id } : s,
           ),
         )
         // The one thing about this import the user cannot find out anywhere
         // else. Kept on the row rather than shown once and dismissed: it is a
         // fact about that session, and importing five in a row would otherwise
         // scroll it away.
-        if (created.truncated) setTruncated((prior) => new Set(prior).add(session.sessionId))
+        if (created.truncated) setTruncated((prior) => new Set(prior).add(session.session_id))
       }
     } catch (err) {
       if (generation.current !== mine) return
-      setRowError({ sessionId: session.sessionId, message: String(err) })
+      setRowError({ sessionId: session.session_id, message: String(err) })
     } finally {
       // Only the generation that set it clears it. A newer opening has already
       // reset `busy` above, and clearing it from here would release whichever
@@ -330,22 +334,22 @@ export function ClaudeSessionPicker({
             >
               {rows.map((session) => (
                 <SessionRow
-                  key={session.sessionId}
+                  key={session.session_id}
                   session={session}
                   mode={mode}
                   conversationId={conversationId ?? null}
-                  busy={busy === session.sessionId}
+                  busy={busy === session.session_id}
                   disabled={busy !== null}
-                  error={rowError && rowError.sessionId === session.sessionId ? rowError.message : null}
-                  truncated={truncated.has(session.sessionId)}
+                  error={rowError && rowError.sessionId === session.session_id ? rowError.message : null}
+                  truncated={truncated.has(session.session_id)}
                   // Through `stamp` rather than straight off the field: an
                   // unreadable timestamp is 0 there, and formatting that
                   // would put 1970 on the row instead of nothing.
-                  when={stamp(session.updatedAt) > 0 ? relative(stamp(session.updatedAt)) : null}
+                  when={stamp(session.updated_at) > 0 ? relative(stamp(session.updated_at)) : null}
                   onAct={() => void act(session)}
                   onOpen={() => {
-                    if (!session.ownedBy) return
-                    onOpenConversation?.(session.ownedBy)
+                    if (!session.owned_by) return
+                    onOpenConversation?.(session.owned_by)
                     onOpenChange(false)
                   }}
                 />
@@ -394,8 +398,8 @@ function SessionRow({
   onOpen: () => void
 }) {
   const { t } = useTranslation()
-  const mine = session.ownedBy !== null && session.ownedBy === conversationId
-  const taken = session.ownedBy !== null && !mine
+  const mine = session.owned_by !== null && session.owned_by === conversationId
+  const taken = session.owned_by !== null && !mine
 
   return (
     // `aria-busy` on the row, not on the button: React Aria filters everything

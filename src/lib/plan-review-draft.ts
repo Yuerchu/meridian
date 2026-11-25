@@ -108,6 +108,35 @@ export function planReviewActionRules(input: {
 
 type Save = (request: PlanReviewDraftSaveRequest) => Promise<PlanReviewDraftSaveResponse>
 
+/** Convert a camelCase local draft payload into the snake_case IPC request. */
+export function toPlanReviewDraftSaveRequest(
+  reviewId: string,
+  expectedGeneration: number,
+  payload: PlanDraftPayload,
+): PlanReviewDraftSaveRequest {
+  return {
+    review_id: reviewId,
+    expected_generation: expectedGeneration,
+    mode: payload.mode,
+    base_editor_json: payload.baseEditorJson,
+    base_normalized_markdown: payload.baseNormalizedMarkdown,
+    editor_json: payload.editorJson,
+    source_text: payload.sourceText,
+    normalized_markdown: payload.normalizedMarkdown,
+    comments: payload.comments,
+    global_note: payload.globalNote,
+    selection: payload.selection,
+    editor_schema_version: payload.editorSchemaVersion,
+    editor_schema_hash: payload.editorSchemaHash,
+    editor_schema_fallback: payload.editorSchemaFallback
+      ? {
+          from_version: payload.editorSchemaFallback.fromVersion,
+          from_hash: payload.editorSchemaFallback.fromHash,
+        }
+      : null,
+  }
+}
+
 /** The backend's `PlanReviewStoreError::Conflict` is the one variant that means
  *  "reload and look again" rather than "this request was wrong", and it arrives
  *  flattened to a string with this prefix (`db/ops/plan_review.rs`). Matching
@@ -240,11 +269,7 @@ export class PlanDraftSaveQueue {
       this.pending = null
       this.onStateChange('saving')
       try {
-        const result = await this.save({
-          reviewId: this.reviewId,
-          expectedGeneration: this.generation,
-          ...payload,
-        })
+        const result = await this.save(toPlanReviewDraftSaveRequest(this.reviewId, this.generation, payload))
         this.generation = result.generation
         this.draftHash = result.draft_sha256
         this.saved = payload

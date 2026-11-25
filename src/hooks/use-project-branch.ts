@@ -71,8 +71,8 @@ export function useProjectBranch(
       readFor.current = key
       setAnswer({ key, branch })
     }
-    api
-      .workspaceGitStatus({ conversationId })
+    api.workspace
+      .getGitStatus({ conversation_id: conversationId })
       .then((status) => {
         if (status.state !== 'ok' || status.branch === null) settle({ status: 'none' })
         else if (status.branch === DETACHED) settle({ status: 'detached' })

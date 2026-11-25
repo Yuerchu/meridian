@@ -3,7 +3,6 @@
 //! inert values so the frontend can call them unconditionally.
 
 #[derive(Clone, Copy, Default, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct WindowInsetsInfoResponse {
     pub top: f32,
     pub right: f32,
@@ -187,7 +186,7 @@ mod saf_root_response_tests {
 
 #[cfg(target_os = "android")]
 async fn load_saf_roots(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<SafRootEntry>, String> {
-    let json = meridian_core::db::sea::ops::preference::get_preference(db, "android.saf_roots")
+    let json = meridian_core::db::sea::ops::preference::get(db, "android.saf_roots")
         .await
         .map_err(|e| e.to_string())?;
     match json {
@@ -200,16 +199,23 @@ async fn load_saf_roots(db: &meridian_core::db::sea::cap::Db) -> Result<Vec<SafR
 async fn save_saf_roots(db: &meridian_core::db::sea::cap::Db, roots: &[SafRootEntry]) -> Result<(), String> {
     let json = serde_json::to_string(roots).map_err(|e| e.to_string())?;
     db.write(async |tx| {
-        meridian_core::db::sea::ops::preference::set_preference(
-            tx,
-            "android.saf_roots",
-            &json,
-            meridian_core::util::now_ms(),
-        )
-        .await
+        meridian_core::db::sea::ops::preference::set(tx, "android.saf_roots", &json, meridian_core::util::now_ms())
+            .await
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct FileNameResolveRequest {
+    pub path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SafRootDeleteRequest {
+    pub uri: String,
 }
 
 #[tauri::command]
@@ -218,27 +224,27 @@ pub fn get_platform(_app: tauri::AppHandle) -> Result<PlatformInfoResponse, Stri
 }
 
 #[tauri::command]
-pub fn get_window_insets() -> WindowInsetsInfoResponse {
+pub fn get_window_insets() -> Result<WindowInsetsInfoResponse, String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::current_insets()
+        Ok(crate::android_bridge::current_insets())
     }
     #[cfg(not(target_os = "android"))]
     {
-        WindowInsetsInfoResponse::default()
+        Ok(WindowInsetsInfoResponse::default())
     }
 }
 
 /// The settings page a launch asked for, if one is waiting; taking it clears it.
 #[tauri::command]
-pub fn take_launch_request() -> Option<LaunchRequestInfoResponse> {
+pub fn take_launch_request() -> Result<Option<LaunchRequestInfoResponse>, String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::take_launch_request()
+        Ok(crate::android_bridge::take_launch_request())
     }
     #[cfg(not(target_os = "android"))]
     {
-        None
+        Ok(None)
     }
 }
 
@@ -257,7 +263,7 @@ pub fn get_manage_storage_status() -> Result<bool, String> {
 
 /// Open the system settings page where the user can grant "All files access".
 #[tauri::command]
-pub fn request_manage_storage() -> Result<(), String> {
+pub fn open_manage_storage_settings() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
         meridian_core::android_bridge::open_manage_storage_settings()
@@ -271,7 +277,7 @@ pub fn request_manage_storage() -> Result<(), String> {
 /// Show the system directory picker, persist the grant, and store the new
 /// root in preferences. Returns the updated list of authorized directories.
 #[tauri::command]
-pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<SafRootListResponse, String> {
+pub async fn select_saf_directory(app: tauri::AppHandle) -> Result<SafRootListResponse, String> {
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
@@ -333,7 +339,7 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<SafRootListResponse
 /// Launch the device camera to take a photo. Returns the content:// URI of the
 /// captured image, or None if the user cancelled.
 #[tauri::command]
-pub async fn take_photo() -> Result<Option<String>, String> {
+pub async fn select_camera_photo() -> Result<Option<String>, String> {
     #[cfg(target_os = "android")]
     {
         meridian_core::android_bridge::take_photo().await
@@ -347,7 +353,7 @@ pub async fn take_photo() -> Result<Option<String>, String> {
 /// Launch the system photo picker. Returns the content:// URI of the selected
 /// image, or None if the user cancelled.
 #[tauri::command]
-pub async fn pick_gallery_image() -> Result<Option<String>, String> {
+pub async fn select_gallery_image() -> Result<Option<String>, String> {
     #[cfg(target_os = "android")]
     {
         meridian_core::android_bridge::pick_gallery().await
@@ -361,7 +367,8 @@ pub async fn pick_gallery_image() -> Result<Option<String>, String> {
 /// Resolve the display name of a file path or content:// URI.
 /// On Android, content:// URIs are resolved via the ContentResolver.
 #[tauri::command]
-pub async fn resolve_file_name(path: String) -> Result<String, String> {
+pub async fn resolve_file_name(request: FileNameResolveRequest) -> Result<String, String> {
+    let FileNameResolveRequest { path } = request;
     #[cfg(target_os = "android")]
     {
         if path.starts_with("content://") {
@@ -378,7 +385,11 @@ pub async fn resolve_file_name(path: String) -> Result<String, String> {
 
 /// Remove an authorized SAF directory and release its persisted grant.
 #[tauri::command]
-pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<SafRootListResponse, String> {
+pub async fn delete_saf_root(
+    app: tauri::AppHandle,
+    request: SafRootDeleteRequest,
+) -> Result<SafRootListResponse, String> {
+    let SafRootDeleteRequest { uri } = request;
     #[cfg(target_os = "android")]
     {
         use crate::ServicesExt;
@@ -416,6 +427,6 @@ mod launch_request_tests {
     #[cfg(not(target_os = "android"))]
     #[test]
     fn nothing_launches_the_desktop_onto_a_page() {
-        assert_eq!(take_launch_request(), None);
+        assert_eq!(take_launch_request(), Ok(None));
     }
 }

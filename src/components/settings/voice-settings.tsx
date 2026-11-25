@@ -45,7 +45,7 @@ export function VoiceSettings() {
   )
 
   const refreshStatus = useCallback(async () => {
-    const next = await api.voiceModelStatus()
+    const next = await api.voice.getModelStatus()
     setStatus(next)
   }, [])
 
@@ -54,16 +54,16 @@ export function VoiceSettings() {
     void refreshStatus()
       .catch((reason) => setError(String(reason)))
       .finally(() => setStatusLoading(false))
-    void api
-      .getPreference({ key: 'voice.filter_level' })
+    void api.preferences
+      .get({ key: 'voice.filter_level' })
       .then(({ value }) => {
         if (value && !disposed) setFilterLevel(value)
       })
       .catch((reason) => {
         if (!disposed) setError(String(reason))
       })
-    void api
-      .getPreference({ key: 'voice.download_url' })
+    void api.preferences
+      .get({ key: 'voice.download_url' })
       .then(({ value }) => {
         if (value && !disposed) setMirrorUrl(value)
       })
@@ -93,7 +93,7 @@ export function VoiceSettings() {
     setError(null)
     setProgress({ type: 'progress', downloaded: 0, total: null })
     try {
-      await api.voiceDownloadModel({ url: mirrorUrl.trim() || null })
+      await api.voice.startModelDownload({ url: mirrorUrl.trim() || null })
     } catch (e) {
       // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- clears a download progress bar; the error is shown beside it
       setProgress(null)
@@ -103,7 +103,7 @@ export function VoiceSettings() {
   }
 
   const handleCancelDownload = async () => {
-    await api.voiceCancelDownload().catch(console.error)
+    await api.voice.stopModelDownload().catch(console.error)
   }
 
   const handleImport = async () => {
@@ -120,7 +120,7 @@ export function VoiceSettings() {
     setError(null)
     setImporting(true)
     try {
-      setStatus(await api.voiceImportModel({ archivePath: file }))
+      setStatus(await api.voice.importModel({ archive_path: file }))
     } catch (e) {
       setError(String(e))
     } finally {
@@ -138,7 +138,7 @@ export function VoiceSettings() {
       return
     setError(null)
     try {
-      await api.voiceDeleteModel()
+      await api.voice.deleteModel()
       await refreshStatus()
     } catch (e) {
       setError(String(e))
@@ -147,7 +147,7 @@ export function VoiceSettings() {
 
   const handleFilterChange = (value: VoiceFilterLevel) => {
     setFilterLevel(value)
-    api.setPreference({ key: 'voice.filter_level', value }).catch((reason) => setError(String(reason)))
+    api.preferences.set({ key: 'voice.filter_level', value }).catch((reason) => setError(String(reason)))
   }
 
   const handleMirrorChange = (value: string) => {
@@ -156,7 +156,7 @@ export function VoiceSettings() {
 
   const persistMirror = () => {
     const value = mirrorUrl.trim() || null
-    api.setPreference({ key: 'voice.download_url', value }).catch((reason) => setError(String(reason)))
+    api.preferences.set({ key: 'voice.download_url', value }).catch((reason) => setError(String(reason)))
   }
 
   const downloading = progress !== null

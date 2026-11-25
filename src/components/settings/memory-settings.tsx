@@ -53,14 +53,14 @@ export function MemorySettings() {
     if (!canAdd || !newKey.trim() || !newContent.trim()) return
     setActionError(null)
     try {
-      await api.saveMemoryScoped({
+      await api.memories.create({
         scope: targetScope,
-        projectId: targetScope === 'project' ? targetProjectId : null,
-        subjectScopeId: null,
+        project_id: targetScope === 'project' ? (targetProjectId ?? null) : null,
+        subject_scope_id: null,
         key: newKey.trim(),
         content: newContent.trim(),
-        memoryType: newType,
-        ownerOnly: false,
+        memory_type: newType,
+        owner_only: false,
       })
     } catch (reason) {
       setActionError(String(reason))
@@ -267,7 +267,7 @@ export function MemorySettings() {
                 if (!ok) return
                 setActionError(null)
                 try {
-                  await api.deleteMemories([...browser.selected])
+                  await api.memories.delete({ ids: [...browser.selected], permanent: false })
                 } catch (reason) {
                   setActionError(String(reason))
                   return

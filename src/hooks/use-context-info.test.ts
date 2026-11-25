@@ -7,11 +7,13 @@ import { useContextInfo } from './use-context-info'
 
 vi.mock('@/api', () => ({
   api: {
-    getContextInfo: vi.fn(),
+    conversations: {
+      getContext: vi.fn(),
+    },
   },
 }))
 
-const getContextInfo = vi.mocked(api.getContextInfo)
+const getContextInfo = vi.mocked(api.conversations.getContext)
 
 function info(over: Partial<ContextInfoResponse> = {}): ContextInfoResponse {
   return {

@@ -9,7 +9,6 @@
 use crate::ServicesExt;
 
 #[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct AppInfoResponse {
     pub version: String,
     pub tauri_version: String,

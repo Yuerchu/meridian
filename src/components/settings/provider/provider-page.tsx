@@ -259,7 +259,7 @@ function ProviderEditor({
     setDeleting(true)
     setDeleteError(null)
     try {
-      await api.deleteProvider(provider.id)
+      await api.providers.delete({ id: provider.id })
     } catch (err) {
       setDeleteError(String(err))
       setDeleting(false)
@@ -273,8 +273,8 @@ function ProviderEditor({
   // switch it sits under is what decides whether it is ever shown.
   useEffect(() => {
     let cancelled = false
-    api
-      .getPreference({ key: 'codex.client_version' })
+    api.preferences
+      .get({ key: 'codex.client_version' })
       .then((preference) => {
         if (cancelled) return
         setCodexClientVersion(preference.value ?? '')
@@ -297,8 +297,8 @@ function ProviderEditor({
     }
     let cancelled = false
     setKeyStatus('loading')
-    api
-      .getProviderKeyExists(provider.id)
+    api.providers
+      .testKey({ provider_id: provider.id })
       .then((exists) => {
         if (!cancelled) setKeyStatus(exists ? 'set' : 'unset')
       })
@@ -340,19 +340,22 @@ function ProviderEditor({
       // save restates the resolved option's credentials so the row cannot hold
       // that combination; when nothing changed this writes back what is there.
       const resolvedAuth = activeAuth ?? null
-      await api.updateProvider({
+      await api.providers.update({
         id: provider.id,
         name,
         ...(isRemote
           ? {}
           : {
-              providerType,
-              baseUrl,
-              apiFormat,
-              localBackend,
+              provider_type: providerType,
+              base_url: baseUrl,
+              api_format: apiFormat,
+              local_backend: localBackend,
               ...(resolvedAuth === null
                 ? {}
-                : { credentialKind: resolvedAuth.credential_kind, transportProfile: resolvedAuth.transport_profile }),
+                : {
+                    credential_kind: resolvedAuth.credential_kind,
+                    transport_profile: resolvedAuth.transport_profile,
+                  }),
             }),
         // Sent on every save, `null` included: null is the picker's own default
         // entry — "derive the mark from the vendor" — and omitting it would mean
@@ -361,7 +364,7 @@ function ProviderEditor({
         // Restated even when the switch is not on screen. A row moved off
         // `responses` hides the control, and leaving the column as it was would
         // keep a setting the user can no longer see or turn off.
-        codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
+        codex_request_shape: offersCodexRequestShape ? codexRequestShape : false,
       })
       // The row is written, so it is no longer unsaved even if the preference
       // below fails — that failure is reported, and only that field stays dirty.
@@ -378,7 +381,7 @@ function ProviderEditor({
       // that never showed it must not clear somebody else's override. `null` is
       // the blank field, which means "back to the shipped default".
       if (offersCodexRequestShape && codexRequestShape) {
-        await api.setPreference({
+        await api.preferences.set({
           key: 'codex.client_version',
           value: codexClientVersion.trim() || null,
         })
@@ -469,12 +472,12 @@ function ProviderEditor({
       setBaseUrl(nextUrl)
       try {
         setCredentialError(null)
-        await api.updateProvider({
+        await api.providers.update({
           id: provider.id,
-          credentialKind: next.credential_kind,
-          transportProfile: next.transport_profile,
-          apiFormat: nextFormat,
-          baseUrl: nextUrl,
+          credential_kind: next.credential_kind,
+          transport_profile: next.transport_profile,
+          api_format: nextFormat,
+          base_url: nextUrl,
         })
         setSavedDraft((current) => ({ ...current, apiFormat: nextFormat, baseUrl: nextUrl }))
         markSaved()
@@ -492,7 +495,7 @@ function ProviderEditor({
     setSavingKey(true)
     setCredentialError(null)
     try {
-      await api.setProviderKey({ providerId: provider.id, apiKey: apiKey.trim() })
+      await api.providers.setKey({ provider_id: provider.id, api_key: apiKey.trim() })
       setKeyStatus('set')
       setApiKey('')
       markKeySaved()
@@ -516,7 +519,7 @@ function ProviderEditor({
     setFetchingBalance(true)
     setBalanceError(null)
     try {
-      const result = await api.getProviderBalance(provider.id)
+      const result = await api.providers.getBalance({ provider_id: provider.id })
       setBalance(result)
       // The backend is the authority on which upstreams publish one, so a null
       // here means the list below has drifted from `supports_balance`.
@@ -533,7 +536,7 @@ function ProviderEditor({
 
   const loadModelConfigs = useCallback(async () => {
     try {
-      const configs = await api.listModelConfigs(provider.id)
+      const configs = await api.modelConfigs.list({ provider_id: provider.id })
       const map = new Map<string, ModelConfigInfoResponse>()
       for (const c of configs) map.set(c.model_id, c)
       setModelConfigs(map)
@@ -549,7 +552,7 @@ function ProviderEditor({
     setFetchingModels(true)
     setModelsError(null)
     try {
-      const list = await api.fetchProviderModels({ providerId: provider.id, forceRefresh: true })
+      const list = await api.providers.listModels({ provider_id: provider.id, fetch_policy: 'force_remote' })
       setModels(list)
       setModelsKnown(true)
       await loadModelConfigs()
@@ -571,8 +574,8 @@ function ProviderEditor({
   // in list": that would be a claim about an upstream this page never asked.
   useEffect(() => {
     let cancelled = false
-    api
-      .listCachedProviderModels({ providerId: provider.id })
+    api.providers
+      .listModels({ provider_id: provider.id, fetch_policy: 'cache_only' })
       .then((list) => {
         if (cancelled) return
         setModels(list)
@@ -1266,7 +1269,7 @@ export function ProviderPage({
   const [loading, setLoading] = useState(true)
 
   const refresh = useCallback(async () => {
-    const list = await api.listProviders()
+    const list = await api.providers.list()
     setProvider(list.find((candidate) => candidate.id === providerId) ?? null)
   }, [providerId])
 

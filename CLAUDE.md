@@ -94,6 +94,7 @@ A new decision about one subsystem goes into that subsystem's file.
 | [`hook-gates.md`](.claude/rules/hook-gates.md) | `hooks/`, the `meridian-plan-gate` plugin | the loopback review gates |
 | [`container.md`](.claude/rules/container.md) | `crate::container`, sandbox settings, a hosted agent in Docker | container execution, cancellation, no host fallback |
 | [`remote.md`](.claude/rules/remote.md) | `src-tauri/src/remote/`, `lib/transport.ts`, `command_table.rs` | remote access |
+| [`ipc.md`](.claude/rules/ipc.md) | `command_table.rs`, `commands/**`, `src/api.ts`, `src/types.ts`, `lib/transport.ts` | IPC Verb-Noun command naming, single `request` DTOs, Rust-first `snake_case`, return conventions |
 | [`ime.md`](.claude/rules/ime.md) | `src-tauri/ime/`, `src/ime/` | the input method |
 | [`android.md`](.claude/rules/android.md) | `gen/android/`, `android_bridge.rs`, `platform.rs`, the keyboard's Kotlin | file access, the keyboard process, insets, back gesture |
 | [`packaging.md`](.claude/rules/packaging.md) | `tauri*.conf.json`, `nsis/`, `wix/`, release workflow, sherpa-onnx, IME builds | what each platform ships, the IME installers, the Android keyboard build |
@@ -111,6 +112,12 @@ A new decision about one subsystem goes into that subsystem's file.
   public entity snapshots are `EntityInfoResponse` / `EntityListResponse`; bus
   payloads are `EntityEvent`. Do not introduce `NewEntity`, `EntityPatch`,
   `EntityInput`, bare persistence entity names, or a generic `Dto` suffix.
+- **IPC commands follow closed Verb-Noun naming, single `request` DTOs, and Rust `snake_case`.**
+  See [`.claude/rules/ipc.md`](.claude/rules/ipc.md): every command in
+  `command_table.rs` uses `<approved_verb>_<noun>`, takes either `()` or a
+  single `request: *Request`, returns `Result<T, String>`, and serializes all
+  first-party IPC Request/Response fields in `snake_case` (no `camelCase`
+  renames on IPC DTOs). Frontend `src/api.ts` groups calls by resource namespace.
 - **Persistence rows never cross IPC.** Tauri and remote commands map rows into
   explicit response contracts. Adding a database column must not implicitly
   add a public field.
@@ -177,7 +184,7 @@ A new decision about one subsystem goes into that subsystem's file.
 - **`EventBus` is a sink registry, not a broadcast channel, and that is load-bearing.** The desktop's events *are* its answer: a window that missed one is showing a transcript that never catches up, so the turn producing it has to fail. A `broadcast` makes every send infallible from the sender's side and cannot express that. So delivery is synchronous and a sink is registered `critical` or not — `WindowSink` is, and that registration is where the rule now lives.
 
   The opposite case is just as deliberate. OneBot, the hook reviewer and sub-agents each emit to a window that may not be looking, and for them a failed send costs nothing; their `Emit` implementations swallow it and return `Ok`. Handing those three `BusEmit` would quietly turn "the window is closed" into "the sub-agent's turn failed". If you add a runner, decide which of the two it is before wiring the bus in.
-- **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
+- **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::sea::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
 - **What was sent is never dropped or rewritten.** Every request's `system`, `tools`
   and earlier messages must replay byte for byte, thinking blocks included — the

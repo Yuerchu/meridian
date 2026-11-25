@@ -86,7 +86,7 @@ describe('HostedModeChip', () => {
     description: null,
     category: 'mode',
     type: 'select',
-    currentValue: 'default',
+    current_value: 'default',
     options: [
       { value: 'default', name: 'Default', description: 'Ask first' },
       { value: 'acceptEdits', name: 'Accept Edits', description: null },

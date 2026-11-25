@@ -67,7 +67,7 @@ export const useBoardStore = create<BoardState>((set) => ({
   load: async () => {
     let tasks: BoardTaskInfoResponse[]
     try {
-      tasks = await api.boardTaskList()
+      tasks = await api.board.listTasks()
     } catch (err) {
       set({ error: String(err) })
       return

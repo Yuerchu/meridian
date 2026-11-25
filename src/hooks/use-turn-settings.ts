@@ -105,7 +105,7 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
   const [capabilities, setCapabilities] = useState<ProviderCapabilitiesInfoResponse | null>(null)
 
   useEffect(() => {
-    Promise.all([api.listAssistants(), api.listProviders()]).then(([a, p]) => {
+    Promise.all([api.assistants.list(), api.providers.list()]).then(([a, p]) => {
       setAssistants(a)
       setProviders(p)
     })
@@ -152,8 +152,8 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       if (a?.provider_id) setSelectedProviderId(a.provider_id)
       if (conversationId === null) return
       // Persist the explicit switch so the binding survives conversation changes
-      api
-        .setConversationAssistant({ id: conversationId, assistantId: id })
+      api.conversations
+        .update({ id: conversationId, assistant_id: id })
         .then(() => refreshConversations())
         .catch((err: unknown) => {
           // The selection still applies to this session, but it was not
@@ -178,8 +178,8 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       setCapabilities(null)
       return
     }
-    api
-      .getProviderCapabilities({ providerId: selectedProviderId, modelId: selectedModelId })
+    api.providers
+      .getCapabilities({ provider_id: selectedProviderId, model_id: selectedModelId })
       .then(setCapabilities)
       // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- null is "unknown": clamping is skipped, nothing is written
       .catch(() => setCapabilities(null))
@@ -211,11 +211,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     (level: ThinkingLevel) => {
       setThinkingLevel(level)
       if (conversationId === null) return
-      api
-        .setConversationReasoningPrefs({
+      api.conversations
+        .update({
           id: conversationId,
-          thinkingLevel: level === 'default' ? null : level,
-          fastMode,
+          thinking_level: level === 'default' ? null : level,
+          fast_mode: fastMode,
         })
         .then(() => refreshConversations())
         .catch((err: unknown) => {
@@ -229,11 +229,11 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
     (next: boolean) => {
       setFastMode(next)
       if (conversationId === null) return
-      api
-        .setConversationReasoningPrefs({
+      api.conversations
+        .update({
           id: conversationId,
-          thinkingLevel: thinkingLevel === 'default' ? null : thinkingLevel,
-          fastMode: next,
+          thinking_level: thinkingLevel === 'default' ? null : thinkingLevel,
+          fast_mode: next,
         })
         .then(() => refreshConversations())
         .catch((err: unknown) => {
@@ -248,8 +248,8 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       const previous = mode
       setMode(next)
       if (conversationId === null) return Promise.resolve(true)
-      return api
-        .setConversationMode({ id: conversationId, mode: next === 'work' ? null : next })
+      return api.conversations
+        .update({ id: conversationId, mode: next === 'work' ? null : next })
         .then(async () => {
           await refreshConversations()
           return true
@@ -272,8 +272,8 @@ export function useTurnSettings(conversationId: string | null, initial?: DraftTu
       const previous = acceptEdits
       setAcceptEdits(next)
       if (conversationId === null) return Promise.resolve(true)
-      return api
-        .setConversationAcceptEdits({ id: conversationId, acceptEdits: next })
+      return api.conversations
+        .update({ id: conversationId, accept_edits: next })
         .then(async () => {
           await refreshConversations()
           return true

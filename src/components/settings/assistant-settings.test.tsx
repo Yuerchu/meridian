@@ -8,21 +8,36 @@ import { AssistantSettings } from './assistant-settings'
 
 vi.mock('@/api', () => ({
   api: {
-    listAssistants: vi.fn(),
-    listProviders: vi.fn(),
-    listAllToolNames: vi.fn(),
-    listEmojiPacks: vi.fn(),
-    listToolPresets: vi.fn(),
-    listAssistantEmojiPacks: vi.fn(),
-    listSkills: vi.fn(),
-    listSkillBindings: vi.fn(),
-    getPreference: vi.fn(),
-    fetchProviderModels: vi.fn(),
-    getModelConfig: vi.fn(),
-    getProviderCapabilities: vi.fn(),
-    updateAssistant: vi.fn(),
-    createAssistant: vi.fn(),
-    deleteAssistant: vi.fn(),
+    assistants: {
+      list: vi.fn(),
+      update: vi.fn(),
+      create: vi.fn(),
+      delete: vi.fn(),
+    },
+    providers: {
+      list: vi.fn(),
+      listModels: vi.fn(),
+      getCapabilities: vi.fn(),
+    },
+    mcp: {
+      listAllTools: vi.fn(),
+    },
+    emojis: {
+      listPacks: vi.fn(),
+    },
+    tools: {
+      listPresets: vi.fn(),
+    },
+    skills: {
+      list: vi.fn(),
+      listBindings: vi.fn(),
+    },
+    preferences: {
+      get: vi.fn(),
+    },
+    modelConfigs: {
+      get: vi.fn(),
+    },
   },
 }))
 
@@ -81,19 +96,18 @@ describe('AssistantSettings tool mode segment', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listAssistants.mockResolvedValue([ASSISTANT])
-    mockApi.listProviders.mockResolvedValue([])
-    mockApi.listAllToolNames.mockResolvedValue([TOOL])
-    mockApi.listEmojiPacks.mockResolvedValue([])
-    mockApi.listToolPresets.mockResolvedValue([PRESET])
-    mockApi.listAssistantEmojiPacks.mockResolvedValue([])
-    mockApi.listSkills.mockResolvedValue([])
-    mockApi.listSkillBindings.mockResolvedValue([])
-    mockApi.getPreference.mockImplementation(async (request) => ({ key: request.key, value: null }) as never)
-    mockApi.fetchProviderModels.mockResolvedValue([])
-    mockApi.getModelConfig.mockResolvedValue(null)
-    mockApi.getProviderCapabilities.mockRejectedValue(new Error('none'))
-    mockApi.updateAssistant.mockResolvedValue(undefined)
+    mockApi.assistants.list.mockResolvedValue([ASSISTANT])
+    mockApi.providers.list.mockResolvedValue([])
+    mockApi.mcp.listAllTools.mockResolvedValue([TOOL])
+    mockApi.emojis.listPacks.mockResolvedValue([])
+    mockApi.tools.listPresets.mockResolvedValue([PRESET])
+    mockApi.skills.list.mockResolvedValue([])
+    mockApi.skills.listBindings.mockResolvedValue([])
+    mockApi.preferences.get.mockImplementation(async (request) => ({ key: request.key, value: null }) as never)
+    mockApi.providers.listModels.mockResolvedValue([])
+    mockApi.modelConfigs.get.mockResolvedValue(null)
+    mockApi.providers.getCapabilities.mockRejectedValue(new Error('none'))
+    mockApi.assistants.update.mockResolvedValue(ASSISTANT)
   })
 
   it('switches all, preset, and custom modes and keeps custom tools in the save payload', async () => {
@@ -124,11 +138,11 @@ describe('AssistantSettings tool mode segment', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
-      expect(mockApi.updateAssistant).toHaveBeenCalledWith(
+      expect(mockApi.assistants.update).toHaveBeenCalledWith(
         expect.objectContaining({
           id: ASSISTANT.id,
-          enabledTools: [TOOL.name],
-          toolPresetId: null,
+          enabled_tools: [TOOL.name],
+          tool_preset_id: null,
         }),
       ),
     )
@@ -149,24 +163,23 @@ describe('AssistantSettings model lock', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listAssistants.mockResolvedValue([bound])
-    mockApi.listProviders.mockResolvedValue([{ id: 'p1', name: 'Gemma' } as never])
-    mockApi.listAllToolNames.mockResolvedValue([TOOL])
-    mockApi.listEmojiPacks.mockResolvedValue([])
-    mockApi.listToolPresets.mockResolvedValue([])
-    mockApi.listAssistantEmojiPacks.mockResolvedValue([])
-    mockApi.listSkills.mockResolvedValue([])
-    mockApi.listSkillBindings.mockResolvedValue([])
-    mockApi.getPreference.mockImplementation(async (request) => ({ key: request.key, value: null }) as never)
-    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'm1', name: 'm1' }])
-    mockApi.getModelConfig.mockResolvedValue({
+    mockApi.assistants.list.mockResolvedValue([bound])
+    mockApi.providers.list.mockResolvedValue([{ id: 'p1', name: 'Gemma' } as never])
+    mockApi.mcp.listAllTools.mockResolvedValue([TOOL])
+    mockApi.emojis.listPacks.mockResolvedValue([])
+    mockApi.tools.listPresets.mockResolvedValue([])
+    mockApi.skills.list.mockResolvedValue([])
+    mockApi.skills.listBindings.mockResolvedValue([])
+    mockApi.preferences.get.mockImplementation(async (request) => ({ key: request.key, value: null }) as never)
+    mockApi.providers.listModels.mockResolvedValue([{ id: 'm1', name: 'm1' }])
+    mockApi.modelConfigs.get.mockResolvedValue({
       profile: { context_window: 128000 },
     } as never)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.providers.getCapabilities.mockResolvedValue({
       supports_thinking: true,
       max_context_tokens: 128000,
     } as never)
-    mockApi.updateAssistant.mockResolvedValue(undefined)
+    mockApi.assistants.update.mockResolvedValue(bound)
   })
 
   async function openEditor(user: ReturnType<typeof userEvent.setup>) {
@@ -189,7 +202,7 @@ describe('AssistantSettings model lock', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       i18n.t('settings.assistant.contextLimitExceedsModel', { window: 128000 }),
     )
-    expect(mockApi.updateAssistant).not.toHaveBeenCalled()
+    expect(mockApi.assistants.update).not.toHaveBeenCalled()
   })
 
   it('saves a context limit inside the bound model window', async () => {
@@ -202,14 +215,14 @@ describe('AssistantSettings model lock', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
-      expect(mockApi.updateAssistant).toHaveBeenCalledWith(
-        expect.objectContaining({ id: bound.id, contextLimit: 64000 }),
+      expect(mockApi.assistants.update).toHaveBeenCalledWith(
+        expect.objectContaining({ id: bound.id, context_limit: 64000 }),
       ),
     )
   })
 
   it('refuses thinking when the bound model cannot think', async () => {
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.providers.getCapabilities.mockResolvedValue({
       supports_thinking: false,
       max_context_tokens: 128000,
     } as never)
@@ -218,14 +231,14 @@ describe('AssistantSettings model lock', () => {
 
     expect(await screen.findByText(i18n.t('settings.assistant.thinkingUnsupported'))).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
-    expect(mockApi.updateAssistant).not.toHaveBeenCalled()
+    expect(mockApi.assistants.update).not.toHaveBeenCalled()
   })
 
   // A local model's capability read fails whenever its file does; the window
   // lives on the stored profile and must survive that failure, or the lock is
   // missing exactly where the 1M override used to reach the GPU runtime.
   it('still caps the context limit when the capability read fails', async () => {
-    mockApi.getProviderCapabilities.mockRejectedValue(new Error('local file unavailable'))
+    mockApi.providers.getCapabilities.mockRejectedValue(new Error('local file unavailable'))
     const user = userEvent.setup()
     await openEditor(user)
 
@@ -237,6 +250,6 @@ describe('AssistantSettings model lock', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       i18n.t('settings.assistant.contextLimitExceedsModel', { window: 128000 }),
     )
-    expect(mockApi.updateAssistant).not.toHaveBeenCalled()
+    expect(mockApi.assistants.update).not.toHaveBeenCalled()
   })
 })

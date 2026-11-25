@@ -13,14 +13,16 @@ import { PlanReviewEntryBlock } from './plan-review-entry'
 
 vi.mock('@/api', () => ({
   api: {
-    getPlanReview: vi.fn(),
-    savePlanReviewDraft: vi.fn(),
-    decidePlanReview: vi.fn(),
+    planReview: {
+      get: vi.fn(),
+      setDraft: vi.fn(),
+      submitDecision: vi.fn(),
+    },
   },
 }))
 
-const getPlanReview = vi.mocked(api.getPlanReview)
-const decide = vi.mocked(api.decidePlanReview)
+const getPlanReview = vi.mocked(api.planReview.get)
+const decide = vi.mocked(api.planReview.submitDecision)
 
 const PLAN = '# Fix the scroller\n\n1. Track reader scroll\n2. Change the pin check\n'
 
@@ -161,10 +163,10 @@ describe('PlanReviewEntryBlock', () => {
     await waitFor(() =>
       expect(decide).toHaveBeenCalledWith(
         expect.objectContaining({
-          reviewId: 'review-1',
+          review_id: 'review-1',
           action: 'approve',
-          approvalMode: 'default',
-          clearContext: false,
+          approval_mode: 'default',
+          clear_context: false,
         }),
       ),
     )
@@ -180,10 +182,10 @@ describe('PlanReviewEntryBlock', () => {
     await waitFor(() =>
       expect(decide).toHaveBeenCalledWith(
         expect.objectContaining({
-          reviewId: 'review-1',
+          review_id: 'review-1',
           action: 'approve',
-          approvalMode: 'accept_edits',
-          clearContext: true,
+          approval_mode: 'accept_edits',
+          clear_context: true,
         }),
       ),
     )
@@ -212,7 +214,7 @@ describe('PlanReviewEntryBlock', () => {
 
   it('sends a note back from the card', async () => {
     remember('pending')
-    vi.mocked(api.savePlanReviewDraft).mockResolvedValue({
+    vi.mocked(api.planReview.setDraft).mockResolvedValue({
       review_id: 'review-1',
       generation: 4,
       draft_sha256: 'draft-hash-4',
@@ -226,10 +228,10 @@ describe('PlanReviewEntryBlock', () => {
       expect(decide).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'request_changes',
-          approvalMode: null,
-          clearContext: false,
-          expectedGeneration: 4,
-          expectedDraftHash: 'draft-hash-4',
+          approval_mode: null,
+          clear_context: false,
+          expected_generation: 4,
+          expected_draft_hash: 'draft-hash-4',
         }),
       ),
     )
@@ -237,7 +239,7 @@ describe('PlanReviewEntryBlock', () => {
 
   it('approves with an inline note from the feedback row', async () => {
     remember('pending')
-    vi.mocked(api.savePlanReviewDraft).mockResolvedValue({
+    vi.mocked(api.planReview.setDraft).mockResolvedValue({
       review_id: 'review-1',
       generation: 4,
       draft_sha256: 'draft-hash-4',
@@ -251,10 +253,10 @@ describe('PlanReviewEntryBlock', () => {
       expect(decide).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'approve',
-          approvalMode: 'default',
-          clearContext: false,
-          expectedGeneration: 4,
-          expectedDraftHash: 'draft-hash-4',
+          approval_mode: 'default',
+          clear_context: false,
+          expected_generation: 4,
+          expected_draft_hash: 'draft-hash-4',
         }),
       ),
     )

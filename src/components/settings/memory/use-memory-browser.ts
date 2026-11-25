@@ -31,8 +31,8 @@ export function useMemoryBrowser() {
   // Enum values come from Rust so the front end never keeps its own copy to
   // drift out of sync.
   useEffect(() => {
-    api
-      .memoryEnums()
+    api.memories
+      .getEnums()
       .then(setEnums)
       .catch(() => {})
   }, [])
@@ -45,9 +45,9 @@ export function useMemoryBrowser() {
       // round trip each and, worse, could only ever return project rows — the
       // bot-wide and per-person branches below would have stayed empty forever.
       const [projectList, subjectList, allMemories] = await Promise.all([
-        api.listProjects(),
-        api.listMemorySubjects(),
-        api.listAllMemories(),
+        api.projects.list(),
+        api.memories.listSubjects(),
+        api.memories.list({ filter: { kind: 'all' } }),
       ])
       setProjects(projectList)
       setSubjects(subjectList)

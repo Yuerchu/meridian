@@ -3,172 +3,82 @@ import type { InvokeResponseSchemaDocument } from './invoke-response-schema'
 
 export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   "commands": {
-    "acp_attach_session": {
+    "attach_acp_session": {
       "kind": "null"
     },
-    "acp_cancel": {
+    "cancel_ime_dictionary_staging": {
       "kind": "null"
     },
-    "acp_check_adapter": {
-      "kind": "ref",
-      "id": 9
-    },
-    "acp_close": {
+    "cancel_voice_recording": {
       "kind": "null"
     },
-    "acp_conversation_session": {
-      "kind": "ref",
-      "id": 10
-    },
-    "acp_get_config": {
-      "kind": "ref",
-      "id": 12
-    },
-    "acp_import_session": {
-      "kind": "ref",
-      "id": 14
-    },
-    "acp_list_sessions": {
-      "kind": "ref",
-      "id": 15
-    },
-    "acp_live_sessions": {
-      "kind": "ref",
-      "id": 17
-    },
-    "acp_open_session": {
-      "kind": "string"
-    },
-    "acp_save_config": {
-      "kind": "ref",
-      "id": 12
-    },
-    "acp_send": {
+    "close_acp_session": {
       "kind": "null"
-    },
-    "acp_session_config": {
-      "kind": "ref",
-      "id": 18
-    },
-    "acp_set_session_config": {
-      "kind": "ref",
-      "id": 18
-    },
-    "active_user_shell_turn": {
-      "kind": "ref",
-      "id": 2
-    },
-    "all_pending_approvals": {
-      "kind": "ref",
-      "id": 22
-    },
-    "approve_tool_call": {
-      "kind": "null"
-    },
-    "assign_emoji_pack": {
-      "kind": "null"
-    },
-    "background_task_running_counts": {
-      "kind": "ref",
-      "id": 27
-    },
-    "board_task_create": {
-      "kind": "ref",
-      "id": 29
-    },
-    "board_task_delete": {
-      "kind": "null"
-    },
-    "board_task_list": {
-      "kind": "ref",
-      "id": 32
-    },
-    "board_task_move": {
-      "kind": "ref",
-      "id": 29
-    },
-    "board_task_remove_worktree": {
-      "kind": "ref",
-      "id": 29
-    },
-    "board_task_start": {
-      "kind": "ref",
-      "id": 33
-    },
-    "board_task_update": {
-      "kind": "ref",
-      "id": 29
-    },
-    "cancel_staged_ime_dictionaries": {
-      "kind": "null"
-    },
-    "chat": {
-      "kind": "null"
-    },
-    "clear_composer_draft": {
-      "kind": "ref",
-      "id": 38
-    },
-    "codex_auth_status": {
-      "kind": "ref",
-      "id": 39
-    },
-    "compact": {
-      "kind": "null"
-    },
-    "confirm_sticker_semantics": {
-      "kind": "ref",
-      "id": 41
     },
     "connect_mcp_server": {
       "kind": "null"
     },
-    "conversation_snapshot": {
-      "kind": "ref",
-      "id": 44
-    },
     "create_assistant": {
       "kind": "ref",
-      "id": 99
+      "id": 9
+    },
+    "create_board_task": {
+      "kind": "ref",
+      "id": 12
     },
     "create_conversation": {
       "kind": "ref",
-      "id": 34
+      "id": 15
     },
     "create_custom_tool": {
       "kind": "ref",
-      "id": 101
+      "id": 19
     },
     "create_emoji_pack": {
       "kind": "ref",
-      "id": 112
+      "id": 30
     },
     "create_mcp_server": {
       "kind": "ref",
-      "id": 114
+      "id": 32
+    },
+    "create_memory": {
+      "kind": "ref",
+      "id": 36
     },
     "create_project": {
       "kind": "ref",
-      "id": 118
+      "id": 42
     },
     "create_provider": {
       "kind": "ref",
-      "id": 120
+      "id": 44
+    },
+    "create_queued_prompt": {
+      "kind": "ref",
+      "id": 50
     },
     "create_skill": {
       "kind": "ref",
-      "id": 126
+      "id": 52
     },
     "create_tool_preset": {
       "kind": "ref",
-      "id": 128
-    },
-    "decide_plan_review": {
-      "kind": "ref",
-      "id": 129
+      "id": 54
     },
     "delete_assistant": {
       "kind": "null"
+    },
+    "delete_board_task": {
+      "kind": "null"
+    },
+    "delete_board_task_worktree": {
+      "kind": "ref",
+      "id": 12
+    },
+    "delete_composer_draft": {
+      "kind": "ref",
+      "id": 55
     },
     "delete_conversation": {
       "kind": "null"
@@ -182,14 +92,26 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "delete_emoji_pack": {
       "kind": "null"
     },
+    "delete_ime_dictionary": {
+      "kind": "ref",
+      "id": 56
+    },
+    "delete_ime_learning": {
+      "kind": "ref",
+      "id": 64
+    },
+    "delete_ime_lm": {
+      "kind": "ref",
+      "id": 67
+    },
     "delete_mcp_server": {
       "kind": "null"
     },
     "delete_memories": {
       "kind": "number"
     },
-    "delete_memory": {
-      "kind": "null"
+    "delete_memory_subject": {
+      "kind": "number"
     },
     "delete_message": {
       "kind": "null"
@@ -197,11 +119,22 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "delete_model_config": {
       "kind": "null"
     },
+    "delete_plan_review_draft": {
+      "kind": "ref",
+      "id": 70
+    },
     "delete_project": {
       "kind": "null"
     },
     "delete_provider": {
       "kind": "null"
+    },
+    "delete_queued_prompt": {
+      "kind": "null"
+    },
+    "delete_saf_root": {
+      "kind": "ref",
+      "id": 88
     },
     "delete_secret": {
       "kind": "boolean"
@@ -209,87 +142,84 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     "delete_skill": {
       "kind": "null"
     },
+    "delete_system_notice": {
+      "kind": "null"
+    },
     "delete_tool_preset": {
       "kind": "null"
     },
     "delete_voice_corpus": {
       "kind": "ref",
-      "id": 130
+      "id": 90
     },
-    "deny_tool_call": {
+    "delete_voice_model": {
       "kind": "null"
     },
-    "discard_plan_review_draft": {
+    "delete_voice_sender": {
       "kind": "ref",
-      "id": 131
+      "id": 91
     },
     "disconnect_mcp_server": {
       "kind": "null"
     },
-    "dismiss_system_notice": {
-      "kind": "null"
-    },
-    "download_ime_rime_ice": {
-      "kind": "ref",
-      "id": 148
-    },
     "export_conversation": {
       "kind": "ref",
-      "id": 150
+      "id": 92
     },
     "export_ime_learning": {
       "kind": "ref",
-      "id": 151
+      "id": 93
     },
     "export_logs": {
       "kind": "ref",
-      "id": 152
+      "id": 94
     },
-    "export_media_file": {
+    "export_message_media": {
       "kind": "null"
     },
     "export_voice_corpus": {
       "kind": "ref",
-      "id": 153
+      "id": 95
     },
-    "fetch_provider_models": {
+    "get_acp_config": {
       "kind": "ref",
-      "id": 154
+      "id": 96
     },
-    "forget_all_ime_learning": {
+    "get_acp_session": {
       "kind": "ref",
-      "id": 156
+      "id": 97
     },
-    "forget_ime_learned_word": {
+    "get_acp_session_config": {
       "kind": "ref",
-      "id": 156
+      "id": 99
     },
-    "forget_memory_subject": {
-      "kind": "number"
-    },
-    "forget_voice_sender": {
+    "get_active_user_command": {
       "kind": "ref",
-      "id": 159
-    },
-    "get_active_todo_list": {
-      "kind": "ref",
-      "id": 160
+      "id": 2
     },
     "get_android_ime_status": {
       "kind": "ref",
-      "id": 167
+      "id": 103
     },
     "get_app_info": {
       "kind": "ref",
-      "id": 168
+      "id": 104
+    },
+    "get_codex_auth_status": {
+      "kind": "ref",
+      "id": 106
     },
     "get_composer_draft": {
       "kind": "ref",
-      "id": 170
+      "id": 108
     },
-    "get_context_info": {
+    "get_conversation_context": {
       "kind": "ref",
-      "id": 177
+      "id": 118
+    },
+    "get_conversation_snapshot": {
+      "kind": "ref",
+      "id": 120
     },
     "get_emoji_file_url": {
       "kind": "string"
@@ -308,455 +238,480 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "get_ime_learning": {
       "kind": "ref",
-      "id": 156
+      "id": 64
     },
     "get_ime_lm_status": {
       "kind": "ref",
-      "id": 184
+      "id": 67
     },
     "get_ime_status": {
       "kind": "ref",
-      "id": 187
+      "id": 184
     },
-    "get_listen_addresses": {
+    "get_journal_blame": {
       "kind": "ref",
-      "id": 188
-    },
-    "get_listen_config": {
-      "kind": "ref",
-      "id": 189
-    },
-    "get_listen_status": {
-      "kind": "ref",
-      "id": 190
+      "id": 185
     },
     "get_log_settings": {
       "kind": "ref",
-      "id": 191
+      "id": 190
     },
     "get_manage_storage_status": {
       "kind": "boolean"
     },
+    "get_memory_enums": {
+      "kind": "ref",
+      "id": 193
+    },
     "get_model_config": {
       "kind": "ref",
-      "id": 194
+      "id": 198
     },
     "get_onebot_config": {
       "kind": "ref",
-      "id": 209
+      "id": 213
     },
     "get_onebot_status": {
       "kind": "ref",
-      "id": 215
+      "id": 219
+    },
+    "get_onebot_voice_readiness": {
+      "kind": "ref",
+      "id": 220
     },
     "get_plan_review": {
       "kind": "ref",
-      "id": 131
+      "id": 70
     },
     "get_platform": {
       "kind": "ref",
-      "id": 169
+      "id": 105
     },
     "get_preference": {
       "kind": "preference"
     },
     "get_provider_balance": {
       "kind": "ref",
-      "id": 216
+      "id": 221
     },
     "get_provider_capabilities": {
       "kind": "ref",
-      "id": 220
+      "id": 225
     },
-    "get_provider_key_exists": {
-      "kind": "boolean"
-    },
-    "get_provider_local_model_info": {
+    "get_provider_local_model": {
       "kind": "ref",
-      "id": 224
+      "id": 229
+    },
+    "get_remote_config": {
+      "kind": "ref",
+      "id": 243
+    },
+    "get_remote_status": {
+      "kind": "ref",
+      "id": 244
     },
     "get_secret": {
       "kind": "ref",
       "id": 2
     },
-    "get_service_key_exists": {
-      "kind": "boolean"
-    },
-    "get_skill_body": {
-      "kind": "string"
-    },
-    "get_user_command_result": {
-      "kind": "ref",
-      "id": 238
-    },
-    "get_voice_send_readiness": {
-      "kind": "ref",
-      "id": 242
-    },
-    "get_window_insets": {
-      "kind": "ref",
-      "id": 243
-    },
-    "import_emojis": {
-      "kind": "ref",
-      "id": 244
-    },
-    "import_ime_learning": {
-      "kind": "ref",
-      "id": 156
-    },
-    "import_ime_lm": {
-      "kind": "ref",
-      "id": 184
-    },
-    "import_staged_ime_dictionaries": {
-      "kind": "ref",
-      "id": 148
-    },
-    "inspect_local_model": {
-      "kind": "ref",
-      "id": 224
-    },
-    "journal_blame": {
+    "get_todo_list": {
       "kind": "ref",
       "id": 245
     },
-    "journal_file_history": {
+    "get_usage_cache_misses": {
       "kind": "ref",
-      "id": 250
+      "id": 252
     },
-    "journal_version_content": {
+    "get_usage_report": {
       "kind": "ref",
-      "id": 254
+      "id": 253
     },
-    "list_all_memories": {
+    "get_user_command_result": {
       "kind": "ref",
       "id": 255
     },
-    "list_all_tool_names": {
+    "get_voice_model_status": {
+      "kind": "ref",
+      "id": 259
+    },
+    "get_window_insets": {
+      "kind": "ref",
+      "id": 260
+    },
+    "get_workspace_git_diff": {
+      "kind": "ref",
+      "id": 261
+    },
+    "get_workspace_git_status": {
       "kind": "ref",
       "id": 262
     },
-    "list_assistant_emoji_packs": {
+    "get_workspace_root": {
       "kind": "ref",
-      "id": 266
+      "id": 269
     },
-    "list_assistants": {
-      "kind": "ref",
-      "id": 267
-    },
-    "list_background_tasks": {
-      "kind": "ref",
-      "id": 268
-    },
-    "list_cached_provider_models": {
-      "kind": "ref",
-      "id": 154
-    },
-    "list_conversations": {
-      "kind": "ref",
-      "id": 273
-    },
-    "list_conversations_by_project": {
-      "kind": "ref",
-      "id": 273
-    },
-    "list_custom_tools": {
+    "import_acp_session": {
       "kind": "ref",
       "id": 274
     },
-    "list_emoji_packs": {
-      "kind": "ref",
-      "id": 266
-    },
-    "list_emojis": {
-      "kind": "ref",
-      "id": 244
-    },
-    "list_ime_dictionaries": {
+    "import_emojis": {
       "kind": "ref",
       "id": 275
     },
-    "list_log_files": {
+    "import_ime_dictionaries": {
       "kind": "ref",
-      "id": 283
+      "id": 276
     },
-    "list_mcp_connection_statuses": {
+    "import_ime_learning": {
+      "kind": "ref",
+      "id": 64
+    },
+    "import_ime_lm": {
+      "kind": "ref",
+      "id": 67
+    },
+    "import_ime_rime_ice": {
+      "kind": "ref",
+      "id": 276
+    },
+    "import_voice_model": {
+      "kind": "ref",
+      "id": 259
+    },
+    "invoke_conversation_compaction": {
+      "kind": "null"
+    },
+    "invoke_emoji_semantics_suggestion": {
+      "kind": "ref",
+      "id": 115
+    },
+    "invoke_ime_memory_hints_refresh": {
+      "kind": "ref",
+      "id": 278
+    },
+    "invoke_skill_rescan": {
+      "kind": "ref",
+      "id": 279
+    },
+    "invoke_user_command": {
+      "kind": "ref",
+      "id": 256
+    },
+    "invoke_voice_transcription": {
+      "kind": "ref",
+      "id": 280
+    },
+    "list_acp_sessions": {
+      "kind": "ref",
+      "id": 282
+    },
+    "list_assistants": {
+      "kind": "ref",
+      "id": 284
+    },
+    "list_background_task_counts": {
       "kind": "ref",
       "id": 285
     },
-    "list_mcp_servers": {
+    "list_background_tasks": {
       "kind": "ref",
-      "id": 288
+      "id": 287
     },
-    "list_mcp_tools": {
+    "list_board_tasks": {
       "kind": "ref",
-      "id": 289
+      "id": 292
     },
-    "list_memories": {
-      "kind": "ref",
-      "id": 255
-    },
-    "list_memory_subjects": {
-      "kind": "ref",
-      "id": 291
-    },
-    "list_memory_trash": {
-      "kind": "ref",
-      "id": 255
-    },
-    "list_model_configs": {
+    "list_conversations": {
       "kind": "ref",
       "id": 293
     },
-    "list_model_profiles": {
+    "list_custom_tools": {
       "kind": "ref",
       "id": 294
     },
-    "list_plan_revisions": {
+    "list_emoji_packs": {
       "kind": "ref",
       "id": 295
     },
-    "list_projects": {
+    "list_emojis": {
+      "kind": "ref",
+      "id": 275
+    },
+    "list_ime_dictionaries": {
+      "kind": "ref",
+      "id": 56
+    },
+    "list_journal_versions": {
       "kind": "ref",
       "id": 296
     },
-    "list_provider_catalog": {
+    "list_live_acp_sessions": {
       "kind": "ref",
-      "id": 297
+      "id": 300
     },
-    "list_providers": {
+    "list_log_files": {
+      "kind": "ref",
+      "id": 301
+    },
+    "list_mcp_connection_statuses": {
+      "kind": "ref",
+      "id": 303
+    },
+    "list_mcp_servers": {
       "kind": "ref",
       "id": 306
     },
-    "list_saf_roots": {
+    "list_mcp_tools": {
       "kind": "ref",
       "id": 307
     },
-    "list_skill_bindings": {
+    "list_memories": {
       "kind": "ref",
       "id": 309
     },
-    "list_skills": {
+    "list_memory_subjects": {
       "kind": "ref",
       "id": 310
     },
-    "list_system_fonts": {
-      "kind": "ref",
-      "id": 311
-    },
-    "list_system_notices": {
+    "list_model_configs": {
       "kind": "ref",
       "id": 312
     },
+    "list_model_profiles": {
+      "kind": "ref",
+      "id": 313
+    },
+    "list_pending_approvals": {
+      "kind": "ref",
+      "id": 127
+    },
+    "list_plan_revisions": {
+      "kind": "ref",
+      "id": 314
+    },
+    "list_projects": {
+      "kind": "ref",
+      "id": 315
+    },
+    "list_provider_catalog": {
+      "kind": "ref",
+      "id": 316
+    },
+    "list_provider_models": {
+      "kind": "ref",
+      "id": 325
+    },
+    "list_providers": {
+      "kind": "ref",
+      "id": 327
+    },
+    "list_queued_prompts": {
+      "kind": "ref",
+      "id": 328
+    },
+    "list_remote_addresses": {
+      "kind": "ref",
+      "id": 329
+    },
+    "list_saf_roots": {
+      "kind": "ref",
+      "id": 88
+    },
+    "list_skill_bindings": {
+      "kind": "ref",
+      "id": 330
+    },
+    "list_skills": {
+      "kind": "ref",
+      "id": 279
+    },
+    "list_system_fonts": {
+      "kind": "ref",
+      "id": 331
+    },
+    "list_system_notices": {
+      "kind": "ref",
+      "id": 332
+    },
     "list_tool_categories": {
       "kind": "ref",
-      "id": 318
+      "id": 338
     },
     "list_tool_presets": {
       "kind": "ref",
-      "id": 320
+      "id": 340
+    },
+    "list_tools": {
+      "kind": "ref",
+      "id": 341
+    },
+    "list_usage_gaps": {
+      "kind": "ref",
+      "id": 345
     },
     "list_voice_corpus": {
       "kind": "ref",
-      "id": 321
+      "id": 349
     },
-    "memory_enums": {
+    "list_workspace_entries": {
       "kind": "ref",
-      "id": 324
+      "id": 352
+    },
+    "open_acp_session": {
+      "kind": "string"
+    },
+    "open_android_ime_picker": {
+      "kind": "null"
     },
     "open_android_ime_settings": {
       "kind": "null"
     },
-    "open_in_editor": {
+    "open_manage_storage_settings": {
       "kind": "null"
     },
-    "pick_gallery_image": {
-      "kind": "ref",
-      "id": 2
-    },
-    "pick_saf_directory": {
-      "kind": "ref",
-      "id": 307
-    },
-    "preview_local_image": {
-      "kind": "ref",
-      "id": 329
-    },
-    "purge_memories": {
-      "kind": "number"
-    },
-    "queue_enqueue": {
-      "kind": "ref",
-      "id": 330
-    },
-    "queue_list": {
-      "kind": "ref",
-      "id": 332
-    },
-    "queue_release": {
-      "kind": "null"
-    },
-    "queue_remove": {
-      "kind": "null"
-    },
-    "queue_reorder": {
-      "kind": "null"
-    },
-    "queue_set_delivery": {
-      "kind": "null"
-    },
-    "rate_message": {
+    "open_workspace_editor": {
       "kind": "null"
     },
     "read_background_task_output": {
       "kind": "ref",
-      "id": 333
+      "id": 354
+    },
+    "read_journal_version": {
+      "kind": "ref",
+      "id": 355
+    },
+    "read_local_image_preview": {
+      "kind": "ref",
+      "id": 356
     },
     "read_logs": {
       "kind": "ref",
-      "id": 334
+      "id": 357
     },
     "read_message_context_item": {
       "kind": "ref",
-      "id": 340
+      "id": 363
     },
-    "refresh_ime_memory_hints": {
-      "kind": "ref",
-      "id": 341
-    },
-    "regenerate_hooks_token": {
+    "read_skill_body": {
       "kind": "string"
     },
-    "regenerate_listen_token": {
+    "read_workspace_file": {
       "kind": "ref",
-      "id": 189
+      "id": 364
     },
     "register_ime": {
       "kind": "ref",
-      "id": 187
-    },
-    "remove_ime_dictionary": {
-      "kind": "ref",
-      "id": 275
-    },
-    "remove_ime_lm": {
-      "kind": "ref",
       "id": 184
     },
-    "remove_saf_root": {
-      "kind": "ref",
-      "id": 307
+    "reset_hooks_token": {
+      "kind": "string"
     },
-    "rename_emoji": {
+    "reset_remote_token": {
       "kind": "ref",
-      "id": 41
-    },
-    "request_manage_storage": {
-      "kind": "null"
-    },
-    "rescan_skills": {
-      "kind": "ref",
-      "id": 310
+      "id": 243
     },
     "resolve_file_name": {
       "kind": "string"
     },
     "resolve_plan_file_conflict": {
       "kind": "ref",
-      "id": 138
+      "id": 77
     },
-    "respond_to_ask": {
-      "kind": "null"
+    "resolve_workspace_ref": {
+      "kind": "ref",
+      "id": 365
     },
     "restore_memories": {
       "kind": "number"
     },
-    "run_user_command": {
+    "search_conversations": {
       "kind": "ref",
-      "id": 239
+      "id": 367
     },
-    "save_composer_draft": {
+    "search_workspace_refs": {
       "kind": "ref",
-      "id": 38
+      "id": 370
     },
-    "save_hooks_config": {
+    "select_camera_photo": {
+      "kind": "ref",
+      "id": 2
+    },
+    "select_gallery_image": {
+      "kind": "ref",
+      "id": 2
+    },
+    "select_saf_directory": {
+      "kind": "ref",
+      "id": 88
+    },
+    "send_acp_prompt": {
+      "kind": "null"
+    },
+    "send_conversation_steer": {
+      "kind": "null"
+    },
+    "set_acp_config": {
+      "kind": "ref",
+      "id": 96
+    },
+    "set_acp_session_config": {
+      "kind": "ref",
+      "id": 99
+    },
+    "set_composer_draft": {
+      "kind": "ref",
+      "id": 55
+    },
+    "set_emoji_pack_assignment": {
+      "kind": "null"
+    },
+    "set_hooks_config": {
       "kind": "ref",
       "id": 179
     },
-    "save_ime_config": {
+    "set_ime_config": {
       "kind": "ref",
       "id": 181
     },
-    "save_listen_config": {
-      "kind": "ref",
-      "id": 190
-    },
-    "save_memory": {
-      "kind": "ref",
-      "id": 256
-    },
-    "save_memory_scoped": {
-      "kind": "ref",
-      "id": 256
-    },
-    "save_model_config": {
-      "kind": "ref",
-      "id": 195
-    },
-    "save_onebot_config": {
-      "kind": "null"
-    },
-    "save_plan_review_draft": {
-      "kind": "ref",
-      "id": 342
-    },
-    "search_conversations": {
-      "kind": "ref",
-      "id": 343
-    },
-    "search_emojis": {
-      "kind": "ref",
-      "id": 244
-    },
-    "set_conversation_accept_edits": {
-      "kind": "null"
-    },
-    "set_conversation_assistant": {
-      "kind": "null"
-    },
-    "set_conversation_mode": {
-      "kind": "null"
-    },
-    "set_conversation_project": {
-      "kind": "null"
-    },
-    "set_conversation_reasoning_prefs": {
-      "kind": "null"
-    },
     "set_ime_dictionary_enabled": {
       "kind": "ref",
-      "id": 275
+      "id": 56
     },
     "set_ime_profile_enabled": {
       "kind": "ref",
-      "id": 187
+      "id": 184
     },
     "set_log_level": {
       "kind": "null"
     },
     "set_mcp_tool_enabled": {
       "kind": "ref",
-      "id": 114
+      "id": 32
     },
-    "set_memory_subject_flags": {
-      "kind": "null"
+    "set_model_config": {
+      "kind": "ref",
+      "id": 199
+    },
+    "set_onebot_config": {
+      "kind": "ref",
+      "id": 213
+    },
+    "set_plan_review_draft": {
+      "kind": "ref",
+      "id": 372
     },
     "set_preference": {
       "kind": "null"
     },
     "set_provider_key": {
       "kind": "null"
+    },
+    "set_queued_prompt_order": {
+      "kind": "null"
+    },
+    "set_remote_config": {
+      "kind": "ref",
+      "id": 243
     },
     "set_secret": {
       "kind": "null"
@@ -766,38 +721,54 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "set_skill_binding": {
       "kind": "ref",
-      "id": 309
+      "id": 330
     },
     "set_voice_optout": {
       "kind": "null"
     },
-    "show_android_ime_picker": {
-      "kind": "null"
-    },
     "stage_ime_dictionary": {
       "kind": "ref",
-      "id": 346
+      "id": 373
+    },
+    "start_board_task": {
+      "kind": "ref",
+      "id": 376
+    },
+    "start_chat": {
+      "kind": "null"
     },
     "start_hooks": {
       "kind": "null"
     },
     "start_ime_host": {
       "kind": "ref",
-      "id": 187
-    },
-    "start_listen": {
-      "kind": "ref",
-      "id": 190
+      "id": 184
     },
     "start_onebot": {
       "kind": "null"
     },
-    "steer_conversation": {
+    "start_queued_prompts": {
+      "kind": "null"
+    },
+    "start_remote": {
+      "kind": "ref",
+      "id": 244
+    },
+    "start_voice_model_download": {
+      "kind": "null"
+    },
+    "start_voice_prewarm": {
+      "kind": "null"
+    },
+    "start_voice_recording": {
+      "kind": "null"
+    },
+    "stop_acp_turn": {
       "kind": "null"
     },
     "stop_background_task": {
       "kind": "ref",
-      "id": 269
+      "id": 288
     },
     "stop_chat": {
       "kind": "null"
@@ -807,167 +778,116 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     },
     "stop_ime_host": {
       "kind": "ref",
-      "id": 187
-    },
-    "stop_listen": {
-      "kind": "ref",
-      "id": 190
+      "id": 184
     },
     "stop_onebot": {
       "kind": "null"
     },
-    "suggest_sticker_semantics": {
+    "stop_remote": {
       "kind": "ref",
-      "id": 41
+      "id": 244
     },
-    "switch_branch": {
+    "stop_voice_model_download": {
+      "kind": "null"
+    },
+    "stop_voice_prewarm": {
+      "kind": "null"
+    },
+    "stop_voice_recording": {
+      "kind": "ref",
+      "id": 280
+    },
+    "submit_approval_decision": {
+      "kind": "null"
+    },
+    "submit_plan_review_decision": {
+      "kind": "ref",
+      "id": 377
+    },
+    "switch_message_branch": {
       "kind": "null"
     },
     "take_launch_request": {
       "kind": "ref",
-      "id": 349
+      "id": 378
     },
-    "take_photo": {
+    "test_acp_adapter": {
       "kind": "ref",
-      "id": 2
+      "id": 380
     },
-    "toggle_archive_conversation": {
+    "test_local_model": {
       "kind": "ref",
-      "id": 34
+      "id": 229
     },
-    "toggle_pin_conversation": {
+    "test_provider_key": {
+      "kind": "boolean"
+    },
+    "test_service_key": {
+      "kind": "boolean"
+    },
+    "test_voice_echo": {
+      "kind": "number"
+    },
+    "test_workspace_ref": {
       "kind": "ref",
-      "id": 34
-    },
-    "unassign_emoji_pack": {
-      "kind": "null"
+      "id": 381
     },
     "update_assistant": {
       "kind": "ref",
-      "id": 99
+      "id": 9
     },
-    "update_conversation_title": {
-      "kind": "null"
+    "update_board_task": {
+      "kind": "ref",
+      "id": 12
+    },
+    "update_conversation": {
+      "kind": "ref",
+      "id": 15
     },
     "update_custom_tool": {
       "kind": "ref",
-      "id": 101
+      "id": 19
+    },
+    "update_emoji": {
+      "kind": "ref",
+      "id": 115
     },
     "update_mcp_server": {
       "kind": "ref",
-      "id": 114
+      "id": 32
     },
     "update_memory": {
       "kind": "ref",
-      "id": 256
+      "id": 36
+    },
+    "update_memory_subject": {
+      "kind": "null"
+    },
+    "update_message_rating": {
+      "kind": "null"
     },
     "update_project": {
       "kind": "ref",
-      "id": 118
+      "id": 42
     },
     "update_provider": {
       "kind": "ref",
-      "id": 120
+      "id": 44
+    },
+    "update_queued_prompt": {
+      "kind": "null"
     },
     "update_skill": {
       "kind": "ref",
-      "id": 126
+      "id": 52
     },
     "update_tool_preset": {
       "kind": "ref",
-      "id": 128
+      "id": 54
     },
-    "upload_file": {
+    "upload_message_file": {
       "kind": "ref",
-      "id": 351
-    },
-    "upload_file_bytes": {
-      "kind": "ref",
-      "id": 351
-    },
-    "usage_cache_misses": {
-      "kind": "ref",
-      "id": 356
-    },
-    "usage_gaps": {
-      "kind": "ref",
-      "id": 357
-    },
-    "usage_report": {
-      "kind": "ref",
-      "id": 361
-    },
-    "voice_cancel_download": {
-      "kind": "null"
-    },
-    "voice_cancel_recording": {
-      "kind": "null"
-    },
-    "voice_delete_model": {
-      "kind": "null"
-    },
-    "voice_download_model": {
-      "kind": "null"
-    },
-    "voice_import_model": {
-      "kind": "ref",
-      "id": 363
-    },
-    "voice_model_status": {
-      "kind": "ref",
-      "id": 363
-    },
-    "voice_prewarm": {
-      "kind": "null"
-    },
-    "voice_probe_echo": {
-      "kind": "number"
-    },
-    "voice_release_prewarm": {
-      "kind": "null"
-    },
-    "voice_start_recording": {
-      "kind": "null"
-    },
-    "voice_stop_and_transcribe": {
-      "kind": "ref",
-      "id": 364
-    },
-    "voice_transcribe_pcm": {
-      "kind": "ref",
-      "id": 364
-    },
-    "workspace_git_diff": {
-      "kind": "ref",
-      "id": 366
-    },
-    "workspace_git_status": {
-      "kind": "ref",
-      "id": 367
-    },
-    "workspace_probe_ref": {
-      "kind": "ref",
-      "id": 374
-    },
-    "workspace_read_file": {
-      "kind": "ref",
-      "id": 376
-    },
-    "workspace_resolve_ref": {
-      "kind": "ref",
-      "id": 377
-    },
-    "workspace_root": {
-      "kind": "ref",
-      "id": 378
-    },
-    "workspace_suggest_refs": {
-      "kind": "ref",
-      "id": 383
-    },
-    "workspace_tree": {
-      "kind": "ref",
-      "id": 385
+      "id": 382
     }
   },
   "definitions": [
@@ -1113,2636 +1033,6 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
-        "agent": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "load_session": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "ok": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "protocol_version": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 11
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "acp_session_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "cwd": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "args": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "command": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "string"
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversationId": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 16
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "cwd": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "ownedBy": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "sessionId": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "updatedAt": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "string"
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 19
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "category": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "currentValue": {
-          "optional": false,
-          "schema": {
-            "kind": "json"
-          }
-        },
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "options": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 20
-          }
-        },
-        "type": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 21
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "value": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 23
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "approval_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "arguments": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "asked_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "assistant_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "bubbled": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "parent_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "provider_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "retry": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 24
-          }
-        },
-        "sub_conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "tool_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 25
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 26
-          }
-        },
-        "origin_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "reason": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "sandbox_denied"
-        },
-        {
-          "kind": "literal",
-          "value": "settings_unreadable"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 28
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "running": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "agent_kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 30
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "position": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "project_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "request": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "local"
-          }
-        },
-        "stage": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 31
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "updated_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "worktree_path": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "worktree_removed_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "native"
-        },
-        {
-          "kind": "literal",
-          "value": "claude_code"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "backlog"
-        },
-        {
-          "kind": "literal",
-          "value": "running"
-        },
-        {
-          "kind": "literal",
-          "value": "review"
-        },
-        {
-          "kind": "literal",
-          "value": "done"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 29
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversation": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 34
-          }
-        },
-        "task": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 29
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "accept_edits": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "agent_kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 35
-          }
-        },
-        "agent_model_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "agent_provider_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "assistant_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "fast_mode": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "head_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "is_archived": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "is_pinned": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "message_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "mode": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 36
-          }
-        },
-        "parent_conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "project_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "spawned_by_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "spawned_by_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "spawned_turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "thinking_level": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 37
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "updated_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "claude_code"
-        },
-        {
-          "kind": "literal",
-          "value": "explore"
-        },
-        {
-          "kind": "literal",
-          "value": "agent"
-        },
-        {
-          "kind": "literal",
-          "value": "plan_review"
-        },
-        {
-          "kind": "literal",
-          "value": "impl_review"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "work"
-        },
-        {
-          "kind": "literal",
-          "value": "plan"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "off"
-        },
-        {
-          "kind": "literal",
-          "value": "minimal"
-        },
-        {
-          "kind": "literal",
-          "value": "low"
-        },
-        {
-          "kind": "literal",
-          "value": "medium"
-        },
-        {
-          "kind": "literal",
-          "value": "high"
-        },
-        {
-          "kind": "literal",
-          "value": "xhigh"
-        },
-        {
-          "kind": "literal",
-          "value": "max"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "applied": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "revision": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "codex_home": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "email": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "logged_in": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "plan": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "problem": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "storage": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 40
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "file"
-        },
-        {
-          "kind": "literal",
-          "value": "keyring"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "file_format": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "file_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "file_size": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "last_seen_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "pack_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "seen_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "semantic_status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 42
-          }
-        },
-        "sort_order": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 43
-          }
-        },
-        "source_key": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "suggested_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "suggested_tags": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "tags": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "pending"
-        },
-        {
-          "kind": "literal",
-          "value": "suggested"
-        },
-        {
-          "kind": "literal",
-          "value": "confirmed"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "local"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot_face"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot_mface"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot_image"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "acp_notices": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 45
-          }
-        },
-        "conversation": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 34
-          }
-        },
-        "pending_approvals": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 22
-          }
-        },
-        "plan_reviews": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 51
-          }
-        },
-        "sub_agent_runs": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 54
-          }
-        },
-        "tree": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 58
-          }
-        },
-        "turns": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 90
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 46
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "actions": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 47
-          }
-        },
-        "category": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 49
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "details": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "notice_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "reason": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "revision": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "severity": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 50
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "updated_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 48
-      }
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "retry"
-        },
-        {
-          "kind": "literal",
-          "value": "login"
-        },
-        {
-          "kind": "literal",
-          "value": "new_session"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "connection"
-        },
-        {
-          "kind": "literal",
-          "value": "access"
-        },
-        {
-          "kind": "literal",
-          "value": "limit"
-        },
-        {
-          "kind": "literal",
-          "value": "request"
-        },
-        {
-          "kind": "literal",
-          "value": "service"
-        },
-        {
-          "kind": "literal",
-          "value": "unknown"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "warning"
-        },
-        {
-          "kind": "literal",
-          "value": "error"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 52
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "assistant_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "document_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "lock_version": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "provider_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "review_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "revision_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 53
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "pending"
-        },
-        {
-          "kind": "literal",
-          "value": "approved"
-        },
-        {
-          "kind": "literal",
-          "value": "changes_requested"
-        },
-        {
-          "kind": "literal",
-          "value": "orphaned"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 55
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "agent_kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 56
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "spawned_by_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "spawned_by_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "spawned_turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 57
-          }
-        },
-        "steps": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "explore"
-        },
-        {
-          "kind": "literal",
-          "value": "agent"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "running"
-        },
-        {
-          "kind": "literal",
-          "value": "done"
-        },
-        {
-          "kind": "literal",
-          "value": "waiting_review"
-        },
-        {
-          "kind": "literal",
-          "value": "cancelled"
-        },
-        {
-          "kind": "literal",
-          "value": "failed"
-        },
-        {
-          "kind": "literal",
-          "value": "interrupted"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "branches": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 59
-          }
-        },
-        "head_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "messages": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 61
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 60
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "index": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "sibling_ids": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "total": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 62
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "auto_review": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 63
-          }
-        },
-        "cache_read_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "cache_write_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "compact_anchor_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "context_items": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 72
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "generation_ms": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "input_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "is_compact_summary": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "model_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "output_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "parent_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "provider_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "provider_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "rating": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 75
-          }
-        },
-        "reasoning_content": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "role": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 76
-          }
-        },
-        "sender_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "sort_order": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 77
-          }
-        },
-        "tool_call_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "tool_calls": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 78
-          }
-        },
-        "tool_diffs": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 82
-          }
-        },
-        "tool_media": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 86
-          }
-        },
-        "tool_outcome": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 89
-          }
-        },
-        "ttft_ms": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 64
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {},
-      "additional": {
-        "kind": "ref",
-        "id": 65
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "authorization": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 66
-          }
-        },
-        "evidence": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 67
-          }
-        },
-        "model": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "outcome": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 69
-          }
-        },
-        "rationale": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "risk": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 70
-          }
-        },
-        "stage": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 71
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "low"
-        },
-        {
-          "kind": "literal",
-          "value": "medium"
-        },
-        {
-          "kind": "literal",
-          "value": "high"
-        },
-        {
-          "kind": "literal",
-          "value": "unknown"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 68
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "arguments": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "tool": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "allow"
-        },
-        {
-          "kind": "literal",
-          "value": "deny"
-        },
-        {
-          "kind": "literal",
-          "value": "unreadable"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "low"
-        },
-        {
-          "kind": "literal",
-          "value": "medium"
-        },
-        {
-          "kind": "literal",
-          "value": "high"
-        },
-        {
-          "kind": "literal",
-          "value": "critical"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "quick"
-        },
-        {
-          "kind": "literal",
-          "value": "investigate"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 73
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "byte_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "display_path": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 74
-          }
-        },
-        "line_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "line_end": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "line_start": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "position": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "token_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "project_file"
-        },
-        {
-          "kind": "literal",
-          "value": "project_directory"
-        },
-        {
-          "kind": "literal",
-          "value": "shell_output"
-        },
-        {
-          "kind": "literal",
-          "value": "conversation"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": 1
-        },
-        {
-          "kind": "literal",
-          "value": -1
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "user"
-        },
-        {
-          "kind": "literal",
-          "value": "assistant"
-        },
-        {
-          "kind": "literal",
-          "value": "tool"
-        },
-        {
-          "kind": "literal",
-          "value": "context"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "shell"
-        },
-        {
-          "kind": "literal",
-          "value": "voice"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 79
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 80
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "function": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 81
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "type": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "function"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "arguments": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 83
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {},
-      "additional": {
-        "kind": "ref",
-        "id": 84
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 85
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "line": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "new_text": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "old_text": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 87
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 88
-          }
-        },
-        "mime_type": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "url": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "file"
-        },
-        {
-          "kind": "literal",
-          "value": "image"
-        },
-        {
-          "kind": "literal",
-          "value": "video"
-        },
-        {
-          "kind": "literal",
-          "value": "audio"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "error"
-        },
-        {
-          "kind": "literal",
-          "value": "success"
-        },
-        {
-          "kind": "literal",
-          "value": "denied"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 91
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "ended_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "phase": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 92
-          }
-        },
-        "phase_tool": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "started_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 93
-          }
-        },
-        "trigger": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 94
-          }
-        },
-        "usage": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 95
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "streaming"
-        },
-        {
-          "kind": "literal",
-          "value": "awaiting_approval"
-        },
-        {
-          "kind": "literal",
-          "value": "running_tool"
-        },
-        {
-          "kind": "literal",
-          "value": "compacting"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "running"
-        },
-        {
-          "kind": "literal",
-          "value": "done"
-        },
-        {
-          "kind": "literal",
-          "value": "waiting_review"
-        },
-        {
-          "kind": "literal",
-          "value": "cancelled"
-        },
-        {
-          "kind": "literal",
-          "value": "failed"
-        },
-        {
-          "kind": "literal",
-          "value": "interrupted"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "user"
-        },
-        {
-          "kind": "literal",
-          "value": "plan_continuation"
-        },
-        {
-          "kind": "literal",
-          "value": "task_completion"
-        },
-        {
-          "kind": "literal",
-          "value": "agent_autonomous"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 96
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "cache_cost": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 97
-          }
-        },
-        "cache_read_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "cache_write_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "estimated_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "estimated_token_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "estimated_tool_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "external_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "incomplete_token_usage_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "input_cost": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 97
-          }
-        },
-        "input_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "metered_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "missing_token_usage_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "output_cost": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 97
-          }
-        },
-        "output_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "pricing_status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 98
-          }
-        },
-        "server_tool_calls": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "subscription_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "tool_cost": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 97
-          }
-        },
-        "total_cost": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 97
-          }
-        },
-        "unpriced_cache_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "unpriced_input_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "unpriced_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "unpriced_output_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "unpriced_token_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "unpriced_tool_messages": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "decimal"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "exact"
-        },
-        {
-          "kind": "literal",
-          "value": "estimated"
-        },
-        {
-          "kind": "literal",
-          "value": "lower_bound"
-        },
-        {
-          "kind": "literal",
-          "value": "subscription"
-        },
-        {
-          "kind": "literal",
-          "value": "external"
-        },
-        {
-          "kind": "literal",
-          "value": "unavailable"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
         "auto_compact_enabled": {
           "optional": false,
           "schema": {
@@ -3785,7 +1075,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 100
+            "id": 10
           }
         },
         "id": {
@@ -3890,7 +1180,366 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 13
+          "id": 11
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "string"
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "agent_kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 13
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "position": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "project_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "request": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "source": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "local"
+          }
+        },
+        "stage": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 14
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "worktree_path": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "worktree_removed_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "native"
+        },
+        {
+          "kind": "literal",
+          "value": "claude_code"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "backlog"
+        },
+        {
+          "kind": "literal",
+          "value": "running"
+        },
+        {
+          "kind": "literal",
+          "value": "review"
+        },
+        {
+          "kind": "literal",
+          "value": "done"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "accept_edits": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "agent_kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 16
+          }
+        },
+        "agent_model_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "agent_provider_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "assistant_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "fast_mode": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "head_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "is_archived": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "is_pinned": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "message_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "mode": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 17
+          }
+        },
+        "parent_conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "project_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spawned_by_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spawned_by_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spawned_turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "thinking_level": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 18
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "claude_code"
+        },
+        {
+          "kind": "literal",
+          "value": "explore"
+        },
+        {
+          "kind": "literal",
+          "value": "agent"
+        },
+        {
+          "kind": "literal",
+          "value": "plan_review"
+        },
+        {
+          "kind": "literal",
+          "value": "impl_review"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "work"
+        },
+        {
+          "kind": "literal",
+          "value": "plan"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "off"
+        },
+        {
+          "kind": "literal",
+          "value": "minimal"
+        },
+        {
+          "kind": "literal",
+          "value": "low"
+        },
+        {
+          "kind": "literal",
+          "value": "medium"
+        },
+        {
+          "kind": "literal",
+          "value": "high"
+        },
+        {
+          "kind": "literal",
+          "value": "xhigh"
+        },
+        {
+          "kind": "literal",
+          "value": "max"
         }
       ]
     },
@@ -3933,7 +1582,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 102
+            "id": 20
           }
         },
         "id": {
@@ -3958,14 +1607,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 110
+            "id": 28
           }
         },
         "permission": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 111
+            "id": 29
           }
         },
         "sort_order": {
@@ -4005,11 +1654,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 103
+          "id": 21
         },
         {
           "kind": "ref",
-          "id": 109
+          "id": 27
         }
       ]
     },
@@ -4020,7 +1669,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 104
+            "id": 22
           }
         },
         "kind": {
@@ -4043,7 +1692,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 105
+        "id": 23
       }
     },
     {
@@ -4051,15 +1700,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 106
+          "id": 24
         },
         {
           "kind": "ref",
-          "id": 107
+          "id": 25
         },
         {
           "kind": "ref",
-          "id": 108
+          "id": 26
         }
       ]
     },
@@ -4121,7 +1770,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 104
+            "id": 22
           }
         },
         "kind": {
@@ -4203,7 +1852,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 113
+            "id": 31
           }
         },
         "name": {
@@ -4254,7 +1903,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 100
+            "id": 10
           }
         },
         "command": {
@@ -4274,14 +1923,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 115
+            "id": 33
           }
         },
         "headers": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 115
+            "id": 33
           }
         },
         "id": {
@@ -4312,7 +1961,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 117
+            "id": 35
           }
         },
         "updated_at": {
@@ -4339,7 +1988,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 116
+          "id": 34
         }
       ]
     },
@@ -4360,6 +2009,208 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "streamablehttp"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "deleted_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "deleted_by": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 37
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "key": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "memory_type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 38
+          }
+        },
+        "origin": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 39
+          }
+        },
+        "scope_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "scope_type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 40
+          }
+        },
+        "source_session_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "subject_scope_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "visibility": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 41
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "self"
+        },
+        {
+          "kind": "literal",
+          "value": "admin"
+        },
+        {
+          "kind": "literal",
+          "value": "lru"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "general"
+        },
+        {
+          "kind": "literal",
+          "value": "preference"
+        },
+        {
+          "kind": "literal",
+          "value": "fact"
+        },
+        {
+          "kind": "literal",
+          "value": "instruction"
+        },
+        {
+          "kind": "literal",
+          "value": "relationship"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "admin"
+        },
+        {
+          "kind": "literal",
+          "value": "private"
+        },
+        {
+          "kind": "literal",
+          "value": "group"
+        },
+        {
+          "kind": "literal",
+          "value": "desktop"
+        },
+        {
+          "kind": "literal",
+          "value": "legacy"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "project"
+        },
+        {
+          "kind": "literal",
+          "value": "client_global"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot_global"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot_user"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "normal"
+        },
+        {
+          "kind": "literal",
+          "value": "owner_only"
         }
       ]
     },
@@ -4416,7 +2267,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 119
+            "id": 43
           }
         },
         "updated_at": {
@@ -4452,7 +2303,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 121
+            "id": 45
           }
         },
         "base_url": {
@@ -4484,7 +2335,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 122
+            "id": 46
           }
         },
         "icon": {
@@ -4510,7 +2361,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 123
+            "id": 47
           }
         },
         "name": {
@@ -4523,7 +2374,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 124
+            "id": 48
           }
         },
         "sort_order": {
@@ -4536,7 +2387,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 125
+            "id": 49
           }
         },
         "updated_at": {
@@ -4675,6 +2526,104 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "delivery": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 51
+          }
+        },
+        "dispatched_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "dispatched_turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "held_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "position": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "reported_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "settled_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "settled_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "follow_up"
+        },
+        {
+          "kind": "literal",
+          "value": "interject"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
         "created_at": {
           "optional": false,
           "schema": {
@@ -4735,7 +2684,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 127
+            "id": 53
           }
         },
         "updated_at": {
@@ -4752,15 +2701,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "literal",
+          "value": "official"
+        },
+        {
+          "kind": "literal",
           "value": "user"
         },
         {
           "kind": "literal",
           "value": "assistant"
-        },
-        {
-          "kind": "literal",
-          "value": "official"
         },
         {
           "kind": "literal",
@@ -4819,7 +2768,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "updated_at": {
@@ -4834,7 +2783,69 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
-        "review_id": {
+        "applied": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "revision": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 57
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "enabled": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "entries": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "file": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "license": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "size_bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "source": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -4844,7 +2855,45 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 53
+            "id": 58
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "ref",
+          "id": 59
+        },
+        {
+          "kind": "ref",
+          "id": 60
+        },
+        {
+          "kind": "ref",
+          "id": 61
+        },
+        {
+          "kind": "ref",
+          "id": 62
+        },
+        {
+          "kind": "ref",
+          "id": 63
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "ready"
           }
         }
       },
@@ -4853,29 +2902,209 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
-        "bytes": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "upgrading"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "needs_upgrade"
+          }
+        },
+        "version": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "too_new"
+          }
+        },
+        "version": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "unreadable"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "pending": {
           "optional": false,
           "schema": {
             "kind": "number"
           }
         },
-        "clips": {
+        "transitions": {
           "optional": false,
           "schema": {
             "kind": "number"
           }
         },
-        "failures": {
+        "words": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 65
           }
-        },
-        "files": {
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 66
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "count": {
           "optional": false,
           "schema": {
             "kind": "number"
+          }
+        },
+        "text": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "user_word": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "active": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "bundles": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 68
+          }
+        },
+        "dir": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "runtime_found": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 69
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "dir_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "license": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "personal": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "version": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
           }
         }
       },
@@ -4888,42 +3117,42 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 132
+            "id": 71
           }
         },
         "document": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 138
+            "id": 77
           }
         },
         "draft": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 141
+            "id": 80
           }
         },
         "parent_revision": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 144
+            "id": 83
           }
         },
         "review": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 147
+            "id": 86
           }
         },
         "submitted_revision": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 145
+            "id": 84
           }
         }
       },
@@ -4933,7 +3162,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 133
+        "id": 72
       }
     },
     {
@@ -4943,7 +3172,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 134
+            "id": 73
           }
         },
         "body": {
@@ -4980,7 +3209,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 137
+            "id": 76
           }
         },
         "updated_at": {
@@ -4997,11 +3226,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 135
+          "id": 74
         },
         {
           "kind": "ref",
-          "id": 136
+          "id": 75
         }
       ]
     },
@@ -5096,15 +3325,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "literal",
-          "value": "orphaned"
-        },
-        {
-          "kind": "literal",
           "value": "draft"
         },
         {
           "kind": "literal",
           "value": "active"
+        },
+        {
+          "kind": "literal",
+          "value": "orphaned"
         },
         {
           "kind": "literal",
@@ -5148,7 +3377,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 139
+            "id": 78
           }
         },
         "head_revision_id": {
@@ -5168,7 +3397,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 140
+            "id": 79
           }
         },
         "updated_at": {
@@ -5212,15 +3441,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "literal",
-          "value": "approved"
-        },
-        {
-          "kind": "literal",
           "value": "drafting"
         },
         {
           "kind": "literal",
           "value": "reviewing"
+        },
+        {
+          "kind": "literal",
+          "value": "approved"
         }
       ]
     },
@@ -5300,7 +3529,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 142
+            "id": 81
           }
         },
         "review_id": {
@@ -5313,7 +3542,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 143
+            "id": 82
           }
         },
         "source_text": {
@@ -5353,11 +3582,11 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 135
+          "id": 74
         },
         {
           "kind": "ref",
-          "id": 136
+          "id": 75
         }
       ]
     },
@@ -5369,7 +3598,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 145
+          "id": 84
         }
       ]
     },
@@ -5387,7 +3616,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 146
+            "id": 85
           }
         },
         "content_markdown": {
@@ -5468,15 +3697,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "literal",
+          "value": "legacy"
+        },
+        {
+          "kind": "literal",
           "value": "assistant"
         },
         {
           "kind": "literal",
           "value": "user_suggestion"
-        },
-        {
-          "kind": "literal",
-          "value": "legacy"
         }
       ]
     },
@@ -5530,7 +3759,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 53
+            "id": 87
           }
         },
         "submitted_revision_id": {
@@ -5562,203 +3791,52 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 149
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "accepted": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "orphaned"
         },
-        "cache_hit": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
+        {
+          "kind": "literal",
+          "value": "pending"
         },
-        "duplicates": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
+        {
+          "kind": "literal",
+          "value": "approved"
         },
-        "file": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "notes": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "skipped": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
+        {
+          "kind": "literal",
+          "value": "changes_requested"
         }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "bytesWritten": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "clips": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "skipped": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
+      ]
     },
     {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 155
+        "id": 89
       }
     },
     {
       "kind": "object",
       "fields": {
-        "id": {
+        "display_name": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "pending": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "transitions": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "words": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 157
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 158
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "text": {
+        "uri": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "user_word": {
+        "virtual_prefix": {
           "optional": false,
           "schema": {
-            "kind": "boolean"
+            "kind": "string"
           }
         }
       },
@@ -5783,13 +3861,129 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "files": {
           "optional": false,
           "schema": {
             "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "clips": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "failures": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "files": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "bytes_written": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "clips": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "skipped": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "args": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "command": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
           }
         }
       },
@@ -5803,25 +3997,24 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 161
+          "id": 98
         }
       ]
     },
     {
       "kind": "object",
       "fields": {
-        "items": {
+        "acp_session_id": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 162
+            "id": 2
           }
         },
-        "list": {
+        "cwd": {
           "optional": false,
           "schema": {
-            "kind": "ref",
-            "id": 165
+            "kind": "string"
           }
         }
       },
@@ -5831,28 +4024,30 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 163
+        "id": 100
       }
     },
     {
       "kind": "object",
       "fields": {
-        "active_form": {
+        "category": {
           "optional": false,
           "schema": {
-            "kind": "string"
+            "kind": "ref",
+            "id": 2
           }
         },
-        "content": {
+        "current_value": {
           "optional": false,
           "schema": {
-            "kind": "string"
+            "kind": "json"
           }
         },
-        "created_at": {
+        "description": {
           "optional": false,
           "schema": {
-            "kind": "number"
+            "kind": "ref",
+            "id": 2
           }
         },
         "id": {
@@ -5861,100 +4056,60 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "string"
           }
         },
-        "list_id": {
+        "name": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "sort_order": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "status": {
+        "options": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 164
+            "id": 101
+          }
+        },
+        "type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
           }
         }
       },
       "additional": null
     },
     {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "pending"
-        },
-        {
-          "kind": "literal",
-          "value": "in_progress"
-        },
-        {
-          "kind": "literal",
-          "value": "completed"
-        }
-      ]
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 102
+      }
     },
     {
       "kind": "object",
       "fields": {
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "status": {
+        "description": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 166
+            "id": 2
           }
         },
-        "title": {
+        "name": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "updated_at": {
+        "value": {
           "optional": false,
           "schema": {
-            "kind": "number"
+            "kind": "string"
           }
         }
       },
       "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "in_progress"
-        },
-        {
-          "kind": "literal",
-          "value": "completed"
-        }
-      ]
     },
     {
       "kind": "object",
@@ -5989,7 +4144,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "string"
           }
         },
-        "dataDir": {
+        "data_dir": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -5999,10 +4154,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 169
+            "id": 105
           }
         },
-        "tauriVersion": {
+        "tauri_version": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -6043,6 +4198,69 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       ]
     },
     {
+      "kind": "object",
+      "fields": {
+        "codex_home": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "email": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "logged_in": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "plan": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "problem": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "storage": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 107
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "file"
+        },
+        {
+          "kind": "literal",
+          "value": "keyring"
+        }
+      ]
+    },
+    {
       "kind": "union",
       "variants": [
         {
@@ -6050,7 +4268,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 171
+          "id": 109
         }
       ]
     },
@@ -6061,7 +4279,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 172
+            "id": 110
           }
         },
         "body": {
@@ -6081,7 +4299,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 174
+            "id": 112
           }
         },
         "revision": {
@@ -6094,7 +4312,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 176
+            "id": 114
           }
         },
         "updated_at": {
@@ -6110,7 +4328,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 173
+        "id": 111
       }
     },
     {
@@ -6141,7 +4359,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 175
+        "id": 113
       }
     },
     {
@@ -6177,7 +4395,154 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 41
+          "id": 115
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "file_format": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "file_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "file_size": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "last_seen_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "pack_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "seen_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "semantic_status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 116
+          }
+        },
+        "sort_order": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "source": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 117
+          }
+        },
+        "source_key": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "suggested_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "suggested_tags": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "tags": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "pending"
+        },
+        {
+          "kind": "literal",
+          "value": "suggested"
+        },
+        {
+          "kind": "literal",
+          "value": "confirmed"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "local"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot_face"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot_mface"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot_image"
         }
       ]
     },
@@ -6188,7 +4553,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 35
+            "id": 16
           }
         },
         "auto_compact_enabled": {
@@ -6201,7 +4566,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 178
+            "id": 119
           }
         },
         "compact_threshold": {
@@ -6251,6 +4616,1720 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "half-open"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "acp_notices": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 121
+          }
+        },
+        "conversation": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 15
+          }
+        },
+        "pending_approvals": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 127
+          }
+        },
+        "plan_reviews": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 132
+          }
+        },
+        "sub_agent_runs": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 134
+          }
+        },
+        "tree": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 138
+          }
+        },
+        "turns": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 170
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 122
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "actions": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 123
+          }
+        },
+        "category": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 125
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "details": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "notice_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "reason": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "revision": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "severity": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 126
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 124
+      }
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "retry"
+        },
+        {
+          "kind": "literal",
+          "value": "login"
+        },
+        {
+          "kind": "literal",
+          "value": "new_session"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "connection"
+        },
+        {
+          "kind": "literal",
+          "value": "access"
+        },
+        {
+          "kind": "literal",
+          "value": "limit"
+        },
+        {
+          "kind": "literal",
+          "value": "request"
+        },
+        {
+          "kind": "literal",
+          "value": "service"
+        },
+        {
+          "kind": "literal",
+          "value": "unknown"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "warning"
+        },
+        {
+          "kind": "literal",
+          "value": "error"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 128
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "approval_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "arguments": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "asked_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "assistant_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "bubbled": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "parent_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "provider_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "retry": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 129
+          }
+        },
+        "sub_conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "tool_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 130
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 131
+          }
+        },
+        "origin_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "reason": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "sandbox_denied"
+        },
+        {
+          "kind": "literal",
+          "value": "settings_unreadable"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 133
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "assistant_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "document_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "lock_version": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "provider_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "review_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "revision_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 87
+          }
+        },
+        "turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 135
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "agent_kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 136
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "spawned_by_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spawned_by_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spawned_turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 137
+          }
+        },
+        "steps": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "explore"
+        },
+        {
+          "kind": "literal",
+          "value": "agent"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "running"
+        },
+        {
+          "kind": "literal",
+          "value": "done"
+        },
+        {
+          "kind": "literal",
+          "value": "waiting_review"
+        },
+        {
+          "kind": "literal",
+          "value": "cancelled"
+        },
+        {
+          "kind": "literal",
+          "value": "failed"
+        },
+        {
+          "kind": "literal",
+          "value": "interrupted"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "branches": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 139
+          }
+        },
+        "head_message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "messages": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 141
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 140
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "index": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "sibling_ids": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "total": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 142
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "auto_review": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 143
+          }
+        },
+        "cache_read_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "cache_write_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "compact_anchor_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "context_items": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 152
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "generation_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "input_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "is_compact_summary": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "model_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "output_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "parent_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "provider_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "provider_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "rating": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 155
+          }
+        },
+        "reasoning_content": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "role": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 156
+          }
+        },
+        "sender_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "sort_order": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "source": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 157
+          }
+        },
+        "tool_call_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "tool_calls": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 158
+          }
+        },
+        "tool_diffs": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 162
+          }
+        },
+        "tool_media": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 166
+          }
+        },
+        "tool_outcome": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 169
+          }
+        },
+        "ttft_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 144
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {},
+      "additional": {
+        "kind": "ref",
+        "id": 145
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "authorization": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 146
+          }
+        },
+        "evidence": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 147
+          }
+        },
+        "model": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "outcome": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 149
+          }
+        },
+        "rationale": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "risk": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 150
+          }
+        },
+        "stage": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 151
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "low"
+        },
+        {
+          "kind": "literal",
+          "value": "medium"
+        },
+        {
+          "kind": "literal",
+          "value": "high"
+        },
+        {
+          "kind": "literal",
+          "value": "unknown"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 148
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "arguments": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "tool": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "unreadable"
+        },
+        {
+          "kind": "literal",
+          "value": "allow"
+        },
+        {
+          "kind": "literal",
+          "value": "deny"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "low"
+        },
+        {
+          "kind": "literal",
+          "value": "medium"
+        },
+        {
+          "kind": "literal",
+          "value": "high"
+        },
+        {
+          "kind": "literal",
+          "value": "critical"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "quick"
+        },
+        {
+          "kind": "literal",
+          "value": "investigate"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 153
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "byte_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "display_path": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 154
+          }
+        },
+        "line_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "line_end": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "line_start": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "position": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "token_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "project_file"
+        },
+        {
+          "kind": "literal",
+          "value": "project_directory"
+        },
+        {
+          "kind": "literal",
+          "value": "shell_output"
+        },
+        {
+          "kind": "literal",
+          "value": "conversation"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": 1
+        },
+        {
+          "kind": "literal",
+          "value": -1
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "user"
+        },
+        {
+          "kind": "literal",
+          "value": "assistant"
+        },
+        {
+          "kind": "literal",
+          "value": "tool"
+        },
+        {
+          "kind": "literal",
+          "value": "context"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "shell"
+        },
+        {
+          "kind": "literal",
+          "value": "voice"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 159
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 160
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "function": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 161
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "type": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "function"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "arguments": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 163
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {},
+      "additional": {
+        "kind": "ref",
+        "id": 164
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 165
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "line": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "new_text": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "old_text": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 167
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 168
+          }
+        },
+        "mime_type": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "url": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "file"
+        },
+        {
+          "kind": "literal",
+          "value": "image"
+        },
+        {
+          "kind": "literal",
+          "value": "video"
+        },
+        {
+          "kind": "literal",
+          "value": "audio"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "error"
+        },
+        {
+          "kind": "literal",
+          "value": "success"
+        },
+        {
+          "kind": "literal",
+          "value": "denied"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 171
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "ended_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "phase": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 172
+          }
+        },
+        "phase_tool": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "started_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 173
+          }
+        },
+        "trigger": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 174
+          }
+        },
+        "usage": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 175
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "streaming"
+        },
+        {
+          "kind": "literal",
+          "value": "awaiting_approval"
+        },
+        {
+          "kind": "literal",
+          "value": "running_tool"
+        },
+        {
+          "kind": "literal",
+          "value": "compacting"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "running"
+        },
+        {
+          "kind": "literal",
+          "value": "done"
+        },
+        {
+          "kind": "literal",
+          "value": "waiting_review"
+        },
+        {
+          "kind": "literal",
+          "value": "cancelled"
+        },
+        {
+          "kind": "literal",
+          "value": "failed"
+        },
+        {
+          "kind": "literal",
+          "value": "interrupted"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "user"
+        },
+        {
+          "kind": "literal",
+          "value": "plan_continuation"
+        },
+        {
+          "kind": "literal",
+          "value": "task_completion"
+        },
+        {
+          "kind": "literal",
+          "value": "agent_autonomous"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 176
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "cache_cost": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 177
+          }
+        },
+        "cache_read_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "cache_write_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "estimated_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "estimated_token_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "estimated_tool_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "external_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "incomplete_token_usage_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "input_cost": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 177
+          }
+        },
+        "input_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "metered_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "missing_token_usage_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "output_cost": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 177
+          }
+        },
+        "output_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "pricing_status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 178
+          }
+        },
+        "server_tool_calls": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "subscription_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "tool_cost": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 177
+          }
+        },
+        "total_cost": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 177
+          }
+        },
+        "unpriced_cache_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "unpriced_input_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "unpriced_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "unpriced_output_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "unpriced_token_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "unpriced_tool_messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "decimal"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "exact"
+        },
+        {
+          "kind": "literal",
+          "value": "estimated"
+        },
+        {
+          "kind": "literal",
+          "value": "lower_bound"
+        },
+        {
+          "kind": "literal",
+          "value": "subscription"
+        },
+        {
+          "kind": "literal",
+          "value": "external"
+        },
+        {
+          "kind": "literal",
+          "value": "unavailable"
         }
       ]
     },
@@ -6355,7 +6434,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "debug_log": {
@@ -6386,7 +6465,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "punctuation": {
@@ -6435,91 +6514,6 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "value": "grid"
         }
       ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "active": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "bundles": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 185
-          }
-        },
-        "dir": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "runtime_found": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 186
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "dir_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "license": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "personal": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "version": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
     },
     {
       "kind": "object",
@@ -6604,33 +6598,102 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "array",
-      "item": {
-        "kind": "string"
-      }
-    },
-    {
       "kind": "object",
       "fields": {
-        "enabled": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "host": {
+        "current_sha": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "port": {
+        "head_sha": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "spans": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 186
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 187
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "end_line": {
           "optional": false,
           "schema": {
             "kind": "number"
           }
         },
-        "token": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 188
+          }
+        },
+        "model_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "origin": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 189
+          }
+        },
+        "start_line": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "timestamp": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "tool_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "turn_id": {
           "optional": false,
           "schema": {
             "kind": "ref",
@@ -6641,40 +6704,61 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "object",
-      "fields": {
-        "connections": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "conversation"
         },
-        "enabled": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
+        {
+          "kind": "literal",
+          "value": "external"
         },
-        "host": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
+        {
+          "kind": "literal",
+          "value": "inferred"
         },
-        "port": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "running": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
+        {
+          "kind": "literal",
+          "value": "preexisting"
         }
-      },
-      "additional": null
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "claude_code"
+        },
+        {
+          "kind": "literal",
+          "value": "plan_review"
+        },
+        {
+          "kind": "literal",
+          "value": "impl_review"
+        },
+        {
+          "kind": "literal",
+          "value": "onebot"
+        },
+        {
+          "kind": "literal",
+          "value": "desktop"
+        },
+        {
+          "kind": "literal",
+          "value": "sub_agent"
+        },
+        {
+          "kind": "literal",
+          "value": "user_shell"
+        }
+      ]
     },
     {
       "kind": "object",
@@ -6695,23 +6779,23 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 192
+            "id": 191
           }
         },
         "levels": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 193
+            "id": 192
           }
         },
-        "maxFileBytes": {
+        "max_file_bytes": {
           "optional": false,
           "schema": {
             "kind": "number"
           }
         },
-        "maxFiles": {
+        "max_files": {
           "optional": false,
           "schema": {
             "kind": "number"
@@ -6745,7 +6829,69 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 192
+        "id": 191
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "memory_types": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 194
+          }
+        },
+        "origins": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 195
+          }
+        },
+        "scopes": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 196
+          }
+        },
+        "visibilities": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 197
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 38
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 39
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 40
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 41
       }
     },
     {
@@ -6756,7 +6902,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 195
+          "id": 199
         }
       ]
     },
@@ -6767,14 +6913,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "cache_write_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "created_at": {
@@ -6787,7 +6933,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 196
+            "id": 200
           }
         },
         "id": {
@@ -6800,7 +6946,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "model_id": {
@@ -6813,7 +6959,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "overrides_pricing": {
@@ -6826,14 +6972,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 197
+            "id": 201
           }
         },
         "profile": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 199
+            "id": 203
           }
         },
         "provider_id": {
@@ -6846,14 +6992,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "server_tools": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 208
+            "id": 212
           }
         },
         "updated_at": {
@@ -6872,42 +7018,42 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "cache_write_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "input_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "output_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "pricing_tiers": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 197
+            "id": 201
           }
         },
         "server_tool_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         }
       },
@@ -6917,7 +7063,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 198
+        "id": 202
       }
     },
     {
@@ -6927,14 +7073,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "cache_write_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "input_price": {
@@ -6965,21 +7111,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "cache_write_price": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "capability_overrides": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 200
+            "id": 204
           }
         },
         "compact_threshold": {
@@ -7010,7 +7156,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "max_output_tokens": {
@@ -7036,14 +7182,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "pricing_tiers": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 197
+            "id": 201
           }
         },
         "updated_at": {
@@ -7063,7 +7209,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 201
+          "id": 205
         }
       ]
     },
@@ -7174,21 +7320,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": true,
           "schema": {
             "kind": "ref",
-            "id": 202
+            "id": 206
           }
         },
         "server_tools": {
           "optional": true,
           "schema": {
             "kind": "ref",
-            "id": 204
+            "id": 208
           }
         },
         "supported_efforts": {
           "optional": true,
           "schema": {
             "kind": "ref",
-            "id": 206
+            "id": 210
           }
         },
         "supports_fast": {
@@ -7278,7 +7424,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 203
+        "id": 207
       }
     },
     {
@@ -7330,7 +7476,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 205
+        "id": 209
       }
     },
     {
@@ -7362,7 +7508,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 207
+        "id": 211
       }
     },
     {
@@ -7402,7 +7548,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 204
+          "id": 208
         }
       ]
     },
@@ -7426,7 +7572,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 210
+            "id": 214
           }
         },
         "assistant_id": {
@@ -7458,28 +7604,28 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 211
+            "id": 215
           }
         },
         "replies": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 213
+            "id": 217
           }
         },
         "reply_seeds": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 214
+            "id": 218
           }
         },
         "voice_capture_sessions": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "voice_send_enabled": {
@@ -7492,7 +7638,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "voice_tts_model": {
@@ -7520,7 +7666,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 212
+        "id": 216
       }
     },
     {
@@ -7548,35 +7694,35 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "ack_denied": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "busy": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "empty_reply": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         },
         "server_error": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 13
+            "id": 11
           }
         }
       },
@@ -7655,6 +7801,42 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
+      "kind": "object",
+      "fields": {
+        "enabled": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "has_api_key": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "has_model": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "has_reference_id": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "ready": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
       "kind": "union",
       "variants": [
         {
@@ -7662,7 +7844,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 217
+          "id": 222
         }
       ]
     },
@@ -7673,7 +7855,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 218
+            "id": 223
           }
         },
         "is_available": {
@@ -7689,7 +7871,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 219
+        "id": 224
       }
     },
     {
@@ -7705,14 +7887,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "topped_up_balance": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 97
+            "id": 177
           }
         },
         "total_balance": {
@@ -7731,14 +7913,14 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 221
+            "id": 226
           }
         },
         "default_verbosity": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 222
+            "id": 227
           }
         },
         "max_context_tokens": {
@@ -7766,21 +7948,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 202
+            "id": 206
           }
         },
         "server_tools": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 204
+            "id": 208
           }
         },
         "supported_efforts": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 206
+            "id": 210
           }
         },
         "supports_fast": {
@@ -7835,7 +8017,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 223
+            "id": 228
           }
         }
       },
@@ -7936,7 +8118,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 225
+            "id": 230
           }
         },
         "file_name": {
@@ -7961,7 +8143,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 226
+            "id": 231
           }
         },
         "max_context_tokens": {
@@ -7989,21 +8171,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 227
+            "id": 232
           }
         },
         "requested_backend": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 233
+            "id": 238
           }
         },
         "resolved_backend": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 234
+            "id": 239
           }
         },
         "revision": {
@@ -8022,7 +8204,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 235
+            "id": 240
           }
         },
         "supports_function_calling": {
@@ -8047,7 +8229,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 225
+            "id": 230
           }
         }
       },
@@ -8061,7 +8243,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 210
+          "id": 214
         }
       ]
     },
@@ -8086,7 +8268,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 228
+        "id": 233
       }
     },
     {
@@ -8096,21 +8278,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 229
+            "id": 234
           }
         },
         "npu_brand": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 230
+            "id": 235
           }
         },
         "preferred_backends": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 231
+            "id": 236
           }
         },
         "soc_name": {
@@ -8176,7 +8358,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 232
+        "id": 237
       }
     },
     {
@@ -8245,7 +8427,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         },
         {
           "kind": "ref",
-          "id": 236
+          "id": 241
         }
       ]
     },
@@ -8256,7 +8438,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 237
+            "id": 242
           }
         },
         "temperature": {
@@ -8298,56 +8480,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       ]
     },
     {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 239
-        }
-      ]
-    },
-    {
       "kind": "object",
       "fields": {
-        "can_retry_without_sandbox": {
+        "enabled": {
           "optional": false,
           "schema": {
             "kind": "boolean"
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "cwd": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "duration_ms": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "exit_code": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
           }
         },
         "host": {
@@ -8356,469 +8494,53 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "string"
           }
         },
-        "message_id": {
+        "port": {
           "optional": false,
           "schema": {
-            "kind": "string"
+            "kind": "number"
           }
         },
-        "retry_without_sandbox": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "sandbox": {
+        "token": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 240
-          }
-        },
-        "status": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 241
-          }
-        },
-        "stderr": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "stdout": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "timed_out": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
+            "id": 2
           }
         }
       },
       "additional": null
     },
     {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "container"
-        },
-        {
-          "kind": "literal",
-          "value": "host"
-        },
-        {
-          "kind": "literal",
-          "value": "windows_restricted_token"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "sandbox_denied"
-        },
-        {
-          "kind": "literal",
-          "value": "settings_unreadable"
-        },
-        {
-          "kind": "literal",
-          "value": "cancelled"
-        },
-        {
-          "kind": "literal",
-          "value": "failed"
-        },
-        {
-          "kind": "literal",
-          "value": "completed"
-        },
-        {
-          "kind": "literal",
-          "value": "timed_out"
-        },
-        {
-          "kind": "literal",
-          "value": "in_doubt"
-        }
-      ]
-    },
-    {
       "kind": "object",
       "fields": {
+        "connections": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
         "enabled": {
           "optional": false,
           "schema": {
             "kind": "boolean"
           }
         },
-        "has_api_key": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "has_model": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "has_reference_id": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "ready": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "bottom": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "imeBottom": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "left": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "right": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "top": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 41
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "current_sha": {
+        "host": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "head_sha": {
+        "port": {
           "optional": false,
           "schema": {
-            "kind": "ref",
-            "id": 2
+            "kind": "number"
           }
         },
-        "spans": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 246
-          }
-        },
-        "truncated": {
+        "running": {
           "optional": false,
           "schema": {
             "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 247
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "end_line": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 248
-          }
-        },
-        "model_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "origin": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 249
-          }
-        },
-        "start_line": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "timestamp": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "tool_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "conversation"
-        },
-        {
-          "kind": "literal",
-          "value": "external"
-        },
-        {
-          "kind": "literal",
-          "value": "inferred"
-        },
-        {
-          "kind": "literal",
-          "value": "preexisting"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "claude_code"
-        },
-        {
-          "kind": "literal",
-          "value": "plan_review"
-        },
-        {
-          "kind": "literal",
-          "value": "impl_review"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot"
-        },
-        {
-          "kind": "literal",
-          "value": "desktop"
-        },
-        {
-          "kind": "literal",
-          "value": "sub_agent"
-        },
-        {
-          "kind": "literal",
-          "value": "user_shell"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 251
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "file_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "model_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "moved_from_version_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "new_sha": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "observed_old_sha": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "op": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 252
-          }
-        },
-        "origin": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 249
-          }
-        },
-        "project_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "seq": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 253
-          }
-        },
-        "tool_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
           }
         }
       },
@@ -8828,75 +8550,29 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "union",
       "variants": [
         {
-          "kind": "literal",
-          "value": "external"
+          "kind": "null"
         },
         {
-          "kind": "literal",
-          "value": "write"
-        },
-        {
-          "kind": "literal",
-          "value": "edit"
-        },
-        {
-          "kind": "literal",
-          "value": "patch"
-        },
-        {
-          "kind": "literal",
-          "value": "delete"
-        },
-        {
-          "kind": "literal",
-          "value": "rename_from"
-        },
-        {
-          "kind": "literal",
-          "value": "rename_to"
-        },
-        {
-          "kind": "literal",
-          "value": "command_observed"
-        },
-        {
-          "kind": "literal",
-          "value": "rewind"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "native"
-        },
-        {
-          "kind": "literal",
-          "value": "external"
-        },
-        {
-          "kind": "literal",
-          "value": "inferred"
-        },
-        {
-          "kind": "literal",
-          "value": "rewind"
-        },
-        {
-          "kind": "literal",
-          "value": "hosted"
+          "kind": "ref",
+          "id": 246
         }
       ]
     },
     {
       "kind": "object",
       "fields": {
-        "content": {
+        "items": {
           "optional": false,
           "schema": {
-            "kind": "string"
+            "kind": "ref",
+            "id": 247
+          }
+        },
+        "list": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 250
           }
         }
       },
@@ -8906,12 +8582,18 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 256
+        "id": 248
       }
     },
     {
       "kind": "object",
       "fields": {
+        "active_form": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
         "content": {
           "optional": false,
           "schema": {
@@ -8924,1314 +8606,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "number"
           }
         },
-        "deleted_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "deleted_by": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 257
-          }
-        },
         "id": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "key": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "memory_type": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 258
-          }
-        },
-        "origin": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 259
-          }
-        },
-        "scope_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "scope_type": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 260
-          }
-        },
-        "source_session_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "subject_scope_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "updated_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "visibility": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 261
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "self"
-        },
-        {
-          "kind": "literal",
-          "value": "admin"
-        },
-        {
-          "kind": "literal",
-          "value": "lru"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "general"
-        },
-        {
-          "kind": "literal",
-          "value": "preference"
-        },
-        {
-          "kind": "literal",
-          "value": "fact"
-        },
-        {
-          "kind": "literal",
-          "value": "instruction"
-        },
-        {
-          "kind": "literal",
-          "value": "relationship"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "legacy"
-        },
-        {
-          "kind": "literal",
-          "value": "desktop"
-        },
-        {
-          "kind": "literal",
-          "value": "admin"
-        },
-        {
-          "kind": "literal",
-          "value": "private"
-        },
-        {
-          "kind": "literal",
-          "value": "group"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "project"
-        },
-        {
-          "kind": "literal",
-          "value": "client_global"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot_global"
-        },
-        {
-          "kind": "literal",
-          "value": "onebot_user"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "normal"
-        },
-        {
-          "kind": "literal",
-          "value": "owner_only"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 263
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "admin_only": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 0
-          }
-        },
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "needs_approval": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 0
-          }
-        },
-        "scope": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 264
-          }
-        },
-        "server_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 265
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "literal",
-          "value": "private"
-        },
-        {
-          "kind": "literal",
-          "value": "group"
-        },
-        {
-          "kind": "literal",
-          "value": "any"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "onebot"
-        },
-        {
-          "kind": "literal",
-          "value": "builtin"
-        },
-        {
-          "kind": "literal",
-          "value": "mcp"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 112
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 99
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 269
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "command": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "ended_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "ended_reason": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "exit_code": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 270
-          }
-        },
-        "notified": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "output_bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "output_truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "runner": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 271
-          }
-        },
-        "started_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "state": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 272
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "agent"
-        },
-        {
-          "kind": "literal",
-          "value": "command"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "native"
-        },
-        {
-          "kind": "literal",
-          "value": "claude_code"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "running"
-        },
-        {
-          "kind": "literal",
-          "value": "failed"
-        },
-        {
-          "kind": "literal",
-          "value": "completed"
-        },
-        {
-          "kind": "literal",
-          "value": "stopped"
-        },
-        {
-          "kind": "literal",
-          "value": "lost"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 34
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 101
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 276
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "enabled": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "entries": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "file": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "license": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "size_bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "source": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "state": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 277
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "ref",
-          "id": 278
-        },
-        {
-          "kind": "ref",
-          "id": 279
-        },
-        {
-          "kind": "ref",
-          "id": 280
-        },
-        {
-          "kind": "ref",
-          "id": 281
-        },
-        {
-          "kind": "ref",
-          "id": 282
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "ready"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "upgrading"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "needs_upgrade"
-          }
-        },
-        "version": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "too_new"
-          }
-        },
-        "version": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "unreadable"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 284
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "size": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 286
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "server_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "state": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 287
-          }
-        },
-        "tool_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "disconnected"
-        },
-        {
-          "kind": "literal",
-          "value": "connecting"
-        },
-        {
-          "kind": "literal",
-          "value": "connected"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 114
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 290
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "definition_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "enabled": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "input_schema": {
-          "optional": false,
-          "schema": {
-            "kind": "json"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "qualified_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "server_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "server_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 292
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "display_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "is_pinned": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "is_protected": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "last_seen_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "opted_out": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "scope_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 195
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 199
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 145
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 118
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 298
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "auth": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 299
-          }
-        },
-        "balance": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "icon": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "models": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 303
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "provider_type": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 124
-          }
-        },
-        "websites": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 305
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 300
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "api_formats": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 301
-          }
-        },
-        "credential_kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 122
-          }
-        },
-        "default_base_url": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 302
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "transport_profile": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 125
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 121
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "chat_completions": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "gemini_generate_content": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "gemini_interactions": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "gemma_tool": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "litert_lm": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "responses": {
-          "optional": true,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 304
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "family": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "ids": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "api_key": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "docs": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "models": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "official": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 120
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 308
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "display_name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "uri": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "virtual_prefix": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "string"
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 126
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "families": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 313
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "detail": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 314
-          }
-        },
-        "finished_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "started_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "dictionaries": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "failures": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 315
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "ime_dictionary_upgrade"
-          }
-        },
-        "state": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 317
-          }
-        },
-        "upgraded": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 316
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "error": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "running"
-        },
-        {
-          "kind": "literal",
-          "value": "failed"
-        },
-        {
-          "kind": "literal",
-          "value": "succeeded"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 319
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "description": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "icon": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
+        "list_id": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -10242,62 +8623,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "schema": {
             "kind": "number"
           }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 128
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 322
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
         },
-        "clips": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "handle": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "kind": {
+        "status": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 323
-          }
-        },
-        "last_captured_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "untranscribed": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
+            "id": 249
           }
         }
       },
@@ -10308,103 +8639,21 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "literal",
-          "value": "private"
+          "value": "pending"
         },
         {
           "kind": "literal",
-          "value": "group"
+          "value": "in_progress"
+        },
+        {
+          "kind": "literal",
+          "value": "completed"
         }
       ]
     },
     {
       "kind": "object",
       "fields": {
-        "memory_types": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 325
-          }
-        },
-        "origins": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 326
-          }
-        },
-        "scopes": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 327
-          }
-        },
-        "visibilities": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 328
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 258
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 259
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 260
-      }
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 261
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "data_base64": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "mime_type": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
         "conversation_id": {
           "optional": false,
           "schema": {
@@ -10417,350 +8666,20 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "number"
           }
         },
-        "delivery": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 331
-          }
-        },
-        "dispatched_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "dispatched_turn_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "held_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
         "id": {
           "optional": false,
           "schema": {
             "kind": "string"
           }
         },
-        "position": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "reported_at": {
+        "status": {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 1
+            "id": 251
           }
         },
-        "settled_at": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "settled_message_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "follow_up"
-        },
-        {
-          "kind": "literal",
-          "value": "interject"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 330
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "next_offset": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "offset": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "task": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 269
-          }
-        },
-        "total_bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "entries": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 335
-          }
-        },
-        "filesScanned": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "nextCursor": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 339
-          }
-        },
-        "scanTruncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 336
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "cursor": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 337
-          }
-        },
-        "fields": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 110
-          }
-        },
-        "file": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "level": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 338
-          }
-        },
-        "line": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "msg": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "spanFields": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 110
-          }
-        },
-        "spans": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 13
-          }
-        },
-        "target": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "ts": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "tsMs": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "byteOffset": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "fileIndex": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "ERROR"
-        },
-        {
-          "kind": "literal",
-          "value": "WARN"
-        },
-        {
-          "kind": "literal",
-          "value": "INFO"
-        },
-        {
-          "kind": "literal",
-          "value": "DEBUG"
-        }
-      ]
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 337
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "descriptor": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 73
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "draft_sha256": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "generation": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "review_id": {
+        "title": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -10776,227 +8695,17 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 344
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "role": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 345
-          }
-        },
-        "snippet": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "title": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        }
-      },
-      "additional": null
-    },
-    {
       "kind": "union",
       "variants": [
         {
           "kind": "literal",
-          "value": "user"
+          "value": "in_progress"
         },
         {
           "kind": "literal",
-          "value": "assistant"
+          "value": "completed"
         }
       ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "roots": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 347
-          }
-        },
-        "staging_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 348
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "imports": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "null"
-        },
-        {
-          "kind": "ref",
-          "id": 350
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "settings_tab": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "ime"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "ref",
-          "id": 352
-        },
-        {
-          "kind": "ref",
-          "id": 354
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "image_url": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 353
-          }
-        },
-        "type": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "image_url"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "url": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "file": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 355
-          }
-        },
-        "type": {
-          "optional": false,
-          "schema": {
-            "kind": "literal",
-            "value": "file"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "mime_type": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "name": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "url": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
     },
     {
       "kind": "object",
@@ -11035,148 +8744,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "object",
-      "fields": {
-        "items": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 358
-          }
-        },
-        "total": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 359
-      }
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "billing_mode": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 360
-          }
-        },
-        "content_chars": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "conversation_id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "conversation_title": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "created_at": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "id": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "missing_input": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "missing_output": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "model_id": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "provider_name": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "role": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "source_type": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 2
-          }
-        },
-        "unpriced_tokens": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "unpriced_tools": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "subscription"
-        },
-        {
-          "kind": "literal",
-          "value": "external"
-        },
-        {
-          "kind": "literal",
-          "value": "metered"
-        }
-      ]
-    },
-    {
-      "kind": "array",
-      "item": {
-        "kind": "ref",
-        "id": 362
+        "id": 254
       }
     },
     {
@@ -11361,6 +8932,177 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 256
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "can_retry_without_sandbox": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "cwd": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "duration_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "exit_code": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "host": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "message_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "retry_without_sandbox": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "sandbox": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 257
+          }
+        },
+        "status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 258
+          }
+        },
+        "stderr": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "stdout": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "timed_out": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "container"
+        },
+        {
+          "kind": "literal",
+          "value": "host"
+        },
+        {
+          "kind": "literal",
+          "value": "windows_restricted_token"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "sandbox_denied"
+        },
+        {
+          "kind": "literal",
+          "value": "settings_unreadable"
+        },
+        {
+          "kind": "literal",
+          "value": "cancelled"
+        },
+        {
+          "kind": "literal",
+          "value": "failed"
+        },
+        {
+          "kind": "literal",
+          "value": "completed"
+        },
+        {
+          "kind": "literal",
+          "value": "timed_out"
+        },
+        {
+          "kind": "literal",
+          "value": "in_doubt"
+        }
+      ]
+    },
+    {
       "kind": "object",
       "fields": {
         "downloading": {
@@ -11394,44 +9136,38 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
     {
       "kind": "object",
       "fields": {
-        "duration_ms": {
+        "bottom": {
           "optional": false,
           "schema": {
             "kind": "number"
           }
         },
-        "status": {
+        "ime_bottom": {
           "optional": false,
           "schema": {
-            "kind": "ref",
-            "id": 365
+            "kind": "number"
           }
         },
-        "text": {
+        "left": {
           "optional": false,
           "schema": {
-            "kind": "string"
+            "kind": "number"
+          }
+        },
+        "right": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "top": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
           }
         }
       },
       "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "ok"
-        },
-        {
-          "kind": "literal",
-          "value": "too_short"
-        },
-        {
-          "kind": "literal",
-          "value": "empty"
-        }
-      ]
     },
     {
       "kind": "object",
@@ -11456,15 +9192,15 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "variants": [
         {
           "kind": "ref",
-          "id": 368
+          "id": 263
         },
         {
           "kind": "ref",
-          "id": 372
+          "id": 267
         },
         {
           "kind": "ref",
-          "id": 373
+          "id": 268
         }
       ]
     },
@@ -11482,7 +9218,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 369
+            "id": 264
           }
         },
         "state": {
@@ -11499,7 +9235,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 370
+        "id": 265
       }
     },
     {
@@ -11522,7 +9258,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "optional": false,
           "schema": {
             "kind": "ref",
-            "id": 371
+            "id": 266
           }
         }
       },
@@ -11584,154 +9320,23 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
-      "kind": "object",
-      "fields": {
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 375
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "union",
-      "variants": [
-        {
-          "kind": "literal",
-          "value": "project_file"
-        },
-        {
-          "kind": "literal",
-          "value": "project_directory"
-        }
-      ]
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "binary": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        },
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "size_bytes": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "total_lines": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
-      "kind": "object",
-      "fields": {
-        "byte_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "content": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "kind": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 375
-          }
-        },
-        "line_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "line_end": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "line_start": {
-          "optional": false,
-          "schema": {
-            "kind": "ref",
-            "id": 1
-          }
-        },
-        "path": {
-          "optional": false,
-          "schema": {
-            "kind": "string"
-          }
-        },
-        "token_count": {
-          "optional": false,
-          "schema": {
-            "kind": "number"
-          }
-        },
-        "truncated": {
-          "optional": false,
-          "schema": {
-            "kind": "boolean"
-          }
-        }
-      },
-      "additional": null
-    },
-    {
       "kind": "union",
       "variants": [
         {
           "kind": "ref",
-          "id": 379
+          "id": 270
         },
         {
           "kind": "ref",
-          "id": 380
+          "id": 271
         },
         {
           "kind": "ref",
-          "id": 381
+          "id": 272
         },
         {
           "kind": "ref",
-          "id": 382
+          "id": 273
         }
       ]
     },
@@ -11812,10 +9417,2057 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
+      "kind": "object",
+      "fields": {
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "messages": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 384
+        "id": 115
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 277
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "accepted": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "cache_hit": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "duplicates": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "file": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "notes": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "skipped": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 52
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "duration_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "status": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 281
+          }
+        },
+        "text": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "ok"
+        },
+        {
+          "kind": "literal",
+          "value": "too_short"
+        },
+        {
+          "kind": "literal",
+          "value": "empty"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 283
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "cwd": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "owned_by": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "session_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 9
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 286
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "running": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 288
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "command": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "description": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "ended_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "ended_reason": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "exit_code": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 289
+          }
+        },
+        "notified": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "output_bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "output_truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "runner": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 290
+          }
+        },
+        "started_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "state": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 291
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "agent"
+        },
+        {
+          "kind": "literal",
+          "value": "command"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "native"
+        },
+        {
+          "kind": "literal",
+          "value": "claude_code"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "running"
+        },
+        {
+          "kind": "literal",
+          "value": "failed"
+        },
+        {
+          "kind": "literal",
+          "value": "completed"
+        },
+        {
+          "kind": "literal",
+          "value": "stopped"
+        },
+        {
+          "kind": "literal",
+          "value": "lost"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 12
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 15
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 19
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 30
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 297
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "file_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "model_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "moved_from_version_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "new_sha": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "observed_old_sha": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "op": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 298
+          }
+        },
+        "origin": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 189
+          }
+        },
+        "project_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "seq": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "source": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 299
+          }
+        },
+        "tool_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "turn_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "external"
+        },
+        {
+          "kind": "literal",
+          "value": "write"
+        },
+        {
+          "kind": "literal",
+          "value": "edit"
+        },
+        {
+          "kind": "literal",
+          "value": "patch"
+        },
+        {
+          "kind": "literal",
+          "value": "delete"
+        },
+        {
+          "kind": "literal",
+          "value": "rename_from"
+        },
+        {
+          "kind": "literal",
+          "value": "rename_to"
+        },
+        {
+          "kind": "literal",
+          "value": "command_observed"
+        },
+        {
+          "kind": "literal",
+          "value": "rewind"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "native"
+        },
+        {
+          "kind": "literal",
+          "value": "external"
+        },
+        {
+          "kind": "literal",
+          "value": "inferred"
+        },
+        {
+          "kind": "literal",
+          "value": "rewind"
+        },
+        {
+          "kind": "literal",
+          "value": "hosted"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "string"
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 302
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "size": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 304
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "server_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "state": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 305
+          }
+        },
+        "tool_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "disconnected"
+        },
+        {
+          "kind": "literal",
+          "value": "connecting"
+        },
+        {
+          "kind": "literal",
+          "value": "connected"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 32
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 308
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "definition_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "description": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "enabled": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "input_schema": {
+          "optional": false,
+          "schema": {
+            "kind": "json"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "qualified_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "server_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "server_name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 36
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 311
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "display_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "is_pinned": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "is_protected": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "last_seen_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "opted_out": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "scope_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 199
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 203
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 84
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 42
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 317
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "auth": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 318
+          }
+        },
+        "balance": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "icon": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "models": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 322
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "provider_type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 48
+          }
+        },
+        "websites": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 324
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 319
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "api_formats": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 320
+          }
+        },
+        "credential_kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 46
+          }
+        },
+        "default_base_url": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 321
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "transport_profile": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 49
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 45
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "chat_completions": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "gemini_generate_content": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "gemini_interactions": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "gemma_tool": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "litert_lm": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "responses": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 323
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "family": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "ids": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "api_key": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "docs": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "models": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "official": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 326
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 44
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 50
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "string"
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "string"
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "string"
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 333
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "detail": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 334
+          }
+        },
+        "finished_at": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "started_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "dictionaries": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "failures": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 335
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "ime_dictionary_upgrade"
+          }
+        },
+        "state": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 337
+          }
+        },
+        "upgraded": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 336
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "running"
+        },
+        {
+          "kind": "literal",
+          "value": "failed"
+        },
+        {
+          "kind": "literal",
+          "value": "succeeded"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 339
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "description": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "icon": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "sort_order": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 54
+      }
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 342
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "admin_only": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 0
+          }
+        },
+        "description": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "needs_approval": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 0
+          }
+        },
+        "scope": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 343
+          }
+        },
+        "server_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "source": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 344
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "literal",
+          "value": "private"
+        },
+        {
+          "kind": "literal",
+          "value": "group"
+        },
+        {
+          "kind": "literal",
+          "value": "any"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "onebot"
+        },
+        {
+          "kind": "literal",
+          "value": "builtin"
+        },
+        {
+          "kind": "literal",
+          "value": "mcp"
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "items": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 346
+          }
+        },
+        "total": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 347
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "billing_mode": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 348
+          }
+        },
+        "content_chars": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "conversation_title": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "missing_input": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "missing_output": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "model_id": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "provider_name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "role": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "source_type": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "unpriced_tokens": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "unpriced_tools": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "subscription"
+        },
+        {
+          "kind": "literal",
+          "value": "external"
+        },
+        {
+          "kind": "literal",
+          "value": "metered"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 350
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "clips": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "handle": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 351
+          }
+        },
+        "last_captured_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "untranscribed": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "private"
+        },
+        {
+          "kind": "literal",
+          "value": "group"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 353
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "is_dir": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "rel_path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "next_offset": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "offset": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "task": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 288
+          }
+        },
+        "total_bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "data_base64": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "mime_type": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "entries": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 358
+          }
+        },
+        "files_scanned": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "next_cursor": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 362
+          }
+        },
+        "scan_truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 359
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "cursor": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 360
+          }
+        },
+        "fields": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 28
+          }
+        },
+        "file": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "level": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 361
+          }
+        },
+        "line": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "msg": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "span_fields": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 28
+          }
+        },
+        "spans": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 11
+          }
+        },
+        "target": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "ts": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "ts_ms": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "byte_offset": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "file_index": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "ERROR"
+        },
+        {
+          "kind": "literal",
+          "value": "WARN"
+        },
+        {
+          "kind": "literal",
+          "value": "INFO"
+        },
+        {
+          "kind": "literal",
+          "value": "DEBUG"
+        }
+      ]
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 360
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "descriptor": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 153
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "binary": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "size_bytes": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "total_lines": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "byte_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "content": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 366
+          }
+        },
+        "line_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "line_end": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "line_start": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "token_count": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "truncated": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "project_file"
+        },
+        {
+          "kind": "literal",
+          "value": "project_directory"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 368
+      }
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "conversation_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "created_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "role": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 369
+          }
+        },
+        "snippet": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "title": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "literal",
+          "value": "user"
+        },
+        {
+          "kind": "literal",
+          "value": "assistant"
+        }
+      ]
+    },
+    {
+      "kind": "array",
+      "item": {
+        "kind": "ref",
+        "id": 371
       }
     },
     {
@@ -11843,19 +11495,280 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
       "additional": null
     },
     {
+      "kind": "object",
+      "fields": {
+        "draft_sha256": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "generation": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "review_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "updated_at": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "roots": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 374
+          }
+        },
+        "staging_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
       "kind": "array",
       "item": {
         "kind": "ref",
-        "id": 386
+        "id": 375
       }
     },
     {
       "kind": "object",
       "fields": {
-        "is_dir": {
+        "imports": {
+          "optional": false,
+          "schema": {
+            "kind": "number"
+          }
+        },
+        "name": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "conversation": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 15
+          }
+        },
+        "task": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 12
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "review_id": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        },
+        "state": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 87
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "null"
+        },
+        {
+          "kind": "ref",
+          "id": 379
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "settings_tab": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "ime"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "agent": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "error": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 2
+          }
+        },
+        "load_session": {
           "optional": false,
           "schema": {
             "kind": "boolean"
+          }
+        },
+        "ok": {
+          "optional": false,
+          "schema": {
+            "kind": "boolean"
+          }
+        },
+        "protocol_version": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 1
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "kind": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 366
+          }
+        },
+        "path": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "union",
+      "variants": [
+        {
+          "kind": "ref",
+          "id": 383
+        },
+        {
+          "kind": "ref",
+          "id": 385
+        }
+      ]
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "image_url": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 384
+          }
+        },
+        "type": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "image_url"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "url": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "file": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 386
+          }
+        },
+        "type": {
+          "optional": false,
+          "schema": {
+            "kind": "literal",
+            "value": "file"
+          }
+        }
+      },
+      "additional": null
+    },
+    {
+      "kind": "object",
+      "fields": {
+        "mime_type": {
+          "optional": false,
+          "schema": {
+            "kind": "string"
           }
         },
         "name": {
@@ -11864,7 +11777,7 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "string"
           }
         },
-        "rel_path": {
+        "url": {
           "optional": false,
           "schema": {
             "kind": "string"
@@ -11954,4 +11867,4 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
   }
 }
 
-export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 262
+export const INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT = 239

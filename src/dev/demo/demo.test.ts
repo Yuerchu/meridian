@@ -19,179 +19,192 @@ const DECIMAL_ZERO_PRICE = { input_price: null, output_price: null, cache_read_p
 
 /** One call per handler. `reject` marks a handler whose whole job is to refuse. */
 const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
-  list_conversations: { args: { archived: false } },
-  list_conversations_by_project: { args: { request: { projectId: PROJECT_MERIDIAN, archived: false } } },
-  create_conversation: { args: { request: { title: 'x', projectId: null } } },
-  update_conversation_title: { args: { request: { id: CONV.rich, title: 'renamed' } } },
-  set_conversation_assistant: { args: { request: { id: CONV.rich, assistantId: null } } },
-  set_conversation_reasoning_prefs: { args: { request: { id: CONV.rich, thinkingLevel: 'low', fastMode: false } } },
-  set_conversation_mode: { args: { request: { id: CONV.rich, mode: 'plan' } } },
-  set_conversation_accept_edits: { args: { request: { id: CONV.rich, acceptEdits: true } } },
-  set_conversation_project: { args: { request: { id: CONV.rich, projectId: null } } },
-  toggle_pin_conversation: { args: { id: CONV.rich } },
-  toggle_archive_conversation: { args: { id: CONV.rich } },
-  delete_conversation: { args: { id: CONV.rich } },
-  search_conversations: { args: { request: { query: '滚动', limit: 10 } } },
-  conversation_snapshot: { args: { request: { conversationId: CONV.rich } } },
-  switch_branch: { args: { request: { conversationId: CONV.rich, messageId: `${CONV.rich}-m6` } } },
-  delete_message: { args: { request: { conversationId: CONV.rich, id: `${CONV.rich}-m6` } } },
-  rate_message: { args: { request: { id: `${CONV.rich}-m4`, rating: -1 } } },
-  read_message_context_item: { args: { request: { conversationId: CONV.rich, itemId: 'demo-ctx-scroller' } } },
-  get_context_info: { args: { conversationId: CONV.rich } },
-  get_active_todo_list: { args: { conversationId: CONV.rich } },
-  compact: { args: { request: { conversationId: CONV.rich, customInstructions: null } } },
-  export_conversation: { args: { request: { conversationId: CONV.rich, format: 'sft', outputPath: null } } },
-  get_user_command_result: { args: { request: { conversationId: CONV.stickers, messageId: `${CONV.stickers}-m3` } } },
-  active_user_shell_turn: { args: { conversationId: CONV.stickers } },
-  chat: {
+  list_conversations: { args: { request: { archived: false, project_id: null } } },
+  create_conversation: { args: { request: { title: 'x', project_id: null } } },
+  update_conversation: {
     args: {
       request: {
-        conversationId: CONV.pinned,
-        message: 'hi',
-        turnId: 'demo-test-turn',
-        replaces: null,
-        modelOverride: null,
-        providerOverride: null,
-        thinkingLevel: null,
-        assistantId: null,
-        fast: null,
-        mode: null,
-        voice: null,
-        contextRefs: [],
-        conversationRefs: [],
+        id: CONV.rich,
+        title: 'renamed',
+        is_pinned: true,
+        is_archived: false,
+        mode: 'plan',
+        assistant_id: null,
+        thinking_level: 'low',
+        fast_mode: false,
+        accept_edits: true,
+        project_id: null,
       },
     },
   },
-  stop_chat: { args: { request: { conversationId: CONV.pinned, turnId: null } } },
-  steer_conversation: { args: { request: { conversationId: CONV.pinned, text: 'x' } }, reject: true },
-  approve_tool_call: { args: { approvalId: APPROVAL.command } },
-  deny_tool_call: { args: { request: { approvalId: APPROVAL.command, reason: null } } },
-  respond_to_ask: { args: { request: { approvalId: APPROVAL.ask, response: '{"format":"JSON"}' } } },
-  all_pending_approvals: {},
-  run_user_command: {
-    args: { request: { conversationId: CONV.stickers, turnId: 't', command: 'ls', retryWithoutSandbox: null } },
+  delete_conversation: { args: { request: { id: CONV.rich } } },
+  search_conversations: { args: { request: { query: '滚动', limit: 10 } } },
+  get_conversation_snapshot: { args: { request: { conversation_id: CONV.rich } } },
+  switch_message_branch: { args: { request: { conversation_id: CONV.rich, message_id: `${CONV.rich}-m6` } } },
+  delete_message: { args: { request: { conversation_id: CONV.rich, id: `${CONV.rich}-m6` } } },
+  update_message_rating: { args: { request: { id: `${CONV.rich}-m4`, rating: -1 } } },
+  read_message_context_item: { args: { request: { conversation_id: CONV.rich, item_id: 'demo-ctx-scroller' } } },
+  get_conversation_context: { args: { request: { conversation_id: CONV.rich } } },
+  get_todo_list: { args: { request: { conversation_id: CONV.rich } } },
+  invoke_conversation_compaction: {
+    args: { request: { conversation_id: CONV.rich, custom_instructions: null } },
   },
-  upload_file: { args: { request: { conversationId: CONV.rich, filePath: 'C:\\a\\b.txt' } } },
-  upload_file_bytes: { args: { request: { conversationId: CONV.rich, fileName: 'a.png', dataBase64: 'AAAA' } } },
-  preview_local_image: { args: { request: { filePath: 'C:\\a\\photo.png' } } },
-  get_composer_draft: { args: { request: { conversationId: null } } },
-  save_composer_draft: {
+  export_conversation: { args: { request: { conversation_id: CONV.rich, format: 'sft', output_path: null } } },
+  get_user_command_result: { args: { request: { conversation_id: CONV.stickers, message_id: `${CONV.stickers}-m3` } } },
+  get_active_user_command: { args: { request: { conversation_id: CONV.stickers } } },
+  start_chat: {
     args: {
       request: {
-        conversationId: CONV.rich,
+        conversation_id: CONV.pinned,
+        message: 'hi',
+        turn_id: 'demo-test-turn',
+        replaces: null,
+        model_override: null,
+        provider_override: null,
+        thinking_level: null,
+        assistant_id: null,
+        fast: null,
+        mode: null,
+        voice: null,
+        context_refs: [],
+        conversation_refs: [],
+      },
+    },
+  },
+  stop_chat: { args: { request: { conversation_id: CONV.pinned, turn_id: null } } },
+  send_conversation_steer: { args: { request: { conversation_id: CONV.pinned, text: 'x' } }, reject: true },
+  submit_approval_decision: { args: { request: { approval_id: APPROVAL.command, decision: { kind: 'approve' } } } },
+  list_pending_approvals: {},
+  invoke_user_command: {
+    args: { request: { conversation_id: CONV.stickers, turn_id: 't', command: 'ls', retry_without_sandbox: null } },
+  },
+  upload_message_file: { args: { request: { conversation_id: CONV.rich, file_path: 'C:\\a\\b.txt' } } },
+  read_local_image_preview: { args: { request: { file_path: 'C:\\a\\photo.png' } } },
+  get_composer_draft: { args: { request: { conversation_id: null } } },
+  set_composer_draft: {
+    args: {
+      request: {
+        conversation_id: CONV.rich,
         body: 'draft',
         attachments: [],
-        conversationRefs: [CONV.pinned],
-        stickerId: STICKERS.cat,
+        conversation_refs: [CONV.pinned],
+        sticker_id: STICKERS.cat,
         revision: 1,
       },
     },
   },
-  clear_composer_draft: { args: { request: { conversationId: CONV.rich, revision: 2 } } },
-  queue_list: { args: { conversationId: CONV.rich } },
-  list_background_tasks: { args: { conversationId: CONV.rich } },
-  background_task_running_counts: {},
-  stop_background_task: { args: { request: { conversationId: CONV.rich, id: 'b1a2c3d4' } } },
-  read_background_task_output: { args: { request: { conversationId: CONV.rich, id: 'b1a2c3d4', offset: 0 } } },
-  queue_enqueue: {
+  delete_composer_draft: { args: { request: { conversation_id: CONV.rich, revision: 2 } } },
+  list_queued_prompts: { args: { request: { conversation_id: CONV.rich } } },
+  list_background_tasks: { args: { request: { conversation_id: CONV.rich } } },
+  list_background_task_counts: {},
+  stop_background_task: { args: { request: { conversation_id: CONV.rich, id: 'b1a2c3d4' } } },
+  read_background_task_output: { args: { request: { conversation_id: CONV.rich, id: 'b1a2c3d4', offset: 0 } } },
+  create_queued_prompt: {
     args: {
       request: {
-        conversationId: CONV.rich,
+        conversation_id: CONV.rich,
         content: 'x',
         delivery: 'follow_up',
-        contextRefs: null,
-        conversationRefs: null,
+        context_refs: null,
+        conversation_refs: null,
       },
     },
   },
-  queue_remove: { args: { request: { conversationId: CONV.rich, id: 'none' } } },
-  get_plan_review: { args: { request: { reviewId: PLAN_REVIEW_ID } } },
-  list_plan_revisions: { args: { request: { documentId: 'demo-plan-document' } } },
-  save_plan_review_draft: {
-    args: { request: { reviewId: PLAN_REVIEW_ID, expectedGeneration: 0, normalizedMarkdown: '# x', globalNote: null } },
+  delete_queued_prompt: { args: { request: { conversation_id: CONV.rich, id: 'none' } } },
+  get_plan_review: { args: { request: { review_id: PLAN_REVIEW_ID } } },
+  list_plan_revisions: { args: { request: { document_id: 'demo-plan-document' } } },
+  set_plan_review_draft: {
+    args: {
+      request: { review_id: PLAN_REVIEW_ID, expected_generation: 0, normalized_markdown: '# x', global_note: null },
+    },
   },
-  discard_plan_review_draft: { args: { request: { reviewId: PLAN_REVIEW_ID, expectedGeneration: 0 } } },
-  decide_plan_review: {
+  delete_plan_review_draft: { args: { request: { review_id: PLAN_REVIEW_ID, expected_generation: 0 } } },
+  submit_plan_review_decision: {
     args: {
       request: {
-        reviewId: PLAN_REVIEW_ID,
-        decisionId: 'd',
-        expectedGeneration: 0,
-        expectedDraftHash: 'x',
+        review_id: PLAN_REVIEW_ID,
+        decision_id: 'd',
+        expected_generation: 0,
+        expected_draft_hash: 'x',
         action: 'approve',
-        approvalMode: 'default',
-        clearContext: false,
+        approval_mode: 'default',
+        clear_context: false,
       },
     },
   },
-  board_task_list: {},
-  board_task_create: {
-    args: { request: { projectId: PROJECT_MERIDIAN, title: '修登录循环', request: null, stage: 'backlog' } },
+  list_board_tasks: {},
+  create_board_task: {
+    args: { request: { project_id: PROJECT_MERIDIAN, title: '修登录循环', request: null, stage: 'backlog' } },
   },
-  board_task_update: { args: { request: { id: 'demo-card-csv', title: '导出 CSV', request: null } } },
-  board_task_move: { args: { request: { id: 'demo-card-csv', stage: 'running', index: 0 } } },
-  board_task_start: { args: { request: { id: 'demo-card-csv', agentKind: 'native' } } },
+  update_board_task: {
+    args: {
+      request: { id: 'demo-card-csv', title: '导出 CSV', request: null, position: { stage: 'running', index: 0 } },
+    },
+  },
+  start_board_task: { args: { request: { id: 'demo-card-csv', agent_kind: 'native' } } },
   // A fresh board has no card with a worktree to remove.
-  board_task_remove_worktree: { args: { request: { id: 'demo-card-csv' } }, reject: true },
-  board_task_delete: { args: { request: { id: 'demo-card-virtual' } } },
+  delete_board_task_worktree: { args: { request: { id: 'demo-card-csv' } }, reject: true },
+  delete_board_task: { args: { request: { id: 'demo-card-virtual' } } },
   list_projects: {},
   create_project: {
     args: {
-      request: { name: 'p', path: null, sourceType: 'local', sourceId: null, assistantId: null, description: null },
+      request: { name: 'p', path: null, source_type: 'local', source_id: null, assistant_id: null, description: null },
     },
   },
   update_project: { args: { request: { id: PROJECT_MERIDIAN, name: 'renamed' } } },
-  delete_project: { args: { id: PROJECT_MERIDIAN } },
-  workspace_root: { args: { request: { conversationId: CONV.rich } } },
-  workspace_tree: { args: { request: { conversationId: CONV.rich, dir: null } } },
-  workspace_read_file: { args: { request: { conversationId: CONV.rich, relPath: 'README.md' } } },
-  workspace_probe_ref: { args: { request: { conversationId: CONV.rich, projectId: null, path: 'README.md' } } },
-  workspace_resolve_ref: {
+  delete_project: { args: { request: { id: PROJECT_MERIDIAN } } },
+  get_workspace_root: { args: { request: { conversation_id: CONV.rich } } },
+  list_workspace_entries: { args: { request: { conversation_id: CONV.rich, dir: null } } },
+  read_workspace_file: { args: { request: { conversation_id: CONV.rich, rel_path: 'README.md' } } },
+  test_workspace_ref: { args: { request: { conversation_id: CONV.rich, project_id: null, path: 'README.md' } } },
+  resolve_workspace_ref: {
     args: {
-      request: { conversationId: CONV.rich, projectId: null, path: 'README.md', lineStart: null, lineEnd: null },
+      request: { conversation_id: CONV.rich, project_id: null, path: 'README.md', line_start: null, line_end: null },
     },
   },
-  workspace_suggest_refs: {
-    args: { request: { conversationId: CONV.rich, projectId: null, query: 'src', limit: null } },
+  search_workspace_refs: {
+    args: { request: { conversation_id: CONV.rich, project_id: null, query: 'src', limit: null } },
   },
-  workspace_git_status: { args: { request: { conversationId: CONV.rich } } },
-  workspace_git_diff: { args: { request: { conversationId: CONV.rich, relPath: null } } },
-  open_in_editor: { args: { request: { conversationId: CONV.rich, relPath: 'README.md', line: null } }, reject: true },
+  get_workspace_git_status: { args: { request: { conversation_id: CONV.rich } } },
+  get_workspace_git_diff: { args: { request: { conversation_id: CONV.rich, rel_path: null } } },
+  open_workspace_editor: {
+    args: { request: { conversation_id: CONV.rich, rel_path: 'README.md', line: null } },
+    reject: true,
+  },
   list_providers: {},
-  inspect_local_model: {
-    args: { request: { modelPath: 'C:/Models/custom-gpu.litertlm', backend: 'auto', forceRefresh: true } },
+  test_local_model: {
+    args: { request: { model_path: 'C:/Models/custom-gpu.litertlm', backend: 'auto', force_refresh: true } },
   },
-  get_provider_local_model_info: {
-    args: { request: { providerId: PROVIDER.anthropic, forceRefresh: false } },
+  get_provider_local_model: {
+    args: { request: { provider_id: PROVIDER.anthropic, force_refresh: false } },
     reject: true,
   },
   list_provider_catalog: {},
-  codex_auth_status: {},
+  get_codex_auth_status: {},
   create_provider: {
     args: {
       request: {
         name: 'n',
-        providerType: 'openai',
-        baseUrl: 'https://x',
-        apiFormat: null,
-        catalogId: null,
-        authOption: null,
-        localBackend: null,
+        provider_type: 'openai',
+        base_url: 'https://x',
+        api_format: null,
+        catalog_id: null,
+        auth_option: null,
+        local_backend: null,
       },
     },
   },
-  update_provider: { args: { request: { id: PROVIDER.anthropic, name: 'A', isEnabled: false } } },
-  delete_provider: { args: { id: PROVIDER.relay } },
-  set_provider_key: { args: { request: { providerId: PROVIDER.relay, apiKey: 'k' } } },
-  get_provider_key_exists: { args: { providerId: PROVIDER.anthropic } },
-  fetch_provider_models: { args: { request: { providerId: PROVIDER.anthropic, forceRefresh: null } } },
-  list_cached_provider_models: { args: { request: { providerId: PROVIDER.anthropic } } },
-  get_provider_capabilities: { args: { request: { providerId: PROVIDER.anthropic, modelId: 'claude-sonnet-5' } } },
-  get_provider_balance: { args: { providerId: PROVIDER.deepseek } },
-  list_model_configs: { args: { providerId: PROVIDER.anthropic } },
+  update_provider: { args: { request: { id: PROVIDER.anthropic, name: 'A', is_enabled: false } } },
+  delete_provider: { args: { request: { id: PROVIDER.relay } } },
+  set_provider_key: { args: { request: { provider_id: PROVIDER.relay, api_key: 'k' } } },
+  test_provider_key: { args: { request: { provider_id: PROVIDER.anthropic } } },
+  list_provider_models: { args: { request: { provider_id: PROVIDER.anthropic, fetch_policy: 'cached' } } },
+  get_provider_capabilities: { args: { request: { provider_id: PROVIDER.anthropic, model_id: 'claude-sonnet-5' } } },
+  get_provider_balance: { args: { request: { provider_id: PROVIDER.deepseek } } },
+  list_model_configs: { args: { request: { provider_id: PROVIDER.anthropic } } },
   list_model_profiles: {},
-  get_model_config: { args: { request: { providerId: PROVIDER.anthropic, modelId: 'claude-sonnet-5' } } },
-  save_model_config: {
+  get_model_config: { args: { request: { provider_id: PROVIDER.anthropic, model_id: 'claude-sonnet-5' } } },
+  set_model_config: {
     args: {
       request: {
         provider_id: PROVIDER.anthropic,
@@ -217,20 +230,22 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
       },
     },
   },
-  delete_model_config: { args: { id: 'demo-model-haiku' } },
-  usage_report: {
-    args: { request: { dimension: 'total', sinceMs: null, untilMs: null, origin: null, conversationId: null } },
+  delete_model_config: { args: { request: { id: 'demo-model-haiku' } } },
+  get_usage_report: {
+    args: { request: { dimension: 'total', since_ms: null, until_ms: null, origin: null, conversation_id: null } },
   },
-  usage_gaps: { args: { request: { sinceMs: null, untilMs: null, origin: null, conversationId: null } } },
-  usage_cache_misses: {
-    args: { request: { sinceMs: null, untilMs: null, origin: null, conversationId: null } },
+  list_usage_gaps: { args: { request: { since_ms: null, until_ms: null, origin: null, conversation_id: null } } },
+  get_usage_cache_misses: {
+    args: { request: { since_ms: null, until_ms: null, origin: null, conversation_id: null } },
   },
   list_assistants: {},
   create_assistant: {
-    args: { request: { name: 'a', systemPrompt: '', modelId: null, temperature: null, topP: null, maxTokens: null } },
+    args: {
+      request: { name: 'a', system_prompt: '', model_id: null, temperature: null, top_p: null, max_tokens: null },
+    },
   },
-  update_assistant: { args: { request: { id: 'demo-assistant-default', contextLimit: 100_000 } } },
-  delete_assistant: { args: { id: 'demo-assistant-writer' } },
+  update_assistant: { args: { request: { id: 'demo-assistant-default', context_limit: 100_000 } } },
+  delete_assistant: { args: { request: { id: 'demo-assistant-writer' } } },
   list_tool_categories: {},
   list_custom_tools: {},
   create_custom_tool: {
@@ -239,86 +254,86 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         name: 'test',
         description: 'test',
         command: '',
-        categoryId: null,
-        parametersSchema: null,
-        argsTemplate: null,
-        workingDirectory: null,
-        timeoutMs: null,
+        category_id: null,
+        parameters_schema: null,
+        args_template: null,
+        working_directory: null,
+        timeout_ms: null,
         permission: null,
         execution: { kind: 'executable', program: 'echo', args: [{ kind: 'json' }] },
       },
     },
   },
   update_custom_tool: { args: { request: { id: 'demo-tool-typecheck', description: 'updated' } } },
-  delete_custom_tool: { args: { id: 'demo-tool-typecheck' } },
+  delete_custom_tool: { args: { request: { id: 'demo-tool-typecheck' } } },
   list_tool_presets: {},
-  delete_tool_preset: { args: { id: 'demo-preset-coding' } },
-  list_all_tool_names: {},
+  delete_tool_preset: { args: { request: { id: 'demo-preset-coding' } } },
+  list_tools: {},
   list_skills: {},
-  rescan_skills: {},
-  get_skill_body: { args: { dirName: 'commit-message' } },
-  update_skill: { args: { request: { dirName: 'commit-message', isEnabled: false } } },
-  list_skill_bindings: { args: { request: { layer: 'global', anchorId: null } } },
-  set_skill_binding: { args: { request: { layer: 'global', anchorId: null, dirName: 'commit-message', bound: true } } },
+  invoke_skill_rescan: {},
+  read_skill_body: { args: { request: { dir_name: 'commit-message' } } },
+  update_skill: { args: { request: { dir_name: 'commit-message', is_enabled: false } } },
+  list_skill_bindings: { args: { request: { layer: 'global', anchor_id: null } } },
+  set_skill_binding: {
+    args: { request: { layer: 'global', anchor_id: null, dir_name: 'commit-message', bound: true } },
+  },
   list_mcp_servers: {},
   create_mcp_server: {
     args: {
-      request: { name: 'm', transportType: 'stdio', command: 'x', args: null, env: null, url: null, headers: null },
+      request: { name: 'm', transport_type: 'stdio', command: 'x', args: null, env: null, url: null, headers: null },
     },
   },
-  update_mcp_server: { args: { request: { id: 'demo-mcp-sqlite', isEnabled: true } } },
-  delete_mcp_server: { args: { id: 'demo-mcp-sqlite' } },
-  connect_mcp_server: { args: { id: 'demo-mcp-sqlite' } },
+  update_mcp_server: { args: { request: { id: 'demo-mcp-sqlite', is_enabled: true } } },
+  delete_mcp_server: { args: { request: { id: 'demo-mcp-sqlite' } } },
+  connect_mcp_server: { args: { request: { id: 'demo-mcp-sqlite' } } },
   set_mcp_tool_enabled: {
-    args: { request: { serverId: 'demo-mcp-github', toolName: 'create_pull_request', enabled: false } },
+    args: { request: { server_id: 'demo-mcp-github', tool_name: 'create_pull_request', enabled: false } },
   },
-  disconnect_mcp_server: { args: { id: 'demo-mcp-github' } },
-  list_mcp_tools: { args: { serverId: null } },
+  disconnect_mcp_server: { args: { request: { id: 'demo-mcp-github' } } },
+  list_mcp_tools: { args: { request: { server_id: null } } },
   list_mcp_connection_statuses: {},
-  list_all_memories: {},
-  list_memories: { args: { projectId: PROJECT_MERIDIAN } },
+  list_memories: { args: { request: { filter: { kind: 'project', project_id: PROJECT_MERIDIAN } } } },
   list_memory_subjects: {},
-  list_memory_trash: { args: { limit: null } },
-  memory_enums: {},
-  save_memory_scoped: {
+  get_memory_enums: {},
+  create_memory: {
     args: {
       request: {
         scope: 'client_global',
-        projectId: null,
-        subjectScopeId: null,
+        project_id: null,
+        subject_scope_id: null,
         key: 'k',
         content: 'c',
-        memoryType: null,
-        ownerOnly: null,
+        memory_type: null,
+        owner_only: null,
       },
     },
   },
   update_memory: { args: { request: { id: 'demo-mem-1', content: 'changed' } } },
-  delete_memories: { args: { ids: ['demo-mem-1'] } },
-  delete_memory: { args: { id: 'demo-mem-2' } },
-  restore_memories: { args: { ids: ['demo-mem-trash-1'] } },
-  purge_memories: { args: { ids: ['demo-mem-trash-1'] } },
-  forget_memory_subject: { args: { subjectScopeId: 'onebot:10002' } },
-  set_memory_subject_flags: { args: { request: { subjectScopeId: 'onebot:10002', isPinned: true, optedOut: null } } },
+  delete_memories: { args: { request: { ids: ['demo-mem-1'], permanent: false } } },
+  restore_memories: { args: { request: { ids: ['demo-mem-trash-1'] } } },
+  delete_memory_subject: { args: { request: { subject_scope_id: 'onebot:10002' } } },
+  update_memory_subject: {
+    args: { request: { subject_scope_id: 'onebot:10002', is_pinned: true, opted_out: null } },
+  },
   get_platform: {},
   list_system_fonts: {},
   get_window_insets: {},
   get_app_info: {},
   get_secret: { args: { request: { key: 'REMOTE_TOKEN' } } },
   get_preference: { args: { request: { key: 'shell' } } },
-  set_preference: { args: { request: { key: 'autoreview.model', value: { providerId: 'p', modelId: 'm' } } } },
-  get_service_key_exists: { args: { service: 'TAVILY' } },
+  set_preference: { args: { request: { key: 'autoreview.model', value: { provider_id: 'p', model_id: 'm' } } } },
+  test_service_key: { args: { request: { service: 'TAVILY' } } },
   set_service_key: { args: { request: { service: 'FISH_AUDIO', key: 'k' } } },
   read_logs: {
     args: {
       request: {
-        minLevel: 'warn',
+        min_level: 'warn',
         limit: null,
         contains: null,
-        targetPrefix: null,
-        conversationId: null,
-        sinceTsMs: null,
-        untilTsMs: null,
+        target_prefix: null,
+        conversation_id: null,
+        since_ts_ms: null,
+        until_ts_ms: null,
         cursor: null,
       },
     },
@@ -326,9 +341,9 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   list_log_files: {},
   get_log_settings: {},
   set_log_level: { args: { request: { level: 'debug' } } },
-  export_logs: { args: { request: { outputPath: 'x' } } },
+  export_logs: { args: { request: { output_path: 'x' } } },
   get_onebot_config: {},
-  save_onebot_config: {
+  set_onebot_config: {
     args: {
       request: {
         enabled: false,
@@ -357,11 +372,11 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   get_onebot_status: {},
   start_onebot: {},
   stop_onebot: {},
-  get_voice_send_readiness: {},
+  get_onebot_voice_readiness: {},
   list_voice_corpus: {},
-  voice_model_status: {},
+  get_voice_model_status: {},
   get_hooks_config: {},
-  save_hooks_config: {
+  set_hooks_config: {
     args: {
       request: {
         enabled: false,
@@ -376,12 +391,16 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
     },
   },
   get_hooks_status: {},
-  get_listen_config: {},
-  get_listen_status: {},
-  get_listen_addresses: {},
+  get_remote_config: {},
+  set_remote_config: { args: { request: { enabled: true, host: '127.0.0.1', port: 8787 } } },
+  get_remote_status: {},
+  start_remote: {},
+  stop_remote: {},
+  reset_remote_token: {},
+  list_remote_addresses: {},
   get_ime_status: {},
   get_ime_config: {},
-  save_ime_config: {
+  set_ime_config: {
     args: {
       request: {
         scheme: 'zhuyin',
@@ -398,23 +417,23 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   list_ime_dictionaries: {},
   list_system_notices: {},
   get_ime_learning: {},
-  forget_ime_learned_word: { args: { request: { text: '你好' } } },
-  forget_all_ime_learning: {},
+  delete_ime_learning: { args: { request: { word: '你好' } } },
   export_ime_learning: { args: { request: { dest: null } } },
   import_ime_learning: { args: { request: { path: '/tmp/learn.zip', mode: 'add' } } },
   take_launch_request: {},
-  cancel_staged_ime_dictionaries: { args: { request: { staging_id: 'none' } } },
-  dismiss_system_notice: { args: { request: { id: 'none' } } },
+  cancel_ime_dictionary_staging: { args: { request: { staging_id: 'none' } } },
+  delete_system_notice: { args: { request: { id: 'none' } } },
   set_ime_dictionary_enabled: { args: { request: { file: 'tech.dict', enabled: true } } },
   get_ime_lm_status: {},
-  refresh_ime_memory_hints: {},
-  acp_get_config: {},
-  list_emoji_packs: {},
-  list_assistant_emoji_packs: { args: { assistantId: 'demo-assistant-default' } },
-  list_emojis: { args: { packId: 'demo-pack-daily' } },
-  search_emojis: { args: { query: '猫' } },
-  get_emoji_file_url: { args: { emojiId: STICKERS.cat } },
-  rename_emoji: { args: { request: { id: STICKERS.cat, newName: '猫' } } },
+  invoke_ime_memory_hints_refresh: {},
+  get_acp_config: {},
+  list_emoji_packs: { args: { request: { assistant_id: null } } },
+  set_emoji_pack_assignment: {
+    args: { request: { assistant_id: 'demo-assistant-default', pack_id: 'demo-pack-daily', assigned: true } },
+  },
+  list_emojis: { args: { request: { filter: { kind: 'pack', pack_id: 'demo-pack-daily' } } } },
+  get_emoji_file_url: { args: { request: { emoji_id: STICKERS.cat } } },
+  update_emoji: { args: { request: { id: STICKERS.cat, action: { kind: 'rename', name: '猫' } } } },
 }
 
 describe('demo fixtures', () => {
@@ -427,7 +446,7 @@ describe('demo fixtures', () => {
     legacy.args_template = '"{{input}}"'
     await backend.invoke('update_custom_tool', { request: { id: legacy.id, description: 'edited' } })
     await expect(
-      backend.invoke('update_custom_tool', { request: { id: legacy.id, isEnabled: true, command: 'changed' } }),
+      backend.invoke('update_custom_tool', { request: { id: legacy.id, is_enabled: true, command: 'changed' } }),
     ).rejects.toThrow(/Legacy/)
     expect(backend.state.customTools[0].command).toBe("  printf '%s'  ")
     expect(backend.state.customTools[0].args_template).toBe('"{{input}}"')
@@ -435,7 +454,7 @@ describe('demo fixtures', () => {
     await backend.invoke('update_custom_tool', {
       request: {
         id: legacy.id,
-        isEnabled: true,
+        is_enabled: true,
         execution: { kind: 'script', script: 'printf "%s" "$1"', args: [{ kind: 'parameter', name: 'input' }] },
       },
     })
@@ -467,15 +486,15 @@ describe('demo fixtures', () => {
   // goes with its conversation.
   it('takes a board card from start to removal to deletion', async () => {
     const backend = createDemoBackend()
-    const started = (await backend.invoke('board_task_start', {
-      request: { id: 'demo-card-csv', agentKind: 'claude_code' },
+    const started = (await backend.invoke('start_board_task', {
+      request: { id: 'demo-card-csv', agent_kind: 'claude_code' },
     })) as { task: { stage: string; conversation_id: string; worktree_path: string | null } }
     expect(started.task.stage).toBe('running')
     const conversationId = started.task.conversation_id
     expect(backend.state.conversations.some((c) => c.id === conversationId)).toBe(true)
-    await expect(backend.invoke('board_task_delete', { request: { id: 'demo-card-csv' } })).rejects.toMatch(/worktree/)
+    await expect(backend.invoke('delete_board_task', { request: { id: 'demo-card-csv' } })).rejects.toMatch(/worktree/)
 
-    const removed = (await backend.invoke('board_task_remove_worktree', { request: { id: 'demo-card-csv' } })) as {
+    const removed = (await backend.invoke('delete_board_task_worktree', { request: { id: 'demo-card-csv' } })) as {
       stage: string
       worktree_path: string | null
     }
@@ -486,7 +505,7 @@ describe('demo fixtures', () => {
     backend.subscribe('conversation-updated', (event) =>
       seen.push({ channel: 'conversation-updated', payload: event.payload }),
     )
-    await backend.invoke('board_task_delete', { request: { id: 'demo-card-csv' } })
+    await backend.invoke('delete_board_task', { request: { id: 'demo-card-csv' } })
     expect(backend.state.boardTasks.some((t) => t.id === 'demo-card-csv')).toBe(false)
     expect(backend.state.conversations.some((c) => c.id === conversationId)).toBe(false)
     expect(seen).toEqual([
@@ -510,8 +529,8 @@ describe('demo fixtures', () => {
   it('snapshots every conversation within the contract and the store own checks', async () => {
     const backend = createDemoBackend()
     for (const conversation of backend.state.conversations) {
-      const snapshot = (await backend.invoke('conversation_snapshot', {
-        request: { conversationId: conversation.id },
+      const snapshot = (await backend.invoke('get_conversation_snapshot', {
+        request: { conversation_id: conversation.id },
       })) as ConversationSnapshotResponse
       expect(() =>
         hydrateBlocks(
@@ -542,8 +561,8 @@ describe('demo fixtures', () => {
       'kind',
     ]
     for (const dimension of dimensions) {
-      await backend.invoke('usage_report', {
-        request: { dimension, sinceMs: null, untilMs: null, origin: null, conversationId: null },
+      await backend.invoke('get_usage_report', {
+        request: { dimension, since_ms: null, until_ms: null, origin: null, conversation_id: null },
       })
     }
   })
@@ -554,18 +573,20 @@ describe('demo fixtures', () => {
       const backend = createDemoBackend()
       const events: { type: string; approval_id?: string }[] = []
       backend.subscribe('chat-stream', (event) => events.push(event.payload as { type: string }))
-      await backend.invoke('chat', SAMPLES.chat.args)
+      await backend.invoke('start_chat', SAMPLES.start_chat.args)
       await vi.advanceTimersByTimeAsync(20_000)
       const request = events.find((e) => e.type === 'tool_approval_req')
       expect(request?.approval_id).toBeTruthy()
-      expect(await backend.invoke('all_pending_approvals', undefined)).toContainEqual(
+      expect(await backend.invoke('list_pending_approvals', undefined)).toContainEqual(
         expect.objectContaining({ approval_id: request?.approval_id }),
       )
-      await backend.invoke('approve_tool_call', { approvalId: request?.approval_id })
+      await backend.invoke('submit_approval_decision', {
+        request: { approval_id: request?.approval_id, decision: { kind: 'approve' } },
+      })
       await vi.advanceTimersByTimeAsync(20_000)
       expect(events.at(-1)?.type).toBe('stop')
-      const snapshot = (await backend.invoke('conversation_snapshot', {
-        request: { conversationId: CONV.pinned },
+      const snapshot = (await backend.invoke('get_conversation_snapshot', {
+        request: { conversation_id: CONV.pinned },
       })) as { turns: { id: string; status: string }[] }
       expect(snapshot.turns.find((t) => t.id === 'demo-test-turn')?.status).toBe('done')
     } finally {

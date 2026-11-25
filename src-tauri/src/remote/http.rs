@@ -37,14 +37,17 @@ use super::SharedState;
 /// `unknown command` on a page the user already opened, with nothing to say
 /// which half is old. The client compares `apiRev` against its own and calls it
 /// `server-too-old` before it gets there.
-pub(crate) const API_REV: u32 = 3;
+/// Revision 4 standardized the full IPC surface to Verb-Noun names,
+/// single-`request` payloads, Rust-first `snake_case` wire fields, and
+/// consolidated resource commands.
+pub(crate) const API_REV: u32 = 4;
 
 /// The oldest client this server will talk to.
 ///
-/// Revision 3 changed existing DTO names, fields, and monetary encodings.  Old
-/// clients are rejected at the handshake instead of being interpreted through
-/// aliases or defaults.
-pub(crate) const MIN_CLIENT_REV: u32 = 3;
+/// Revision 4 is a breaking contract change across command names and request/
+/// response wire fields. Old clients are rejected at the handshake instead of
+/// being interpreted through aliases or defaults.
+pub(crate) const MIN_CLIENT_REV: u32 = 4;
 
 pub(crate) fn router(state: Arc<SharedState>) -> Router {
     Router::new()

@@ -7,9 +7,15 @@ import type { ConversationSnapshotResponse } from '@/types'
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
   api: {
-    conversationSnapshot: vi.fn(),
-    activeUserShellTurn: vi.fn(() => Promise.resolve(null)),
-    getActiveTodoList: vi.fn(),
+    conversations: {
+      getSnapshot: vi.fn(),
+    },
+    userCommands: {
+      getActive: vi.fn(() => Promise.resolve(null)),
+    },
+    todos: {
+      get: vi.fn(),
+    },
   },
 }))
 
@@ -37,7 +43,7 @@ describe('conversation errors are kept until something genuinely changes', () =>
     vi.clearAllMocks()
     useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [] })
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
-    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    vi.mocked(api.userCommands.getActive).mockResolvedValue(null)
   })
 
   // The flash. A send that is refused sets the error, and the reload that
@@ -45,7 +51,7 @@ describe('conversation errors are kept until something genuinely changes', () =>
   it('a successful reload does not clear the error of the action that preceded it', async () => {
     store().ensureSession(CONV)
     store().setError(CONV, 'provider rejected the API key')
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(emptySnapshot())
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(emptySnapshot())
 
     expect(await store().loadMessages(CONV)).toBe(true)
 
@@ -54,19 +60,19 @@ describe('conversation errors are kept until something genuinely changes', () =>
 
   it('keeps a failed read apart from the action error, and clears it on the next good read', async () => {
     store().ensureSession(CONV)
-    vi.mocked(api.conversationSnapshot).mockRejectedValueOnce('database is locked')
+    vi.mocked(api.conversations.getSnapshot).mockRejectedValueOnce('database is locked')
 
     expect(await store().loadMessages(CONV)).toBe(false)
     expect(store().sessions[CONV].loadError).toBe('database is locked')
     expect(store().sessions[CONV].error).toBeNull()
 
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(emptySnapshot())
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(emptySnapshot())
     expect(await store().loadMessages(CONV)).toBe(true)
     expect(store().sessions[CONV].loadError).toBeNull()
   })
 
   it('does not drop a failure reported before the session exists', async () => {
-    vi.mocked(api.conversationSnapshot).mockRejectedValueOnce('no such conversation')
+    vi.mocked(api.conversations.getSnapshot).mockRejectedValueOnce('no such conversation')
 
     await store().loadMessages('never-opened')
 
@@ -83,14 +89,14 @@ describe('conversation errors are kept until something genuinely changes', () =>
   it('a failed checklist read keeps the checklist and says why', async () => {
     store().ensureSession(CONV)
     store().setActiveTodos(CONV, { title: 'Plan', todos: [] })
-    vi.mocked(api.getActiveTodoList).mockRejectedValueOnce('timed out')
+    vi.mocked(api.todos.get).mockRejectedValueOnce('timed out')
 
     await store().loadActiveTodos(CONV)
 
     expect(store().sessions[CONV].todosError).toBe('timed out')
     expect(store().sessions[CONV].activeTodos).toEqual({ title: 'Plan', todos: [] })
 
-    vi.mocked(api.getActiveTodoList).mockResolvedValueOnce(null)
+    vi.mocked(api.todos.get).mockResolvedValueOnce(null)
     await store().loadActiveTodos(CONV)
     expect(store().sessions[CONV].todosError).toBeNull()
   })

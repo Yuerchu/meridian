@@ -119,8 +119,8 @@ export function ImeSettings() {
 
   // Each platform has its own status; neither command exists on the other.
   const refreshStatus = useCallback(async (onAndroid: boolean) => {
-    if (onAndroid) setAndroidStatus(await api.getAndroidImeStatus())
-    else setStatus(await api.getImeStatus())
+    if (onAndroid) setAndroidStatus(await api.ime.getAndroidStatus())
+    else setStatus(await api.ime.getStatus())
   }, [])
 
   const loadData = useCallback(
@@ -129,8 +129,8 @@ export function ImeSettings() {
       try {
         const [, cfg, dicts] = await Promise.all([
           refreshStatus(onAndroid),
-          api.getImeConfig(),
-          api.listImeDictionaries(),
+          api.ime.getConfig(),
+          api.ime.listDictionaries(),
         ])
         adoptConfig(cfg)
         setDictionaries(dicts)
@@ -156,8 +156,8 @@ export function ImeSettings() {
   const notices = useSystemNoticeStore((st) => st.notices)
   useEffect(() => {
     if (notices.length === 0) return
-    api
-      .listImeDictionaries()
+    api.ime
+      .listDictionaries()
       .then(setDictionaries)
       .catch(() => {
         // The next change, or the next visit, reads it again.
@@ -182,7 +182,7 @@ export function ImeSettings() {
     setError(null)
     setSaving(true)
     try {
-      const next = await api.saveImeConfig({
+      const next = await api.ime.setConfig({
         ...config,
         private_apps: splitLines(privateAppsInput),
         context_apps: splitLines(contextAppsInput),
@@ -209,9 +209,9 @@ export function ImeSettings() {
   }
 
   const importRoots = async (stagingId: string, roots: string[]) => {
-    const result = await api.importStagedImeDictionaries({ staging_id: stagingId, roots, license: null })
+    const result = await api.ime.importDictionaries({ staging_id: stagingId, roots, license: null })
     setReports(result)
-    setDictionaries(await api.listImeDictionaries())
+    setDictionaries(await api.ime.listDictionaries())
   }
 
   // A `.dict.yaml` imports at once; a zip is looked into first, and when it
@@ -230,7 +230,7 @@ export function ImeSettings() {
     setReports([])
     setStaged(null)
     try {
-      const found = await api.stageImeDictionary({ path: file })
+      const found = await api.ime.stageDictionary({ path: file })
       if (found.roots.length === 1) {
         await importRoots(found.staging_id, [found.roots[0].path])
       } else {
@@ -254,14 +254,14 @@ export function ImeSettings() {
   useEffect(
     () => () => {
       if (stagedId.current)
-        void api.cancelStagedImeDictionaries({ staging_id: stagedId.current }).catch(() => undefined)
+        void api.ime.cancelDictionaryStaging({ staging_id: stagedId.current }).catch(() => undefined)
     },
     [],
   )
   const handleCancelStaged = () => {
     if (!staged) return
     setStaged(null)
-    void api.cancelStagedImeDictionaries({ staging_id: staged.staging_id }).catch(() => undefined)
+    void api.ime.cancelDictionaryStaging({ staging_id: staged.staging_id }).catch(() => undefined)
   }
 
   const handleImportChosen = async () => {
@@ -283,8 +283,8 @@ export function ImeSettings() {
     setDownloading(true)
     setReports([])
     try {
-      setReports(await api.downloadImeRimeIce())
-      setDictionaries(await api.listImeDictionaries())
+      setReports(await api.ime.importRimeIce())
+      setDictionaries(await api.ime.listDictionaries())
     } catch (err) {
       setError(String(err))
     } finally {
@@ -295,7 +295,7 @@ export function ImeSettings() {
   const handleToggleDictionary = async (file: string, enabled: boolean) => {
     setError(null)
     try {
-      setDictionaries(await api.setImeDictionaryEnabled({ file, enabled }))
+      setDictionaries(await api.ime.setDictionaryEnabled({ file, enabled }))
     } catch (err) {
       setError(String(err))
     }
@@ -312,7 +312,7 @@ export function ImeSettings() {
       return
     setError(null)
     try {
-      setDictionaries(await api.removeImeDictionary({ file: dict.file }))
+      setDictionaries(await api.ime.deleteDictionary({ file: dict.file }))
     } catch (err) {
       setError(String(err))
     }
@@ -382,11 +382,11 @@ export function ImeSettings() {
       {android && androidStatus && !androidStatus.current && (
         <div data-slot="ime-android-actions" className="m-ime__actions">
           {!androidStatus.enabled ? (
-            <Button variant="primary" onPress={() => api.openAndroidImeSettings().catch((e) => setError(String(e)))}>
+            <Button variant="primary" onPress={() => api.ime.openAndroidSettings().catch((e) => setError(String(e)))}>
               {t('settings.ime.android.openSettings')}
             </Button>
           ) : (
-            <Button variant="primary" onPress={() => api.showAndroidImePicker().catch((e) => setError(String(e)))}>
+            <Button variant="primary" onPress={() => api.ime.openAndroidPicker().catch((e) => setError(String(e)))}>
               {t('settings.ime.android.showPicker')}
             </Button>
           )}
@@ -439,7 +439,7 @@ export function ImeSettings() {
               variant={registered ? 'secondary' : 'primary'}
               isDisabled={!status?.installed || busy !== null}
               isPending={busy === 'register'}
-              onPress={() => run('register', api.registerIme)}
+              onPress={() => run('register', api.ime.register)}
             >
               {registered ? t('settings.ime.reregister') : t('settings.ime.register')}
             </Button>
@@ -448,7 +448,7 @@ export function ImeSettings() {
                 variant="destructive"
                 isDisabled={busy !== null}
                 isPending={busy === 'stop'}
-                onPress={() => run('stop', api.stopImeHost)}
+                onPress={() => run('stop', api.ime.stopHost)}
               >
                 {t('settings.ime.stopHost')}
               </Button>
@@ -457,7 +457,7 @@ export function ImeSettings() {
                 variant="secondary"
                 isDisabled={!status?.installed || busy !== null}
                 isPending={busy === 'start'}
-                onPress={() => run('start', api.startImeHost)}
+                onPress={() => run('start', api.ime.startHost)}
               >
                 {t('settings.ime.startHost')}
               </Button>
@@ -476,7 +476,7 @@ export function ImeSettings() {
                 <Switch
                   isSelected={status?.enabled_for_user ?? false}
                   isDisabled={!registered || busy !== null}
-                  onChange={(selected) => run('profile', () => api.setImeProfileEnabled({ enabled: selected }))}
+                  onChange={(selected) => run('profile', () => api.ime.setProfileEnabled({ enabled: selected }))}
                 />
               </SettingsRow>
             </SettingsGroup>

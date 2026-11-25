@@ -14,9 +14,11 @@ vi.mock('./log-row', () => ({
 }))
 vi.mock('@/api', () => ({
   api: {
-    readLogs: vi.fn(),
-    getLogSettings: vi.fn(),
-    exportLogs: vi.fn(),
+    logs: {
+      read: vi.fn(),
+      getSettings: vi.fn(),
+      export: vi.fn(),
+    },
   },
 }))
 
@@ -24,10 +26,10 @@ const mockApi = vi.mocked(api)
 
 function page(message: string) {
   return {
-    entries: [{ message, cursor: { fileIndex: 0, byteOffset: 1 } } as unknown as LogEntryInfoResponse],
-    nextCursor: null,
-    scanTruncated: false,
-    filesScanned: [],
+    entries: [{ message, cursor: { file_index: 0, byte_offset: 1 } } as unknown as LogEntryInfoResponse],
+    next_cursor: null,
+    scan_truncated: false,
+    files_scanned: [],
   }
 }
 
@@ -38,8 +40,8 @@ describe('LogViewer', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.getLogSettings.mockResolvedValue({ available: true } as never)
-    mockApi.readLogs.mockResolvedValue(page('first line'))
+    mockApi.logs.getSettings.mockResolvedValue({ available: true } as never)
+    mockApi.logs.read.mockResolvedValue(page('first line'))
   })
 
   it('keeps the rows on screen while a refresh is in flight', async () => {
@@ -48,7 +50,7 @@ describe('LogViewer', () => {
     expect(await screen.findByText('first line')).toBeInTheDocument()
 
     let finish: (value: ReturnType<typeof page>) => void = () => {}
-    mockApi.readLogs.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
+    mockApi.logs.read.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)))
     await user.click(screen.getByRole('button', { name: i18n.t('settings.about.logs.refresh') }))
 
     expect(screen.getByText('first line')).toBeInTheDocument()
@@ -60,7 +62,7 @@ describe('LogViewer', () => {
   it('says so when writing the export fails', async () => {
     const user = userEvent.setup()
     dialog.save.mockResolvedValue('C:/logs.jsonl')
-    mockApi.exportLogs.mockRejectedValue('disk full')
+    mockApi.logs.export.mockRejectedValue('disk full')
     render(<LogViewer onBack={() => {}} />)
     await screen.findByText('first line')
 

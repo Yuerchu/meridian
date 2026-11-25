@@ -6,7 +6,7 @@ import type { AcpConfigOptionInfoResponse, ProviderInfoResponse } from '@/types'
 import { HostedModelPanel, ModelPanel, type ModelPanelProps } from './model-panel'
 
 vi.mock('@/api', () => ({
-  api: { fetchProviderModels: vi.fn() },
+  api: { providers: { listModels: vi.fn() } },
 }))
 const mockApi = vi.mocked(api)
 
@@ -51,8 +51,8 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockApi.fetchProviderModels.mockImplementation(async ({ providerId }) =>
-    providerId === 'p1'
+  mockApi.providers.listModels.mockImplementation(async ({ provider_id }) =>
+    provider_id === 'p1'
       ? [
           { id: 'alpha', name: 'Alpha' },
           { id: 'beta', name: 'Beta' },
@@ -266,18 +266,18 @@ describe('ModelPanel', () => {
 
   it('fetches once when the answer is empty, instead of fetching for ever', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockResolvedValue([])
+    mockApi.providers.listModels.mockResolvedValue([])
     render(<ModelPanel {...props({ providers: [ONE] })} />)
     const dialog = await openPanel(user)
     expect(await within(dialog).findByText(i18n.t('toolbar.noModels'))).toBeInTheDocument()
     // Give a re-running effect every chance to fire again.
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
+    expect(mockApi.providers.listModels).toHaveBeenCalledTimes(1)
   })
 
   it('says the list failed to load, and why, rather than that there are no models', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockRejectedValue(new Error('offline'))
+    mockApi.providers.listModels.mockRejectedValue(new Error('offline'))
     render(<ModelPanel {...props({ providers: [ONE] })} />)
     const dialog = await openPanel(user)
     expect(
@@ -293,7 +293,7 @@ describe('HostedModelPanel', () => {
     description: null,
     category: 'model',
     type: 'select',
-    currentValue: 'opus',
+    current_value: 'opus',
     options: [
       { value: 'opus', name: 'Opus', description: null },
       { value: 'sonnet', name: 'Sonnet', description: null },
@@ -305,7 +305,7 @@ describe('HostedModelPanel', () => {
     description: null,
     category: 'thought_level',
     type: 'select',
-    currentValue: 'default',
+    current_value: 'default',
     options: [
       { value: 'default', name: 'Default', description: null },
       { value: 'high', name: 'High', description: null },
@@ -339,7 +339,7 @@ describe('HostedModelPanel', () => {
 
   it('lists the effort itself when the current model is not one the agent lists', async () => {
     const user = userEvent.setup()
-    render(<HostedModelPanel model={{ ...model, currentValue: 'unlisted' }} effort={effort} onSet={() => {}} />)
+    render(<HostedModelPanel model={{ ...model, current_value: 'unlisted' }} effort={effort} onSet={() => {}} />)
     await user.click(screen.getByRole('button'))
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByRole('switch', { name: 'Use default' })).toBeInTheDocument()
@@ -384,13 +384,13 @@ describe('HostedModelPanel', () => {
 describe('the panel reopened', () => {
   it('fetches again after an empty answer', async () => {
     const user = userEvent.setup()
-    mockApi.fetchProviderModels.mockResolvedValue([])
+    mockApi.providers.listModels.mockResolvedValue([])
     render(<ModelPanel {...props({ providers: [ONE] })} />)
     await openPanel(user)
-    await waitFor(() => expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockApi.providers.listModels).toHaveBeenCalledTimes(1))
     await user.keyboard('{Escape}')
     await openPanel(user)
-    await waitFor(() => expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(mockApi.providers.listModels).toHaveBeenCalledTimes(2))
   })
 })
 
@@ -400,18 +400,18 @@ describe('providers that arrive after the panel opened', () => {
     const { rerender } = render(<ModelPanel {...props({ providers: [] })} />)
     const dialog = await openPanel(user)
     expect(await within(dialog).findByText(i18n.t('toolbar.noModels'))).toBeInTheDocument()
-    expect(mockApi.fetchProviderModels).not.toHaveBeenCalled()
+    expect(mockApi.providers.listModels).not.toHaveBeenCalled()
 
     rerender(<ModelPanel {...props({ providers: [ONE] })} />)
     expect(await within(dialog).findByText('Alpha')).toBeInTheDocument()
-    expect(mockApi.fetchProviderModels).toHaveBeenCalledTimes(1)
+    expect(mockApi.providers.listModels).toHaveBeenCalledTimes(1)
   })
 
   it('drops an answer for a provider list that has since changed', async () => {
     const user = userEvent.setup()
     let answerOne!: (models: { id: string; name: string }[]) => void
-    mockApi.fetchProviderModels.mockImplementation(({ providerId }) =>
-      providerId === 'p1'
+    mockApi.providers.listModels.mockImplementation(({ provider_id }) =>
+      provider_id === 'p1'
         ? new Promise((resolve) => {
             answerOne = resolve
           })

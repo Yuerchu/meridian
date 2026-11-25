@@ -87,8 +87,8 @@ function ModelPicker({
       setModels([])
       return
     }
-    api
-      .fetchProviderModels({ providerId, forceRefresh: null })
+    api.providers
+      .listModels({ provider_id: providerId, fetch_policy: 'cache_first' })
       .then(setModels)
       // eslint-disable-next-line meridian-ui/no-default-on-load-failure -- model list feeds the picker only; the saved id is form state
       .catch(() => setModels([]))
@@ -210,10 +210,10 @@ export function HooksSettings() {
     setLoadError(null)
     try {
       const [cfg, sts, assts, provs] = await Promise.all([
-        api.getHooksConfig(),
-        api.getHooksStatus(),
-        api.listAssistants(),
-        api.listProviders(),
+        api.hooks.getConfig(),
+        api.hooks.getStatus(),
+        api.assistants.list(),
+        api.providers.list(),
       ])
       setConfig(cfg)
       setStatus(sts)
@@ -249,7 +249,7 @@ export function HooksSettings() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        setStatus(await api.getHooksStatus())
+        setStatus(await api.hooks.getStatus())
       } catch {
         // Polling failures are not worth a banner: the next tick will say.
       }
@@ -280,7 +280,7 @@ export function HooksSettings() {
     try {
       // The saved config comes back because the backend mints the token on
       // first save; dropping the reply would leave the panel showing none.
-      const savedConfig = await api.saveHooksConfig({
+      const savedConfig = await api.hooks.setConfig({
         ...config,
         port,
         timeout_secs: timeout,
@@ -314,8 +314,8 @@ export function HooksSettings() {
   const handleStart = async () => {
     if (!(await handleSave())) return
     try {
-      await api.startHooks()
-      setStatus(await api.getHooksStatus())
+      await api.hooks.start()
+      setStatus(await api.hooks.getStatus())
     } catch (err) {
       setError(String(err))
     }
@@ -323,8 +323,8 @@ export function HooksSettings() {
 
   const handleStop = async () => {
     try {
-      await api.stopHooks()
-      setStatus(await api.getHooksStatus())
+      await api.hooks.stop()
+      setStatus(await api.hooks.getStatus())
     } catch (err) {
       setError(String(err))
     }
@@ -340,7 +340,7 @@ export function HooksSettings() {
       return
     setError(null)
     try {
-      setConfig({ ...config, token: await api.regenerateHooksToken() })
+      setConfig({ ...config, token: await api.hooks.resetToken() })
     } catch (err) {
       setError(String(err))
     }

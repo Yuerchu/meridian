@@ -8,8 +8,9 @@ import type { ContentBlock, MessageViewModel, ToolCallDisplay } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn().mockResolvedValue(undefined),
-    denyToolCall: vi.fn().mockResolvedValue(undefined),
+    approvals: {
+      submitDecision: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }))
 
@@ -160,7 +161,7 @@ const chord = (key: string, target: Element = document.body) =>
 
 describe('useTranscriptHotkeys', () => {
   beforeEach(() => {
-    vi.mocked(api.approveToolCall).mockClear()
+    vi.mocked(api.approvals.submitDecision).mockClear()
     useConversationStore.setState({ sessions: {}, activeId: 'conv', denyRequestApprovalId: null })
     useConversationStore.getState().ensureSession('conv')
   })
@@ -177,7 +178,10 @@ describe('useTranscriptHotkeys', () => {
     await act(async () => {
       chord('y', container.querySelector('input')!)
     })
-    expect(api.approveToolCall).toHaveBeenCalledWith(pending.type === 'tool_call' ? pending.data.approval_id : '')
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: pending.type === 'tool_call' ? pending.data.approval_id : '',
+      decision: { kind: 'approve' },
+    })
   })
 
   it('asks the owning panel to take a refusal, since a reason has to be typed', async () => {
@@ -203,7 +207,7 @@ describe('useTranscriptHotkeys', () => {
     await act(async () => {
       chord('y')
     })
-    expect(api.approveToolCall).not.toHaveBeenCalled()
+    expect(api.approvals.submitDecision).not.toHaveBeenCalled()
   })
 
   it('opens every panel of the last keyboard, then closes them', async () => {

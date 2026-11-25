@@ -16,10 +16,14 @@ vi.mock('@/lib/transport', () => ({
 vi.mock('@/hooks/use-connection-state', () => ({ useConnectionState: () => 'connected' }))
 vi.mock('@/api', () => ({
   api: {
-    getListenConfig: vi.fn(),
-    getListenStatus: vi.fn(),
-    getListenAddresses: vi.fn(),
-    setSecret: vi.fn(),
+    remote: {
+      getConfig: vi.fn(),
+      getStatus: vi.fn(),
+      listAddresses: vi.fn(),
+    },
+    secrets: {
+      set: vi.fn(),
+    },
   },
 }))
 
@@ -39,14 +43,14 @@ describe('RemoteAccessSettings token', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.getListenConfig.mockResolvedValue({
+    mockApi.remote.getConfig.mockResolvedValue({
       enabled: true,
       host: '0.0.0.0',
       port: 8787,
       token: 'secret-token-123456',
     })
-    mockApi.getListenStatus.mockResolvedValue({ running: false, port: null } as never)
-    mockApi.getListenAddresses.mockResolvedValue([])
+    mockApi.remote.getStatus.mockResolvedValue({ running: false, port: null } as never)
+    mockApi.remote.listAddresses.mockResolvedValue([])
   })
 
   it('copies the token', async () => {

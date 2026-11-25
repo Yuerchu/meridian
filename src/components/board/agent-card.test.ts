@@ -8,8 +8,12 @@ import type { ConversationInfoResponse } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
-    boardTaskList: vi.fn(),
-    listConversations: vi.fn(),
+    board: {
+      listTasks: vi.fn(),
+    },
+    conversations: {
+      list: vi.fn(),
+    },
   },
 }))
 
@@ -17,8 +21,8 @@ const leftover = { id: 'c-other' } as ConversationInfoResponse
 const deleted = { id: 'c-deleted' } as ConversationInfoResponse
 
 beforeEach(() => {
-  vi.mocked(api.boardTaskList).mockResolvedValue([])
-  vi.mocked(api.listConversations).mockResolvedValue([leftover])
+  vi.mocked(api.board.listTasks).mockResolvedValue([])
+  vi.mocked(api.conversations.list).mockResolvedValue([leftover])
   useBoardStore.setState({ tasks: [], loaded: true, error: null })
   useConversationStore.setState({
     conversations: [deleted, leftover],
@@ -35,16 +39,16 @@ afterEach(() => {
 describe('settleAfterCardDeleted', () => {
   it('refreshes the sidebar and leaves the deleted conversation if it is open', async () => {
     await settleAfterCardDeleted('c-deleted')
-    expect(api.boardTaskList).toHaveBeenCalled()
-    expect(api.listConversations).toHaveBeenCalled()
+    expect(api.board.listTasks).toHaveBeenCalled()
+    expect(api.conversations.list).toHaveBeenCalled()
     expect(useConversationStore.getState().conversations).toEqual([leftover])
     expect(useConversationStore.getState().activeId).toBeNull()
   })
 
   it('does not refresh conversations when the card never started', async () => {
     await settleAfterCardDeleted(null)
-    expect(api.boardTaskList).toHaveBeenCalled()
-    expect(api.listConversations).not.toHaveBeenCalled()
+    expect(api.board.listTasks).toHaveBeenCalled()
+    expect(api.conversations.list).not.toHaveBeenCalled()
     expect(useConversationStore.getState().activeId).toBe('c-deleted')
   })
 

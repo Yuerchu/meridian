@@ -33,9 +33,9 @@ export function knobValueName(
 }
 
 export function currentValueName(t: TFunction, option: AcpConfigOptionInfoResponse): string | null {
-  if (typeof option.currentValue !== 'string') return null
-  const value = option.options.find((v) => v.value === option.currentValue)
-  return value ? knobValueName(t, option, value) : option.currentValue
+  if (typeof option.current_value !== 'string') return null
+  const value = option.options.find((v) => v.value === option.current_value)
+  return value ? knobValueName(t, option, value) : option.current_value
 }
 
 /**

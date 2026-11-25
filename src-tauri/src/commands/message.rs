@@ -686,34 +686,34 @@ pub struct MessageContextContentResponse {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct MessageContextReadRequest {
     pub conversation_id: String,
     pub item_id: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationSnapshotRequest {
     pub conversation_id: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct MessageBranchSwitchRequest {
     pub conversation_id: String,
     pub message_id: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct MessageDeleteRequest {
     pub conversation_id: String,
     pub id: String,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct MessageRatingUpdateRequest {
     pub id: String,
     #[serde(deserialize_with = "meridian_core::events::deserialize_required_nullable")]
@@ -721,7 +721,7 @@ pub struct MessageRatingUpdateRequest {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationExportRequest {
     pub conversation_id: String,
     pub format: ConversationExportFormat,
@@ -730,8 +730,8 @@ pub struct ConversationExportRequest {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MediaFileExportRequest {
+#[serde(deny_unknown_fields)]
+pub struct MessageMediaExportRequest {
     pub conversation_id: String,
     /// A `file://` URI from a tool row's media of this conversation.
     pub uri: String,
@@ -742,8 +742,8 @@ pub struct MediaFileExportRequest {
 /// to where the user chose. The source is held to that directory exactly like
 /// a tool row is: a URI naming anything else is refused, not copied.
 #[tauri::command]
-pub async fn export_media_file(app: tauri::AppHandle, request: MediaFileExportRequest) -> Result<(), String> {
-    let MediaFileExportRequest {
+pub async fn export_message_media(app: tauri::AppHandle, request: MessageMediaExportRequest) -> Result<(), String> {
+    let MessageMediaExportRequest {
         conversation_id,
         uri,
         output_path,
@@ -763,24 +763,28 @@ pub struct ConversationExportResponse {
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum MessageFileUploadSource {
+    Path {
+        file_path: String,
+    },
+    Bytes {
+        file_name: String,
+        /// The file's bytes, base64-encoded — Android has no raw IPC, and one
+        /// encoding shared by every platform beats a fast path only some have.
+        data_base64: String,
+    },
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MessageFileUploadRequest {
     pub conversation_id: String,
-    pub file_path: String,
+    pub source: MessageFileUploadSource,
 }
 
 #[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct MessageFileBytesUploadRequest {
-    pub conversation_id: String,
-    pub file_name: String,
-    /// The file's bytes, base64-encoded — Android has no raw IPC, and one
-    /// encoding shared by every platform beats a fast path only some have.
-    pub data_base64: String,
-}
-
-#[derive(Debug, Clone, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LocalImagePreviewRequest {
     pub file_path: String,
 }
@@ -809,10 +813,10 @@ pub async fn read_message_context_item(
         .db
         .read(async |tx| {
             const OFF_BRANCH: &str = "context item is not on the active conversation branch";
-            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+            let conv = conversation_ops::get(tx, &conversation_id)
                 .await?
                 .ok_or_else(|| ReadError::Contract(OFF_BRANCH.into()))?;
-            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            let history = message_ops::list(tx, &conversation_id).await?;
             let active = message_ops::active_context(&history, conv.head_message_id.as_deref());
             let active_ids = active.path.into_iter().map(|row| row.id).collect::<Vec<_>>();
             let item = db::sea::ops::message_context_item::list_for_messages(tx, &active_ids)
@@ -865,10 +869,10 @@ async fn read_tree_with_conversation(
     db: &impl Snapshot,
     conversation_id: &str,
 ) -> Result<(db::entity::conversation::Model, MessageTreeResponse), ReadError> {
-    let conv = conversation_ops::get_conversation(db, conversation_id)
+    let conv = conversation_ops::get(db, conversation_id)
         .await?
         .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
-    let history = message_ops::list_messages(db, conversation_id).await?;
+    let history = message_ops::list(db, conversation_id).await?;
     let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
     let branches = message_ops::branch_points(&history, &ctx.path)
         .into_iter()
@@ -1280,7 +1284,7 @@ pub struct ConversationSnapshotResponse {
 ///    orphaned. The other way round, an approval for a row not in the tree
 ///    matches nothing and is dropped, which costs nothing.
 #[tauri::command]
-pub async fn conversation_snapshot(
+pub async fn get_conversation_snapshot(
     app: tauri::AppHandle,
     request: ConversationSnapshotRequest,
 ) -> Result<ConversationSnapshotResponse, String> {
@@ -1523,7 +1527,7 @@ async fn delete_message_unless_plan_barrier(
 }
 
 #[tauri::command]
-pub async fn switch_branch(app: tauri::AppHandle, request: MessageBranchSwitchRequest) -> Result<(), String> {
+pub async fn switch_message_branch(app: tauri::AppHandle, request: MessageBranchSwitchRequest) -> Result<(), String> {
     let MessageBranchSwitchRequest {
         conversation_id,
         message_id,
@@ -1560,7 +1564,7 @@ pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest
 }
 
 #[tauri::command]
-pub async fn rate_message(app: tauri::AppHandle, request: MessageRatingUpdateRequest) -> Result<(), String> {
+pub async fn update_message_rating(app: tauri::AppHandle, request: MessageRatingUpdateRequest) -> Result<(), String> {
     let MessageRatingUpdateRequest { id, rating } = request;
     let rating = rating.map(Into::into);
     app.services()
@@ -1608,10 +1612,10 @@ pub async fn export_conversation(
     let (path, system_prompt) = services
         .db
         .read(async |tx| {
-            let conv = conversation_ops::get_conversation(tx, &conversation_id)
+            let conv = conversation_ops::get(tx, &conversation_id)
                 .await?
                 .ok_or_else(|| ReadError::Contract(format!("conversation {conversation_id} not found")))?;
-            let history = message_ops::list_messages(tx, &conversation_id).await?;
+            let history = message_ops::list(tx, &conversation_id).await?;
             // The active path only. Exporting every branch would interleave rival
             // answers to the same question into one transcript, and the DPO pairing
             // below walks backwards for a prompt — across a fork it would pick up a
@@ -1623,7 +1627,7 @@ pub async fn export_conversation(
             let ctx = message_ops::active_context(&history, conv.head_message_id.as_deref());
             let system_prompt = match conv.assistant_id.as_deref() {
                 Some(assistant_id) => {
-                    db::sea::ops::assistant::get_assistant(tx, assistant_id)
+                    db::sea::ops::assistant::get(tx, assistant_id)
                         .await?
                         .ok_or_else(|| format!("cannot read export assistant {assistant_id}: it no longer exists"))?
                         .system_prompt
@@ -1740,50 +1744,9 @@ pub async fn export_conversation(
     Ok(ConversationExportResponse { path: result })
 }
 
-#[tauri::command]
-pub async fn upload_file(
-    app: tauri::AppHandle,
-    request: MessageFileUploadRequest,
-) -> Result<UploadFileResponse, String> {
-    let MessageFileUploadRequest {
-        conversation_id,
-        file_path,
-    } = request;
-    let services = app.services();
-    let app_data_dir = services.paths.data_dir.clone();
-
-    // Android: handle content:// URIs from SAF file picker
-    #[cfg(target_os = "android")]
-    if file_path.starts_with("content://") {
-        let stat = meridian_core::android_bridge::content_stat(&file_path).await?;
-        let original_name = stat.name.unwrap_or_else(|| "file".to_string());
-        let ext = original_name
-            .rsplit('.')
-            .next()
-            .filter(|e| e.len() <= 10 && !e.contains('/'))
-            .unwrap_or("bin");
-        let (dest_path, uri) = meridian_core::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
-        meridian_core::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
-        let mime = stat.mime.unwrap_or_else(|| {
-            mime_guess::from_path(&original_name)
-                .first_or_octet_stream()
-                .to_string()
-        });
-        return Ok(UploadFileResponse::from_stored(uri, mime, original_name));
-    }
-
-    let src = std::path::Path::new(&file_path);
-    let uri = meridian_core::files::store_file(&app_data_dir, &conversation_id, src)?;
-
-    let mime = mime_guess::from_path(src).first_or_octet_stream().to_string();
-    let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
-
-    Ok(UploadFileResponse::from_stored(uri, mime, name))
-}
-
 /// Store bytes that arrived without a path, answering with the same part
-/// `upload_file` produces. Two callers: the remote `/upload` endpoint, and
-/// `upload_file_bytes` below.
+/// `upload_message_file` produces. Two callers: the remote `/upload` endpoint,
+/// and the `bytes` variant of `upload_message_file` below.
 pub fn store_uploaded_bytes(
     app_data_dir: &std::path::Path,
     conversation_id: &str,
@@ -1801,30 +1764,61 @@ pub fn store_uploaded_bytes(
     Ok(UploadFileResponse::from_stored(uri, mime, file_name.to_string()))
 }
 
-/// `upload_file` for a file that never had a path. The window's native
-/// drag-drop handler is disabled (`dragDropEnabled: false` — in-page HTML5
-/// drag and drop cannot work with it on), so a file dropped on the window
-/// reaches JavaScript as a `File` object, and no WebView puts a filesystem
-/// path on one of those.
 #[tauri::command]
-pub async fn upload_file_bytes(
+pub async fn upload_message_file(
     app: tauri::AppHandle,
-    request: MessageFileBytesUploadRequest,
+    request: MessageFileUploadRequest,
 ) -> Result<UploadFileResponse, String> {
     use base64::Engine as _;
-    let MessageFileBytesUploadRequest {
+    let MessageFileUploadRequest {
         conversation_id,
-        file_name,
-        data_base64,
+        source,
     } = request;
     let services = app.services();
     let app_data_dir = services.paths.data_dir.clone();
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(data_base64)
-        .map_err(|e| format!("payload is not valid base64: {e}"))?;
-    tokio::task::spawn_blocking(move || store_uploaded_bytes(&app_data_dir, &conversation_id, &file_name, &bytes))
-        .await
-        .map_err(|e| e.to_string())?
+
+    match source {
+        MessageFileUploadSource::Path { file_path } => {
+            // Android: handle content:// URIs from SAF file picker
+            #[cfg(target_os = "android")]
+            if file_path.starts_with("content://") {
+                let stat = meridian_core::android_bridge::content_stat(&file_path).await?;
+                let original_name = stat.name.unwrap_or_else(|| "file".to_string());
+                let ext = original_name
+                    .rsplit('.')
+                    .next()
+                    .filter(|e| e.len() <= 10 && !e.contains('/'))
+                    .unwrap_or("bin");
+                let (dest_path, uri) = meridian_core::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
+                meridian_core::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?)
+                    .await?;
+                let mime = stat.mime.unwrap_or_else(|| {
+                    mime_guess::from_path(&original_name)
+                        .first_or_octet_stream()
+                        .to_string()
+                });
+                return Ok(UploadFileResponse::from_stored(uri, mime, original_name));
+            }
+
+            let src = std::path::Path::new(&file_path);
+            let uri = meridian_core::files::store_file(&app_data_dir, &conversation_id, src)?;
+
+            let mime = mime_guess::from_path(src).first_or_octet_stream().to_string();
+            let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
+
+            Ok(UploadFileResponse::from_stored(uri, mime, name))
+        }
+        MessageFileUploadSource::Bytes { file_name, data_base64 } => {
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(data_base64)
+                .map_err(|e| format!("payload is not valid base64: {e}"))?;
+            tokio::task::spawn_blocking(move || {
+                store_uploaded_bytes(&app_data_dir, &conversation_id, &file_name, &bytes)
+            })
+            .await
+            .map_err(|e| e.to_string())?
+        }
+    }
 }
 
 /// Composer preview of a picture still sitting at the path the picker returned.
@@ -1834,7 +1828,7 @@ pub async fn upload_file_bytes(
 /// anything over the inline-attachment cap, so a preview cannot dump an
 /// arbitrary file into JS.
 #[tauri::command]
-pub async fn preview_local_image(request: LocalImagePreviewRequest) -> Result<LocalImagePreviewResponse, String> {
+pub async fn read_local_image_preview(request: LocalImagePreviewRequest) -> Result<LocalImagePreviewResponse, String> {
     let LocalImagePreviewRequest { file_path } = request;
 
     #[cfg(target_os = "android")]
@@ -2085,7 +2079,7 @@ mod tests {
     use meridian_core::turn::TurnOrigin;
 
     async fn seed(db: &Db) {
-        db.write(async |tx| conversation_ops::create_conversation(tx, "c1", Some("t"), None, None, 1).await)
+        db.write(async |tx| conversation_ops::create(tx, "c1", Some("t"), None, None, 1).await)
             .await
             .unwrap();
     }
@@ -2150,8 +2144,8 @@ mod tests {
     #[test]
     fn message_requests_are_strict_and_ratings_are_closed() {
         let switch: MessageBranchSwitchRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
-            "messageId": "message-1",
+            "conversation_id": "conversation-1",
+            "message_id": "message-1",
         }))
         .unwrap();
         assert_eq!(switch.conversation_id, "conversation-1");
@@ -2159,9 +2153,9 @@ mod tests {
 
         assert!(
             serde_json::from_value::<MessageDeleteRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "id": "message-1",
-                "legacyCascade": true,
+                "legacy_cascade": true,
             }))
             .is_err()
         );
@@ -2177,11 +2171,25 @@ mod tests {
         );
         assert!(
             serde_json::from_value::<ConversationExportRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "format": "future_format",
-                "outputPath": null,
+                "output_path": null,
             }))
             .is_err()
+        );
+        assert!(
+            serde_json::from_value::<MessageFileUploadRequest>(serde_json::json!({
+                "conversation_id": "conversation-1",
+                "source": { "kind": "path", "file_path": "/tmp/a.png" },
+            }))
+            .is_ok()
+        );
+        assert!(
+            serde_json::from_value::<MessageFileUploadRequest>(serde_json::json!({
+                "conversation_id": "conversation-1",
+                "source": { "kind": "bytes", "file_name": "a.png", "data_base64": "AA==" },
+            }))
+            .is_ok()
         );
     }
 
@@ -2743,7 +2751,7 @@ mod tests {
                 turn_id: Some("t1".into()),
                 ..message_ops::new_row("m1", "c1", "user", "hi", 1)
             };
-            message_ops::append_message(tx, row, None).await
+            message_ops::append(tx, row, None).await
         })
         .await
         .unwrap();

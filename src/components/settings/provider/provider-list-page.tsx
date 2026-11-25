@@ -37,7 +37,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
   const initialized = useRef(false)
 
   const refresh = useCallback(async () => {
-    setProviders(await api.listProviders())
+    setProviders(await api.providers.list())
   }, [])
 
   useEffect(() => {
@@ -65,14 +65,14 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
     const entry = (await loadProviderCatalog())[0]
     const auth = entry?.auth[0]
     const format = auth?.api_formats[0] ?? 'chat_completions'
-    const created = await api.createProvider({
+    const created = await api.providers.create({
       name: entry?.name ?? t('settings.provider.newProviderName'),
-      providerType: entry?.provider_type ?? 'openai',
-      baseUrl: defaultUrlFor(auth, format) ?? '',
-      apiFormat: format,
-      catalogId: entry?.id ?? null,
-      authOption: auth?.id ?? null,
-      localBackend: entry?.provider_type === 'litert_lm' ? 'auto' : null,
+      provider_type: entry?.provider_type ?? 'openai',
+      base_url: defaultUrlFor(auth, format) ?? '',
+      api_format: format,
+      catalog_id: entry?.id ?? null,
+      auth_option: auth?.id ?? null,
+      local_backend: entry?.provider_type === 'litert_lm' ? 'auto' : null,
     })
     await refresh()
     onOpen(created.id)

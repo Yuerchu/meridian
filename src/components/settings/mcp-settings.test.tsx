@@ -9,15 +9,17 @@ import { McpSettings } from './mcp-settings'
 
 vi.mock('@/api', () => ({
   api: {
-    listMcpServers: vi.fn(),
-    listMcpTools: vi.fn(),
-    listMcpConnectionStatuses: vi.fn(),
-    createMcpServer: vi.fn(),
-    deleteMcpServer: vi.fn(),
-    updateMcpServer: vi.fn(),
-    connectMcpServer: vi.fn(),
-    setMcpToolEnabled: vi.fn(),
-    disconnectMcpServer: vi.fn(),
+    mcp: {
+      listServers: vi.fn(),
+      listServerTools: vi.fn(),
+      listConnectionStatuses: vi.fn(),
+      createServer: vi.fn(),
+      deleteServer: vi.fn(),
+      updateServer: vi.fn(),
+      connectServer: vi.fn(),
+      setToolEnabled: vi.fn(),
+      disconnectServer: vi.fn(),
+    },
   },
 }))
 
@@ -48,15 +50,15 @@ describe('McpSettings pages', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resizeViewportTo(1024)
-    mockApi.listMcpServers.mockResolvedValue([
+    mockApi.mcp.listServers.mockResolvedValue([
       makeServer('stdio-server', 'Local tools', 'stdio'),
       makeServer('http-server', 'Remote tools', 'streamablehttp'),
     ])
-    mockApi.listMcpTools.mockResolvedValue([])
-    mockApi.listMcpConnectionStatuses.mockResolvedValue([])
-    mockApi.updateMcpServer.mockResolvedValue(undefined as never)
-    mockApi.deleteMcpServer.mockResolvedValue(undefined as never)
-    mockApi.setMcpToolEnabled.mockResolvedValue(undefined as never)
+    mockApi.mcp.listServerTools.mockResolvedValue([])
+    mockApi.mcp.listConnectionStatuses.mockResolvedValue([])
+    mockApi.mcp.updateServer.mockResolvedValue(undefined as never)
+    mockApi.mcp.deleteServer.mockResolvedValue(undefined as never)
+    mockApi.mcp.setToolEnabled.mockResolvedValue(undefined as never)
   })
 
   it('lists servers as rows of one card, name and transport on one line', async () => {
@@ -107,7 +109,7 @@ describe('McpSettings pages', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     await waitFor(() =>
-      expect(mockApi.updateMcpServer).toHaveBeenCalledWith(
+      expect(mockApi.mcp.updateServer).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'http-server',
           headers: { Authorization: 'Bearer secret-token', 'X-Trace': 'on' },
@@ -127,7 +129,7 @@ describe('McpSettings pages', () => {
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Authorization')
-    expect(mockApi.updateMcpServer).not.toHaveBeenCalled()
+    expect(mockApi.mcp.updateServer).not.toHaveBeenCalled()
   })
 
   it('deletes from a danger row after confirming, and unwinds to the list', async () => {
@@ -135,22 +137,22 @@ describe('McpSettings pages', () => {
     render(<McpSettings />)
     await user.click(await screen.findByRole('button', { name: 'Local tools' }))
 
-    mockApi.listMcpServers.mockResolvedValue([makeServer('http-server', 'Remote tools', 'streamablehttp')])
+    mockApi.mcp.listServers.mockResolvedValue([makeServer('http-server', 'Remote tools', 'streamablehttp')])
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.mcp.delete') }))
     await user.click(
       within(await screen.findByRole('alertdialog')).getByRole('button', { name: i18n.t('common.delete') }),
     )
 
-    await waitFor(() => expect(mockApi.deleteMcpServer).toHaveBeenCalledWith('stdio-server'))
+    await waitFor(() => expect(mockApi.mcp.deleteServer).toHaveBeenCalledWith({ id: 'stdio-server' }))
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Local tools' })).not.toBeInTheDocument())
     expect(screen.getByRole('button', { name: 'Remote tools' })).toBeInTheDocument()
   })
 
   it('draws a context meter and per-server share when tools are connected', async () => {
-    mockApi.listMcpConnectionStatuses.mockResolvedValue([
+    mockApi.mcp.listConnectionStatuses.mockResolvedValue([
       { server_id: 'stdio-server', state: 'connected', tool_count: 2 },
     ])
-    mockApi.listMcpTools.mockResolvedValue([
+    mockApi.mcp.listServerTools.mockResolvedValue([
       makeTool('stdio-server', 'Local tools', 'read', true, 400),
       makeTool('stdio-server', 'Local tools', 'write', false, 600),
     ])
@@ -165,11 +167,11 @@ describe('McpSettings pages', () => {
 
   it('toggles a tool immediately and rolls back when the write fails', async () => {
     const user = userEvent.setup()
-    mockApi.listMcpConnectionStatuses.mockResolvedValue([
+    mockApi.mcp.listConnectionStatuses.mockResolvedValue([
       { server_id: 'stdio-server', state: 'connected', tool_count: 1 },
     ])
-    mockApi.listMcpTools.mockResolvedValue([makeTool('stdio-server', 'Local tools', 'read', true, 400)])
-    mockApi.setMcpToolEnabled.mockRejectedValueOnce('disk full')
+    mockApi.mcp.listServerTools.mockResolvedValue([makeTool('stdio-server', 'Local tools', 'read', true, 400)])
+    mockApi.mcp.setToolEnabled.mockRejectedValueOnce('disk full')
     render(<McpSettings />)
 
     await user.click(await screen.findByRole('button', { name: 'Local tools' }))
@@ -179,9 +181,9 @@ describe('McpSettings pages', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('disk full')
     expect(toggle).toBeChecked()
-    expect(mockApi.setMcpToolEnabled).toHaveBeenCalledWith({
-      serverId: 'stdio-server',
-      toolName: 'read',
+    expect(mockApi.mcp.setToolEnabled).toHaveBeenCalledWith({
+      server_id: 'stdio-server',
+      tool_name: 'read',
       enabled: false,
     })
   })

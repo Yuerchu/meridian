@@ -9,9 +9,13 @@ import { AuxiliaryModelSettings } from './auxiliary-model-settings'
 vi.mock('@/lib/transport', () => ({ isRemote: false }))
 vi.mock('@/api', () => ({
   api: {
-    getPreference: vi.fn(),
-    setPreference: vi.fn(),
-    fetchProviderModels: vi.fn(),
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
+    providers: {
+      listModels: vi.fn(),
+    },
   },
 }))
 
@@ -36,16 +40,16 @@ const PROVIDER: ProviderInfoResponse = {
 beforeEach(async () => {
   vi.clearAllMocks()
   await i18n.changeLanguage('en')
-  mockApi.getPreference.mockResolvedValue({ key: 'auxiliary.model', value: null })
+  mockApi.preferences.get.mockResolvedValue({ key: 'auxiliary.model', value: null })
   // The component chains `.catch` on the save: a mock returning `undefined`
   // is an unhandled error the suite reports as a failure even when the
   // assertion passes.
-  mockApi.setPreference.mockResolvedValue(null)
+  mockApi.preferences.set.mockResolvedValue(null as never)
 })
 
 it('saves a chosen pair as a provider:model preference', async () => {
   const user = userEvent.setup()
-  mockApi.fetchProviderModels.mockResolvedValue([{ id: 'claude-haiku-5', name: 'claude-haiku-5' }])
+  mockApi.providers.listModels.mockResolvedValue([{ id: 'claude-haiku-5', name: 'claude-haiku-5' }])
   render(<AuxiliaryModelSettings providers={[PROVIDER]} />)
 
   // Pick a provider, then a model; onCommit fires once the pair settles.
@@ -55,9 +59,9 @@ it('saves a chosen pair as a provider:model preference', async () => {
   await user.click(await screen.findByRole('option', { name: /claude-haiku-5/ }))
 
   await waitFor(() => {
-    expect(mockApi.setPreference).toHaveBeenCalledWith({
+    expect(mockApi.preferences.set).toHaveBeenCalledWith({
       key: 'auxiliary.model',
-      value: { providerId: 'p1', modelId: 'claude-haiku-5' },
+      value: { provider_id: 'p1', model_id: 'claude-haiku-5' },
     })
   })
 })

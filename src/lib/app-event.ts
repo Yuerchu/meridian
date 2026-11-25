@@ -6,7 +6,6 @@ import type {
   SystemNoticeInfoResponse,
   UserCommandEvent,
   UserCommandResultResponse,
-  WindowInsetsInfoResponse,
 } from '@/types'
 
 export interface ConversationUpdatedEvent {
@@ -56,7 +55,13 @@ export type VoiceModelDownloadEvent = {
 export type VoiceModelDownloadDoneEvent =
   { type: 'completed' } | { type: 'cancelled' } | { type: 'failed'; error: string }
 
-export type WindowInsetsEvent = WindowInsetsInfoResponse
+export interface WindowInsetsEvent {
+  top: number
+  right: number
+  bottom: number
+  left: number
+  imeBottom: number
+}
 
 export type RemoteResyncEvent = Record<string, never>
 /** A launch request is waiting; `take_launch_request` says what it is. */

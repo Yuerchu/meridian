@@ -138,9 +138,9 @@ function ModelConfigEditor({
   useEffect(() => {
     let cancelled = false
     Promise.all([
-      api.getProviderCapabilities({ providerId, modelId }),
+      api.providers.getCapabilities({ provider_id: providerId, model_id: modelId }),
       apiFormat === 'litert_lm'
-        ? api.getProviderLocalModelInfo({ providerId, forceRefresh: false })
+        ? api.providers.getLocalModel({ provider_id: providerId, force_refresh: false })
         : Promise.resolve(null),
     ])
       .then(([nextCaps, nextLocal]) => {
@@ -540,7 +540,7 @@ function ModelConfigEditor({
     if (limitsChanged) {
       let assistants
       try {
-        assistants = await api.listAssistants()
+        assistants = await api.assistants.list()
       } catch (error) {
         setPriceError(error instanceof Error ? error.message : t('settings.model.boundAssistantsLoadError'))
         return
@@ -1079,7 +1079,10 @@ export function ModelPage({
     let cancelled = false
     setLoading(true)
     setLoadError(null)
-    void Promise.all([api.getModelConfig({ providerId, modelId }), api.listModelProfiles()])
+    void Promise.all([
+      api.modelConfigs.get({ provider_id: providerId, model_id: modelId }),
+      api.modelConfigs.listProfiles(),
+    ])
       .then(([config, list]) => {
         if (cancelled) return
         setExisting(config)
@@ -1126,15 +1129,15 @@ export function ModelPage({
       profiles={profiles}
       confirm={confirm}
       onSave={async (input) => {
-        const saved = await api.saveModelConfig(input)
+        const saved = await api.modelConfigs.set(input)
         setExisting(saved)
-        setProfiles(await api.listModelProfiles())
+        setProfiles(await api.modelConfigs.listProfiles())
         onSaved()
       }}
       onDelete={
         existing
           ? async () => {
-              await api.deleteModelConfig(existing.id)
+              await api.modelConfigs.delete({ id: existing.id })
               onDeleted()
             }
           : undefined

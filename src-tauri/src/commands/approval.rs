@@ -37,37 +37,31 @@ fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision)
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ToolCallDenyRequest {
-    approval_id: String,
-    reason: RequiredNullable<String>,
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ApprovalDecisionInput {
+    Approve,
+    Deny { reason: RequiredNullable<String> },
+    Respond { response: String },
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct AskResponseRequest {
+#[serde(deny_unknown_fields)]
+pub struct ApprovalDecisionRequest {
     approval_id: String,
-    response: String,
+    decision: ApprovalDecisionInput,
 }
 
 #[tauri::command]
-pub async fn approve_tool_call(app: tauri::AppHandle, approval_id: String) -> Result<(), String> {
-    decide(&app, &approval_id, ApprovalDecision::Approved)
-}
-
-#[tauri::command]
-pub async fn deny_tool_call(app: tauri::AppHandle, request: ToolCallDenyRequest) -> Result<(), String> {
-    let ToolCallDenyRequest {
-        approval_id,
-        reason: RequiredNullable(reason),
-    } = request;
-    decide(&app, &approval_id, ApprovalDecision::Denied(reason))
-}
-
-#[tauri::command]
-pub async fn respond_to_ask(app: tauri::AppHandle, request: AskResponseRequest) -> Result<(), String> {
-    let AskResponseRequest { approval_id, response } = request;
-    decide(&app, &approval_id, ApprovalDecision::Response(response))
+pub async fn submit_approval_decision(app: tauri::AppHandle, request: ApprovalDecisionRequest) -> Result<(), String> {
+    let ApprovalDecisionRequest { approval_id, decision } = request;
+    let mapped = match decision {
+        ApprovalDecisionInput::Approve => ApprovalDecision::Approved,
+        ApprovalDecisionInput::Deny {
+            reason: RequiredNullable(reason),
+        } => ApprovalDecision::Denied(reason),
+        ApprovalDecisionInput::Respond { response } => ApprovalDecision::Response(response),
+    };
+    decide(&app, &approval_id, mapped)
 }
 
 /// Enough to redraw a card that is still waiting for an answer.
@@ -232,7 +226,7 @@ fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> Pendi
 /// anyway: that is the shape both `generate_handler!` and `remote::dispatch`
 /// expect of a row in the command table.
 #[tauri::command]
-pub fn all_pending_approvals(app: tauri::AppHandle) -> Result<PendingApprovalListResponse, String> {
+pub fn list_pending_approvals(app: tauri::AppHandle) -> Result<PendingApprovalListResponse, String> {
     let services = app.services();
     let map = services.approvals.lock();
     Ok(map
@@ -294,41 +288,56 @@ mod tests {
 
     #[test]
     fn approval_action_requests_are_named_strict_and_complete() {
-        let deny: ToolCallDenyRequest = serde_json::from_value(serde_json::json!({
-            "approvalId": "appr-1",
-            "reason": null,
+        let approve: ApprovalDecisionRequest = serde_json::from_value(serde_json::json!({
+            "approval_id": "appr-0",
+            "decision": { "kind": "approve" },
+        }))
+        .expect("valid approve");
+        assert_eq!(approve.approval_id, "appr-0");
+        assert!(matches!(approve.decision, ApprovalDecisionInput::Approve));
+
+        let deny: ApprovalDecisionRequest = serde_json::from_value(serde_json::json!({
+            "approval_id": "appr-1",
+            "decision": { "kind": "deny", "reason": null },
         }))
         .expect("valid denial");
         assert_eq!(deny.approval_id, "appr-1");
-        assert!(deny.reason.0.is_none());
+        assert!(matches!(
+            deny.decision,
+            ApprovalDecisionInput::Deny {
+                reason: RequiredNullable(None)
+            }
+        ));
 
         assert!(
-            serde_json::from_value::<ToolCallDenyRequest>(serde_json::json!({
-                "approvalId": "appr-1",
+            serde_json::from_value::<ApprovalDecisionRequest>(serde_json::json!({
+                "approval_id": "appr-1",
+                "decision": { "kind": "deny" },
             }))
             .is_err(),
             "nullable reason must still be present",
         );
         assert!(
-            serde_json::from_value::<ToolCallDenyRequest>(serde_json::json!({
-                "approvalId": "appr-1",
-                "reason": null,
-                "remember": true,
+            serde_json::from_value::<ApprovalDecisionRequest>(serde_json::json!({
+                "approval_id": "appr-1",
+                "decision": { "kind": "deny", "reason": null, "remember": true },
             }))
             .is_err()
         );
 
-        let response: AskResponseRequest = serde_json::from_value(serde_json::json!({
-            "approvalId": "appr-2",
-            "response": "continue",
+        let response: ApprovalDecisionRequest = serde_json::from_value(serde_json::json!({
+            "approval_id": "appr-2",
+            "decision": { "kind": "respond", "response": "continue" },
         }))
         .expect("valid ask response");
-        assert_eq!(response.response, "continue");
+        assert!(matches!(
+            response.decision,
+            ApprovalDecisionInput::Respond { ref response } if response == "continue"
+        ));
         assert!(
-            serde_json::from_value::<AskResponseRequest>(serde_json::json!({
-                "approvalId": "appr-2",
-                "response": "continue",
-                "format": "text",
+            serde_json::from_value::<ApprovalDecisionRequest>(serde_json::json!({
+                "approval_id": "appr-2",
+                "decision": { "kind": "respond", "response": "continue", "format": "text" },
             }))
             .is_err()
         );

@@ -108,7 +108,7 @@ export function OneBotSettings() {
   // silently ignored.
   const [voiceCaptureInput, setVoiceCaptureInput] = useState('')
   const [voiceSendInput, setVoiceSendInput] = useState('')
-  const [voiceReady, setVoiceReady] = useState<Awaited<ReturnType<typeof api.getVoiceSendReadiness>> | null>(null)
+  const [voiceReady, setVoiceReady] = useState<Awaited<ReturnType<typeof api.onebot.getVoiceReadiness>> | null>(null)
   const [fishKey, setFishKey] = useState('')
   const [fishKeySet, setFishKeySet] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -137,11 +137,11 @@ export function OneBotSettings() {
     setLoadError(null)
     try {
       const [cfg, sts, assts, hasFishKey, readiness] = await Promise.all([
-        api.getOneBotConfig(),
-        api.getOneBotStatus(),
-        api.listAssistants(),
-        api.getServiceKeyExists('FISH_AUDIO'),
-        api.getVoiceSendReadiness(),
+        api.onebot.getConfig(),
+        api.onebot.getStatus(),
+        api.assistants.list(),
+        api.tools.testServiceKey({ service: 'FISH_AUDIO' }),
+        api.onebot.getVoiceReadiness(),
       ])
       const nextPort = cfg.port.toString()
       const nextAdmin = cfg.admin_users.join(', ')
@@ -187,7 +187,7 @@ export function OneBotSettings() {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const sts = await api.getOneBotStatus()
+        const sts = await api.onebot.getStatus()
         setStatus(sts)
       } catch {
         // ignore polling errors
@@ -240,7 +240,7 @@ export function OneBotSettings() {
       // that the policy refresh below sees it — readiness counts the key as one
       // of its four parts, and watching preferences alone would miss it.
       if (fishKey.trim()) {
-        await api.setServiceKey({ service: 'FISH_AUDIO', key: fishKey.trim() })
+        await api.tools.setServiceKey({ service: 'FISH_AUDIO', key: fishKey.trim() })
         setFishKey('')
         setFishKeySet(true)
       }
@@ -262,7 +262,7 @@ export function OneBotSettings() {
         voice_tts_reference_id: config.voice_tts_reference_id,
         replies,
       }
-      await api.saveOneBotConfig(request)
+      await api.onebot.setConfig(request)
       const nextConfig: OneBotConfigInfoResponse = {
         ...request,
         reply_seeds: config.reply_seeds,
@@ -295,7 +295,7 @@ export function OneBotSettings() {
       // Re-asked rather than assumed: the save is also what applies the policy,
       // so this is the moment the answer can change — and the moment somebody
       // is looking for it.
-      setVoiceReady(await api.getVoiceSendReadiness())
+      setVoiceReady(await api.onebot.getVoiceReadiness())
       markSaved()
       return true
     } catch (err) {
@@ -309,8 +309,8 @@ export function OneBotSettings() {
   const handleStart = async () => {
     if (!(await handleSave())) return
     try {
-      await api.startOneBot()
-      const sts = await api.getOneBotStatus()
+      await api.onebot.start()
+      const sts = await api.onebot.getStatus()
       setStatus(sts)
     } catch (err) {
       setError(String(err))
@@ -319,8 +319,8 @@ export function OneBotSettings() {
 
   const handleStop = async () => {
     try {
-      await api.stopOneBot()
-      const sts = await api.getOneBotStatus()
+      await api.onebot.stop()
+      const sts = await api.onebot.getStatus()
       setStatus(sts)
     } catch (err) {
       setError(String(err))

@@ -97,7 +97,7 @@ function enqueue<T>(slot: string, task: () => Promise<T>): Promise<T> {
 export async function loadComposerDraft(conversationId: string | null): Promise<ComposerDraftInfoResponse | null> {
   const slot = slotOf(conversationId)
   await (chains.get(slot) ?? Promise.resolve())
-  const row = await api.getComposerDraft({ conversationId })
+  const row = await api.composerDrafts.get({ conversation_id: conversationId })
   if (row) noteRevision(slot, row.revision)
   return row
 }
@@ -107,13 +107,13 @@ async function writeOnce(
   draft: PersistedComposerDraft,
   revision: number,
 ): Promise<ComposerDraftWriteResponse> {
-  if (isEmptyDraft(draft)) return api.clearComposerDraft({ conversationId, revision })
-  return api.saveComposerDraft({
-    conversationId,
+  if (isEmptyDraft(draft)) return api.composerDrafts.delete({ conversation_id: conversationId, revision })
+  return api.composerDrafts.set({
+    conversation_id: conversationId,
     body: draft.body,
     attachments: draft.attachments,
-    conversationRefs: draft.conversationRefs,
-    stickerId: draft.stickerId,
+    conversation_refs: draft.conversationRefs,
+    sticker_id: draft.stickerId,
     revision,
   })
 }

@@ -56,8 +56,8 @@ export function useContextInfo(
   useEffect(() => {
     let cancelled = false
     const timer = setTimeout(() => {
-      api
-        .getContextInfo(conversationId)
+      api.conversations
+        .getContext({ conversation_id: conversationId })
         .then((info) => {
           if (cancelled) return
           setContextInfo({

@@ -35,11 +35,13 @@ vi.mock('react-i18next', () => ({
 
 vi.mock('@/api', () => ({
   api: {
-    getPlanReview: mocks.getPlanReview,
-    listPlanRevisions: mocks.listPlanRevisions,
-    savePlanReviewDraft: mocks.savePlanReviewDraft,
-    decidePlanReview: mocks.decidePlanReview,
-    discardPlanReviewDraft: mocks.discardPlanReviewDraft,
+    planReview: {
+      get: mocks.getPlanReview,
+      listRevisions: mocks.listPlanRevisions,
+      setDraft: mocks.savePlanReviewDraft,
+      submitDecision: mocks.decidePlanReview,
+      deleteDraft: mocks.discardPlanReviewDraft,
+    },
   },
 }))
 
@@ -167,8 +169,8 @@ describe('PlanReviewPage history feedback', () => {
     const currentRevision = revision('revision-2', 2, '# Plan\n\nNext\n')
     const current = review('review-2', currentRevision, 'pending')
     const old = review('review-1', oldRevision, 'changes_requested', 'Keep the original scope')
-    mocks.getPlanReview.mockImplementation(({ reviewId }: { reviewId: string }) =>
-      Promise.resolve(reviewId === 'review-1' ? old : current),
+    mocks.getPlanReview.mockImplementation(({ review_id }: { review_id: string }) =>
+      Promise.resolve(review_id === 'review-1' ? old : current),
     )
     mocks.listPlanRevisions.mockResolvedValue([oldRevision, currentRevision])
     usePlanReviewStore.setState({
@@ -202,7 +204,7 @@ describe('PlanReviewPage history feedback', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'planReview.history.current' }))
     await userEvent.click(await screen.findByRole('menuitemradio', { name: 'planReview.revision:1' }))
 
-    await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledWith({ reviewId: 'review-1' }))
+    await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledWith({ review_id: 'review-1' }))
     expect(await screen.findByText('Keep the original scope')).toBeInTheDocument()
     expect(screen.getByText('Old overall note')).toBeInTheDocument()
   })
@@ -225,10 +227,10 @@ describe('PlanReviewPage history feedback', () => {
     await waitFor(() =>
       expect(mocks.decidePlanReview).toHaveBeenCalledWith(
         expect.objectContaining({
-          reviewId: 'review-2',
+          review_id: 'review-2',
           action: 'approve',
-          approvalMode: 'accept_edits',
-          clearContext: true,
+          approval_mode: 'accept_edits',
+          clear_context: true,
         }),
       ),
     )
@@ -359,7 +361,7 @@ describe('PlanReviewPage save lifecycle', () => {
 
     unmount()
     await waitFor(() => expect(mocks.savePlanReviewDraft).toHaveBeenCalledTimes(1))
-    expect(mocks.savePlanReviewDraft.mock.calls[0][0].globalNote).toBe('Ship it')
+    expect(mocks.savePlanReviewDraft.mock.calls[0][0].global_note).toBe('Ship it')
   })
 
   it('selecting source text does not save; only a comment does', async () => {
@@ -440,7 +442,7 @@ describe('PlanReviewPage unsaved work', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
     await waitFor(() => expect(mocks.savePlanReviewDraft).toHaveBeenCalledTimes(2))
-    expect(mocks.savePlanReviewDraft.mock.calls[1][0].globalNote).toBe('Ship it')
+    expect(mocks.savePlanReviewDraft.mock.calls[1][0].global_note).toBe('Ship it')
     await waitFor(() => expect(saveState()).toHaveTextContent('planReview.save.saved'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })

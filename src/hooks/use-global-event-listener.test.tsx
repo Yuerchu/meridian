@@ -29,7 +29,7 @@ const mocks = vi.hoisted(() => {
 })
 
 vi.mock('@/api', () => ({
-  api: { backgroundTaskRunningCounts: mocks.runningCounts },
+  api: { backgroundTasks: { listCounts: mocks.runningCounts } },
 }))
 
 vi.mock('@/lib/transport', () => ({

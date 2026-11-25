@@ -31,7 +31,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
   const saveDraft = async () => {
     setSaving(true)
     try {
-      await api.updateMemory({ id: memory.id, content: draft })
+      await api.memories.update({ id: memory.id, content: draft })
       onChanged()
     } finally {
       setSaving(false)
@@ -144,7 +144,7 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
                 size="sm"
                 aria-label={t('settings.memory.delete')}
                 onPress={async () => {
-                  await api.deleteMemories([memory.id])
+                  await api.memories.delete({ ids: [memory.id], permanent: false })
                   onChanged()
                 }}
                 data-slot="memory-row-delete"

@@ -15,11 +15,10 @@
 //!
 //! ## Why the arguments look like that
 //!
-//! Tauri's IPC takes camelCase argument names and matches them to snake_case
-//! parameters. The frontend was written against that and sends `filePath` for a
-//! `file_path`, so this has to do the same conversion or every call with a
-//! multi-word argument would arrive empty. camelCase is the only wire spelling;
-//! snake_case aliases and unknown fields are rejected as contract errors.
+//! Every parameterized command in `command_table.rs` takes a single `request`
+//! parameter whose inner fields are Rust-first `snake_case`. Tauri's IPC maps
+//! top-level argument names to camelCase (`request` -> `request`), and unknown
+//! top-level arguments are rejected as contract errors.
 
 use serde::de::DeserializeOwned;
 
@@ -100,7 +99,7 @@ fn guard_preference(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
 fn guard_provider_mutation(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
     if cmd == "create_provider" {
         let request = args.get("request").ok_or("create_provider requires a request object")?;
-        if request.get("providerType").and_then(serde_json::Value::as_str) == Some("litert_lm")
+        if request.get("provider_type").and_then(serde_json::Value::as_str) == Some("litert_lm")
             || field_is_set(request, "local_backend")
         {
             return Err("configure local model files and inference hardware on the host machine".into());
@@ -111,8 +110,8 @@ fn guard_provider_mutation(cmd: &str, args: &serde_json::Value) -> Result<(), St
         return Ok(());
     }
     let request = args.get("request").ok_or("update_provider requires a request object")?;
-    if request.get("localBackend").is_some() {
-        return Err("`localBackend` configures this machine's inference hardware; change it there".into());
+    if request.get("local_backend").is_some() {
+        return Err("`local_backend` configures this machine's inference hardware; change it there".into());
     }
     for name in ["base_url", "provider_type", "api_format"] {
         if field_is_set(request, name) {
@@ -125,8 +124,7 @@ fn guard_provider_mutation(cmd: &str, args: &serde_json::Value) -> Result<(), St
 }
 
 fn field_is_set(args: &serde_json::Value, name: &str) -> bool {
-    let camel = to_camel_case(name);
-    match args.get(&camel) {
+    match args.get(name) {
         None | Some(serde_json::Value::Null) => false,
         Some(_) => true,
     }
@@ -384,7 +382,7 @@ mod tests {
     fn the_guard_only_looks_at_the_preference_commands() {
         let args = serde_json::json!({ "key": "remote.token" });
         assert!(guard_preference("set_provider_key", &args).is_ok());
-        assert!(guard_preference("chat", &args).is_ok());
+        assert!(guard_preference("start_chat", &args).is_ok());
     }
 
     #[test]
@@ -395,33 +393,33 @@ mod tests {
             serde_json::json!("npu"),
             serde_json::Value::Null,
         ] {
-            let args = serde_json::json!({"request": {"id":"p1", "localBackend":value}});
+            let args = serde_json::json!({"request": {"id": "p1", "local_backend": value}});
             assert!(guard_provider_mutation("update_provider", &args).is_err());
         }
         assert!(
             guard_provider_mutation(
                 "create_provider",
-                &serde_json::json!({"request": {"providerType":"litert_lm", "localBackend":"auto"}})
+                &serde_json::json!({"request": {"provider_type": "litert_lm", "local_backend": "auto"}})
             )
             .is_err()
         );
         assert!(
             guard_provider_mutation(
                 "create_provider",
-                &serde_json::json!({"request": {"providerType":"openai", "localBackend":null}})
+                &serde_json::json!({"request": {"provider_type": "openai", "local_backend": null}})
             )
             .is_ok()
         );
-        assert!(LOCAL_ONLY.contains(&"inspect_local_model"));
-        assert!(!LOCAL_ONLY.contains(&"get_provider_local_model_info"));
+        assert!(LOCAL_ONLY.contains(&"test_local_model"));
+        assert!(!LOCAL_ONLY.contains(&"get_provider_local_model"));
     }
 
     #[test]
     fn a_remote_caller_cannot_repoint_a_provider() {
         for (field, value) in [
-            ("baseUrl", serde_json::json!("https://evil.example")),
-            ("providerType", serde_json::json!("openai")),
-            ("apiFormat", serde_json::json!("responses")),
+            ("base_url", serde_json::json!("https://evil.example")),
+            ("provider_type", serde_json::json!("openai")),
+            ("api_format", serde_json::json!("responses")),
         ] {
             let args = serde_json::json!({ "request": { field: value } });
             assert!(
@@ -429,17 +427,27 @@ mod tests {
                 "{field} should be refused"
             );
         }
-        // snake_case is not a second spelling the guard recognises. The exact
-        // command-argument validator rejects it before dispatch instead.
-        let snake = serde_json::json!({ "request": { "base_url": "https://evil.example" } });
-        assert!(guard_provider_mutation("update_provider", &snake).is_ok());
-        let request = snake.get("request").unwrap();
-        assert!(validate_args(request, &["base_url"]).is_err());
+        // camelCase is not a second spelling the wire contract recognises.
+        // Deserialising into the closed request DTO rejects it before the command runs.
+        let camel = serde_json::json!({ "request": { "id": "p1", "baseUrl": "https://evil.example" } });
+        assert!(guard_provider_mutation("update_provider", &camel).is_ok());
+        assert!(
+            serde_json::from_value::<crate::commands::provider::ProviderUpdateRequest>(
+                camel.get("request").unwrap().clone()
+            )
+            .is_err()
+        );
         let rename = serde_json::json!({
-            "request": { "id": "p1", "name": "Work", "baseUrl": null, "providerType": null }
+            "request": { "id": "p1", "name": "Work", "base_url": null, "provider_type": null }
         });
         assert!(guard_provider_mutation("update_provider", &rename).is_ok());
-        assert!(guard_provider_mutation("chat", &serde_json::json!({ "request": { "baseUrl": "https://x" } })).is_ok());
+        assert!(
+            guard_provider_mutation(
+                "start_chat",
+                &serde_json::json!({ "request": { "base_url": "https://x" } })
+            )
+            .is_ok()
+        );
     }
 
     #[test]
@@ -486,9 +494,9 @@ mod tests {
         let expected = [
             "get_plan_review",
             "list_plan_revisions",
-            "save_plan_review_draft",
-            "discard_plan_review_draft",
-            "decide_plan_review",
+            "set_plan_review_draft",
+            "delete_plan_review_draft",
+            "submit_plan_review_decision",
             "resolve_plan_file_conflict",
         ];
         for name in expected {
@@ -515,42 +523,39 @@ mod tests {
         let mut expected = vec![
             // The keychain. Every provider's API key is in there under a name
             // derived from an id a remote caller can list, so a generic read
-            // hands over credentials; `get_provider_key_exists` answers the
+            // hands over credentials; `test_provider_key` answers the
             // question a client actually has and stays reachable.
             "set_secret",
             "get_secret",
             "delete_secret",
             // Paths on the machine the *user* is sitting at, which is not this
-            // one when the request came over a socket.
-            "upload_file",
-            // No path in it, but a remote client already has `/upload` for the
-            // same operation as multipart — base64 through the socket would be
-            // a second, worse spelling of it.
-            "upload_file_bytes",
+            // one when the request came over a socket; remote clients use
+            // `/upload` multipart instead.
+            "upload_message_file",
             // Bytes of a picture the composer is holding on this machine, so
             // the tile can draw it. A path on the phone is not a path here.
-            "preview_local_image",
+            "read_local_image_preview",
             "export_conversation",
-            "export_media_file",
-            "inspect_local_model",
+            "export_message_media",
+            "test_local_model",
             "export_logs",
             "import_emojis",
-            "voice_import_model",
+            "import_voice_model",
             // Writes a bundle to an arbitrary local path, and what it writes is
             // the voice corpus itself. Listing and deleting stay reachable:
             // deleting is *the* action someone asks for from their phone.
             "export_voice_corpus",
             // Reconfiguring the server that is answering the request. A remote
             // caller turning off remote access cuts the branch it is sitting on.
-            "save_listen_config",
-            "start_listen",
-            "stop_listen",
-            "regenerate_listen_token",
-            "save_hooks_config",
+            "set_remote_config",
+            "start_remote",
+            "stop_remote",
+            "reset_remote_token",
+            "set_hooks_config",
             "start_hooks",
             "stop_hooks",
-            "regenerate_hooks_token",
-            "save_onebot_config",
+            "reset_hooks_token",
+            "set_onebot_config",
             "start_onebot",
             "stop_onebot",
             // These two are `local` for what they *return*, not for what they
@@ -562,13 +567,13 @@ mod tests {
             // entries are a person's own QQ number. The readiness beside it is
             // derived from the same row.
             "get_onebot_config",
-            "get_voice_send_readiness",
+            "get_onebot_voice_readiness",
             // A step beyond the rest of this group. `acp.command` names a
             // binary this app will execute, so writing it from a socket is
             // arbitrary code execution here — not the self-lockout the others
             // guard against. The check runs that same binary.
-            "acp_save_config",
-            "acp_check_adapter",
+            "set_acp_config",
+            "test_acp_adapter",
             // The notification endpoints, and again not for self-lockout. The
             // URL decides where an alert naming a provider and an amount of
             // money is delivered, so a remote caller able to write one
@@ -577,7 +582,7 @@ mod tests {
             // `get_onebot_config` is — it carries those URLs, whose query
             // strings are how DingTalk and WeCom authenticate a robot.
             "get_notify_config",
-            "save_notify_config",
+            "set_notify_config",
             "list_notification_webhooks",
             "create_notification_webhook",
             "update_notification_webhook",
@@ -593,53 +598,52 @@ mod tests {
             "create_custom_tool",
             "update_custom_tool",
             // Arbitrary URL, up to 1 GB written to disk.
-            "voice_download_model",
+            "start_voice_model_download",
             // Hardware attached to this machine.
-            "voice_start_recording",
-            "voice_stop_and_transcribe",
-            "voice_cancel_recording",
-            "voice_release_prewarm",
-            "voice_probe_echo",
+            "start_voice_recording",
+            "stop_voice_recording",
+            "cancel_voice_recording",
+            "stop_voice_prewarm",
+            "test_voice_echo",
             // Android's own surface: the device asking is the device that has
             // the storage grant, so these are answered locally on the client.
             "get_window_insets",
             "list_system_fonts",
             "take_launch_request",
             "get_manage_storage_status",
-            "request_manage_storage",
-            "pick_saf_directory",
+            "open_manage_storage_settings",
+            "select_saf_directory",
             "list_saf_roots",
-            "remove_saf_root",
-            "take_photo",
-            "pick_gallery_image",
+            "delete_saf_root",
+            "select_camera_photo",
+            "select_gallery_image",
             "resolve_file_name",
             // This machine's windows. A remote client has its own launch to
             // worry about, and the splash it would be dismissing is one it
             // cannot see.
-            "splash_animation_done",
-            "splash_app_ready",
+            "complete_splash_animation",
+            "complete_splash_app_ready",
             // Runs the user's configured editor command template — a program
             // launch on this machine, which a socket must not be able to ask
             // for.
-            "open_in_editor",
+            "open_workspace_editor",
             // The input method: this machine's keyboard. Importing reads a path
             // here, downloading writes here, registering asks for elevation
             // here, and the host is a process here. Filtered out by
             // `COMMAND_NAMES` where a platform has no such command.
-            "save_ime_config",
+            "set_ime_config",
             "stage_ime_dictionary",
-            "import_staged_ime_dictionaries",
-            "download_ime_rime_ice",
-            "cancel_staged_ime_dictionaries",
+            "import_ime_dictionaries",
+            "import_ime_rime_ice",
+            "cancel_ime_dictionary_staging",
             // What this machine did on its own (a dictionary upgrade): shown
             // in this window's inbox, and not a remote client's business.
             "list_system_notices",
-            "dismiss_system_notice",
+            "delete_system_notice",
             "set_ime_dictionary_enabled",
-            "remove_ime_dictionary",
+            "delete_ime_dictionary",
             "get_ime_learning",
-            "forget_ime_learned_word",
-            "forget_all_ime_learning",
+            "delete_ime_learning",
             // A dest on this machine, or a content:// document this process
             // can write; a phone's save picker is not a path here.
             "export_ime_learning",
@@ -649,11 +653,11 @@ mod tests {
             "set_ime_profile_enabled",
             "register_ime",
             "import_ime_lm",
-            "remove_ime_lm",
-            "refresh_ime_memory_hints",
+            "delete_ime_lm",
+            "invoke_ime_memory_hints_refresh",
             "get_android_ime_status",
             "open_android_ime_settings",
-            "show_android_ime_picker",
+            "open_android_ime_picker",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

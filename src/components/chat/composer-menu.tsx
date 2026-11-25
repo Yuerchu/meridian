@@ -56,7 +56,7 @@ function KnobSubmenu({
   const { t } = useTranslation()
   const label = knobName(t, option)
   const value = currentValueName(t, option) ?? ''
-  const selected = typeof option.currentValue === 'string' ? option.currentValue : null
+  const selected = typeof option.current_value === 'string' ? option.current_value : null
   const Icon = option.id === 'fast' ? Zap : Cpu
 
   return (

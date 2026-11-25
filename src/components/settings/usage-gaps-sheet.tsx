@@ -42,8 +42,8 @@ export function UsageGapsSheet({
   const load = useCallback(() => {
     setFound(null)
     setError(null)
-    api
-      .usageGaps({ sinceMs, untilMs: null, origin, conversationId: null })
+    api.usage
+      .listGaps({ since_ms: sinceMs, until_ms: null, origin, conversation_id: null })
       .then(setFound)
       .catch((reason) => setError(String(reason)))
   }, [sinceMs, origin])

@@ -58,8 +58,8 @@ function usePlanCardRead(reviewId: string, lockVersion: number | undefined): Car
   useEffect(() => {
     if (pageOpen) return
     let cancelled = false
-    api
-      .getPlanReview({ reviewId })
+    api.planReview
+      .get({ review_id: reviewId })
       .then((info) => {
         if (cancelled) return
         seq.current += 1

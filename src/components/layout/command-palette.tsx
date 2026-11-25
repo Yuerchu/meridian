@@ -91,8 +91,8 @@ export function CommandPalette({
     let cancelled = false
     setSearching(true)
     const timer = setTimeout(() => {
-      api
-        .searchConversations({ query: trimmed, limit: null })
+      api.conversations
+        .search({ query: trimmed, limit: null })
         .then((hits) => {
           if (!cancelled) setTranscriptHits(hits)
         })

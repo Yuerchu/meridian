@@ -29,7 +29,7 @@ import type {
  * without prefills instead of refusing to render.
  */
 export function loadProviderCatalog(): Promise<ProviderCatalogEntryInfoResponse[]> {
-  return api.listProviderCatalog().catch((err) => {
+  return api.providers.listCatalog().catch((err) => {
     console.error('Failed to load the provider catalog:', err)
     return []
   })

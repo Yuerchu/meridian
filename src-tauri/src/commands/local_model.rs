@@ -88,7 +88,7 @@ impl From<LocalModelSnapshot> for LocalModelInfoResponse {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct LocalModelInspectRequest {
     pub model_path: String,
     pub backend: LocalInferenceBackend,
@@ -96,14 +96,14 @@ pub struct LocalModelInspectRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ProviderLocalModelInfoReadRequest {
+#[serde(deny_unknown_fields)]
+pub struct ProviderLocalModelReadRequest {
     pub provider_id: String,
     pub force_refresh: bool,
 }
 
 #[tauri::command]
-pub async fn inspect_local_model(
+pub async fn test_local_model(
     _app: tauri::AppHandle,
     request: LocalModelInspectRequest,
 ) -> Result<LocalModelInfoResponse, String> {
@@ -113,9 +113,9 @@ pub async fn inspect_local_model(
 }
 
 #[tauri::command]
-pub async fn get_provider_local_model_info(
+pub async fn get_provider_local_model(
     app: tauri::AppHandle,
-    request: ProviderLocalModelInfoReadRequest,
+    request: ProviderLocalModelReadRequest,
 ) -> Result<LocalModelInfoResponse, String> {
     local_model::for_provider(&app.services().db, &request.provider_id, request.force_refresh)
         .await
@@ -130,19 +130,19 @@ mod tests {
     fn inspection_requests_have_closed_targets_and_backend_values() {
         assert!(
             serde_json::from_value::<LocalModelInspectRequest>(serde_json::json!({
-                "modelPath": "C:/model.litertlm", "backend": "gpu", "forceRefresh": true
+                "model_path": "C:/model.litertlm", "backend": "gpu", "force_refresh": true
             }))
             .is_ok()
         );
         assert!(
             serde_json::from_value::<LocalModelInspectRequest>(serde_json::json!({
-                "modelPath": "C:/model.litertlm", "backend": "future", "forceRefresh": true
+                "model_path": "C:/model.litertlm", "backend": "future", "force_refresh": true
             }))
             .is_err()
         );
         assert!(
-            serde_json::from_value::<ProviderLocalModelInfoReadRequest>(serde_json::json!({
-                "providerId": "p1", "forceRefresh": true, "modelPath": "C:/other"
+            serde_json::from_value::<ProviderLocalModelReadRequest>(serde_json::json!({
+                "provider_id": "p1", "force_refresh": true, "model_path": "C:/other"
             }))
             .is_err()
         );

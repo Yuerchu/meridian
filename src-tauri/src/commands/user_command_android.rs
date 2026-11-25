@@ -4,7 +4,7 @@
 use crate::commands::model_config::RequiredNullable;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UserCommandRunRequest {
     pub conversation_id: String,
     pub turn_id: String,
@@ -13,17 +13,23 @@ pub struct UserCommandRunRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UserCommandResultReadRequest {
     pub conversation_id: String,
     pub message_id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserCommandActiveReadRequest {
+    pub conversation_id: String,
 }
 
 #[derive(Debug, serde::Serialize)]
 pub struct UserCommandResultResponse;
 
 #[tauri::command]
-pub async fn run_user_command(
+pub async fn invoke_user_command(
     _app: tauri::AppHandle,
     _request: UserCommandRunRequest,
 ) -> Result<UserCommandResultResponse, String> {
@@ -31,9 +37,9 @@ pub async fn run_user_command(
 }
 
 #[tauri::command]
-pub async fn active_user_shell_turn(
+pub async fn get_active_user_command(
     _app: tauri::AppHandle,
-    _conversation_id: String,
+    _request: UserCommandActiveReadRequest,
 ) -> Result<Option<String>, String> {
     Ok(None)
 }

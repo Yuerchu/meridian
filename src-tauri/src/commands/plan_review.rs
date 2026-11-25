@@ -35,13 +35,13 @@ fn emit_review_update_best_effort(events: &meridian_core::events::EventBus, even
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewReadRequest {
     pub review_id: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanRevisionListRequest {
     pub document_id: String,
 }
@@ -115,7 +115,7 @@ impl PlanCommentAnchor {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanCommentDraftRequest {
     pub id: String,
     pub state: PlanCommentStateRequest,
@@ -124,14 +124,14 @@ pub struct PlanCommentDraftRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanEditorSchemaFallbackRequest {
     pub from_version: i32,
     pub from_hash: RequiredNullable<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDraftSaveRequest {
     pub review_id: String,
     pub expected_generation: i64,
@@ -150,8 +150,8 @@ pub struct PlanReviewDraftSaveRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PlanReviewDraftDiscardRequest {
+#[serde(deny_unknown_fields)]
+pub struct PlanReviewDraftDeleteRequest {
     pub review_id: String,
     pub expected_generation: i64,
 }
@@ -173,7 +173,7 @@ pub enum PlanApprovalModeRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanReviewDecisionRequest {
     pub review_id: String,
     pub decision_id: String,
@@ -194,7 +194,7 @@ pub enum PlanFileConflictActionRequest {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct PlanFileConflictResolveRequest {
     pub document_id: String,
     pub action: PlanFileConflictActionRequest,
@@ -571,7 +571,7 @@ struct OwnedCommentSave {
 }
 
 #[tauri::command]
-pub async fn save_plan_review_draft(
+pub async fn set_plan_review_draft(
     app: tauri::AppHandle,
     request: PlanReviewDraftSaveRequest,
 ) -> Result<PlanReviewDraftSaveResponse, String> {
@@ -714,9 +714,9 @@ pub async fn save_plan_review_draft(
 }
 
 #[tauri::command]
-pub async fn discard_plan_review_draft(
+pub async fn delete_plan_review_draft(
     app: tauri::AppHandle,
-    request: PlanReviewDraftDiscardRequest,
+    request: PlanReviewDraftDeleteRequest,
 ) -> Result<PlanReviewInfoResponse, String> {
     let services = app.services();
     let (response, event) = services
@@ -783,7 +783,7 @@ struct DecisionCommit {
 }
 
 #[tauri::command]
-pub async fn decide_plan_review(
+pub async fn submit_plan_review_decision(
     app: tauri::AppHandle,
     request: PlanReviewDecisionRequest,
 ) -> Result<PlanReviewDecisionResponse, String> {
@@ -1041,20 +1041,20 @@ mod tests {
     #[test]
     fn rich_draft_request_carries_an_immutable_baseline_separately_from_the_edit() {
         let request: PlanReviewDraftSaveRequest = serde_json::from_value(serde_json::json!({
-            "reviewId": "review-1",
-            "expectedGeneration": 0,
+            "review_id": "review-1",
+            "expected_generation": 0,
             "mode": "rich",
-            "baseEditorJson": {"type":"doc","content":[{"type":"paragraph"}]},
-            "editorJson": {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"edited"}]}]},
-            "sourceText": null,
-            "normalizedMarkdown": "edited\n",
-            "baseNormalizedMarkdown": "\n",
+            "base_editor_json": {"type":"doc","content":[{"type":"paragraph"}]},
+            "editor_json": {"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"edited"}]}]},
+            "source_text": null,
+            "normalized_markdown": "edited\n",
+            "base_normalized_markdown": "\n",
             "comments": [],
-            "globalNote": null,
+            "global_note": null,
             "selection": null,
-            "editorSchemaVersion": 1,
-            "editorSchemaHash": "meridian-plan-markdown-v1",
-            "editorSchemaFallback": null
+            "editor_schema_version": 1,
+            "editor_schema_hash": "meridian-plan-markdown-v1",
+            "editor_schema_fallback": null
         }))
         .unwrap();
         assert_eq!(request.review_id, "review-1");
@@ -1065,25 +1065,25 @@ mod tests {
     #[test]
     fn decision_request_requires_approval_mode_and_clear_context_explicitly() {
         let approve: PlanReviewDecisionRequest = serde_json::from_value(serde_json::json!({
-            "reviewId": "r1",
-            "decisionId": "d1",
-            "expectedGeneration": 0,
-            "expectedDraftHash": "abc",
+            "review_id": "r1",
+            "decision_id": "d1",
+            "expected_generation": 0,
+            "expected_draft_hash": "abc",
             "action": "approve",
-            "approvalMode": "accept_edits",
-            "clearContext": true
+            "approval_mode": "accept_edits",
+            "clear_context": true
         }))
         .unwrap();
         assert_eq!(approve.approval_mode.0, Some(PlanApprovalModeRequest::AcceptEdits));
         assert!(approve.clear_context);
 
         let missing_mode = serde_json::from_value::<PlanReviewDecisionRequest>(serde_json::json!({
-            "reviewId": "r1",
-            "decisionId": "d1",
-            "expectedGeneration": 0,
-            "expectedDraftHash": "abc",
+            "review_id": "r1",
+            "decision_id": "d1",
+            "expected_generation": 0,
+            "expected_draft_hash": "abc",
             "action": "approve",
-            "clearContext": false
+            "clear_context": false
         }));
         assert!(missing_mode.is_err());
     }

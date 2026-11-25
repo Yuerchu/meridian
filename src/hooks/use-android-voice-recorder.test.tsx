@@ -4,8 +4,10 @@ import { useAndroidVoiceRecorder } from './use-android-voice-recorder'
 
 vi.mock('@/api', () => ({
   api: {
-    voicePrewarm: vi.fn(() => Promise.resolve()),
-    voiceTranscribePcm: vi.fn(() => Promise.resolve({ status: 'ok', text: 'hello' })),
+    voice: {
+      startPrewarm: vi.fn(() => Promise.resolve()),
+      transcribePcm: vi.fn(() => Promise.resolve({ status: 'ok', text: 'hello' })),
+    },
   },
 }))
 

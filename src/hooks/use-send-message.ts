@@ -224,30 +224,30 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       // settings and mean nothing to an adapter that picks its own; sending
       // them would suggest they had an effect.
       const dispatched = isHosted
-        ? api.acpSend({
-            conversationId,
+        ? api.acp.sendPrompt({
+            conversation_id: conversationId,
             message: messageContent ?? '',
-            turnId,
-            contextRefs: contextRefs ?? null,
-            conversationRefs,
+            turn_id: turnId,
+            context_refs: contextRefs ?? null,
+            conversation_refs: conversationRefs,
           })
-        : api.chat({
-            conversationId,
+        : api.chat.start({
+            conversation_id: conversationId,
             message: messageContent,
-            turnId,
+            turn_id: turnId,
             replaces: replaces ?? null,
-            modelOverride: selectedModelId,
-            providerOverride: selectedProviderId,
-            thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : null,
-            assistantId: selectedAssistantId,
+            model_override: selectedModelId,
+            provider_override: selectedProviderId,
+            thinking_level: thinkingLevel !== 'default' ? thinkingLevel : null,
+            assistant_id: selectedAssistantId,
             fast: fastMode ? true : null,
             mode,
             voice: voice ? true : null,
-            contextRefs,
+            context_refs: contextRefs,
             // An edit deliberately sends none: the backend copies the frozen
             // conversation items off the message being replaced instead, so
             // the replayed question keeps exactly what it was asked about.
-            conversationRefs,
+            conversation_refs: conversationRefs,
           })
 
       dispatched.catch((err) => {
@@ -297,7 +297,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       const trimmed = text.trim()
       if (!trimmed) return false
       try {
-        await api.steerConversation({ conversationId, text: trimmed })
+        await api.subAgents.steer({ conversation_id: conversationId, text: trimmed })
       } catch (err) {
         storeSetError(conversationId, String(err))
         return false

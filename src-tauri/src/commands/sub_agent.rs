@@ -50,7 +50,7 @@ fn default_model_preference(kind: SubAgentKind) -> String {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ConversationSteerRequest {
     conversation_id: String,
     text: String,
@@ -69,7 +69,7 @@ pub struct ConversationSteerRequest {
 /// should not turn up in the transcript as though it had been received. The
 /// caller has it and can say so.
 #[tauri::command]
-pub async fn steer_conversation(app: tauri::AppHandle, request: ConversationSteerRequest) -> Result<(), String> {
+pub async fn send_conversation_steer(app: tauri::AppHandle, request: ConversationSteerRequest) -> Result<(), String> {
     let ConversationSteerRequest { conversation_id, text } = request;
     if text.trim().is_empty() {
         return Err("There is nothing to send.".to_string());
@@ -288,7 +288,7 @@ impl DesktopSubAgents {
             .ok_or("This conversation has no assistant, so there is nothing to run a sub-agent on.")?;
 
         let key = default_model_preference(spec.kind);
-        let configured = db::sea::ops::preference::get_preference(&self.services.db, &key)
+        let configured = db::sea::ops::preference::get(&self.services.db, &key)
             .await
             .ok()
             .flatten();
@@ -381,7 +381,7 @@ impl DesktopSubAgents {
             .db
             .write(async |tx| {
                 db::sea::ops::conversation::insert(tx, conversation).await?;
-                db::sea::ops::message::append_message(tx, prompt, None).await?;
+                db::sea::ops::message::append(tx, prompt, None).await?;
                 db::sea::ops::turn::begin(tx, turn_id, sub_conversation_id, TurnOrigin::SubAgent, None, now).await
             })
             .await
@@ -796,7 +796,7 @@ mod tests {
     #[test]
     fn conversation_steer_request_is_named_and_strict() {
         let request: ConversationSteerRequest = serde_json::from_value(serde_json::json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "text": "check the failing test",
         }))
         .expect("valid steer request");
@@ -805,7 +805,7 @@ mod tests {
 
         assert!(
             serde_json::from_value::<ConversationSteerRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
+                "conversation_id": "conversation-1",
                 "text": "check the failing test",
                 "urgent": true,
             }))
@@ -849,11 +849,9 @@ mod tests {
 
     async fn config_for(child: assistant::Model) -> meridian_core::agent::turn_config::TurnConfig {
         let db = meridian_core::db::sea::sea_test_db().await;
-        db.write(async |tx| {
-            meridian_core::db::sea::ops::conversation::create_conversation(tx, "sub-1", None, None, None, 1).await
-        })
-        .await
-        .unwrap();
+        db.write(async |tx| meridian_core::db::sea::ops::conversation::create(tx, "sub-1", None, None, None, 1).await)
+            .await
+            .unwrap();
         meridian_core::agent::turn_config::resolve_on(
             &db,
             &registry(),

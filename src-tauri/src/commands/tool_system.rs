@@ -22,7 +22,7 @@ async fn reload_custom_tools(app: &tauri::AppHandle) -> Result<(), String> {
     let services = app.services();
     // A reload failure is part of the command result: reporting a successful
     // save while the running registry kept the old definition is not success.
-    let list = custom_tool_ops::list_enabled_tools(&services.db)
+    let list = custom_tool_ops::list_enabled(&services.db)
         .await
         .map_err(|e| e.to_string())?;
     let tools = list
@@ -47,7 +47,7 @@ fn default_parameters_schema() -> serde_json::Map<String, serde_json::Value> {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct CustomToolCreateRequest {
     name: String,
     description: String,
@@ -62,7 +62,7 @@ pub struct CustomToolCreateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct CustomToolUpdateRequest {
     id: String,
     name: Option<String>,
@@ -84,7 +84,13 @@ pub struct CustomToolUpdateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
+pub struct CustomToolDeleteRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ToolPresetUpdateRequest {
     id: String,
     name: Option<String>,
@@ -94,17 +100,23 @@ pub struct ToolPresetUpdateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ToolPresetCreateRequest {
     name: String,
     description: RequiredNullable<String>,
     tool_names: Vec<String>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolPresetDeleteRequest {
+    id: String,
+}
+
 #[tauri::command]
 pub async fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryListResponse, String> {
     let services = app.services();
-    tool_category_ops::list_categories(&services.db)
+    tool_category_ops::list(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -113,7 +125,7 @@ pub async fn list_tool_categories(app: tauri::AppHandle) -> Result<ToolCategoryL
 #[tauri::command]
 pub async fn list_custom_tools(app: tauri::AppHandle) -> Result<CustomToolListResponse, String> {
     let services = app.services();
-    custom_tool_ops::list_tools(&services.db)
+    custom_tool_ops::list(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -146,7 +158,7 @@ pub async fn create_custom_tool(
     };
     let created = services
         .db
-        .write(async |tx| custom_tool_ops::create_tool(tx, row).await)
+        .write(async |tx| custom_tool_ops::create(tx, row).await)
         .await
         .map_err(|e| e.to_string())?;
     reload_custom_tools(&app).await?;
@@ -176,7 +188,7 @@ pub async fn update_custom_tool(
     };
     let updated = services
         .db
-        .write(async |tx| custom_tool_ops::update_tool(tx, &request.id, changeset).await)
+        .write(async |tx| custom_tool_ops::update(tx, &request.id, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
     reload_custom_tools(&app).await?;
@@ -184,11 +196,11 @@ pub async fn update_custom_tool(
 }
 
 #[tauri::command]
-pub async fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_custom_tool(app: tauri::AppHandle, request: CustomToolDeleteRequest) -> Result<(), String> {
     let services = app.services();
     services
         .db
-        .write(async |tx| custom_tool_ops::delete_tool(tx, &id).await)
+        .write(async |tx| custom_tool_ops::delete(tx, &request.id).await)
         .await
         .map_err(|e| e.to_string())?;
     reload_custom_tools(&app).await
@@ -197,7 +209,7 @@ pub async fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(),
 #[tauri::command]
 pub async fn list_tool_presets(app: tauri::AppHandle) -> Result<ToolPresetListResponse, String> {
     let services = app.services();
-    tool_preset_ops::list_presets(&services.db)
+    tool_preset_ops::list(&services.db)
         .await
         .map(|rows| rows.into_iter().map(Into::into).collect())
         .map_err(|e| e.to_string())
@@ -223,7 +235,7 @@ pub async fn create_tool_preset(
     };
     services
         .db
-        .write(async |tx| tool_preset_ops::create_preset(tx, row).await)
+        .write(async |tx| tool_preset_ops::create(tx, row).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
@@ -244,25 +256,25 @@ pub async fn update_tool_preset(
     };
     services
         .db
-        .write(async |tx| tool_preset_ops::update_preset(tx, &request.id, changeset).await)
+        .write(async |tx| tool_preset_ops::update(tx, &request.id, changeset).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_tool_preset(app: tauri::AppHandle, request: ToolPresetDeleteRequest) -> Result<(), String> {
     let services = app.services();
     services
         .db
-        .write(async |tx| tool_preset_ops::delete_preset(tx, &id).await)
+        .write(async |tx| tool_preset_ops::delete(tx, &request.id).await)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
-#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+#[serde(rename_all = "snake_case")]
 pub enum ServiceKey {
     Tavily,
     ZhipuSearch,
@@ -270,10 +282,16 @@ pub enum ServiceKey {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ServiceKeyUpdateRequest {
     pub service: ServiceKey,
     pub key: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ServiceKeyTestRequest {
+    pub service: ServiceKey,
 }
 
 impl ServiceKey {
@@ -297,9 +315,9 @@ pub fn set_service_key(app: tauri::AppHandle, request: ServiceKeyUpdateRequest) 
 }
 
 #[tauri::command]
-pub fn get_service_key_exists(app: tauri::AppHandle, service: ServiceKey) -> Result<bool, String> {
+pub fn test_service_key(app: tauri::AppHandle, request: ServiceKeyTestRequest) -> Result<bool, String> {
     let services = app.services();
-    let name = SecretName::new(service.secret_name()).expect("service key names are static and valid");
+    let name = SecretName::new(request.service.secret_name()).expect("service key names are static and valid");
     services
         .secrets
         .get(&SecretScope::Global, &name)
@@ -352,8 +370,8 @@ mod tests {
     fn custom_tool_create_requires_explicit_execution_or_legacy_null() {
         let mut value = serde_json::json!({
             "name":"t", "description":"d", "command":"echo {{text}}",
-            "categoryId":null, "parametersSchema":null, "argsTemplate":null,
-            "workingDirectory":null, "timeoutMs":null, "permission":null,
+            "category_id":null, "parameters_schema":null, "args_template":null,
+            "working_directory":null, "timeout_ms":null, "permission":null,
             "execution":null
         });
         let draft: CustomToolCreateRequest = serde_json::from_value(value.clone()).unwrap();
@@ -382,7 +400,7 @@ mod tests {
         assert!(
             serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
                 "id": "tool-1",
-                "isEnabled": 1
+                "is_enabled": 1
             }))
             .is_err()
         );
@@ -392,21 +410,21 @@ mod tests {
     fn service_key_update_request_is_closed_and_typed() {
         assert!(
             serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
-                "service": "TAVILY",
+                "service": "tavily",
                 "key": "secret"
             }))
             .is_ok()
         );
         assert!(
             serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
-                "service": "FUTURE_SEARCH",
+                "service": "future_search",
                 "key": "secret"
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<ServiceKeyUpdateRequest>(serde_json::json!({
-                "service": "TAVILY",
+                "service": "tavily",
                 "key": "secret",
                 "scope": "global"
             }))
@@ -419,21 +437,21 @@ mod tests {
         assert!(
             serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
                 "id": "tool-1",
-                "parametersSchema": {"type": "object", "properties": {}}
+                "parameters_schema": {"type": "object", "properties": {}}
             }))
             .is_ok()
         );
         assert!(
             serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
                 "id": "tool-1",
-                "parametersSchema": "{\"type\":\"object\"}"
+                "parameters_schema": "{\"type\":\"object\"}"
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<CustomToolUpdateRequest>(serde_json::json!({
                 "id": "tool-1",
-                "parametersSchema": []
+                "parameters_schema": []
             }))
             .is_err()
         );
@@ -441,7 +459,9 @@ mod tests {
 
     #[test]
     fn service_keys_are_closed() {
-        assert!(serde_json::from_str::<ServiceKey>(r#""TAVILY""#).is_ok());
-        assert!(serde_json::from_str::<ServiceKey>(r#""FUTURE_SEARCH""#).is_err());
+        assert!(serde_json::from_str::<ServiceKey>(r#""tavily""#).is_ok());
+        assert!(serde_json::from_str::<ServiceKey>(r#""zhipu_search""#).is_ok());
+        assert!(serde_json::from_str::<ServiceKey>(r#""fish_audio""#).is_ok());
+        assert!(serde_json::from_str::<ServiceKey>(r#""future_search""#).is_err());
     }
 }

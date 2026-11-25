@@ -78,11 +78,11 @@ async fn update_assistant_unless_plan_barrier(
     if let Some(refused) = assistant_barrier(tx, assistant_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
-    let existing = assistant_ops::get_assistant(tx, assistant_id)
+    let existing = assistant_ops::get(tx, assistant_id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound(format!("assistant `{assistant_id}`")))?;
     refuse_if_assistant_exceeds_model(tx, &existing, &changeset).await?;
-    assistant_ops::update_assistant(tx, assistant_id, changeset)
+    assistant_ops::update(tx, assistant_id, changeset)
         .await
         .map(GuardedAssistantMutation::Applied)
 }
@@ -95,7 +95,7 @@ async fn delete_assistant_unless_plan_barrier(
     if let Some(refused) = assistant_barrier(tx, assistant_id, expected_conversation_ids).await? {
         return Ok(refused);
     }
-    assistant_ops::delete_assistant(tx, assistant_id)
+    assistant_ops::delete(tx, assistant_id)
         .await
         .map(|_| GuardedAssistantMutation::Applied(()))
 }
@@ -118,7 +118,7 @@ async fn sorted_conversation_ids(db: &Db) -> Result<Vec<String>, String> {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct AssistantCreateRequest {
     name: String,
     system_prompt: String,
@@ -130,7 +130,7 @@ pub struct AssistantCreateRequest {
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<AssistantListResponse, String> {
-    let rows = assistant_ops::list_assistants(&app.services().db)
+    let rows = assistant_ops::list(&app.services().db)
         .await
         .map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
@@ -170,14 +170,14 @@ pub async fn create_assistant(
     };
     app.services()
         .db
-        .write(async |tx| assistant_ops::create_assistant(tx, row).await)
+        .write(async |tx| assistant_ops::create(tx, row).await)
         .await
         .map(Into::into)
         .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct AssistantUpdateRequest {
     id: String,
     name: Option<String>,
@@ -236,8 +236,14 @@ pub async fn update_assistant(
     finish_guarded_assistant_mutation(guarded).map(Into::into)
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AssistantDeleteRequest {
+    id: String,
+}
+
 #[tauri::command]
-pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_assistant(app: tauri::AppHandle, request: AssistantDeleteRequest) -> Result<(), String> {
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
@@ -249,7 +255,7 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
         .map_err(|busy| busy.to_string())?;
     let guarded = services
         .db
-        .write(async |tx| delete_assistant_unless_plan_barrier(tx, &id, &conversation_ids).await)
+        .write(async |tx| delete_assistant_unless_plan_barrier(tx, &request.id, &conversation_ids).await)
         .await
         .map_err(|e| e.to_string())?;
     finish_guarded_assistant_mutation(guarded)
@@ -264,8 +270,8 @@ mod tests {
     fn assistant_boolean_updates_reject_integer_encodings() {
         let request = serde_json::from_value::<AssistantUpdateRequest>(serde_json::json!({
             "id": "assistant-1",
-            "thinkingEnabled": true,
-            "autoCompactEnabled": false
+            "thinking_enabled": true,
+            "auto_compact_enabled": false
         }))
         .unwrap();
         assert_eq!(request.thinking_enabled, Some(true));
@@ -274,7 +280,7 @@ mod tests {
         assert!(
             serde_json::from_value::<AssistantUpdateRequest>(serde_json::json!({
                 "id": "assistant-1",
-                "thinkingEnabled": 1
+                "thinking_enabled": 1
             }))
             .is_err()
         );
@@ -311,7 +317,7 @@ mod tests {
         use meridian_core::db::sea::ops::model_config::{FlatModelConfig, seed_flat};
 
         db.write(async |tx| {
-            db::sea::ops::provider::create_provider(
+            db::sea::ops::provider::create(
                 tx,
                 db::entity::provider::Model {
                     id: "p1".into(),
@@ -353,8 +359,8 @@ mod tests {
     async fn assistant_delete_refuses_when_conversations_changed() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
-            assistant_ops::create_assistant(tx, assistant_row("assistant-1")).await?;
-            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            assistant_ops::create(tx, assistant_row("assistant-1")).await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
@@ -374,9 +380,7 @@ mod tests {
         let db = db::sea::sea_test_db().await;
         let mut row = assistant_row("assistant-1");
         row.enabled_tools = Some(Json(vec!["read_file".into()]));
-        db.write(async |tx| assistant_ops::create_assistant(tx, row).await)
-            .await
-            .unwrap();
+        db.write(async |tx| assistant_ops::create(tx, row).await).await.unwrap();
         let updated = db
             .write(async |tx| {
                 update_assistant_unless_plan_barrier(
@@ -408,9 +412,7 @@ mod tests {
         row.provider_id = Some("p1".into());
         row.model_id = Some("gemma".into());
         row.context_limit = 0;
-        db.write(async |tx| assistant_ops::create_assistant(tx, row).await)
-            .await
-            .unwrap();
+        db.write(async |tx| assistant_ops::create(tx, row).await).await.unwrap();
 
         let refused = db
             .write(async |tx| {
@@ -431,7 +433,7 @@ mod tests {
         let message = refused.to_string();
         assert!(message.contains("1000000"), "{message}");
         assert!(message.contains("128000"), "{message}");
-        let stored = assistant_ops::get_assistant(&db, "assistant-1").await.unwrap().unwrap();
+        let stored = assistant_ops::get(&db, "assistant-1").await.unwrap().unwrap();
         assert_eq!(stored.context_limit, 0);
 
         let applied = db
@@ -468,9 +470,7 @@ mod tests {
         row.provider_id = Some("p1".into());
         row.model_id = Some("gemma".into());
         row.context_limit = 1_000_000;
-        db.write(async |tx| assistant_ops::create_assistant(tx, row).await)
-            .await
-            .unwrap();
+        db.write(async |tx| assistant_ops::create(tx, row).await).await.unwrap();
 
         let refused = db
             .write(async |tx| {
@@ -495,7 +495,7 @@ mod tests {
         assert!(message.contains("1000000"), "{message}");
         assert!(message.contains("Nova"), "{message}");
 
-        let stored = assistant_ops::get_assistant(&db, "assistant-1").await.unwrap().unwrap();
+        let stored = assistant_ops::get(&db, "assistant-1").await.unwrap().unwrap();
         assert_eq!(stored.name, "Nova");
         assert_eq!(stored.context_limit, 1_000_000);
     }

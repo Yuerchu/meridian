@@ -10,13 +10,19 @@ import type { ProviderCapabilitiesInfoResponse } from '@/types'
 
 vi.mock('@/api', () => ({
   api: {
-    getModelConfig: vi.fn(),
-    listModelProfiles: vi.fn(),
-    getProviderCapabilities: vi.fn(),
-    getProviderLocalModelInfo: vi.fn(),
-    saveModelConfig: vi.fn(),
-    deleteModelConfig: vi.fn(),
-    listAssistants: vi.fn(),
+    modelConfigs: {
+      get: vi.fn(),
+      listProfiles: vi.fn(),
+      set: vi.fn(),
+      delete: vi.fn(),
+    },
+    providers: {
+      getCapabilities: vi.fn(),
+      getLocalModel: vi.fn(),
+    },
+    assistants: {
+      list: vi.fn(),
+    },
   },
 }))
 
@@ -85,16 +91,16 @@ describe('ModelPage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.getModelConfig.mockResolvedValue(EXISTING)
-    mockApi.listModelProfiles.mockResolvedValue([])
-    mockApi.getProviderCapabilities.mockRejectedValue(new Error('none'))
-    mockApi.saveModelConfig.mockResolvedValue(EXISTING)
-    mockApi.deleteModelConfig.mockResolvedValue(undefined)
-    mockApi.listAssistants.mockResolvedValue([])
+    mockApi.modelConfigs.get.mockResolvedValue(EXISTING)
+    mockApi.modelConfigs.listProfiles.mockResolvedValue([])
+    mockApi.providers.getCapabilities.mockRejectedValue(new Error('none'))
+    mockApi.modelConfigs.set.mockResolvedValue(EXISTING)
+    mockApi.modelConfigs.delete.mockResolvedValue(undefined)
+    mockApi.assistants.list.mockResolvedValue([])
   })
 
   it('shows a load error with retry instead of an empty editor', async () => {
-    mockApi.getModelConfig.mockRejectedValueOnce('db locked')
+    mockApi.modelConfigs.get.mockRejectedValueOnce('db locked')
     const user = userEvent.setup()
     renderPage()
 
@@ -113,9 +119,9 @@ describe('ModelPage', () => {
     const del = await screen.findByRole('button', { name: i18n.t('common.delete') })
     await user.click(del)
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1))
-    expect(mockApi.deleteModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.delete).not.toHaveBeenCalled()
 
-    mockApi.deleteModelConfig.mockRejectedValueOnce('held by a plan review')
+    mockApi.modelConfigs.delete.mockRejectedValueOnce('held by a plan review')
     await user.click(del)
     expect(await screen.findByRole('alert')).toHaveTextContent('held by a plan review')
     expect(onDeleted).not.toHaveBeenCalled()
@@ -137,11 +143,11 @@ describe('ModelPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       i18n.t('settings.model.limitRequiredError', { field: i18n.t('settings.model.contextWindow') }),
     )
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
   })
 
   it('leaves the window blank and required when nothing knows it, and says so at save', async () => {
-    mockApi.getModelConfig.mockResolvedValue(null as never)
+    mockApi.modelConfigs.get.mockResolvedValue(null as never)
     const user = userEvent.setup()
     renderPage()
 
@@ -156,12 +162,12 @@ describe('ModelPage', () => {
       i18n.t('settings.model.limitRequiredError', { field: i18n.t('settings.model.contextWindow') }),
     )
     expect(ctx).toHaveFocus()
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
   })
 
   it('prefills the window from the model’s capabilities when they are known', async () => {
-    mockApi.getModelConfig.mockResolvedValue(null as never)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.modelConfigs.get.mockResolvedValue(null as never)
+    mockApi.providers.getCapabilities.mockResolvedValue({
       max_context_tokens: 64000,
       max_output_tokens: 8000,
       supported_efforts: [],
@@ -178,8 +184,8 @@ describe('ModelPage', () => {
   })
 
   it('suggests no threshold when the output ceiling is unknown', async () => {
-    mockApi.getModelConfig.mockResolvedValue(null as never)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.modelConfigs.get.mockResolvedValue(null as never)
+    mockApi.providers.getCapabilities.mockResolvedValue({
       max_context_tokens: 64000,
       max_output_tokens: null,
       supported_efforts: [],
@@ -199,15 +205,15 @@ describe('ModelPage', () => {
     renderPage()
 
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
-    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
-    expect(mockApi.saveModelConfig.mock.calls[0][0].profile.context_window).toBe(200000)
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalledTimes(1))
+    expect(mockApi.modelConfigs.set.mock.calls[0][0].profile.context_window).toBe(200000)
     expect(await screen.findByRole('status')).toHaveTextContent(i18n.t('common.saved'))
   })
 
   it('keeps a stored provider tool the provider no longer offers when another is ticked', async () => {
     const user = userEvent.setup()
-    mockApi.getModelConfig.mockResolvedValue({ ...(EXISTING as object), server_tools: ['code_execution'] } as never)
-    mockApi.getProviderCapabilities.mockResolvedValue({
+    mockApi.modelConfigs.get.mockResolvedValue({ ...(EXISTING as object), server_tools: ['code_execution'] } as never)
+    mockApi.providers.getCapabilities.mockResolvedValue({
       max_context_tokens: null,
       max_output_tokens: null,
       supported_efforts: [],
@@ -219,8 +225,8 @@ describe('ModelPage', () => {
     await user.click(within(group).getByRole('checkbox', { name: i18n.t('settings.model.serverTool.x_search') }))
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
 
-    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
-    expect(mockApi.saveModelConfig.mock.calls[0][0].server_tools).toEqual(['code_execution', 'x_search'])
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalledTimes(1))
+    expect(mockApi.modelConfigs.set.mock.calls[0][0].server_tools).toEqual(['code_execution', 'x_search'])
   })
 
   it('blocks a local save until both capability reads succeed, then permits it', async () => {
@@ -228,12 +234,12 @@ describe('ModelPage', () => {
     let complete: (value: ProviderCapabilitiesInfoResponse) => void = () => {
       throw new Error('capability lookup did not start')
     }
-    mockApi.getProviderCapabilities.mockReturnValueOnce(
+    mockApi.providers.getCapabilities.mockReturnValueOnce(
       new Promise((resolve) => {
         complete = resolve
       }),
     )
-    mockApi.getProviderLocalModelInfo.mockResolvedValueOnce({
+    mockApi.providers.getLocalModel.mockResolvedValueOnce({
       ...demoLocalModel('C:/Models/custom.litertlm', 'gpu'),
       max_context_tokens: null,
     })
@@ -242,28 +248,28 @@ describe('ModelPage', () => {
     await user.type(output, '32')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
     expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('settings.localModel.capabilitiesError'))
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
     await act(async () => {
       complete({ supported_efforts: [], server_tools: [], max_context_tokens: null, max_output_tokens: null } as never)
     })
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
-    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalledTimes(1))
   })
 
   it('refuses a local save when metadata inspection fails', async () => {
     const user = userEvent.setup()
-    mockApi.getProviderCapabilities.mockResolvedValueOnce({ supported_efforts: [], server_tools: [] } as never)
-    mockApi.getProviderLocalModelInfo.mockRejectedValueOnce(new Error('model file changed'))
+    mockApi.providers.getCapabilities.mockResolvedValueOnce({ supported_efforts: [], server_tools: [] } as never)
+    mockApi.providers.getLocalModel.mockRejectedValueOnce(new Error('model file changed'))
     renderPage(vi.fn().mockResolvedValue(true), vi.fn(), 'litert_lm')
     await screen.findByText('Error: model file changed')
     await user.type(screen.getByRole('textbox', { name: new RegExp(i18n.t('settings.model.maxOutput')) }), '32')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
   })
 
   it('refuses a window that leaves a bound assistant unsupported', async () => {
     const user = userEvent.setup()
-    mockApi.listAssistants.mockResolvedValue([
+    mockApi.assistants.list.mockResolvedValue([
       {
         name: 'Elegy',
         provider_id: 'p1',
@@ -283,12 +289,12 @@ describe('ModelPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       i18n.t('settings.model.boundAssistantContext', { name: 'Elegy', limit: 300_000, window: 250_000 }),
     )
-    expect(mockApi.saveModelConfig).not.toHaveBeenCalled()
+    expect(mockApi.modelConfigs.set).not.toHaveBeenCalled()
   })
 
   it('saves an unrelated edit while a bound assistant is already over the window', async () => {
     const user = userEvent.setup()
-    mockApi.listAssistants.mockResolvedValue([
+    mockApi.assistants.list.mockResolvedValue([
       {
         name: 'Elegy',
         provider_id: 'p1',
@@ -301,7 +307,7 @@ describe('ModelPage', () => {
     renderPage()
 
     await user.click(await screen.findByRole('button', { name: i18n.t('common.save') }))
-    await waitFor(() => expect(mockApi.saveModelConfig).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalledTimes(1))
   })
 
   it('parses token counts strictly', () => {

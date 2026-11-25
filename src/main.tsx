@@ -28,7 +28,7 @@ const root = createRoot(document.getElementById('root')!)
  * The shell's deadline covers this call never arriving at all.
  */
 function announceReady() {
-  requestAnimationFrame(() => requestAnimationFrame(() => void invoke('splash_app_ready').catch(() => {})))
+  requestAnimationFrame(() => requestAnimationFrame(() => void invoke('complete_splash_app_ready').catch(() => {})))
 }
 
 const isDev = import.meta.env.DEV

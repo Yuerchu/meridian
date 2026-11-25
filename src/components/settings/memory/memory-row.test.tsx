@@ -5,14 +5,14 @@ import { MemoryRow } from './memory-row'
 import { api } from '@/api'
 import { buildMemories } from '@/dev/demo/settings'
 
-vi.mock('@/api', () => ({ api: { updateMemory: vi.fn(), deleteMemories: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { memories: { update: vi.fn(), delete: vi.fn() } } }))
 const mocked = vi.mocked(api)
 const memory = { ...buildMemories(1_700_000_000_000)[0], visibility: 'owner_only' as const }
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mocked.updateMemory.mockResolvedValue(memory)
-  mocked.deleteMemories.mockResolvedValue(1)
+  mocked.memories.update.mockResolvedValue(memory)
+  mocked.memories.delete.mockResolvedValue(1)
 })
 
 it('keeps selection separate from expansion and saves the edited draft', async () => {
@@ -35,6 +35,6 @@ it('keeps selection separate from expansion and saves the edited draft', async (
   await user.type(editor, 'Use pnpm only.')
   await user.click(screen.getByRole('button', { name: /save|保存/i }))
 
-  expect(mocked.updateMemory).toHaveBeenCalledWith({ id: memory.id, content: 'Use pnpm only.' })
+  expect(mocked.memories.update).toHaveBeenCalledWith({ id: memory.id, content: 'Use pnpm only.' })
   await waitFor(() => expect(onChanged).toHaveBeenCalledOnce())
 })

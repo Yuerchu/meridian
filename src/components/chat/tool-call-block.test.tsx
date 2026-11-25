@@ -19,12 +19,14 @@ vi.mock('@tauri-apps/plugin-shell', () => ({ open: shellOpen }))
 // decision into an orphaned card, and `undefined.catch` would throw.
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn().mockResolvedValue(undefined),
-    denyToolCall: vi.fn().mockResolvedValue(undefined),
-    respondToAsk: vi.fn().mockResolvedValue(undefined),
-    // The plan card reads its review for the revision and the excerpt; these
-    // tests are about the card as a way into the page, so the read never lands.
-    getPlanReview: vi.fn(() => new Promise(() => {})),
+    approvals: {
+      submitDecision: vi.fn().mockResolvedValue(undefined),
+    },
+    planReview: {
+      // The plan card reads its review for the revision and the excerpt; these
+      // tests are about the card as a way into the page, so the read never lands.
+      get: vi.fn(() => new Promise(() => {})),
+    },
   },
 }))
 
@@ -469,7 +471,7 @@ describe('the interactive cards say what became of them', () => {
     const markApprovalOrphaned = vi.fn()
     const original = useConversationStore.getState().markApprovalOrphaned
     useConversationStore.setState({ markApprovalOrphaned })
-    vi.mocked(api.approveToolCall).mockRejectedValueOnce('the turn has already ended')
+    vi.mocked(api.approvals.submitDecision).mockRejectedValueOnce('the turn has already ended')
     try {
       render(<ToolCallBlock data={toolCall('run_command', { command: 'ls' })} />)
       await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.allow') }))
@@ -514,10 +516,10 @@ describe('the interactive cards say what became of them', () => {
 
     const input = screen.getByPlaceholderText(i18n.t('chat.tool.denyReasonPlaceholder'))
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
-    expect(api.denyToolCall).not.toHaveBeenCalled()
+    expect(api.approvals.submitDecision).not.toHaveBeenCalled()
 
     fireEvent.keyDown(input, { key: 'Enter', isComposing: false })
-    expect(api.denyToolCall).toHaveBeenCalledTimes(1)
+    expect(api.approvals.submitDecision).toHaveBeenCalledTimes(1)
   })
 
   it('does not send plan feedback while Enter is confirming IME composition', async () => {
@@ -527,10 +529,10 @@ describe('the interactive cards say what became of them', () => {
 
     const input = screen.getByPlaceholderText(i18n.t('chat.plan.feedbackPlaceholder'))
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
-    expect(api.denyToolCall).not.toHaveBeenCalled()
+    expect(api.approvals.submitDecision).not.toHaveBeenCalled()
 
     fireEvent.keyDown(input, { key: 'Enter', isComposing: false })
-    expect(api.denyToolCall).toHaveBeenCalledTimes(1)
+    expect(api.approvals.submitDecision).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -819,9 +821,9 @@ describe('a hosted agent asks with the same cards', () => {
     await userEvent.click(screen.getByRole('radio', { name: 'A' }))
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
 
-    expect(api.respondToAsk).toHaveBeenCalledWith({
-      approvalId: 'appr-1',
-      response: JSON.stringify({ scope: 'A' }),
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ scope: 'A' }) },
     })
   })
 
@@ -836,7 +838,10 @@ describe('a hosted agent asks with the same cards', () => {
     expect(screen.getByRole('radio', { name: 'B' })).toBeChecked()
 
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
-    expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ scope: 'B' }) },
+    })
   })
 
   it('selects radio cards with arrows and separates their names, descriptions and numeric hints', async () => {
@@ -864,7 +869,10 @@ describe('a hosted agent asks with the same cards', () => {
     expect(second).toBeChecked()
     expect(first).not.toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
-    expect(api.respondToAsk).toHaveBeenCalledWith({ approvalId: 'appr-1', response: JSON.stringify({ scope: 'B' }) })
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ scope: 'B' }) },
+    })
   })
 
   it.each(['Alt', 'Control', 'Meta'])('does not consume a number with %s held', async (modifier) => {
@@ -892,7 +900,7 @@ describe('a hosted agent asks with the same cards', () => {
 
   it('keeps the submit name and exposes a busy state while an answer is sending', async () => {
     let finish!: () => void
-    vi.mocked(api.respondToAsk).mockReturnValueOnce(
+    vi.mocked(api.approvals.submitDecision).mockReturnValueOnce(
       new Promise<void>((resolve) => {
         finish = resolve
       }),
@@ -942,15 +950,15 @@ describe('a hosted agent asks with the same cards', () => {
     expect(submit()).toBeEnabled()
     await userEvent.click(submit())
     expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
-    expect(api.respondToAsk).not.toHaveBeenCalled()
+    expect(api.approvals.submitDecision).not.toHaveBeenCalled()
 
     // Answering it releases the form, and the optional answer goes with it
     // rather than being lost to a decline.
     await userEvent.type(branch, 'main')
     await userEvent.click(submit())
-    expect(api.respondToAsk).toHaveBeenCalledWith({
-      approvalId: 'appr-1',
-      response: JSON.stringify({ branch: 'main', note: 'be careful' }),
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ branch: 'main', note: 'be careful' }) },
     })
   })
 
@@ -987,7 +995,7 @@ describe('a hosted agent asks with the same cards', () => {
     expect(submit()).toBeEnabled()
     await userEvent.click(submit())
     expect(await screen.findByText(i18n.t('chat.tool.answerRequired'))).toBeVisible()
-    expect(api.respondToAsk).not.toHaveBeenCalled()
+    expect(api.approvals.submitDecision).not.toHaveBeenCalled()
 
     const group = !multi ? screen.getByRole('radiogroup') : null
     if (group) {
@@ -1004,9 +1012,9 @@ describe('a hosted agent asks with the same cards', () => {
     // be asserted here — `elicitation.rs` takes it apart into the two
     // properties the schema has, under
     // `a_required_question_answered_with_a_note_beside_it_is_still_accepted`.
-    expect(api.respondToAsk).toHaveBeenCalledWith({
-      approvalId: 'appr-1',
-      response: JSON.stringify({ scope: 'A\n\nNotes: something else entirely' }),
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ scope: 'A\n\nNotes: something else entirely' }) },
     })
   })
 
@@ -1040,9 +1048,9 @@ describe('a hosted agent asks with the same cards', () => {
     expect(read).toBeChecked()
     expect(within(group).getByRole('checkbox', { name: 'Write' })).toBeChecked()
     await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
-    expect(api.respondToAsk).toHaveBeenCalledWith({
-      approvalId: 'appr-1',
-      response: JSON.stringify({ tools: 'Read, Write' }),
+    expect(api.approvals.submitDecision).toHaveBeenCalledWith({
+      approval_id: 'appr-1',
+      decision: { kind: 'respond', response: JSON.stringify({ tools: 'Read, Write' }) },
     })
   })
 

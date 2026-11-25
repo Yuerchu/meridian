@@ -2,20 +2,21 @@ import { useEffect, useState, useSyncExternalStore } from 'react'
 import { listen } from '@/lib/transport'
 import { api } from '@/api'
 import type { WindowInsetsEvent } from '@/lib/app-event'
-import type { PlatformInfoResponse } from '@/types'
+import type { PlatformInfoResponse, WindowInsetsInfoResponse } from '@/types'
 
 let currentImeBottom = 0
 const imeListeners = new Set<() => void>()
 
-function applyInsets(i: WindowInsetsEvent) {
+function applyInsets(i: WindowInsetsEvent | WindowInsetsInfoResponse) {
+  const imeBottom = 'imeBottom' in i ? i.imeBottom : i.ime_bottom
   const s = document.documentElement.style
   s.setProperty('--native-inset-top', `${i.top}px`)
   s.setProperty('--native-inset-bottom', `${i.bottom}px`)
   s.setProperty('--native-inset-left', `${i.left}px`)
   s.setProperty('--native-inset-right', `${i.right}px`)
-  s.setProperty('--ime-bottom', `${i.imeBottom}px`)
-  if (i.imeBottom !== currentImeBottom) {
-    currentImeBottom = i.imeBottom
+  s.setProperty('--ime-bottom', `${imeBottom}px`)
+  if (imeBottom !== currentImeBottom) {
+    currentImeBottom = imeBottom
     imeListeners.forEach((fn) => fn())
   }
 }
@@ -41,7 +42,7 @@ export function useAndroidInsets() {
   useEffect(() => {
     let disposed = false
     void (async () => {
-      const p = await api.getPlatform().catch(() => null)
+      const p = await api.platform.getInfo().catch(() => null)
       if (!disposed) setPlatform(p)
     })()
     return () => {
@@ -62,7 +63,7 @@ export function useAndroidInsets() {
       }
       unlistenInsets = unlisten
 
-      const insets = await api.getWindowInsets().catch(() => null)
+      const insets = await api.platform.getWindowInsets().catch(() => null)
       if (insets && !disposed) applyInsets(insets)
     })()
 

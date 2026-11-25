@@ -14,7 +14,7 @@ vi.mock('@/lib/transport', async (original) => ({
     return connection.remote
   },
 }))
-vi.mock('@/api', () => ({ api: { inspectLocalModel: vi.fn(), getProviderLocalModelInfo: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { providers: { testLocalModel: vi.fn(), getLocalModel: vi.fn() } } }))
 const mocked = vi.mocked(api)
 const path = 'C:/Models/custom-12b-gpu.litertlm'
 
@@ -36,14 +36,18 @@ beforeEach(async () => {
   vi.clearAllMocks()
   connection.remote = false
   await i18n.changeLanguage('zh-CN')
-  mocked.inspectLocalModel.mockResolvedValue(demoLocalModel(path, 'gpu'))
+  mocked.providers.testLocalModel.mockResolvedValue(demoLocalModel(path, 'gpu'))
 })
 
 it('inspects the chosen file and reports a backend without claiming hardware validation', async () => {
   const user = userEvent.setup()
   render(panel())
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
-  expect(mocked.inspectLocalModel).toHaveBeenCalledWith({ modelPath: path, backend: 'gpu', forceRefresh: true })
+  expect(mocked.providers.testLocalModel).toHaveBeenCalledWith({
+    model_path: path,
+    backend: 'gpu',
+    force_refresh: true,
+  })
   expect(await screen.findByText('custom-12b-gpu.litertlm')).toBeInTheDocument()
   expect(screen.getByText(i18n.t('settings.localModel.notInitialized'))).toBeInTheDocument()
   expect(screen.getByText(i18n.t('settings.localModel.identity'))).toBeInTheDocument()
@@ -82,17 +86,17 @@ it('backend selection is returned to the provider draft, not saved through a sep
   await user.click(screen.getByRole('button', { name: new RegExp(i18n.t('settings.localModel.backend')) }))
   await user.click(await screen.findByRole('option', { name: 'NPU' }))
   expect(onChange).toHaveBeenCalledWith('npu')
-  expect(mocked.inspectLocalModel).not.toHaveBeenCalled()
+  expect(mocked.providers.testLocalModel).not.toHaveBeenCalled()
 })
 
 it('an inspection error is shown and never retried with CPU', async () => {
   const user = userEvent.setup()
-  mocked.inspectLocalModel.mockRejectedValueOnce('code=14: GPU unavailable')
+  mocked.providers.testLocalModel.mockRejectedValueOnce('code=14: GPU unavailable')
   render(panel())
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   expect(await screen.findByRole('alert')).toHaveTextContent('GPU unavailable')
-  expect(mocked.inspectLocalModel).toHaveBeenCalledTimes(1)
-  expect(mocked.inspectLocalModel.mock.calls[0][0].backend).toBe('gpu')
+  expect(mocked.providers.testLocalModel).toHaveBeenCalledTimes(1)
+  expect(mocked.providers.testLocalModel.mock.calls[0][0].backend).toBe('gpu')
 })
 
 it('a slower result from an old file cannot overwrite a newer file', async () => {
@@ -100,7 +104,7 @@ it('a slower result from an old file cannot overwrite a newer file', async () =>
   let first: (value: LocalModelInfoResponse) => void = () => {
     throw new Error('first inspection did not start')
   }
-  mocked.inspectLocalModel.mockImplementationOnce(
+  mocked.providers.testLocalModel.mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         first = resolve
@@ -109,7 +113,7 @@ it('a slower result from an old file cannot overwrite a newer file', async () =>
   const { rerender } = render(panel())
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   const secondPath = 'C:/Models/second.litertlm'
-  mocked.inspectLocalModel.mockResolvedValueOnce(demoLocalModel(secondPath, 'gpu'))
+  mocked.providers.testLocalModel.mockResolvedValueOnce(demoLocalModel(secondPath, 'gpu'))
   rerender(panel(secondPath))
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   await screen.findByText('second.litertlm')
@@ -123,13 +127,13 @@ it('a slower result from an old file cannot overwrite a newer file', async () =>
 it('remote inspection uses only the saved provider ID and keeps hardware selection read-only', async () => {
   const user = userEvent.setup()
   connection.remote = true
-  mocked.getProviderLocalModelInfo.mockResolvedValue(demoLocalModel(path, 'auto'))
+  mocked.providers.getLocalModel.mockResolvedValue(demoLocalModel(path, 'auto'))
   render(panel(path, 'auto'))
   expect(screen.getByRole('button', { name: new RegExp(i18n.t('settings.localModel.backend')) })).toBeDisabled()
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   await screen.findByText('custom-12b-gpu.litertlm')
-  expect(mocked.getProviderLocalModelInfo).toHaveBeenCalledWith({ providerId: 'p1', forceRefresh: true })
-  expect(mocked.inspectLocalModel).not.toHaveBeenCalled()
+  expect(mocked.providers.getLocalModel).toHaveBeenCalledWith({ provider_id: 'p1', force_refresh: true })
+  expect(mocked.providers.testLocalModel).not.toHaveBeenCalled()
 })
 
 it('NPU vendor and target SoC are shown separately from the backend', async () => {
@@ -138,7 +142,7 @@ it('NPU vendor and target SoC are shown separately from the backend', async () =
   info.requested_backend = 'npu'
   info.resolved_backend = 'npu'
   info.modalities[0] = { modality: 'text', preferred_backends: ['npu'], npu_brand: 'qualcomm', soc_name: 'SM8750' }
-  mocked.inspectLocalModel.mockResolvedValue(info)
+  mocked.providers.testLocalModel.mockResolvedValue(info)
   render(panel(path, 'npu'))
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   expect(await screen.findByText(/SM8750/)).toHaveTextContent('Qualcomm')
@@ -154,5 +158,5 @@ it('an explicit refresh runs another metadata query', async () => {
   render(panel())
   await user.click(screen.getByRole('button', { name: i18n.t('settings.localModel.inspect') }))
   await user.click(await screen.findByRole('button', { name: i18n.t('settings.localModel.inspectAgain') }))
-  await waitFor(() => expect(mocked.inspectLocalModel).toHaveBeenCalledTimes(2))
+  await waitFor(() => expect(mocked.providers.testLocalModel).toHaveBeenCalledTimes(2))
 })

@@ -155,7 +155,10 @@ pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<OneBotConfigInfo
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpdateRequest) -> Result<(), String> {
+pub async fn set_onebot_config(
+    app: tauri::AppHandle,
+    request: OneBotConfigUpdateRequest,
+) -> Result<OneBotConfigInfoResponse, String> {
     let services = app.services();
     let replies = request.replies.clone();
     let config = onebot::OneBotConfig::try_from(request)?;
@@ -182,14 +185,17 @@ pub async fn save_onebot_config(app: tauri::AppHandle, request: OneBotConfigUpda
     // 没变的会话。
     let result = onebot::refresh_voice_policy(&services, &config).await;
     drop(server);
-    result
+    result?;
+    let saved_config = onebot::load_config(&services.db).await?;
+    let saved_replies = onebot::replies::load(&services.db).await?;
+    Ok(OneBotConfigInfoResponse::from_saved(saved_config, saved_replies))
 }
 
 /// 出站语音差哪一项。设置页照着它说话——四项之中缺哪个只有后端知道，而这个
 /// 功能唯一一种"什么都不说"的失败就是开关开着、工具不出现。
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
+pub async fn get_onebot_voice_readiness(app: tauri::AppHandle) -> Result<VoiceSendReadinessInfoResponse, String> {
     let services = app.services();
     let config = onebot::load_config(&services.db).await?;
     Ok(onebot::voice_send_readiness(&services, &config).into())

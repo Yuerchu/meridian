@@ -60,17 +60,19 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({
   api: {
-    listAssistantEmojiPacks: mocks.listPacks,
-    listEmojis: mocks.listEmojis,
-    getEmojiFileUrl: mocks.fileUrl,
-    workspaceSuggestRefs: mocks.workspaceSuggestRefs,
-    getComposerDraft: vi.fn(() => Promise.resolve(null)),
-    saveComposerDraft: vi.fn((request: { revision: number }) =>
-      Promise.resolve({ applied: true, revision: request.revision }),
-    ),
-    clearComposerDraft: vi.fn((request: { revision: number }) =>
-      Promise.resolve({ applied: true, revision: request.revision }),
-    ),
+    emojis: {
+      listPacks: mocks.listPacks,
+      list: mocks.listEmojis,
+      getFileUrl: mocks.fileUrl,
+    },
+    workspace: {
+      searchRefs: mocks.workspaceSuggestRefs,
+    },
+    composerDrafts: {
+      get: vi.fn(() => Promise.resolve(null)),
+      set: vi.fn((request: { revision: number }) => Promise.resolve({ applied: true, revision: request.revision })),
+      delete: vi.fn((request: { revision: number }) => Promise.resolve({ applied: true, revision: request.revision })),
+    },
   },
 }))
 

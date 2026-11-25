@@ -201,7 +201,7 @@ export function HostedModeChip({
     description: value.description ?? undefined,
     ...hostedRow(value.value),
   }))
-  const selected = typeof option.currentValue === 'string' ? option.currentValue : null
+  const selected = typeof option.current_value === 'string' ? option.current_value : null
   return (
     <ModeMenu
       rows={rows}

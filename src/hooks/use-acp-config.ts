@@ -56,8 +56,8 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
     // Empty for a conversation whose adapter is not running yet, which after a
     // restart is every one of them until the first message wakes it. What
     // fills it then is the announcement below, not this.
-    api
-      .acpSessionConfig({ conversationId })
+    api.acp
+      .getSessionConfig({ conversation_id: conversationId })
       .then((next) => {
         if (alive) setOptions(next)
       })
@@ -108,7 +108,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
       setBusy(true)
       try {
         // The whole set comes back, because changing one reshapes others.
-        setOptions(await api.acpSetSessionConfig({ conversationId, configId, value }))
+        setOptions(await api.acp.setSessionConfig({ conversation_id: conversationId, config_id: configId, value }))
         setError(null)
       } catch (err) {
         // A refusal leaves the set as it was, which is already what is on

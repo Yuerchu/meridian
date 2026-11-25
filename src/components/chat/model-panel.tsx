@@ -555,21 +555,21 @@ export function HostedModelPanel({
   const { t } = useTranslation()
   if (!model && !effort) return null
   const modelName = model ? currentValueName(t, model) : null
-  const effortName = effort && effort.currentValue !== 'default' ? currentValueName(t, effort) : null
+  const effortName = effort && effort.current_value !== 'default' ? currentValueName(t, effort) : null
   const rows: ModelRow[] = (model?.options ?? []).map((v) => ({
     key: v.value,
     modelId: v.value,
     name: knobValueName(t, model!, v),
   }))
   const label = model ? knobName(t, model) : t('composer.modelPanel')
-  const selectedKey = typeof model?.currentValue === 'string' ? model.currentValue : null
+  const selectedKey = typeof model?.current_value === 'string' ? model.current_value : null
   const effortLabel = effort ? knobName(t, effort) : ''
   const effortChoices: EffortChoice[] = (effort?.options ?? []).map((v) => ({
     id: v.value,
     label: knobValueName(t, effort!, v),
     description: v.description ?? undefined,
   }))
-  const effortSelected = typeof effort?.currentValue === 'string' ? effort.currentValue : ''
+  const effortSelected = typeof effort?.current_value === 'string' ? effort.current_value : ''
   // The effort rides on the selected model's row. With no such row — an agent
   // offering the effort and no model, or a current model it does not list —
   // that chip is never drawn, so the levels are listed here instead, or a
@@ -591,7 +591,7 @@ export function HostedModelPanel({
                 label={label}
                 rows={rows}
                 selectedKey={selectedKey}
-                onSelect={(value) => model && value !== model.currentValue && onSet(model.id, value)}
+                onSelect={(value) => model && value !== model.current_value && onSet(model.id, value)}
                 empty={null}
                 extra={
                   effort ? (

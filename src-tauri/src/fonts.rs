@@ -28,17 +28,11 @@ const MAX_TTC_FONTS: usize = 32;
 #[cfg(any(not(windows), test))]
 const MAX_NAME_RECORDS: usize = 256;
 
-#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FontFamilyListResponse {
-    pub families: Vec<String>,
-}
+pub type FontFamilyListResponse = Vec<String>;
 
 #[tauri::command]
 pub fn list_system_fonts() -> Result<FontFamilyListResponse, String> {
-    Ok(FontFamilyListResponse {
-        families: list_families()?,
-    })
+    list_families()
 }
 
 fn list_families() -> Result<Vec<String>, String> {

@@ -6,7 +6,7 @@ import i18n from '@/i18n'
 import type { ConversationInfoResponse, ProjectInfoResponse } from '@/types'
 import { CommandPalette } from './command-palette'
 
-vi.mock('@/api', () => ({ api: { searchConversations: vi.fn() } }))
+vi.mock('@/api', () => ({ api: { conversations: { search: vi.fn() } } }))
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
 
 const mockApi = vi.mocked(api)
@@ -39,7 +39,7 @@ describe('CommandPalette', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.searchConversations.mockResolvedValue([])
+    mockApi.conversations.search.mockResolvedValue([])
   })
 
   it('filters what is in memory by what is typed, and opens the one chosen', async () => {
@@ -64,14 +64,14 @@ describe('CommandPalette', () => {
   })
 
   it('adds what the transcripts say from the backend, shown as it came', async () => {
-    mockApi.searchConversations.mockResolvedValue([
+    mockApi.conversations.search.mockResolvedValue([
       { conversation_id: 'c9', title: 'Old chat', snippet: 'the zebra crossing' },
     ] as never)
     const { user, onSelectConversation } = setup()
     await user.type(await screen.findByRole('searchbox'), 'zebra')
 
     const hit = await screen.findByRole('menuitem', { name: 'Old chat' })
-    await waitFor(() => expect(mockApi.searchConversations).toHaveBeenCalledWith({ query: 'zebra', limit: null }))
+    await waitFor(() => expect(mockApi.conversations.search).toHaveBeenCalledWith({ query: 'zebra', limit: null }))
     expect(hit).toHaveAccessibleDescription('the zebra crossing')
     await user.click(hit)
     expect(onSelectConversation).toHaveBeenCalledWith('c9')

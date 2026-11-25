@@ -25,10 +25,18 @@ vi.mock('@/api', () => ({
     // One request per load. The transcript, the approvals still outstanding and
     // the turn records only mean anything together: a tool call with no result
     // row is waiting, running, or abandoned, and the row alone says none of it.
-    conversationSnapshot: vi.fn(),
-    activeUserShellTurn: vi.fn(() => Promise.resolve(null)),
-    switchBranch: vi.fn(),
-    allPendingApprovals: vi.fn(),
+    conversations: {
+      getSnapshot: vi.fn(),
+    },
+    userCommands: {
+      getActive: vi.fn(() => Promise.resolve(null)),
+    },
+    messages: {
+      switchBranch: vi.fn(),
+    },
+    approvals: {
+      listPending: vi.fn(),
+    },
   },
 }))
 
@@ -127,7 +135,7 @@ describe('plan review snapshot monotonicity', () => {
     useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [] })
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
     store().ensureSession(CONV)
-    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    vi.mocked(api.userCommands.getActive).mockResolvedValue(null)
     expect(usePlanReviewStore.getState().receiveReviewEvent(pendingEvent)).toBe(true)
     store().handlePlanReviewEvent(pendingEvent)
   })
@@ -145,8 +153,8 @@ describe('plan review snapshot monotonicity', () => {
           plan_reviews: [{ ...summary, ...settledEvent }],
         },
       )
-      vi.mocked(api.conversationSnapshot).mockReturnValueOnce(stalePromise).mockResolvedValue(fresh)
-      vi.mocked(api.switchBranch).mockResolvedValue(undefined)
+      vi.mocked(api.conversations.getSnapshot).mockReturnValueOnce(stalePromise).mockResolvedValue(fresh)
+      vi.mocked(api.messages.switchBranch).mockResolvedValue(undefined)
 
       let operation: Promise<unknown> | null = null
       if (path === 'loadMessages') operation = store().loadMessages(CONV)
@@ -156,7 +164,7 @@ describe('plan review snapshot monotonicity', () => {
         store().handleCompactDone(CONV)
       } else operation = store().switchBranch(CONV, 'message-other')
 
-      await vi.waitFor(() => expect(api.conversationSnapshot).toHaveBeenCalled())
+      await vi.waitFor(() => expect(api.conversations.getSnapshot).toHaveBeenCalled())
       expect(usePlanReviewStore.getState().receiveReviewEvent(settledEvent)).toBe(true)
       store().handlePlanReviewEvent(settledEvent)
       resolveStale(
@@ -200,7 +208,7 @@ describe('plan review global attention', () => {
     useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [] })
     usePlanReviewStore.setState({ activeReviewId: null, summaries: {} })
     store().ensureSession(CONV)
-    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    vi.mocked(api.userCommands.getActive).mockResolvedValue(null)
   })
 
   it.each([
@@ -209,7 +217,7 @@ describe('plan review global attention', () => {
     ['changes_requested', null],
     ['orphaned', null],
   ] as const)('restores a %s review consistently from a snapshot', async (status, stage) => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }, { plan_reviews: [summary(status)] }),
     )
 
@@ -975,7 +983,7 @@ describe('a reload racing the live round', () => {
   /** A reload whose response lands only when the test says so. */
   function reloadPausedMidRound(): [Promise<void>, (snap: ConversationSnapshotResponse) => void] {
     let land: (snap: ConversationSnapshotResponse) => void = () => {}
-    vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
+    vi.mocked(api.conversations.getSnapshot).mockReturnValueOnce(
       new Promise<ConversationSnapshotResponse>((resolve) => {
         land = resolve
       }),
@@ -1079,7 +1087,7 @@ describe('literal shell command lifecycle', () => {
   })
 
   beforeEach(() => {
-    vi.mocked(api.activeUserShellTurn).mockResolvedValue(null)
+    vi.mocked(api.userCommands.getActive).mockResolvedValue(null)
     useConversationStore.setState({ sessions: {} })
   })
 
@@ -1104,7 +1112,7 @@ describe('literal shell command lifecycle', () => {
   })
 
   it('rehydrates a live command when a conversation is loaded after reload', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({
         messages: [
           msg('message-shell', {
@@ -1118,7 +1126,7 @@ describe('literal shell command lifecycle', () => {
         branches: [],
       }),
     )
-    vi.mocked(api.activeUserShellTurn).mockResolvedValue('turn-live')
+    vi.mocked(api.userCommands.getActive).mockResolvedValue('turn-live')
 
     expect(await store().loadMessages('c1')).toBe(true)
 
@@ -1130,10 +1138,10 @@ describe('literal shell command lifecycle', () => {
 
   it('does not let an in-flight hydrate resurrect a command after its finish event', async () => {
     let resolveActive!: (turnId: string | null) => void
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }),
     )
-    vi.mocked(api.activeUserShellTurn).mockReturnValue(
+    vi.mocked(api.userCommands.getActive).mockReturnValue(
       new Promise((resolve) => {
         resolveActive = resolve
       }),
@@ -1150,10 +1158,10 @@ describe('literal shell command lifecycle', () => {
 
   it('invalidates a pre-reload active query when finish arrives before the session knew the turn', async () => {
     let resolveActive!: (turnId: string | null) => void
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }),
     )
-    vi.mocked(api.activeUserShellTurn).mockReturnValue(
+    vi.mocked(api.userCommands.getActive).mockReturnValue(
       new Promise((resolve) => {
         resolveActive = resolve
       }),
@@ -1178,7 +1186,7 @@ describe('stops are scoped to a turn', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }),
     )
     useConversationStore.setState({ sessions: {} })
@@ -1231,7 +1239,7 @@ describe('stops are scoped to a turn', () => {
   /// unlocked, the turn renders as a finished empty answer, and the send it
   /// invites comes back "this conversation is already answering".
   it('follows a turn that was already running when the snapshot was read', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf(
         { messages: [msg('a1', { turn_id: 'turn-live' })], head_message_id: 'a1', branches: [] },
         { turns: [turnRecord('turn-done', 'done'), turnRecord('turn-live', 'running')] },
@@ -1252,7 +1260,7 @@ describe('stops are scoped to a turn', () => {
   /// dead process left behind reaches this code — but a turn that ended
   /// normally must not lock the composer either.
   it('does not follow a turn that has already ended', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf(
         { messages: [], head_message_id: null, branches: [] },
         {
@@ -1272,7 +1280,7 @@ describe('stops are scoped to a turn', () => {
   /// and releasing on that would undo the lock the send had just taken — and
   /// hand the user a composer the backend is about to refuse.
   it('never unlocks a composer that a send had already locked', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }),
     )
 
@@ -1288,7 +1296,7 @@ describe('stops are scoped to a turn', () => {
   /// else's turn is not evidence that the local one lost. Taking it would hand
   /// that turn's stop the power to unlock a composer this one still owns.
   it('does not hand the session to another turn a snapshot happens to name', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf(
         { messages: [], head_message_id: null, branches: [] },
         { turns: [turnRecord('turn-theirs', 'running')] },
@@ -1311,7 +1319,7 @@ describe('stops are scoped to a turn', () => {
   /// — still passes the check and lands on top of the bubble they just added.
   it('discards a reload that was already in flight when the turn started', async () => {
     let land: (snap: ConversationSnapshotResponse) => void = () => {}
-    vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
+    vi.mocked(api.conversations.getSnapshot).mockReturnValueOnce(
       new Promise<ConversationSnapshotResponse>((resolve) => {
         land = resolve
       }),
@@ -1546,7 +1554,7 @@ describe('stops are scoped to a turn', () => {
     store().handleStop(CONV, 'turn-1')
 
     await vi.waitFor(() => {
-      expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: CONV })
+      expect(api.conversations.getSnapshot).toHaveBeenCalledWith({ conversation_id: CONV })
     })
     expect(session().streaming).toBe(true)
   })
@@ -1555,7 +1563,7 @@ describe('stops are scoped to a turn', () => {
   /// left to answer the card. It must not do that to a turn that is still
   /// running.
   it('orphans a card hydrated from a snapshot, with no live approval event', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf(
         {
           messages: [
@@ -1618,7 +1626,7 @@ describe('compaction state', () => {
     vi.clearAllMocks()
     useConversationStore.setState({ sessions: {} })
     store().ensureSession(CONV)
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({ messages: [], branches: [] }))
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(snapshotOf({ messages: [], branches: [] }))
   })
 
   /// A mid-turn pass rewrites the request the engine is holding and writes
@@ -1630,7 +1638,7 @@ describe('compaction state', () => {
     store().handleCompactDone(CONV, true)
 
     expect(session().compacting).toBe(false)
-    expect(api.conversationSnapshot).not.toHaveBeenCalled()
+    expect(api.conversations.getSnapshot).not.toHaveBeenCalled()
   })
 
   /// The pre-turn and manual passes do write: a summary row, and a head that
@@ -1640,7 +1648,7 @@ describe('compaction state', () => {
     store().handleCompactDone(CONV)
 
     await vi.waitFor(() => {
-      expect(api.conversationSnapshot).toHaveBeenCalledWith({ conversationId: CONV })
+      expect(api.conversations.getSnapshot).toHaveBeenCalledWith({ conversation_id: CONV })
     })
     expect(session().compacting).toBe(false)
   })
@@ -1658,7 +1666,7 @@ describe('branch state', () => {
   /// Without this the pager only shows up the next time the conversation is
   /// opened, since the turn that created the branch point ends with this reload.
   it('picks up a new branch point when a turn ends', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({
         messages: [msg('q'), msg('a2')],
         head_message_id: 'a2',
@@ -1674,7 +1682,7 @@ describe('branch state', () => {
   })
 
   it('rejects inconsistent and extended branch responses', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({
         messages: [msg('a2')],
         head_message_id: 'a2',
@@ -1702,8 +1710,8 @@ describe('branch state', () => {
     }))
     // The switch moves the head and says nothing; the snapshot after it is
     // where the new path comes from.
-    vi.mocked(api.switchBranch).mockResolvedValue(undefined)
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.messages.switchBranch).mockResolvedValue(undefined)
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({
         messages: [msg('q'), msg('a2', { content: 'second' })],
         head_message_id: 'a2',
@@ -1720,7 +1728,7 @@ describe('branch state', () => {
   })
 
   it('clears the switching flag and surfaces error when the request fails', async () => {
-    vi.mocked(api.switchBranch).mockRejectedValue(new Error('nope'))
+    vi.mocked(api.messages.switchBranch).mockRejectedValue(new Error('nope'))
 
     await useConversationStore.getState().switchBranch(CONV, 'a2')
     expect(useConversationStore.getState().sessions[CONV]?.switchingBranch).toBe(false)
@@ -1738,10 +1746,10 @@ describe('branch state', () => {
   it('does not let a switch started before a turn overwrite that turn', async () => {
     const store = () => useConversationStore.getState()
     const session = () => store().sessions[CONV]!
-    vi.mocked(api.switchBranch).mockResolvedValue(undefined)
+    vi.mocked(api.messages.switchBranch).mockResolvedValue(undefined)
 
     let land: (snap: ConversationSnapshotResponse) => void = () => {}
-    vi.mocked(api.conversationSnapshot)
+    vi.mocked(api.conversations.getSnapshot)
       .mockReturnValueOnce(
         new Promise<ConversationSnapshotResponse>((resolve) => {
           land = resolve
@@ -1773,7 +1781,7 @@ describe('branch state', () => {
     // The stale snapshot never lands...
     expect(ids).not.toContain('stale')
     // ...but the conversation is read again rather than left as it was.
-    expect(api.conversationSnapshot).toHaveBeenCalledTimes(2)
+    expect(api.conversations.getSnapshot).toHaveBeenCalledTimes(2)
     expect(ids).toEqual(['q', 'a2', 'live'])
     // The branch that was switched to is the one on screen.
     expect(session().branches.a2?.total).toBe(2)
@@ -2043,7 +2051,7 @@ describe('the waiting-on-you queue', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+    vi.mocked(api.conversations.getSnapshot).mockResolvedValue(
       snapshotOf({ messages: [], head_message_id: null, branches: [] }),
     )
     useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [], activeId: null })
@@ -2244,7 +2252,7 @@ describe('the waiting-on-you queue', () => {
     /** A window that reloaded, or a phone that has just connected: the events
      *  that announced these went out to nobody and are never replayed. */
     it('adopts questions it never saw announced', async () => {
-      vi.mocked(api.allPendingApprovals).mockResolvedValue([
+      vi.mocked(api.approvals.listPending).mockResolvedValue([
         {
           approval_id: 'appr-1',
           conversation_id: CONV,
@@ -2273,7 +2281,7 @@ describe('the waiting-on-you queue', () => {
      *  no turn behind it — its turn ended while nothing was listening. */
     it('drops what the register no longer holds', async () => {
       store().handleToolApproval(CONV, 'a1', 'appr-dead', 'c1', 'run_command', '{}', ASKED_AT)
-      vi.mocked(api.allPendingApprovals).mockResolvedValue([])
+      vi.mocked(api.approvals.listPending).mockResolvedValue([])
 
       await store().loadAllPending()
 
@@ -2285,7 +2293,7 @@ describe('the waiting-on-you queue', () => {
      *  time a reconnect raced an event. */
     it('does not drop a question that arrived while it was asking', async () => {
       let release: (rows: never[]) => void = () => {}
-      vi.mocked(api.allPendingApprovals).mockReturnValue(
+      vi.mocked(api.approvals.listPending).mockReturnValue(
         new Promise((resolve) => {
           release = resolve
         }),
@@ -2304,7 +2312,7 @@ describe('the waiting-on-you queue', () => {
      *  about. */
     it('leaves the queue alone when the call fails', async () => {
       store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', ASKED_AT)
-      vi.mocked(api.allPendingApprovals).mockRejectedValue(new Error('no'))
+      vi.mocked(api.approvals.listPending).mockRejectedValue(new Error('no'))
 
       await store().loadAllPending()
 

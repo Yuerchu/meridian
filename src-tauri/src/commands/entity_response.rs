@@ -1,8 +1,8 @@
 //! Stable IPC response shapes for database-backed entities.
 //!
 //! Database rows deliberately stop at the command boundary.  Keep these field
-//! lists explicit: adding a column to a Diesel row must not silently expand the
-//! desktop or remote API.
+//! lists explicit: adding a column to a persistence row must not silently expand
+//! the desktop or remote API.
 
 use meridian_core::db::entity::emoji::{EmojiSemanticStatus, EmojiSource};
 use meridian_core::db::entity::emoji_pack::EmojiPackKind;

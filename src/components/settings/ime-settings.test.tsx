@@ -12,13 +12,15 @@ vi.mock('@tauri-apps/plugin-dialog', () => ({ open: mocks.open }))
 vi.mock('@/hooks/use-platform', () => ({ usePlatform: () => 'windows' }))
 vi.mock('@/api', () => ({
   api: {
-    getImeStatus: vi.fn(),
-    getImeConfig: vi.fn(),
-    listImeDictionaries: vi.fn(),
-    getImeLmStatus: vi.fn(),
-    getImeLearning: vi.fn(),
-    stageImeDictionary: vi.fn(),
-    cancelStagedImeDictionaries: vi.fn(),
+    ime: {
+      getStatus: vi.fn(),
+      getConfig: vi.fn(),
+      listDictionaries: vi.fn(),
+      getLmStatus: vi.fn(),
+      getLearning: vi.fn(),
+      stageDictionary: vi.fn(),
+      cancelDictionaryStaging: vi.fn(),
+    },
   },
 }))
 
@@ -35,7 +37,7 @@ const twoRoots: ImeDictionaryStagedInfoResponse = {
 beforeEach(async () => {
   await i18n.changeLanguage('zh-CN')
   vi.clearAllMocks()
-  mockApi.getImeStatus.mockResolvedValue({
+  mockApi.ime.getStatus.mockResolvedValue({
     registered_x64: true,
     registered_x86: true,
     profile_enabled: true,
@@ -46,7 +48,7 @@ beforeEach(async () => {
     protocol_version: 3,
     dll_version: '0.3.0',
   } as never)
-  mockApi.getImeConfig.mockResolvedValue({
+  mockApi.ime.getConfig.mockResolvedValue({
     scheme: 'pinyin',
     page_size: 5,
     punctuation: 'full_width',
@@ -56,11 +58,11 @@ beforeEach(async () => {
     context_apps: [],
     prediction: true,
   })
-  mockApi.listImeDictionaries.mockResolvedValue([])
-  mockApi.getImeLmStatus.mockResolvedValue({ bundles: [], active: null, runtime_found: true } as never)
-  mockApi.getImeLearning.mockResolvedValue({ words: [], transitions: 0, pending: 0 })
-  mockApi.stageImeDictionary.mockResolvedValue(twoRoots)
-  mockApi.cancelStagedImeDictionaries.mockResolvedValue(null)
+  mockApi.ime.listDictionaries.mockResolvedValue([])
+  mockApi.ime.getLmStatus.mockResolvedValue({ bundles: [], active: null, runtime_found: true } as never)
+  mockApi.ime.getLearning.mockResolvedValue({ words: [], transitions: 0, pending: 0 })
+  mockApi.ime.stageDictionary.mockResolvedValue(twoRoots)
+  mockApi.ime.cancelDictionaryStaging.mockResolvedValue(undefined)
   mocks.open.mockResolvedValue('C:\\Downloads\\rime-ice.zip')
 })
 
@@ -77,13 +79,13 @@ describe('a staged archive is handed back', () => {
   it('when the chooser is cancelled', async () => {
     const { user } = await stageTwoRoots()
     await user.click(screen.getByRole('button', { name: i18n.t('common.cancel') }))
-    expect(mockApi.cancelStagedImeDictionaries).toHaveBeenCalledWith({ staging_id: 'stage-7' })
+    expect(mockApi.ime.cancelDictionaryStaging).toHaveBeenCalledWith({ staging_id: 'stage-7' })
     expect(screen.queryByText(i18n.t('settings.ime.chooseRoots', { count: 2 }))).toBeNull()
   })
 
   it('when the page is left with the chooser open', async () => {
     const { view } = await stageTwoRoots()
     view.unmount()
-    await waitFor(() => expect(mockApi.cancelStagedImeDictionaries).toHaveBeenCalledWith({ staging_id: 'stage-7' }))
+    await waitFor(() => expect(mockApi.ime.cancelDictionaryStaging).toHaveBeenCalledWith({ staging_id: 'stage-7' }))
   })
 })

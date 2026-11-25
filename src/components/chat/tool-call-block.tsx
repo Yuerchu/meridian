@@ -543,7 +543,8 @@ export function AskUserBlock({
       setSending(true)
       // The answer sent back to the backend, not anything drawn.
       // eslint-disable-next-line meridian-ui/no-json-tool-display -- wire payload, not display
-      api.respondToAsk({ approvalId, response: JSON.stringify(result) }).then(
+      const response = JSON.stringify(result)
+      api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'respond', response } }).then(
         // Same reason as `PendingApproval`: the queue is a separate ledger and
         // learns nothing from an answer given here. A question answered on this
         // form and left in it is offered again as a notification — "go and answer this"
@@ -1276,7 +1277,9 @@ export function PendingApproval({
         <Button
           icon={<Check />}
           aria-keyshortcuts={ariaHotkey(APPROVE_HOTKEY)}
-          onPress={() => decide(() => api.approveToolCall(approvalId))}
+          onPress={() =>
+            decide(() => api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'approve' } }))
+          }
         >
           <span data-slot="approval-allow-label">
             {retry ? t(escalationAllowKey(retry.kind)) : t('chat.tool.allow')}
@@ -1287,7 +1290,10 @@ export function PendingApproval({
     )
   }
 
-  const deny = () => decide(() => api.denyToolCall({ approvalId, reason: feedback || null }))
+  const deny = () =>
+    decide(() =>
+      api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'deny', reason: feedback || null } }),
+    )
 
   return (
     <div data-slot="approval-feedback" className="m-tool-call-block__approval-feedback">
@@ -1674,11 +1680,20 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
             <Button
               icon={<X />}
               variant="secondary"
-              onPress={() => decide(() => api.denyToolCall({ approvalId, reason: null }))}
+              onPress={() =>
+                decide(() =>
+                  api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'deny', reason: null } }),
+                )
+              }
             >
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button icon={<Compass />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button
+              icon={<Compass />}
+              onPress={() =>
+                decide(() => api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'approve' } }))
+              }
+            >
               {t('chat.plan.startPlanning')}
             </Button>
           </ChatToolApproval>
@@ -1761,7 +1776,13 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   )
 
   const sendBack = useCallback(() => {
-    if (approvalId) decide(() => api.denyToolCall({ approvalId, reason: feedback.trim() || null }))
+    if (approvalId)
+      decide(() =>
+        api.approvals.submitDecision({
+          approval_id: approvalId,
+          decision: { kind: 'deny', reason: feedback.trim() || null },
+        }),
+      )
   }, [decide, approvalId, feedback])
 
   const presentation = useContext(ChatToolPresentationContext)
@@ -1815,7 +1836,12 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
               <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
                 {t('chat.plan.revise')}
               </Button>
-              <Button icon={<Check />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+              <Button
+                icon={<Check />}
+                onPress={() =>
+                  decide(() => api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'approve' } }))
+                }
+              >
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
@@ -1825,7 +1851,12 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
             <Button icon={<ArrowUTurnLeft />} variant="secondary" onPress={() => setUi('feedback')}>
               {t('chat.plan.revise')}
             </Button>
-            <Button icon={<Check />} onPress={() => decide(() => api.approveToolCall(approvalId))}>
+            <Button
+              icon={<Check />}
+              onPress={() =>
+                decide(() => api.approvals.submitDecision({ approval_id: approvalId, decision: { kind: 'approve' } }))
+              }
+            >
               {t('chat.plan.approve')}
             </Button>
           </ChatToolApproval>

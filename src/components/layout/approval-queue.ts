@@ -369,10 +369,14 @@ export function useAttentionActions(onSelect: (conversationId: string) => Promis
         defer(item.approvalId)
         return
       case 'deny':
-        decide(item, () => api.denyToolCall({ approvalId: item.approvalId, reason: null }))
+        decide(item, () =>
+          api.approvals.submitDecision({ approval_id: item.approvalId, decision: { kind: 'deny', reason: null } }),
+        )
         return
       case 'allow':
-        decide(item, () => api.approveToolCall(item.approvalId))
+        decide(item, () =>
+          api.approvals.submitDecision({ approval_id: item.approvalId, decision: { kind: 'approve' } }),
+        )
         return
     }
   }

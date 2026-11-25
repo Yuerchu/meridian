@@ -66,7 +66,7 @@ impl std::fmt::Display for UserCommandStatus {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UserCommandRunRequest {
     pub conversation_id: String,
     pub turn_id: String,
@@ -75,10 +75,16 @@ pub struct UserCommandRunRequest {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct UserCommandResultReadRequest {
     pub conversation_id: String,
     pub message_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UserCommandActiveReadRequest {
+    pub conversation_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -272,7 +278,7 @@ fn validate_retry_environment(
     skip_all,
     fields(conversation_id = %request.conversation_id, turn_id = %request.turn_id)
 )]
-pub async fn run_user_command(
+pub async fn invoke_user_command(
     app: tauri::AppHandle,
     request: UserCommandRunRequest,
 ) -> Result<UserCommandResultResponse, String> {
@@ -553,8 +559,11 @@ fn emit_finished_user_command(
 /// Return only a live literal `!` command. Model turns share the same
 /// coordinator but must never restore a terminal card's busy/Stop state.
 #[tauri::command]
-pub async fn active_user_shell_turn(app: tauri::AppHandle, conversation_id: String) -> Result<Option<String>, String> {
-    Ok(app.services().turns.active_user_shell_turn(&conversation_id))
+pub async fn get_active_user_command(
+    app: tauri::AppHandle,
+    request: UserCommandActiveReadRequest,
+) -> Result<Option<String>, String> {
+    Ok(app.services().turns.active_user_shell_turn(&request.conversation_id))
 }
 
 /// Reload one terminal card without exposing a generic raw-context reader.
@@ -615,7 +624,7 @@ async fn prepare(
     services
         .db
         .write(async |tx| {
-            let Some(conversation) = sea_ops::conversation::get_conversation(tx, conversation_id).await? else {
+            let Some(conversation) = sea_ops::conversation::get(tx, conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             let existing = sea_ops::message::find_by_turn_and_source(tx, conversation_id, turn_id, SOURCE).await?;
@@ -634,7 +643,7 @@ async fn prepare(
                         turn_id: Some(turn_id.to_string()),
                         ..sea_ops::message::new_row(&id, conversation_id, "user", &visible, now_ms())
                     };
-                    sea_ops::message::append_message(tx, row, conversation.head_message_id.as_deref())
+                    sea_ops::message::append(tx, row, conversation.head_message_id.as_deref())
                         .await?
                         .id
                 }
@@ -894,31 +903,31 @@ mod tests {
     #[test]
     fn command_requests_are_exact_and_require_nullable_retry_key() {
         let request = serde_json::json!({
-            "conversationId": "conversation-1",
-            "turnId": "00000000-0000-0000-0000-000000000001",
+            "conversation_id": "conversation-1",
+            "turn_id": "00000000-0000-0000-0000-000000000001",
             "command": "echo ok",
-            "retryWithoutSandbox": null
+            "retry_without_sandbox": null
         });
         serde_json::from_value::<UserCommandRunRequest>(request.clone()).unwrap();
 
         let mut missing = request.clone();
-        missing.as_object_mut().unwrap().remove("retryWithoutSandbox");
+        missing.as_object_mut().unwrap().remove("retry_without_sandbox");
         assert!(serde_json::from_value::<UserCommandRunRequest>(missing).is_err());
 
         let mut unknown = request;
-        unknown["futureField"] = serde_json::json!(true);
+        unknown["future_field"] = serde_json::json!(true);
         assert!(serde_json::from_value::<UserCommandRunRequest>(unknown).is_err());
 
         serde_json::from_value::<UserCommandResultReadRequest>(serde_json::json!({
-            "conversationId": "conversation-1",
-            "messageId": "message-1"
+            "conversation_id": "conversation-1",
+            "message_id": "message-1"
         }))
         .unwrap();
         assert!(
             serde_json::from_value::<UserCommandResultReadRequest>(serde_json::json!({
-                "conversationId": "conversation-1",
-                "messageId": "message-1",
-                "legacyId": "message-1"
+                "conversation_id": "conversation-1",
+                "message_id": "message-1",
+                "legacy_id": "message-1"
             }))
             .is_err()
         );

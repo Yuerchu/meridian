@@ -107,7 +107,7 @@ pub struct McpToolInfoResponse {
 pub type McpToolListResponse = Vec<McpToolInfoResponse>;
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct McpServerCreateRequest {
     name: String,
     transport_type: McpTransport,
@@ -119,7 +119,7 @@ pub struct McpServerCreateRequest {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct McpServerUpdateRequest {
     id: String,
     name: Option<String>,
@@ -137,12 +137,34 @@ pub struct McpServerUpdateRequest {
     is_enabled: Option<bool>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerDeleteRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerConnectRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerDisconnectRequest {
+    id: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpToolListRequest {
+    server_id: RequiredNullable<String>,
+}
+
 #[tauri::command]
 pub async fn list_mcp_servers(app: tauri::AppHandle) -> Result<McpServerListResponse, String> {
     let services = app.services();
-    let rows = mcp_server_ops::list_mcp_servers(&services.db)
-        .await
-        .map_err(|e| e.to_string())?;
+    let rows = mcp_server_ops::list(&services.db).await.map_err(|e| e.to_string())?;
     Ok(rows.into_iter().map(Into::into).collect())
 }
 
@@ -173,7 +195,7 @@ pub async fn create_mcp_server(
     };
     let row = services
         .db
-        .write(async |tx| mcp_server_ops::create_mcp_server(tx, row).await)
+        .write(async |tx| mcp_server_ops::create(tx, row).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.into())
@@ -199,28 +221,30 @@ pub async fn update_mcp_server(
     };
     let row = services
         .db
-        .write(async |tx| mcp_server_ops::update_mcp_server(tx, &request.id, changeset).await)
+        .write(async |tx| mcp_server_ops::update(tx, &request.id, changeset).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(row.into())
 }
 
 #[tauri::command]
-pub async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_mcp_server(app: tauri::AppHandle, request: McpServerDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     services.mcp.disconnect(&id).await;
     services
         .db
-        .write(async |tx| mcp_server_ops::delete_mcp_server(tx, &id).await)
+        .write(async |tx| mcp_server_ops::delete(tx, &id).await)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn connect_mcp_server(app: tauri::AppHandle, request: McpServerConnectRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
-    let server = mcp_server_ops::get_mcp_server(&services.db, &id)
+    let server = mcp_server_ops::get(&services.db, &id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("MCP server `{id}` not found"))?;
@@ -230,22 +254,22 @@ pub async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(),
 }
 
 #[tauri::command]
-pub async fn disconnect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn disconnect_mcp_server(app: tauri::AppHandle, request: McpServerDisconnectRequest) -> Result<(), String> {
     // Deliberately leaves `is_enabled` alone. Disconnecting is something you do
     // now; auto-connect is something you meant for next time.
     let services = app.services();
-    services.mcp.disconnect(&id).await;
+    services.mcp.disconnect(&request.id).await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn list_mcp_tools(
     app: tauri::AppHandle,
-    server_id: Option<String>,
+    request: McpToolListRequest,
 ) -> Result<McpServerToolListResponse, String> {
     let services = app.services();
     let registry = services.mcp.clone();
-    let tools = match server_id {
+    let tools = match request.server_id.0 {
         Some(sid) => registry.tools_for_server(&sid),
         None => registry.tools().as_ref().clone(),
     };
@@ -259,7 +283,7 @@ pub async fn list_mcp_tools(
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct McpToolEnabledUpdateRequest {
     server_id: String,
     tool_name: String,
@@ -281,7 +305,7 @@ pub async fn set_mcp_tool_enabled(
     let row = services
         .db
         .write(async |tx| {
-            let server = mcp_server_ops::get_mcp_server(tx, &request.server_id)
+            let server = mcp_server_ops::get(tx, &request.server_id)
                 .await?
                 .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
             let mut names = server.disabled_tools.0.clone();
@@ -290,7 +314,7 @@ pub async fn set_mcp_tool_enabled(
             } else if !names.iter().any(|name| name == &request.tool_name) {
                 names.push(request.tool_name.clone());
             }
-            mcp_server_ops::update_mcp_server(
+            mcp_server_ops::update(
                 tx,
                 &request.server_id,
                 McpServerChangeset {
@@ -326,7 +350,7 @@ pub async fn list_mcp_connection_statuses(app: tauri::AppHandle) -> Result<McpCo
 }
 
 #[tauri::command]
-pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<McpToolListResponse, String> {
+pub async fn list_tools(app: tauri::AppHandle) -> Result<McpToolListResponse, String> {
     let services = app.services();
     let tool_registry = &services.tools;
     let mcp_tools = services.mcp.tools();

@@ -363,10 +363,20 @@ impl ModelConfigUpsertRequest {
     }
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelConfigListRequest {
+    pub provider_id: String,
+}
+
 /// Every model configured on one provider, each beside the profile describing
 /// it and how many providers share that profile.
 #[tauri::command]
-pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<ModelConfigListResponse, String> {
+pub async fn list_model_configs(
+    app: tauri::AppHandle,
+    request: ModelConfigListRequest,
+) -> Result<ModelConfigListResponse, String> {
+    let provider_id = request.provider_id;
     let (rows, counts) = app
         .services()
         .db
@@ -402,7 +412,7 @@ pub async fn list_model_profiles(app: tauri::AppHandle) -> Result<ModelProfileLi
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ModelConfigReadRequest {
     pub provider_id: String,
     pub model_id: String,
@@ -437,7 +447,7 @@ pub async fn get_model_config(
 }
 
 #[tauri::command]
-pub async fn save_model_config(
+pub async fn set_model_config(
     app: tauri::AppHandle,
     request: ModelConfigUpsertRequest,
 ) -> Result<ModelConfigInfoResponse, String> {
@@ -535,8 +545,15 @@ pub async fn save_model_config(
     ModelConfigInfoResponse::from_rows(row, saved_profile, count)
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelConfigDeleteRequest {
+    pub id: String,
+}
+
 #[tauri::command]
-pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_model_config(app: tauri::AppHandle, request: ModelConfigDeleteRequest) -> Result<(), String> {
+    let id = request.id;
     let services = app.services();
     // pool-read-before-write: the row only names the model whose barrier the
     // write checks; the write re-reads it and refuses on any difference.
@@ -719,7 +736,7 @@ mod tests {
         let sea = db::sea::sea_test_db().await;
         seed_provider(&sea).await;
         sea.write(async |tx| {
-            db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
             profile_ops::insert(tx, profile_write().into_model("profile-2".into())).await?;
             config_ops::upsert(
                 tx,
@@ -755,12 +772,12 @@ mod tests {
             );
         }
 
-        let valid = serde_json::json!({ "providerId": "provider-1", "modelId": "model-1" });
+        let valid = serde_json::json!({ "provider_id": "provider-1", "model_id": "model-1" });
         assert!(serde_json::from_value::<ModelConfigReadRequest>(valid).is_ok());
         assert!(
             serde_json::from_value::<ModelConfigReadRequest>(serde_json::json!({
-                "providerId": "provider-1",
-                "modelId": "model-1",
+                "provider_id": "provider-1",
+                "model_id": "model-1",
                 "legacy": true
             }))
             .is_err()

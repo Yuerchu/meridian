@@ -8,16 +8,19 @@ import type { ShellProps } from '@/components/layout/shell-props'
 import type { ProjectInfoResponse } from '@/types'
 
 const apiMocks = vi.hoisted(() => ({
-  createConversation: vi.fn(),
-  createProject: vi.fn(),
-  acpOpenSession: vi.fn(),
-  deleteConversation: vi.fn(),
-  listConversations: vi.fn(),
-  listProjects: vi.fn(),
-  setConversationAssistant: vi.fn(),
-  setConversationReasoningPrefs: vi.fn(),
-  setConversationMode: vi.fn(),
-  setConversationAcceptEdits: vi.fn(),
+  conversations: {
+    create: vi.fn(),
+    delete: vi.fn(),
+    list: vi.fn(),
+    update: vi.fn(),
+  },
+  projects: {
+    create: vi.fn(),
+    list: vi.fn(),
+  },
+  acp: {
+    openSession: vi.fn(),
+  },
 }))
 
 const shellCapture = vi.hoisted(() => ({ props: null as ShellProps | null }))
@@ -74,8 +77,8 @@ const createdProject: ProjectInfoResponse = {
 async function renderApp() {
   render(<App />)
   await waitFor(() => {
-    expect(apiMocks.listConversations).toHaveBeenCalledTimes(1)
-    expect(apiMocks.listProjects).toHaveBeenCalledTimes(1)
+    expect(apiMocks.conversations.list).toHaveBeenCalledTimes(1)
+    expect(apiMocks.projects.list).toHaveBeenCalledTimes(1)
   })
 }
 
@@ -85,16 +88,13 @@ describe('creating a conversation from the welcome composer', () => {
     shellCapture.props = null
     useConversationStore.setState(useConversationStore.getInitialState(), true)
 
-    apiMocks.listConversations.mockResolvedValue([])
-    apiMocks.listProjects.mockResolvedValue([])
-    apiMocks.createConversation.mockResolvedValue({ id: 'conversation-new' })
-    apiMocks.createProject.mockResolvedValue(createdProject)
-    apiMocks.acpOpenSession.mockResolvedValue('conversation-hosted')
-    apiMocks.deleteConversation.mockResolvedValue(undefined)
-    apiMocks.setConversationAssistant.mockResolvedValue(undefined)
-    apiMocks.setConversationReasoningPrefs.mockResolvedValue(undefined)
-    apiMocks.setConversationMode.mockResolvedValue(undefined)
-    apiMocks.setConversationAcceptEdits.mockResolvedValue(undefined)
+    apiMocks.conversations.list.mockResolvedValue([])
+    apiMocks.projects.list.mockResolvedValue([])
+    apiMocks.conversations.create.mockResolvedValue({ id: 'conversation-new' })
+    apiMocks.projects.create.mockResolvedValue(createdProject)
+    apiMocks.acp.openSession.mockResolvedValue('conversation-hosted')
+    apiMocks.conversations.delete.mockResolvedValue(undefined)
+    apiMocks.conversations.update.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -103,14 +103,16 @@ describe('creating a conversation from the welcome composer', () => {
 
   it('removes an empty conversation and keeps the draft unsent when a first-turn preference cannot be saved', async () => {
     const preferenceError = new Error('mode write failed')
-    apiMocks.setConversationMode.mockRejectedValueOnce(preferenceError)
     let finishLastWrite!: () => void
-    apiMocks.setConversationAcceptEdits.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
+    apiMocks.conversations.update.mockImplementation((req: Record<string, unknown>) => {
+      if ('mode' in req) return Promise.reject(preferenceError)
+      if ('accept_edits' in req) {
+        return new Promise<void>((resolve) => {
           finishLastWrite = resolve
-        }),
-    )
+        })
+      }
+      return Promise.resolve(undefined)
+    })
     await renderApp()
 
     let creation!: Promise<void>
@@ -119,18 +121,20 @@ describe('creating a conversation from the welcome composer', () => {
       await Promise.resolve()
     })
 
-    await waitFor(() => expect(apiMocks.setConversationMode).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(apiMocks.conversations.update).toHaveBeenCalledWith(expect.objectContaining({ mode: 'plan' })),
+    )
     // Deletion waits for every preference write to stop touching the row.
-    expect(apiMocks.deleteConversation).not.toHaveBeenCalled()
+    expect(apiMocks.conversations.delete).not.toHaveBeenCalled()
 
     await act(async () => {
       finishLastWrite()
       await expect(creation).rejects.toBe(preferenceError)
     })
 
-    expect(apiMocks.createConversation).toHaveBeenCalledTimes(1)
-    expect(apiMocks.deleteConversation).toHaveBeenCalledWith('conversation-new')
-    expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
+    expect(apiMocks.conversations.create).toHaveBeenCalledTimes(1)
+    expect(apiMocks.conversations.delete).toHaveBeenCalledWith({ id: 'conversation-new' })
+    expect(apiMocks.conversations.list).toHaveBeenCalledTimes(2)
     expect(useConversationStore.getState().activeId).toBeNull()
     expect(shellCapture.props?.pendingDraft).toBeNull()
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', '')
@@ -140,7 +144,7 @@ describe('creating a conversation from the welcome composer', () => {
   it('enters the new conversation with the original draft even when the sidebar refresh fails', async () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     const refreshError = new Error('sidebar refresh failed')
-    apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(refreshError)
+    apiMocks.conversations.list.mockResolvedValueOnce([]).mockRejectedValueOnce(refreshError)
     await renderApp()
 
     await act(async () => {
@@ -150,7 +154,7 @@ describe('creating a conversation from the welcome composer', () => {
     await waitFor(() => {
       expect(consoleError).toHaveBeenCalledWith('Failed to refresh conversations', refreshError)
     })
-    expect(apiMocks.createConversation).toHaveBeenCalledTimes(1)
+    expect(apiMocks.conversations.create).toHaveBeenCalledTimes(1)
     expect(useConversationStore.getState().activeId).toBe('conversation-new')
     expect(useConversationStore.getState().conversations).toContainEqual(
       expect.objectContaining({ id: 'conversation-new', assistant_id: 'assistant-1' }),
@@ -164,15 +168,15 @@ describe('creating a conversation from the welcome composer', () => {
   })
 
   it('creates exactly one blank conversation for the welcome /new route even when refresh fails', async () => {
-    apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    apiMocks.conversations.list.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
     await renderApp()
 
     await act(async () => {
       await expect(Promise.resolve(shellCapture.props!.onCreate())).resolves.toBeUndefined()
     })
 
-    expect(apiMocks.createConversation).toHaveBeenCalledTimes(1)
-    expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
+    expect(apiMocks.conversations.create).toHaveBeenCalledTimes(1)
+    expect(apiMocks.conversations.list).toHaveBeenCalledTimes(2)
     expect(useConversationStore.getState().activeId).toBe('conversation-new')
     expect(useConversationStore.getState().conversations).toContainEqual(
       expect.objectContaining({ id: 'conversation-new' }),
@@ -183,7 +187,7 @@ describe('creating a conversation from the welcome composer', () => {
   })
 
   it('keeps a created project locally and resolves the form mutation when its refresh fails', async () => {
-    apiMocks.listProjects.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    apiMocks.projects.list.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
     await renderApp()
 
     await act(async () => {
@@ -192,13 +196,13 @@ describe('creating a conversation from the welcome composer', () => {
       ).resolves.toBeUndefined()
     })
 
-    expect(apiMocks.createProject).toHaveBeenCalledTimes(1)
-    expect(apiMocks.listProjects).toHaveBeenCalledTimes(2)
+    expect(apiMocks.projects.create).toHaveBeenCalledTimes(1)
+    expect(apiMocks.projects.list).toHaveBeenCalledTimes(2)
     expect(useConversationStore.getState().projects).toContainEqual(createdProject)
   })
 
   it('navigates to a hosted session and reports success when only its refresh fails', async () => {
-    apiMocks.listConversations.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
+    apiMocks.conversations.list.mockResolvedValueOnce([]).mockRejectedValueOnce(new Error('refresh failed'))
     await renderApp()
 
     let result: string | null = 'not-called'
@@ -207,9 +211,9 @@ describe('creating a conversation from the welcome composer', () => {
     })
 
     expect(result).toBeNull()
-    expect(apiMocks.acpOpenSession).toHaveBeenCalledTimes(1)
-    expect(apiMocks.acpOpenSession).toHaveBeenCalledWith({ cwd: 'C:\\code\\hosted' })
-    expect(apiMocks.listConversations).toHaveBeenCalledTimes(2)
+    expect(apiMocks.acp.openSession).toHaveBeenCalledTimes(1)
+    expect(apiMocks.acp.openSession).toHaveBeenCalledWith({ cwd: 'C:\\code\\hosted' })
+    expect(apiMocks.conversations.list).toHaveBeenCalledTimes(2)
     expect(useConversationStore.getState().activeId).toBe('conversation-hosted')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-page', 'chat')
     expect(screen.getByTestId('app-shell')).toHaveAttribute('data-active-id', 'conversation-hosted')
@@ -227,9 +231,9 @@ describe('deleting a conversation', () => {
     shellCapture.props = null
     useConversationStore.setState(useConversationStore.getInitialState(), true)
     useUndoStore.setState({ pending: null, hidden: new Set() })
-    apiMocks.listConversations.mockResolvedValue([])
-    apiMocks.listProjects.mockResolvedValue([])
-    apiMocks.deleteConversation.mockResolvedValue(undefined)
+    apiMocks.conversations.list.mockResolvedValue([])
+    apiMocks.projects.list.mockResolvedValue([])
+    apiMocks.conversations.delete.mockResolvedValue(undefined)
   })
 
   // An undo offer sends the delete seconds after it was asked for, through the
@@ -242,12 +246,12 @@ describe('deleting a conversation', () => {
 
     await act(async () => askedWhileOpen('conversation-a'))
 
-    expect(apiMocks.deleteConversation).toHaveBeenCalledWith('conversation-a')
+    expect(apiMocks.conversations.delete).toHaveBeenCalledWith({ id: 'conversation-a' })
     expect(useConversationStore.getState().activeId).toBe('conversation-b')
   })
 
   it('draws no list with a conversation an undo offer is holding', async () => {
-    apiMocks.listConversations.mockResolvedValue([{ id: 'conversation-a' }, { id: 'conversation-b' }])
+    apiMocks.conversations.list.mockResolvedValue([{ id: 'conversation-a' }, { id: 'conversation-b' }])
     await renderApp()
     await waitFor(() => expect(shellCapture.props!.conversations).toHaveLength(2))
     act(() =>

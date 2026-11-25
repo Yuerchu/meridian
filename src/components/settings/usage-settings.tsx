@@ -425,23 +425,23 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
     const sinceMs = range === null ? null : Date.now() - range * DAY_MS
     const request = (dimension: UsageDimension): UsageReportRequest => ({
       dimension,
-      sinceMs,
-      untilMs: null,
+      since_ms: sinceMs,
+      until_ms: null,
       origin,
-      conversationId: null,
+      conversation_id: null,
     })
     // Seven groupings in flight together. They are independent queries over the
     // same table, and running them in series would show the page filling in one
     // chart at a time.
     Promise.all([
-      api.usageReport(request('total')),
-      api.usageReport(request('day')),
-      api.usageReport(request('provider')),
-      api.usageReport(request('model')),
-      api.usageReport(request('hour')),
-      api.usageReport(request('kind')),
-      api.usageReport(request(breakdown)),
-      api.usageCacheMisses({ sinceMs, untilMs: null, origin, conversationId: null }),
+      api.usage.getReport(request('total')),
+      api.usage.getReport(request('day')),
+      api.usage.getReport(request('provider')),
+      api.usage.getReport(request('model')),
+      api.usage.getReport(request('hour')),
+      api.usage.getReport(request('kind')),
+      api.usage.getReport(request(breakdown)),
+      api.usage.getCacheMisses({ since_ms: sinceMs, until_ms: null, origin, conversation_id: null }),
     ])
       .then(([total, days, providers, models, hours, kinds, rows, misses]) => {
         if (cancelled) return

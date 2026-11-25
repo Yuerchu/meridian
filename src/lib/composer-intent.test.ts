@@ -37,8 +37,8 @@ describe('composer intent', () => {
 
   it('emits complete nullable workspace reference requests', () => {
     expect(referenceInputs(extractComposerReferences('inspect @src/a.ts and @src/b.ts#L3'))).toEqual([
-      { path: 'src/a.ts', lineStart: null, lineEnd: null },
-      { path: 'src/b.ts', lineStart: 3, lineEnd: 3 },
+      { path: 'src/a.ts', line_start: null, line_end: null },
+      { path: 'src/b.ts', line_start: 3, line_end: 3 },
     ])
   })
 
@@ -52,8 +52,8 @@ describe('composer intent', () => {
 
     const held = new Set(['src/a.ts', 'docs/b.md'])
     expect(await selectExistingReferences(mentions, (path) => Promise.resolve(held.has(path)))).toEqual([
-      { path: 'src/a.ts', lineStart: null, lineEnd: null },
-      { path: 'docs/b.md', lineStart: null, lineEnd: null },
+      { path: 'src/a.ts', line_start: null, line_end: null },
+      { path: 'docs/b.md', line_start: null, line_end: null },
     ])
   })
 
@@ -71,7 +71,7 @@ describe('composer intent', () => {
     // A probe answers false for "does not exist" and "not reachable from here"
     // alike; neither is a reference, and neither may fail the turn.
     expect(await selectExistingReferences(mentions, (path) => Promise.resolve(path === 'src/a.ts'))).toEqual([
-      { path: 'src/a.ts', lineStart: null, lineEnd: null },
+      { path: 'src/a.ts', line_start: null, line_end: null },
     ])
     expect(await selectExistingReferences(mentions, () => Promise.resolve(false))).toEqual([])
   })

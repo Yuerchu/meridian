@@ -56,7 +56,7 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
 
   const reload = useCallback(() => {
     if (!enabled) return
-    api.queueList(conversationId).then(
+    api.queue.list({ conversation_id: conversationId }).then(
       (next) => {
         setItems(next)
         // A successful read settles a failed one; it says nothing about a
@@ -81,7 +81,7 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
     }
     let alive = true
     const read = () =>
-      api.queueList(conversationId).then(
+      api.queue.list({ conversation_id: conversationId }).then(
         (next) => {
           if (!alive) return
           setItems(next)
@@ -110,12 +110,12 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       contextRefs?: WorkspaceReferenceRequest[],
       conversationRefs?: string[],
     ) => {
-      const item = await api.queueEnqueue({
-        conversationId,
+      const item = await api.queue.create({
+        conversation_id: conversationId,
         content,
         delivery,
-        contextRefs: contextRefs ?? null,
-        conversationRefs: conversationRefs ?? null,
+        context_refs: contextRefs ?? null,
+        conversation_refs: conversationRefs ?? null,
       })
       // Optimistic only in the sense that it saves a round trip; the event that
       // follows replaces the list wholesale, including this row.
@@ -130,7 +130,7 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       // Refused for anything already sent, and the refusal is the point: the
       // list is redrawn from what the backend actually has rather than from
       // what was asked for.
-      await api.queueRemove({ conversationId, id }).catch(failed).finally(reload)
+      await api.queue.delete({ conversation_id: conversationId, id }).catch(failed).finally(reload)
     },
     [conversationId, failed, reload],
   )
@@ -140,23 +140,25 @@ export function usePromptQueue(conversationId: string, enabled: boolean) {
       // Drawn immediately, because a row that snaps back while a request is in
       // flight reads as the drag having failed.
       setItems(next)
-      await api.queueReorder({ conversationId, ids: next.map((i) => i.id) }).catch((err: unknown) => {
-        failed(err)
-        reload()
-      })
+      await api.queue
+        .setOrder({ conversation_id: conversationId, ids: next.map((i) => i.id) })
+        .catch((err: unknown) => {
+          failed(err)
+          reload()
+        })
     },
     [conversationId, failed, reload],
   )
 
   const setDelivery = useCallback(
     async (id: string, delivery: QueueDelivery) => {
-      await api.queueSetDelivery({ conversationId, id, delivery }).catch(failed).finally(reload)
+      await api.queue.update({ conversation_id: conversationId, id, delivery }).catch(failed).finally(reload)
     },
     [conversationId, failed, reload],
   )
 
   const release = useCallback(async () => {
-    await api.queueRelease(conversationId).catch(failed).finally(reload)
+    await api.queue.start({ conversation_id: conversationId }).catch(failed).finally(reload)
   }, [conversationId, failed, reload])
 
   // A settled row leaves the list once the message it became exists, and not

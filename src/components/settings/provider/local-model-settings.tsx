@@ -49,8 +49,8 @@ export function LocalModelSettings({
     setError(null)
     try {
       const next = isRemote
-        ? await api.getProviderLocalModelInfo({ providerId, forceRefresh: true })
-        : await api.inspectLocalModel({ modelPath, backend, forceRefresh: true })
+        ? await api.providers.getLocalModel({ provider_id: providerId, force_refresh: true })
+        : await api.providers.testLocalModel({ model_path: modelPath, backend, force_refresh: true })
       if (request === serial.current) setInfo(next)
     } catch (reason) {
       if (request === serial.current) {

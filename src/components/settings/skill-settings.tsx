@@ -56,8 +56,8 @@ function SkillEditor({
     let cancelled = false
     setBodyState('loading')
     setBodyError(null)
-    api
-      .getSkillBody(editingDir)
+    api.skills
+      .readBody({ dir_name: editingDir })
       .then((text) => {
         if (cancelled) return
         setBody(text)
@@ -88,20 +88,20 @@ function SkillEditor({
     setSaving(true)
     try {
       if (skill) {
-        await api.updateSkill({
-          dirName: skill.dir_name,
-          displayName: displayName.trim(),
+        await api.skills.update({
+          dir_name: skill.dir_name,
+          display_name: displayName.trim(),
           // A built-in skill is regenerated on every launch, so writing its
           // SKILL.md back would be pointless (and the backend rejects it). A
           // body that is not loaded is not sent at all: '' would replace it.
-          ...(contentsEditable ? { llmDescription: description.trim(), body } : {}),
+          ...(contentsEditable ? { llm_description: description.trim(), body } : {}),
         })
       } else {
-        await api.createSkill({
-          dirName: dirName.trim(),
-          llmDescription: description.trim(),
+        await api.skills.create({
+          dir_name: dirName.trim(),
+          llm_description: description.trim(),
           body,
-          displayName: displayName.trim() || null,
+          display_name: displayName.trim() || null,
         })
       }
       markSaved()
@@ -230,8 +230,8 @@ export function SkillSettings() {
 
   const refresh = useCallback(async () => {
     const [list, bound] = await Promise.all([
-      api.listSkills(),
-      api.listSkillBindings({ layer: 'global', anchorId: null }),
+      api.skills.list(),
+      api.skills.listBindings({ layer: 'global', anchor_id: null }),
     ])
     setSkills(list)
     setGlobalBound(new Set(bound))
@@ -247,7 +247,7 @@ export function SkillSettings() {
     setRescanning(true)
     setError(null)
     try {
-      await api.rescanSkills()
+      await api.skills.rescan()
       await refresh()
     } catch (e) {
       setError(String(e))
@@ -260,7 +260,7 @@ export function SkillSettings() {
     async (skill: SkillInfoResponse, enabled: boolean) => {
       setError(null)
       try {
-        await api.updateSkill({ dirName: skill.dir_name, isEnabled: enabled })
+        await api.skills.update({ dir_name: skill.dir_name, is_enabled: enabled })
         await refresh()
       } catch (e) {
         setError(String(e))
@@ -274,7 +274,7 @@ export function SkillSettings() {
     try {
       // The backend caps bindings per anchor, so it is the source of truth for
       // the resulting set rather than a local optimistic update.
-      const next = await api.setSkillBinding({ layer: 'global', anchorId: null, dirName, bound })
+      const next = await api.skills.setBinding({ layer: 'global', anchor_id: null, dir_name: dirName, bound })
       setGlobalBound(new Set(next))
     } catch (e) {
       setError(String(e))
@@ -401,7 +401,7 @@ export function SkillSettings() {
                                     return
                                   setError(null)
                                   try {
-                                    await api.deleteSkill(skill.dir_name)
+                                    await api.skills.delete({ dir_name: skill.dir_name })
                                     setExpandedDir(null)
                                     await refresh()
                                   } catch (e) {

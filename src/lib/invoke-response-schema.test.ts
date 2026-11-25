@@ -8,22 +8,22 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(262)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(262)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(239)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(239)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 
   it('validates local model metadata and nested native enum boundaries', () => {
     const info = demoLocalModel('C:/Models/test.litertlm', 'gpu')
-    expect(() => validate('inspect_local_model', info)).not.toThrow()
-    expect(() => validate('get_provider_local_model_info', info)).not.toThrow()
-    expect(() => validate('inspect_local_model', { ...info, resolved_backend: 'guessed' })).toThrow()
+    expect(() => validate('test_local_model', info)).not.toThrow()
+    expect(() => validate('get_provider_local_model', info)).not.toThrow()
+    expect(() => validate('test_local_model', { ...info, resolved_backend: 'guessed' })).toThrow()
     expect(() =>
-      validate('inspect_local_model', { ...info, modalities: [{ ...info.modalities[0], npu_brand: 'future-vendor' }] }),
+      validate('test_local_model', { ...info, modalities: [{ ...info.modalities[0], npu_brand: 'future-vendor' }] }),
     ).toThrow()
-    expect(() => validate('inspect_local_model', { ...info, raw_metadata: '{}' })).toThrow()
+    expect(() => validate('test_local_model', { ...info, raw_metadata: '{}' })).toThrow()
     const { runtime_version: _version, ...missingVersion } = info
-    expect(() => validate('inspect_local_model', missingVersion)).toThrow()
+    expect(() => validate('test_local_model', missingVersion)).toThrow()
   })
 
   // A rebuilt queue takes its times and escalation kinds from this answer, so
@@ -42,34 +42,34 @@ describe('invoke response schema', () => {
       parent_call_id: null,
       sub_conversation_id: null,
     }
-    expect(() => validate('all_pending_approvals', [row])).not.toThrow()
+    expect(() => validate('list_pending_approvals', [row])).not.toThrow()
     const { asked_at: _omitted, ...withoutTime } = row
-    expect(() => validate('all_pending_approvals', [withoutTime])).toThrow()
-    expect(() => validate('all_pending_approvals', [{ ...row, retry: { ...row.retry, kind: 'guessed' } }])).toThrow()
-    expect(() => validate('list_cached_provider_models', [])).not.toThrow()
-    expect(() => validate('list_cached_provider_models', [{ id: 'm', name: 'm', extra: 1 }])).toThrow()
+    expect(() => validate('list_pending_approvals', [withoutTime])).toThrow()
+    expect(() => validate('list_pending_approvals', [{ ...row, retry: { ...row.retry, kind: 'guessed' } }])).toThrow()
+    expect(() => validate('list_provider_models', [])).not.toThrow()
+    expect(() => validate('list_provider_models', [{ id: 'm', name: 'm', extra: 1 }])).toThrow()
   })
 
   it('validates composer draft responses exactly', () => {
     expect(() => validate('get_composer_draft', null)).not.toThrow()
-    expect(() => validate('save_composer_draft', { applied: true, revision: 2 })).not.toThrow()
-    expect(() => validate('clear_composer_draft', { applied: false, revision: 9, extra: 1 })).toThrow()
+    expect(() => validate('set_composer_draft', { applied: true, revision: 2 })).not.toThrow()
+    expect(() => validate('delete_composer_draft', { applied: false, revision: 9, extra: 1 })).toThrow()
     expect(() => validate('get_composer_draft', { body: 'x' })).toThrow()
   })
 
   it('validates void and primitive responses instead of trusting a generic', () => {
-    expect(() => validate('update_conversation_title', null)).not.toThrow()
+    expect(() => validate('delete_conversation', null)).not.toThrow()
     expect(() => validate('delete_secret', true)).not.toThrow()
-    expect(() => validate('acp_open_session', 'session-1')).not.toThrow()
-    expect(() => validate('voice_probe_echo', 42)).not.toThrow()
+    expect(() => validate('open_acp_session', 'session-1')).not.toThrow()
+    expect(() => validate('test_voice_echo', 42)).not.toThrow()
 
-    expect(() => validate('update_conversation_title', undefined)).toThrow('must be null')
+    expect(() => validate('delete_conversation', undefined)).toThrow('must be null')
     expect(() => validate('delete_secret', 1)).toThrow('must be a boolean')
-    expect(() => validate('voice_probe_echo', Number.NaN)).toThrow('must be a finite number')
+    expect(() => validate('test_voice_echo', Number.NaN)).toThrow('must be a finite number')
   })
 
   it('rejects missing and unknown fields in nested entity responses', () => {
-    const insets = { top: 0, right: 0, bottom: 12, left: 0, imeBottom: 12 }
+    const insets = { top: 0, right: 0, bottom: 12, left: 0, ime_bottom: 12 }
     expect(() => validate('get_window_insets', insets)).not.toThrow()
     expect(() => validate('get_window_insets', { ...insets, future: true })).toThrow('unknown field "future"')
 

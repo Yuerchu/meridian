@@ -24,7 +24,7 @@ export function CodexAccount() {
   const check = useCallback(async () => {
     setChecking(true)
     try {
-      setStatus(await api.codexAuthStatus())
+      setStatus(await api.providers.getCodexAuthStatus())
     } catch (err) {
       console.error('Failed to read the Codex login:', err)
       setStatus({

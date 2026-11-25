@@ -1528,13 +1528,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // TODO: archived conversations are currently unreachable in the UI. There
     // is no archive/unarchive command either — `is_archived` is only ever read
     // while rendering. Both belong in one change.
-    const conversations: ConversationInfoResponse[] = await api.listConversations()
+    const conversations: ConversationInfoResponse[] = await api.conversations.list({
+      archived: false,
+      project_id: null,
+    })
     set({ conversations })
     return conversations
   },
 
   refreshProjects: async () => {
-    const projects = await api.listProjects()
+    const projects = await api.projects.list()
     set({ projects })
   },
 
@@ -1554,12 +1557,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // tool call with no result row is either waiting on the user, still running,
     // or was abandoned when its turn died — identical in the database, and told
     // apart only by the approvals and the turn records that came back with it.
-    let snap: Awaited<ReturnType<typeof api.conversationSnapshot>>
+    let snap: Awaited<ReturnType<typeof api.conversations.getSnapshot>>
     let activeShellTurnId: string | null
     try {
       ;[snap, activeShellTurnId] = await Promise.all([
-        api.conversationSnapshot({ conversationId: convId }),
-        api.activeUserShellTurn(convId),
+        api.conversations.getSnapshot({ conversation_id: convId }),
+        api.userCommands.getActive({ conversation_id: convId }),
       ])
     } catch (err) {
       console.error(`[loadMessages] failed to fetch snapshot for ${convId}:`, err)
@@ -1625,8 +1628,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       // actually is. Sequential rather than parallel because the second reads
       // what the first wrote — which is also what makes the window here wider
       // than anywhere else, hence the guard below.
-      await api.switchBranch({ conversationId: convId, messageId })
-      const snap = await api.conversationSnapshot({ conversationId: convId })
+      await api.messages.switchBranch({ conversation_id: convId, message_id: messageId })
+      const snap = await api.conversations.getSnapshot({ conversation_id: convId })
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
         hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs, snap.plan_reviews),
@@ -2487,7 +2490,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // absent from it says nothing.
     const current = get()
     const asked = new Set(current.attentionOrder.filter((id) => current.attention[id]?.kind !== 'plan_review'))
-    const rows = await api.allPendingApprovals().catch(() => null)
+    const rows = await api.approvals.listPending().catch(() => null)
     // A queue that cannot be fetched is left as it is. Emptying it here would
     // turn one failed call into a set of questions nobody is told about, and the
     // events that filled it were right when they arrived.
@@ -2550,7 +2553,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         }),
       )
     try {
-      view = await api.getActiveTodoList(convId)
+      view = await api.todos.get({ conversation_id: convId })
     } catch (err) {
       // The bar keeps whatever it was showing — a checklist that vanished on a
       // failed read would look finished — and the reason is put beside it.
@@ -2679,8 +2682,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // records matter here more than anywhere — this is the moment a turn ends,
     // and how it ended is what says whether the calls above are abandoned or
     // were simply never going to be answered by anyone.
-    api
-      .conversationSnapshot({ conversationId: convId })
+    api.conversations
+      .getSnapshot({ conversation_id: convId })
       .then((snap) => {
         const snapshot = reconcileMessages(
           get().sessions[convId]?.messages ?? [],
@@ -2731,8 +2734,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       return
     }
     const generation = get().sessions[convId]?.generation ?? 0
-    api
-      .conversationSnapshot({ conversationId: convId })
+    api.conversations
+      .getSnapshot({ conversation_id: convId })
       .then((snap) => {
         const snapshot = reconcileMessages(
           get().sessions[convId]?.messages ?? [],

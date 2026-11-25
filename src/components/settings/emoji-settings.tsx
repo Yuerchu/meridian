@@ -496,14 +496,14 @@ export function EmojiSettings() {
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
-    const packs = await api.listEmojiPacks()
+    const packs = await api.emojis.listPacks({ assistant_id: null })
     const result = await Promise.all(
       packs.map(async (pack) => {
         // What the stickers are, not their files: a row asks for its picture
         // once it is on screen (`StickerThumbnail`). Asking here was one IPC
         // round trip — and one whole file as base64 — per sticker in every
         // pack, on every visit and after every edit.
-        const emojis = await api.listEmojis(pack.id)
+        const emojis = await api.emojis.list({ filter: { kind: 'pack', pack_id: pack.id } })
         return { pack, emojis }
       }),
     )
@@ -532,7 +532,7 @@ export function EmojiSettings() {
 
   const handleCreate = useCallback(async () => {
     if (!newPackName.trim()) return
-    await api.createEmojiPack({ name: newPackName.trim(), description: null })
+    await api.emojis.createPack({ name: newPackName.trim(), description: null })
     setNewPackName('')
     await refresh()
   }, [newPackName, refresh])
@@ -547,7 +547,7 @@ export function EmojiSettings() {
         }))
       )
         return
-      await api.deleteEmojiPack(id)
+      await api.emojis.deletePack({ id })
       setSelection(null)
       await refresh()
     },
@@ -564,7 +564,7 @@ export function EmojiSettings() {
       if (!files) return
       const paths = Array.isArray(files) ? files : [files]
       if (paths.length === 0) return
-      await api.importEmojis({ packId, filePaths: paths })
+      await api.emojis.import({ pack_id: packId, file_paths: paths })
       await refresh()
     },
     [refresh],
@@ -580,7 +580,7 @@ export function EmojiSettings() {
         }))
       )
         return
-      await api.deleteEmoji(id)
+      await api.emojis.delete({ id })
       forgetStickerUrl(id)
       await refresh()
     },
@@ -600,7 +600,7 @@ export function EmojiSettings() {
     // One at a time: each delete unlinks a file as well as a row, and the
     // backend takes a pooled connection per call.
     for (const id of selectedIds) {
-      await api.deleteEmoji(id)
+      await api.emojis.delete({ id })
       forgetStickerUrl(id)
     }
     setSelection(null)
@@ -610,10 +610,10 @@ export function EmojiSettings() {
   /**
    * The one write path for what a sticker means.
    *
-   * `confirm_sticker_semantics` sets name and tags together and is idempotent,
+   * `confirm_semantics` sets name and tags together and is idempotent,
    * so it serves an edit to a confirmed sticker as well as the first
    * confirmation of a pending one — which is what makes "type a name and press
-   * Enter" the same act as accepting the model's guess. `rename_emoji` would
+   * Enter" the same act as accepting the model's guess. `rename` would
    * only move half of it and leave the row unconfirmed.
    */
   const handleSaveSemantics = useCallback(
@@ -621,7 +621,10 @@ export function EmojiSettings() {
       const name = (patch.name ?? shownName(emoji)).trim()
       if (!name) return
       const tags = (patch.tags ?? shownTags(emoji)).trim()
-      await api.confirmStickerSemantics({ id: emoji.id, name, tags: tags || null })
+      await api.emojis.update({
+        id: emoji.id,
+        action: { kind: 'confirm_semantics', name, tags: tags || null },
+      })
       await refresh()
     },
     [refresh],
@@ -630,7 +633,7 @@ export function EmojiSettings() {
   const handleSuggest = useCallback(
     async (id: string) => {
       setSuggestError(null)
-      const updated = await api.suggestStickerSemantics(id)
+      const updated = await api.emojis.suggestSemantics({ id })
       await refresh()
       return updated
     },
@@ -645,7 +648,7 @@ export function EmojiSettings() {
     const failures: string[] = []
     for (const [index, id] of ids.entries()) {
       try {
-        await api.suggestStickerSemantics(id)
+        await api.emojis.suggestSemantics({ id })
       } catch (reason) {
         failures.push(String(reason))
       }

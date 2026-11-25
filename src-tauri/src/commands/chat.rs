@@ -575,7 +575,7 @@ impl Drop for TurnGuard<'_> {
 /// Succeeds either way. A stop aimed at a turn that already ended is not a
 /// failure the user needs to see; the front end clears its own state regardless.
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(deny_unknown_fields)]
 pub struct ChatStopRequest {
     pub conversation_id: String,
     pub turn_id: RequiredNullable<String>,
@@ -601,62 +601,62 @@ pub async fn stop_chat(app: tauri::AppHandle, request: ChatStopRequest) -> Resul
 
 #[cfg(test)]
 mod command_contract_tests {
-    use super::{ChatRequest, ChatStopRequest, select_turn_setting};
+    use super::{ChatStartRequest, ChatStopRequest, select_turn_setting};
     use meridian_core::turn::TurnOrigin;
     use serde_json::json;
 
     fn chat_request() -> serde_json::Value {
         json!({
-            "conversationId": "conversation-1",
+            "conversation_id": "conversation-1",
             "message": "hello",
-            "turnId": null,
+            "turn_id": null,
             "replaces": null,
-            "modelOverride": null,
-            "providerOverride": null,
-            "thinkingLevel": null,
-            "assistantId": null,
+            "model_override": null,
+            "provider_override": null,
+            "thinking_level": null,
+            "assistant_id": null,
             "fast": null,
             "mode": null,
             "voice": null,
-            "contextRefs": null,
-            "conversationRefs": null
+            "context_refs": null,
+            "conversation_refs": null
         })
     }
 
     #[test]
     fn chat_request_requires_every_nullable_key_and_rejects_unknown_fields() {
-        serde_json::from_value::<ChatRequest>(chat_request()).unwrap();
+        serde_json::from_value::<ChatStartRequest>(chat_request()).unwrap();
 
         let mut missing = chat_request();
         missing.as_object_mut().unwrap().remove("mode");
-        assert!(serde_json::from_value::<ChatRequest>(missing).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(missing).is_err());
 
         let mut unknown = chat_request();
-        unknown["futureField"] = json!(true);
-        assert!(serde_json::from_value::<ChatRequest>(unknown).is_err());
+        unknown["future_field"] = json!(true);
+        assert!(serde_json::from_value::<ChatStartRequest>(unknown).is_err());
 
         let mut invalid_mode = chat_request();
         invalid_mode["mode"] = json!("future_mode");
-        assert!(serde_json::from_value::<ChatRequest>(invalid_mode).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(invalid_mode).is_err());
 
         let mut incomplete_reference = chat_request();
-        incomplete_reference["contextRefs"] = json!([{
+        incomplete_reference["context_refs"] = json!([{
             "path": "src/main.rs",
-            "lineStart": null
+            "line_start": null
         }]);
-        assert!(serde_json::from_value::<ChatRequest>(incomplete_reference).is_err());
+        assert!(serde_json::from_value::<ChatStartRequest>(incomplete_reference).is_err());
     }
 
     #[test]
     fn chat_stop_request_requires_explicit_nullable_turn_id() {
         serde_json::from_value::<ChatStopRequest>(json!({
-            "conversationId": "conversation-1",
-            "turnId": null
+            "conversation_id": "conversation-1",
+            "turn_id": null
         }))
         .unwrap();
         assert!(
             serde_json::from_value::<ChatStopRequest>(json!({
-                "conversationId": "conversation-1"
+                "conversation_id": "conversation-1"
             }))
             .is_err()
         );
@@ -756,8 +756,8 @@ impl meridian_core::services::StartTurn for DesktopTurns {
 }
 
 #[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ChatRequest {
+#[serde(deny_unknown_fields)]
+pub struct ChatStartRequest {
     pub conversation_id: String,
     pub message: RequiredNullable<String>,
     pub turn_id: RequiredNullable<String>,
@@ -810,8 +810,8 @@ pub struct ChatRequest {
 ///
 /// `turn_id` is the front end's, minted before it sent. See
 /// `TurnCoordinator::try_acquire_turn_as` for why it is not minted here.
-pub async fn chat(app: tauri::AppHandle, request: ChatRequest) -> Result<(), String> {
-    let ChatRequest {
+pub async fn start_chat(app: tauri::AppHandle, request: ChatStartRequest) -> Result<(), String> {
+    let ChatStartRequest {
         conversation_id,
         message: RequiredNullable(message),
         turn_id: RequiredNullable(turn_id),
@@ -1082,7 +1082,7 @@ async fn chat_inner(
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = services
         .db
         .read(async |tx| {
-            let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+            let Some(conv) = db::sea::ops::conversation::get(tx, &conversation_id).await? else {
                 return Ok(Err(format!("conversation {conversation_id} not found")));
             };
             let effective_aid = select_turn_setting(origin, assistant_id.as_deref(), conv.assistant_id.as_deref());
@@ -1094,13 +1094,13 @@ async fn chat_inner(
             // wins; this is the fallback, not a lock. An assistant or project
             // that cannot be read is none, as before.
             let assistant = match effective_aid {
-                Some(aid) => db::sea::ops::assistant::get_assistant(tx, aid).await.ok().flatten(),
+                Some(aid) => db::sea::ops::assistant::get(tx, aid).await.ok().flatten(),
                 None => None,
             };
             let assistant = conv.pin_model(assistant);
-            let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+            let history = db::sea::ops::message::list(tx, &conversation_id).await?;
             let project = match conv.project_id.as_deref() {
-                Some(pid) => db::sea::ops::project::get_project(tx, pid).await.ok().flatten(),
+                Some(pid) => db::sea::ops::project::get(tx, pid).await.ok().flatten(),
                 None => None,
             };
             // Where the turn works: the resolver's answer, not the project's
@@ -1654,10 +1654,10 @@ async fn chat_inner(
         services
             .db
             .read(async |tx| {
-                let Some(conv) = db::sea::ops::conversation::get_conversation(tx, &conversation_id).await? else {
+                let Some(conv) = db::sea::ops::conversation::get(tx, &conversation_id).await? else {
                     return Ok(Err(format!("conversation {conversation_id} not found")));
                 };
-                let history = db::sea::ops::message::list_messages(tx, &conversation_id).await?;
+                let history = db::sea::ops::message::list(tx, &conversation_id).await?;
                 Ok::<_, db::sea::DbErr>(Ok(db::sea::ops::message::active_context(
                     &history,
                     conv.head_message_id.as_deref(),
@@ -1801,7 +1801,7 @@ async fn chat_inner(
         services
             .db
             .write(async |tx| {
-                db::sea::ops::message::append_message(tx, row, parent_cursor.as_deref()).await?;
+                db::sea::ops::message::append(tx, row, parent_cursor.as_deref()).await?;
                 if clear_context {
                     db::sea::ops::message::delete_summaries_anchored_in(tx, &conversation_id, &prior_path_ids).await?;
                     let summary_id = uuid::Uuid::new_v4().to_string();
@@ -1815,9 +1815,9 @@ async fn chat_inner(
                     summary_row.sort_order = -1;
                     summary_row.is_compact_summary = db::types::SqlBool::TRUE;
                     summary_row.compact_anchor_id = Some(user_msg_id.clone());
-                    db::sea::ops::message::insert_message(tx, summary_row).await?;
+                    db::sea::ops::message::insert(tx, summary_row).await?;
                 }
-                db::sea::ops::emoji::link_stickers_in_content(tx, &user_msg_id, text).await?;
+                db::sea::ops::emoji::link_emojis_in_content(tx, &user_msg_id, text).await?;
                 db::sea::ops::message_context_item::insert_prepared(tx, &user_msg_id, &prepared_context, now).await?;
                 if let Some(queued) = &queued {
                     db::sea::ops::queue::spend(tx, &conversation_id, queued, &turn_id, &user_msg_id, now).await?;
@@ -1843,10 +1843,10 @@ async fn chat_inner(
     let sleep_enabled = {
         // pool-read-before-write: whether to keep the machine awake guards none
         // of the writes that follow it in this turn.
-        let stored = db::sea::ops::preference::get_preference(&services.db, "sleep_inhibitor.enabled")
+        let stored = db::sea::ops::preference::get(&services.db, "sleep_inhibitor.enabled")
             .await
             .map_err(|error| error.to_string())?;
-        db::sea::ops::preference::parse_bool_preference("sleep_inhibitor.enabled", stored.as_deref(), true)?
+        db::sea::ops::preference::parse_bool("sleep_inhibitor.enabled", stored.as_deref(), true)?
     };
     // The same preference key, with more values in it. A second key would be
     // one that could disagree with the first, and there is no reading of
