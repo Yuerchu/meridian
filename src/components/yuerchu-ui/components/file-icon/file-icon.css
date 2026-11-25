@@ -1,0 +1,53 @@
+@layer components {
+  .ui-file-icon {
+    --ui-file-icon-size: var(--icon-md);
+
+    display: inline-flex;
+    flex: none;
+    width: var(--ui-file-icon-size);
+    height: var(--ui-file-icon-size);
+    vertical-align: middle;
+  }
+
+  .ui-file-icon[data-size="sm"] {
+    --ui-file-icon-size: var(--icon-sm);
+  }
+
+  .ui-file-icon[data-size="lg"] {
+    --ui-file-icon-size: var(--icon-lg);
+  }
+
+  .ui-file-icon__glyph {
+    display: inline-flex;
+    width: 100%;
+    height: 100%;
+  }
+
+  .ui-file-icon__glyph svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ---------- 亮色 / 暗色版本：条件和 tokens.css 的暗色判断一致（data-theme 优先，没设置时跟随系统） ---------- */
+  .ui-file-icon__glyph[data-variant="dark"] {
+    display: none;
+  }
+
+  :root[data-theme="dark"] .ui-file-icon__glyph[data-variant="dark"] {
+    display: inline-flex;
+  }
+
+  :root[data-theme="dark"] .ui-file-icon__glyph[data-variant="light"] {
+    display: none;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .ui-file-icon__glyph[data-variant="dark"] {
+      display: inline-flex;
+    }
+
+    :root:not([data-theme="light"]) .ui-file-icon__glyph[data-variant="light"] {
+      display: none;
+    }
+  }
+}

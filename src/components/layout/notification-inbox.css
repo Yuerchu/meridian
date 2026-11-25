@@ -1,0 +1,118 @@
+@layer components {
+  .m-inbox__bell {
+    position: relative;
+    display: inline-flex;
+  }
+
+  .m-inbox__count {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    pointer-events: none;
+    translate: 25% -25%;
+  }
+
+  /* The popover does not follow the viewport by itself: React Aria writes the
+     height left below the bell as an inline max-height on it, and nothing inside
+     read it. So the dialog takes that bound (`inherit`) and the list is the one
+     scroller inside it. */
+  .ui-popover.m-inbox__popover {
+    --ui-popover-padding: 0;
+    --ui-popover-min-width: 0;
+
+    display: flex;
+    width: min(27.5rem, calc(100vw - var(--space-6)));
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .m-inbox__dialog {
+    display: flex;
+    min-height: 0;
+    max-height: inherit;
+    flex-direction: column;
+    outline: none;
+  }
+
+  .m-inbox {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-inbox__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-4) var(--space-4) var(--space-2);
+  }
+
+  .m-inbox__title {
+    margin: 0;
+    font: var(--text-title-3);
+  }
+
+  .m-inbox__status {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-inbox__tab-count {
+    margin-inline-start: var(--space-1);
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The soft keyboard does not shrink the visual viewport here, so its height
+     is added as bottom padding for the last row to scroll clear of it. */
+  .m-inbox__list {
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-4) calc(var(--space-4) + var(--ime-bottom, 0px));
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .m-inbox__group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-inbox__time {
+    display: block;
+    margin-block-start: var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-inbox__lines {
+    white-space: pre-line;
+  }
+
+  .m-inbox__note {
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border-block-end: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-inbox__note[data-action] {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .m-inbox__note-text {
+    min-width: 0;
+    flex: 1;
+    margin: 0;
+  }
+}

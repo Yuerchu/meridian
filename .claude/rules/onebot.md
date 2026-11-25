@@ -17,6 +17,20 @@ budget; Claude Code loads it when a file matching `paths` is read. "Above",
 "below" and "see X" may name a section that is now in `CLAUDE.md` or in
 another file here — the index in `CLAUDE.md` says which.
 
+- **Private media is a local administrator grant, not adapter input.**
+  `onebot.private_media_origins` is a strict JSON list of `{origin, ip}` entries,
+  empty by default. The local settings screen writes it only through the full
+  OneBot config command; it is not a generic preference key or remote command.
+  Each grant names one exact HTTP(S) origin (scheme, host, effective port) and one
+  fixed unicast IP. No paths, wildcard hosts, CIDRs, userinfo, proxies or redirects.
+  Matched origins skip DNS and pin that IP while keeping the origin for Host/TLS;
+  unmatched origins still require exclusively public DNS results. Invalid stored
+  policy fails closed. Both images and voice capture use this policy and existing
+  stream byte/time bounds. Saving policy changes stops the old OneBot generation
+  and cancels/drains its media fetches, including queued detached work. Explicitly
+  restart to apply. `meridiand` starts no OneBot listener and has no
+  corresponding CLI option.
+
 - **A cached prefix belongs to the session, not to whoever spoke.** The tool
   array and the system prompt are the front of what a provider caches, and
   `base_prompt` is derived from the tool set, so anything that reshapes the

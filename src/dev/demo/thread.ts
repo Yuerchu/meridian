@@ -91,7 +91,6 @@ export function snapshot(state: DemoState, conversationId: string): Conversation
     turns: thread.turns,
     pending_approvals: thread.pending.filter((p) => onPath.has(p.assistant_message_id)),
     plan_reviews: thread.planReviews.filter((r) => onPath.has(r.assistant_message_id)),
-    plan_review_barrier: thread.planBarrier,
     sub_agent_runs: thread.subRuns,
     acp_notices: [],
   }

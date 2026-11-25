@@ -68,8 +68,8 @@ const CRATES = [
 
 /** 分析器自检：这些边若找不到，说明解析退化了，而不是代码变干净了。 */
 const EXPECTED_EDGES = [
-  { file: 'src-tauri/src/commands/provider.rs', module: 'plan_review' },
-  { file: 'src-tauri/src/commands/queue.rs', module: 'plan_review' },
+  { file: 'src-tauri/src/commands/provider.rs', module: 'provider' },
+  { file: 'src-tauri/src/commands/plan_review.rs', module: 'plan_review' },
 ]
 
 const DIESEL_SIGNATURE = /\bSqliteConnection\b|\bDbPool\b|\bPooledConn\b/

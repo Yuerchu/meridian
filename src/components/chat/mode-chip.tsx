@@ -1,11 +1,11 @@
+import './mode-chip.css'
 import type { ComponentType } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { Key } from 'react-aria-components'
+import { Button as AriaButton, type Key } from 'react-aria-components'
 import { ChevronsRight, Compass, Cpu, Hammer, ShieldCheck } from '@keyline-icons/react/two-tone'
 
-import { Dropdown, DropdownGroup, DropdownItem, DropdownPopover, DropdownTrigger } from '@/components/base'
+import { Menu, MenuItem, MenuSection, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
 import { knobName, knobValueName } from '@/lib/acp-knob-names'
-import { cx } from '@/utils/cx'
 import type { AcpConfigOptionInfoResponse, ChatMode } from '@/types'
 
 type Icon = ComponentType<{ className?: string; 'aria-hidden'?: boolean | 'true' | 'false' }>
@@ -17,12 +17,6 @@ interface ModeRow {
   label: string
   description?: string
   tone: Tone
-}
-
-const TONE_ICON: Record<Tone, string> = {
-  default: 'text-foreground-icon-secondary',
-  info: 'text-status-info-soft-foreground',
-  warning: 'text-status-warning-soft-foreground',
 }
 
 /**
@@ -55,56 +49,53 @@ function ModeMenu({
   const current = rows.find((row) => row.id === selected)
   const CurrentIcon = current?.icon ?? Cpu
   return (
-    <Dropdown>
-      <DropdownTrigger
+    <MenuTrigger>
+      <AriaButton
         data-slot="mode-chip"
         aria-label={`${label}: ${current?.label ?? ''}`}
         isDisabled={isDisabled}
-        className={cx(
-          'inline-flex h-[30px] max-w-48 shrink-0 items-center gap-1 rounded-full ps-2 pe-2.5',
-          'text-body-medium text-text-secondary transition-colors duration-150',
-          'data-[hovered]:bg-background-primary-hover data-[pressed]:bg-background-primary-hover aria-expanded:bg-background-primary-hover',
-          'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40',
-        )}
+        className="m-mode-chip__trigger"
       >
-        <CurrentIcon aria-hidden className={cx('size-4 shrink-0', TONE_ICON[current?.tone ?? 'default'])} />
+        <CurrentIcon aria-hidden className="m-mode-chip__icon" data-tone={current?.tone ?? 'default'} />
         {/* Dropped on a narrow composer: the icon and the accessible name stay. */}
-        <span data-slot="mode-chip-label" className="truncate @max-[400px]/composer:hidden">
+        <span data-slot="mode-chip-label" className="m-mode-chip__label">
           {current?.label}
         </span>
-      </DropdownTrigger>
-      <DropdownPopover
+      </AriaButton>
+      <Menu
         aria-label={label}
         placement="top start"
-        className="w-[323px]"
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={selected === null ? [] : [selected]}
         onAction={(key: Key) => onSelect(String(key))}
+        className="m-mode-chip__menu"
       >
-        <DropdownGroup label={t('composer.permissions')}>
+        <MenuSection header={t('composer.permissions')}>
           {rows.map((row) => (
-            <DropdownItem key={row.id} id={row.id} textValue={row.label} className="items-start gap-2.5">
-              <row.icon aria-hidden className={cx('mt-0.5 size-5 shrink-0', TONE_ICON[row.tone])} />
-              <span className="flex min-w-0 flex-1 flex-col">
-                <span data-slot="mode-row-label" className="truncate text-body-medium text-text-primary">
-                  {row.label}
-                </span>
-                {row.description && (
+            <MenuItem
+              key={row.id}
+              id={row.id}
+              textValue={row.label}
+              icon={<row.icon aria-hidden className="m-mode-chip__row-icon" data-tone={row.tone} />}
+              description={
+                row.description ? (
                   <span
                     data-slot="mode-row-description"
                     title={row.description}
-                    className="truncate text-body-2-regular text-text-secondary"
+                    className="m-mode-chip__row-description"
                   >
                     {row.description}
                   </span>
-                )}
-              </span>
-            </DropdownItem>
+                ) : undefined
+              }
+            >
+              <span data-slot="mode-row-label">{row.label}</span>
+            </MenuItem>
           ))}
-        </DropdownGroup>
-      </DropdownPopover>
-    </Dropdown>
+        </MenuSection>
+      </Menu>
+    </MenuTrigger>
   )
 }
 

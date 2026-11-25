@@ -1,0 +1,43 @@
+@layer components {
+  .m-ime-learned,
+  .m-ime-learned__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-ime-learned__head,
+  .m-ime-learned__actions,
+  .m-ime-learned__title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-ime-learned__head {
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-ime-learned__actions {
+    flex-shrink: 0;
+  }
+
+  .m-ime-learned__summary,
+  .m-ime-learned__hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-ime-learned__summary {
+    font: var(--text-small-medium);
+  }
+
+  .m-ime-learned__word {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

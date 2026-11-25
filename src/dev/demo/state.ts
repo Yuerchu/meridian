@@ -182,7 +182,6 @@ function buildPlanReview(now: number): PlanReviewInfoResponse {
       updated_at: created,
     },
     comments: [],
-    delivery: null,
   }
 }
 

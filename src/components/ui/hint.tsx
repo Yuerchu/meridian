@@ -1,23 +1,15 @@
 import * as React from 'react'
 import { Focusable } from 'react-aria-components'
-import { Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import './hint.css'
 
-import { cx } from '@/utils/cx'
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /**
  * A piece of inert text with more to say on hover: a truncated path, a
  * shortened name, a figure with its qualifier.
- *
- * What a native `title` used to do, done with boardui's tooltip. The browser's
- * own tooltip is the one thing on screen not drawn by this app — a different
- * font, a different delay, a different corner — and it is banned by the lint
- * for that reason.
- *
- * The trigger is focusable by default, which is how a keyboard reaches a
- * tooltip at all. Where one text is repeated many times over — every segment
- * of every bar in a chart — that is a tab stop per repetition and nothing for
- * a keyboard to do at any of them, so `focusable={false}` keeps those to hover
- * alone, which is exactly what `title` gave them.
  *
  * `Focusable` is what makes a plain span a tooltip trigger at all: React Aria's
  * `TooltipTrigger` hands its hover and focus handlers down through context, and
@@ -40,9 +32,9 @@ export function Hint({
 }) {
   const Tag = as as 'span'
   return (
-    <TooltipTrigger delay={0}>
+    <TooltipTrigger>
       <Focusable excludeFromTabOrder={!focusable}>
-        <Tag {...props} className={cx('min-w-0', className)}>
+        <Tag {...props} className={joinClasses('m-hint', className)}>
           {children}
         </Tag>
       </Focusable>

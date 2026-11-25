@@ -13,7 +13,7 @@ use meridian_core::db::entity::assistant;
 use meridian_core::db::entity::message_context_item;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
-use meridian_core::db::sea::ops::{conversation as conversation_ops, plan_review as plan_review_ops};
+use meridian_core::db::sea::ops::conversation as conversation_ops;
 use meridian_core::events::{CompactDoneEvent, CompactOutcome, CompactStartEvent, CompactTrigger};
 use meridian_core::provider::ChatMessage;
 use meridian_core::util::{double_option, now_ms};
@@ -44,9 +44,6 @@ pub async fn invoke_conversation_compaction(
         .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
-    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
-        return Err(PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.into());
-    }
     let secrets = services.secrets.clone();
 
     let (assistant, keep_recent) = services
@@ -204,23 +201,16 @@ impl ConversationUpdateRequest {
     }
 }
 
-const PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER: &str = "This conversation is waiting for plan review or its continuation. Finish it before changing its transcript or project.";
-
 /// Applies every requested conversation field in one write transaction.
-/// Returns `Ok(None)` when any turn-guarded field is being changed while a
-/// plan review or its continuation holds the conversation.
-async fn update_conversation_unless_plan_barrier(
+async fn update_conversation_fields(
     tx: &WriteTx,
     patch: &ConversationUpdateRequest,
     now: i64,
-) -> Result<Option<db::entity::conversation::Model>, DbErr> {
+) -> Result<db::entity::conversation::Model, DbErr> {
     let id = &patch.id;
     let current = conversation_ops::get(tx, id)
         .await?
         .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))?;
-    if patch.needs_turn_guard() && plan_review_ops::has_conversation_barrier(tx, id).await? {
-        return Ok(None);
-    }
     if let Some(ref title) = patch.title {
         conversation_ops::update_title(tx, id, title, now).await?;
     }
@@ -251,10 +241,9 @@ async fn update_conversation_unless_plan_barrier(
     if let Some(ref project_id) = patch.project_id {
         conversation_ops::update_project(tx, id, project_id.clone(), now).await?;
     }
-    let updated = conversation_ops::get(tx, id)
+    conversation_ops::get(tx, id)
         .await?
-        .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))?;
-    Ok(Some(updated))
+        .ok_or_else(|| DbErr::RecordNotFound(format!("conversation `{id}`")))
 }
 
 /// The caller holds the conversation's turn lease whenever `patch.needs_turn_guard()`.
@@ -262,10 +251,9 @@ async fn apply_conversation_update(
     db: &Db,
     patch: &ConversationUpdateRequest,
 ) -> Result<db::entity::conversation::Model, String> {
-    db.write(async |tx| update_conversation_unless_plan_barrier(tx, patch, now_ms()).await)
+    db.write(async |tx| update_conversation_fields(tx, patch, now_ms()).await)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER.to_string())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -839,7 +827,7 @@ mod tests {
     use meridian_core::db::entity::project::{self as project_entity, ProjectSource};
 
     #[tokio::test]
-    async fn a_pending_plan_review_prevents_changing_the_conversations_settings() {
+    async fn conversation_settings_update_cleanly() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             for (id, path) in [("project-a", "A"), ("project-b", "B")] {
@@ -859,69 +847,43 @@ mod tests {
                 )
                 .await?;
             }
-            for id in ["conversation-1", "conversation-2"] {
-                conversation_ops::create(tx, id, None, None, Some("project-a"), 1).await?;
-            }
-            db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                "conversation-1",
-                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-a", "A"))),
-            )
-            .await
-            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
+            conversation_ops::create(tx, "conversation-1", None, None, Some("project-a"), 1).await?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let patches = |id: &str| {
-            [
-                ConversationUpdateRequest {
-                    id: id.into(),
-                    assistant_id: Some(None),
-                    ..Default::default()
-                },
-                ConversationUpdateRequest {
-                    id: id.into(),
-                    thinking_level: Some(Some(meridian_core::provider::capabilities::StoredThinkingLevel::High)),
-                    fast_mode: Some(true),
-                    ..Default::default()
-                },
-                ConversationUpdateRequest {
-                    id: id.into(),
-                    accept_edits: Some(true),
-                    ..Default::default()
-                },
-                ConversationUpdateRequest {
-                    id: id.into(),
-                    project_id: Some(Some("project-b".into())),
-                    ..Default::default()
-                },
-            ]
-        };
-        for patch in patches("conversation-1") {
-            let refused = apply_conversation_update(&sea, &patch).await.unwrap_err();
-            assert_eq!(refused, PLAN_REVIEW_CONVERSATION_MUTATION_BARRIER);
-        }
-        let held = conversation_ops::get(&sea, "conversation-1").await.unwrap().unwrap();
-        assert_eq!(
-            (
-                held.project_id.as_deref(),
-                held.accept_edits.get(),
-                held.fast_mode.get()
-            ),
-            (Some("project-a"), false, false)
-        );
-
-        // The conversation next to it has no review and takes every setting.
-        for patch in patches("conversation-2") {
+        let patches = [
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                assistant_id: Some(None),
+                ..Default::default()
+            },
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                thinking_level: Some(Some(meridian_core::provider::capabilities::StoredThinkingLevel::High)),
+                fast_mode: Some(true),
+                ..Default::default()
+            },
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                accept_edits: Some(true),
+                ..Default::default()
+            },
+            ConversationUpdateRequest {
+                id: "conversation-1".into(),
+                project_id: Some(Some("project-b".into())),
+                ..Default::default()
+            },
+        ];
+        for patch in patches {
             apply_conversation_update(&sea, &patch).await.unwrap();
         }
-        let free = conversation_ops::get(&sea, "conversation-2").await.unwrap().unwrap();
+        let updated = conversation_ops::get(&sea, "conversation-1").await.unwrap().unwrap();
         assert_eq!(
             (
-                free.project_id.as_deref(),
-                free.accept_edits.get(),
-                free.thinking_level.as_deref()
+                updated.project_id.as_deref(),
+                updated.accept_edits.get(),
+                updated.thinking_level.as_deref()
             ),
             (Some("project-b"), true, Some("high"))
         );

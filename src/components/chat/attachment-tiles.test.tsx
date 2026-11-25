@@ -67,7 +67,7 @@ describe('AttachmentTiles', () => {
 
   it('marks a file that has gone since the draft was saved', () => {
     render(<AttachmentTiles files={[{ name: 'gone.txt', missing: true }]} />)
-    expect(screen.getByText('gone.txt').className).toContain('text-status-danger')
+    expect(screen.getByText('gone.txt')).toHaveAttribute('data-missing', 'true')
   })
 
   it('shows a pasted image as the picture itself', () => {

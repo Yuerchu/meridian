@@ -1,0 +1,68 @@
+@layer components {
+  .m-file-access,
+  .m-file-access__stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-file-access {
+    gap: var(--space-4);
+  }
+
+  .m-file-access__title,
+  .m-file-access__hint,
+  .m-file-access__label,
+  .m-file-access__root-name,
+  .m-file-access__root-prefix {
+    margin: 0;
+  }
+
+  .m-file-access__title,
+  .m-file-access__root-name,
+  .m-file-access__label {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-file-access__label {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .m-file-access__hint,
+  .m-file-access__root-prefix {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-file-access__roots {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .m-file-access__root {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+  }
+
+  .m-file-access__root-text {
+    min-width: 0;
+  }
+
+  .m-file-access__root-name,
+  .m-file-access__root-prefix {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

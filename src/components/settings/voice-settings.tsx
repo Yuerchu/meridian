@@ -1,26 +1,24 @@
+import './voice-settings.css'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Bin } from '@keyline-icons/react/two-tone'
-import {
-  Button,
-  Card,
-  Description,
-  Input,
-  Label,
-  ProgressCircle,
-  Spinner,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { ProgressCircle } from '@/components/yuerchu-ui/components/progress-circle/progress-circle'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import type { VoiceModelDownloadEvent } from '@/lib/app-event'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceFilterLevel, VoiceModelStatusInfoResponse } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsHeader, SettingsPane } from './primitives'
 import { useConfirm } from '@/hooks/use-confirm'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -133,8 +131,7 @@ export function VoiceSettings() {
   const handleDelete = async () => {
     if (
       !(await confirm({
-        body: t('settings.voice.deleteModelConfirm'),
-        status: 'warning',
+        description: t('settings.voice.deleteModelConfirm'),
         confirmLabel: t('common.delete'),
       }))
     )
@@ -169,68 +166,69 @@ export function VoiceSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
-      <div data-slot="voice-model" className="space-y-1.5">
-        <p data-slot="voice-section-label" className="block text-caption-1-medium text-text-secondary">
-          {t('settings.voice.model')}
-        </p>
-        <Card>
+      <div data-slot="voice-model" className="m-voice__section">
+        <SettingsGroup heading={t('settings.voice.model')} headingLevel={3}>
           {statusLoading ? (
             <div
               data-slot="voice-model-loading"
               role="status"
               aria-label={t('common.loading')}
-              className="flex items-center gap-2 p-4 text-body-regular text-text-secondary"
+              className="m-voice__loading"
             >
-              <Spinner aria-hidden="true" size="sm" />
+              <span aria-hidden>
+                <Spinner size="sm" />
+              </span>
               {t('common.loading')}
             </div>
           ) : status?.installed ? (
-            <div data-slot="voice-model-installed" className="flex items-center justify-between gap-2">
-              <Card.Header className="min-w-0">
-                <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
-                <Card.Description className="truncate" onPointerEnter={titleIfTruncated}>
-                  {formatSize(status.size_bytes, sizeNumber)} · {status.path}
-                </Card.Description>
-              </Card.Header>
-              <TooltipTrigger delay={0}>
-                <Button
-                  iconOnly
-                  leadingIcon={Bin}
-                  size="small"
-                  variant="neutral"
-                  aria-label={t('settings.voice.deleteModel')}
-                  onPress={handleDelete}
-                  isDisabled={downloading}
-                />
-                <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
-              </TooltipTrigger>
+            <div data-slot="voice-model-installed">
+              <SettingsRow
+                label={t('settings.voice.modelInstalled')}
+                description={
+                  <span className="m-voice__meta" onPointerEnter={titleIfTruncated}>
+                    {formatSize(status.size_bytes, sizeNumber)} · {status.path}
+                  </span>
+                }
+              >
+                <TooltipTrigger>
+                  <Button
+                    icon={<Bin />}
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t('settings.voice.deleteModel')}
+                    onPress={handleDelete}
+                    isDisabled={downloading}
+                  />
+                  <Tooltip>{t('settings.voice.deleteModel')}</Tooltip>
+                </TooltipTrigger>
+              </SettingsRow>
             </div>
           ) : downloading ? (
-            <div data-slot="voice-model-download" className="flex items-center gap-3">
+            <div data-slot="voice-model-download" className="m-voice__download">
               <ProgressCircle
                 aria-label={t('settings.voice.downloading')}
-                value={progress.total ? progress.downloaded : undefined}
-                maxValue={progress.total ?? undefined}
-                isIndeterminate={!progress.total}
+                {...(progress.total
+                  ? { value: progress.downloaded, maxValue: progress.total }
+                  : { isIndeterminate: true })}
                 size="sm"
               />
-              <span data-slot="voice-download-progress" className="text-caption-1-regular text-text-secondary flex-1">
+              <span data-slot="voice-download-progress" className="m-voice__progress">
                 {formatSize(progress.downloaded, sizeNumber)}
                 {progress.total ? ` / ${formatSize(progress.total, sizeNumber)}` : ''}
               </span>
-              <Button variant="secondary" size="small" onPress={handleCancelDownload}>
+              <Button variant="secondary" size="sm" onPress={handleCancelDownload}>
                 {t('settings.voice.cancelDownload')}
               </Button>
             </div>
           ) : (
-            <>
-              <Card.Header>
-                <Card.Title>{t('settings.voice.modelMissing')}</Card.Title>
-                <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
-              </Card.Header>
-              <Card.Footer className="flex-col items-start gap-2">
-                <div data-slot="voice-model-actions" className="flex gap-2">
-                  <Button size="small" onPress={handleDownload}>
+            <SettingsRow
+              layout="stacked"
+              label={t('settings.voice.modelMissing')}
+              description={t('settings.voice.modelHint')}
+            >
+              <div className="m-voice__footer">
+                <div data-slot="voice-model-actions" className="m-voice__actions">
+                  <Button size="sm" onPress={handleDownload}>
                     {t('settings.voice.download')}
                   </Button>
                   {/* Downloading still works remotely — the host fetches it to
@@ -238,7 +236,7 @@ export function VoiceSettings() {
                       not: the archive is on the device the picker runs on. */}
                   <Button
                     variant="secondary"
-                    size="small"
+                    size="sm"
                     onPress={handleImport}
                     isDisabled={!can.importFromDisk}
                     isPending={importing}
@@ -248,46 +246,53 @@ export function VoiceSettings() {
                   </Button>
                 </div>
                 {!can.importFromDisk && (
-                  <p data-slot="voice-import-unavailable" className="text-caption-1-regular text-text-secondary">
+                  <p data-slot="voice-import-unavailable" className="m-voice__meta">
                     {t('capability.importFromDisk')}
                   </p>
                 )}
-              </Card.Footer>
-            </>
+              </div>
+            </SettingsRow>
           )}
-          {error && (
-            <p data-slot="voice-error" role="alert" className="text-caption-1-regular text-status-danger">
-              {error}
-            </p>
-          )}
-        </Card>
+        </SettingsGroup>
+        {error && (
+          <Alert data-slot="voice-error" tone="danger" shouldAnnounce>
+            {error}
+          </Alert>
+        )}
       </div>
 
-      <TextField type="url">
-        <Label>{t('settings.voice.mirror')}</Label>
-        <Input
-          value={mirrorUrl}
-          name="voiceDownloadUrl"
-          inputMode="url"
-          spellCheck={false}
-          onChange={(e) => handleMirrorChange(e.target.value)}
-          onBlur={persistMirror}
-          placeholder={t('settings.voice.mirrorPlaceholder')}
-          className="w-full"
-          disabled={downloading}
-        />
-        <Description>{t('settings.voice.mirrorHint')}</Description>
-      </TextField>
-
-      <SettingsSelect
-        label={t('settings.voice.filterLevel')}
-        value={filterLevel}
-        options={filterOptions}
-        onChange={handleFilterChange}
-        description={t('settings.voice.filterHint')}
-
-        triggerClassName="max-w-xs"
-      />
+      <SettingsGroup>
+        <SettingsRow layout="stacked" label={t('settings.voice.mirror')} description={t('settings.voice.mirrorHint')}>
+          <TextField
+            type="url"
+            value={mirrorUrl}
+            name="voiceDownloadUrl"
+            inputMode="url"
+            spellCheck="false"
+            onChange={handleMirrorChange}
+            onBlur={persistMirror}
+            placeholder={t('settings.voice.mirrorPlaceholder')}
+            isDisabled={downloading}
+            className="m-voice__field"
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.voice.filterLevel')} description={t('settings.voice.filterHint')}>
+          <div className="m-voice__select">
+            <Select
+              selectedKey={filterLevel}
+              onSelectionChange={(key) => {
+                if (key != null) handleFilterChange(String(key) as VoiceFilterLevel)
+              }}
+            >
+              {filterOptions.map((option) => (
+                <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
+                  {option.label}
+                </ListBoxItem>
+              ))}
+            </Select>
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
       {confirmDialog}
     </SettingsPane>
   )

@@ -1,5 +1,5 @@
+import './sticker-thumb.css'
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-import { cx } from '@/utils/cx'
 import { StickerPlayback, StickerPlaybackContext } from './sticker-playback'
 
 /**
@@ -97,7 +97,7 @@ export function StickerThumb({
       ref={box}
       data-slot="sticker-thumb"
       data-state={!near ? 'idle' : playing ? 'playing' : still}
-      className={cx('relative flex size-full items-center justify-center', className)}
+      className={className ? `m-sticker-thumb ${className}` : 'm-sticker-thumb'}
     >
       {near && still === 'failed' ? (
         fallback
@@ -107,7 +107,8 @@ export function StickerThumb({
             ref={canvas}
             aria-hidden
             data-slot="sticker-thumb-still"
-            className={cx('size-full object-contain', (still !== 'drawn' || liveShown) && 'invisible')}
+            data-hidden={still !== 'drawn' || liveShown || undefined}
+            className="m-sticker-thumb__still"
           />
           {playing && (
             <img
@@ -117,7 +118,7 @@ export function StickerThumb({
               loading="lazy"
               decoding="async"
               onLoad={() => setLiveShown(true)}
-              className="absolute inset-0 size-full object-contain"
+              className="m-sticker-thumb__live"
             />
           )}
         </>

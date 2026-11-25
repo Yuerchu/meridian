@@ -1,10 +1,12 @@
+import './emoji-renderer.css'
 import React, { useState, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Image, RefreshCw } from '@keyline-icons/react/two-tone'
-import { Button, Skeleton, Tooltip, TooltipTrigger } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
 import { useStickerUrl } from '@/lib/sticker-urls'
-import { cx } from '@/utils/cx'
 import type { EmojiInfoResponse } from '@/types'
 import { usePointerPlay, useReducedMotion, useStickerPlayback } from './sticker-playback'
 import { StickerThumb } from './sticker-thumb'
@@ -63,7 +65,7 @@ export function useEmojiMap(assistantId: string | null): EmojiMap {
 export function StickerImage({
   stickerId,
   name,
-  className = 'size-32',
+  className = 'm-emoji-renderer__sticker',
 }: {
   stickerId: string
   name?: string
@@ -79,40 +81,43 @@ export function StickerImage({
   const label = name ?? t('chat.emoji.sticker')
 
   return (
-    <div ref={box} data-slot="sticker-box" className={cx(className, 'shrink-0')} {...pointer}>
+    <div ref={box} data-slot="sticker-box" className={'m-emoji-renderer__box ' + className} {...pointer}>
       {load.status === 'loading' ? (
-        <Skeleton
+        <div
           data-slot="sticker-placeholder"
-          className="size-full rounded-xl"
+          className="m-emoji-renderer__placeholder"
           role="status"
           aria-busy
           aria-label={t('chat.emoji.loading', { name: label })}
-        />
+        >
+          <Skeleton shape="rect" width="100%" height="100%" />
+        </div>
       ) : load.status === 'error' ? (
         <div
           data-slot="sticker-error"
-          className="flex size-full flex-col items-center justify-center gap-1 rounded-xl bg-background-secondary-default/40 text-text-secondary"
+          className="m-emoji-renderer__error"
           role="group"
           aria-label={t('chat.emoji.loadFailed', { name: label })}
         >
-          <Image aria-hidden className="size-6" />
-          <Button
-            leadingIcon={RefreshCw}
-            variant="secondary"
-            size="small"
-            className="touch-hitbox px-1 text-caption-1-regular"
-            onPress={() => setAttempt((current) => current + 1)}
-          >
-            {t('chat.emoji.retry')}
-          </Button>
+          <Image aria-hidden className="m-emoji-renderer__error-icon" />
+          <span className="m-emoji-renderer__retry">
+            <Button
+              icon={<RefreshCw />}
+              variant="secondary"
+              size="sm"
+              onPress={() => setAttempt((current) => current + 1)}
+            >
+              {t('chat.emoji.retry')}
+            </Button>
+          </span>
         </div>
       ) : load.status === 'loaded' ? (
-        <div data-slot="sticker-image" role="img" aria-label={label} className="size-full">
+        <div data-slot="sticker-image" role="img" aria-label={label} className="m-emoji-renderer__image">
           <StickerThumb
             src={load.url}
             near={near}
             playing={playing}
-            fallback={<Image aria-hidden className="size-6 text-text-secondary" />}
+            fallback={<Image aria-hidden className="m-emoji-renderer__fallback-icon" />}
           />
         </div>
       ) : null}
@@ -129,7 +134,7 @@ export function StickerImage({
 export function InlineSticker({
   stickerId,
   name,
-  className = 'size-12',
+  className = 'm-emoji-renderer__inline-default',
   slot = 'inline-emoji',
 }: {
   stickerId: string
@@ -158,7 +163,7 @@ export function InlineSticker({
       // screen reader.
       role={failed ? 'group' : 'img'}
       aria-label={failed ? t('chat.emoji.loadFailed', { name }) : name}
-      className={cx('my-2 block overflow-hidden rounded-xl', className)}
+      className={'m-emoji-renderer__inline ' + className}
       {...pointer}
     >
       {load.status === 'loaded' ? (
@@ -166,21 +171,16 @@ export function InlineSticker({
           src={load.url}
           near={near}
           playing={playing}
-          fallback={<Image aria-hidden className="size-6 text-text-secondary" />}
+          fallback={<Image aria-hidden className="m-emoji-renderer__fallback-icon" />}
         />
       ) : failed ? (
-        <span
-          data-slot={`${slot}-error`}
-          className="flex size-full items-center justify-center bg-background-secondary-default/40"
-        >
-          <TooltipTrigger delay={0}>
+        <span data-slot={`${slot}-error`} className="m-emoji-renderer__inline-error m-emoji-renderer__retry">
+          <TooltipTrigger>
             <Button
-              iconOnly
-              size="xs"
-              variant="neutral"
-              leadingIcon={RefreshCw}
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw />}
               aria-label={retryLabel}
-              className="touch-hitbox"
               onPress={() => setAttempt((current) => current + 1)}
             />
             <Tooltip>{retryLabel}</Tooltip>

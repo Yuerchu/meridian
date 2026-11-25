@@ -1,7 +1,8 @@
+import './state-icon.css'
 import { CircleAlert, CircleCheck, CircleQuestion, CircleX } from '@keyline-icons/react/two-tone'
 import { Stop } from '@keyline-icons/react/fill'
 
-import { Spinner } from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import type { AgentState } from './agent-state'
 
 /** A card's state as one icon, where there is no room for the line — the
@@ -9,20 +10,24 @@ import type { AgentState } from './agent-state'
 export function StateIcon({ state }: { state: AgentState }) {
   switch (state.kind) {
     case 'idle':
-      return <span aria-hidden className="size-3.5 shrink-0 rounded-full border border-separator-border" />
+      return <span aria-hidden className="m-board-state-icon__idle" />
     case 'working':
-      return <Spinner size="sm" color="current" aria-hidden className="text-status-info-soft-foreground" />
+      return (
+        <span aria-hidden className="m-board-state-icon__working">
+          <Spinner size="sm" />
+        </span>
+      )
     case 'approval':
-      return <CircleAlert aria-hidden className="size-4 shrink-0 text-status-warning-soft-foreground" />
+      return <CircleAlert aria-hidden data-tone="warning" className="m-board-state-icon" />
     case 'question':
-      return <CircleQuestion aria-hidden className="size-4 shrink-0 text-status-warning-soft-foreground" />
+      return <CircleQuestion aria-hidden data-tone="warning" className="m-board-state-icon" />
     case 'failed':
-      return <CircleX aria-hidden className="size-4 shrink-0 text-status-danger-soft-foreground" />
+      return <CircleX aria-hidden data-tone="danger" className="m-board-state-icon" />
     case 'finished':
       return state.stopped ? (
-        <Stop aria-hidden className="size-4 shrink-0 text-text-secondary" />
+        <Stop aria-hidden data-tone="muted" className="m-board-state-icon" />
       ) : (
-        <CircleCheck aria-hidden className="size-4 shrink-0 text-status-success-soft-foreground" />
+        <CircleCheck aria-hidden data-tone="success" className="m-board-state-icon" />
       )
   }
 }

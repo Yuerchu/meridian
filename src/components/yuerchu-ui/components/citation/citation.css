@@ -1,0 +1,230 @@
+@layer components {
+  /* ---------- 正文里的角标：小圆角块，跟在文字后面 ---------- */
+  .ui-citation-wrap {
+    display: inline;
+  }
+
+  .ui-citation {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-width: 1.5em;
+    height: 1.5em;
+    margin-inline: var(--space-1) 0;
+    padding-inline: var(--space-1);
+    border-radius: var(--radius-item);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    text-decoration: none;
+    vertical-align: text-top;
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-citation[data-hovered]:not([data-disabled]),
+  .ui-citation[data-active] {
+    background: var(--accent-subtle);
+    color: var(--accent-strong);
+  }
+
+  .ui-citation[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-citation[data-missing] {
+    cursor: default;
+  }
+
+  /* ---------- 预览卡片里的内容 ---------- */
+  .ui-citation__preview-domain {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-citation__preview-title {
+    font: var(--text-body-medium);
+  }
+
+  .ui-citation__preview-snippet {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text-secondary);
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 4;
+  }
+
+  /* ---------- 来源列表 ---------- */
+  .ui-source-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .ui-source-list__heading {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .ui-source-list__items {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .ui-source-list__item {
+    display: flex;
+    gap: var(--space-2);
+    min-width: 0;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-source-list__item[data-active] {
+    border-color: var(--accent);
+    background: var(--accent-subtle);
+  }
+
+  /* 编号和标题同一个字号：第一行对齐 */
+  .ui-source-list__index {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-source-list__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font: var(--text-small);
+  }
+
+  .ui-source-list__body .ui-link {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-source-list__domain {
+    overflow: hidden;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ---------- 带出处的句子：悬停或聚焦时浅底 ---------- */
+  .ui-cited__text {
+    border-radius: calc(var(--radius-item) / 2);
+    box-decoration-break: clone;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-cited[data-active] .ui-cited__text {
+    background: var(--accent-subtle);
+  }
+
+  /* 悬停或聚焦某一项时，其余来源变淡（对应关系仍靠编号，这只是辅助） */
+  .ui-source-list[data-has-active] .ui-source-list__item:not([data-active]) {
+    opacity: 0.55;
+  }
+
+  .ui-source-list__item {
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard),
+      opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  /* ---------- 摘录：展开的那一项占满一行 ---------- */
+  .ui-source-list__item[data-open] {
+    grid-column: 1 / -1;
+  }
+
+  .ui-source-list__toggle {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: var(--space-1);
+    margin-block-start: var(--space-1);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-item) / 2);
+    background: none;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    cursor: pointer;
+  }
+
+  .ui-source-list__toggle[data-hovered]:not([data-disabled]) {
+    color: var(--text);
+  }
+
+  .ui-source-list__toggle[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-source-list__toggle svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    transition: rotate var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-source-list__toggle[aria-expanded="true"] svg {
+    rotate: 180deg;
+  }
+
+  .ui-source-list__excerpt {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-block-start: var(--space-2);
+  }
+
+  .ui-source-list__quote {
+    margin: 0;
+    padding-inline-start: var(--space-3);
+    border-inline-start: 2px solid var(--border-strong);
+    color: var(--text);
+    font: var(--text-small);
+    white-space: normal;
+  }
+
+  .ui-source-list__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  /* ---------- 引文里和句子对上的词 ---------- */
+  .ui-citation__mark {
+    border-radius: calc(var(--radius-item) / 3);
+    background: color-mix(in srgb, var(--warning-fg) 22%, transparent);
+    color: inherit;
+  }
+
+  @media (forced-colors: active) {
+    .ui-citation__mark {
+      background: Highlight;
+      color: HighlightText;
+    }
+
+    .ui-cited[data-active] .ui-cited__text {
+      outline: 1px solid Highlight;
+    }
+  }
+}

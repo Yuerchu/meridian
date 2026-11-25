@@ -1,6 +1,8 @@
+import './todo-progress-chip.css'
+import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { useTranslation } from 'react-i18next'
 
-import { Popover } from '@/components/base'
 import { TodoPanelBody, TodoRing } from './todo-bar'
 import { todoProgress, type TodoArgs } from './todo-list'
 
@@ -20,29 +22,31 @@ export function TodoProgressChip({ todos }: { todos: TodoArgs }) {
   const progress = t('chat.todo.progress', { done, total })
   const step = current ? current.active_form : t('chat.todo.idle')
   return (
-    <Popover>
-      <Popover.Trigger
+    <DialogTrigger>
+      <PopoverButton
         data-slot="todo-progress-chip"
         aria-label={`${todos.title}, ${progress}, ${step}`}
-        className="touch-hitbox h-7 min-w-0 gap-1.5 rounded-full px-1.5 text-body-2-medium text-text-secondary transition-colors duration-150 data-[hovered]:bg-background-primary-hover data-[pressed]:bg-background-primary-hover"
+        className="m-todo-progress-chip__trigger"
       >
-        <TodoRing todos={todos} className="size-4" />
-        <span data-slot="todo-progress-chip-count" className="shrink-0 tabular-nums">
+        <TodoRing todos={todos} />
+        <span data-slot="todo-progress-chip-count" className="m-todo-progress-chip__count">
           {progress}
         </span>
-        <span data-slot="todo-progress-chip-step" className="min-w-0 max-w-40 truncate">
+        <span data-slot="todo-progress-chip-step" className="m-todo-progress-chip__step">
           {step}
         </span>
-      </Popover.Trigger>
-      <Popover.Content placement="top start" className="w-80 p-3">
-        <Popover.Dialog aria-label={todos.title} className="flex flex-col gap-2">
-          <div data-slot="todo-progress-header" className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-body-medium text-text-primary">{todos.title}</span>
-            <span className="shrink-0 text-body-2-regular tabular-nums text-text-secondary">{progress}</span>
+      </PopoverButton>
+      <Popover offset={8} placement="top start" className="m-todo-progress-chip__panel-1">
+        <PopoverDialog aria-label={todos.title}>
+          <div className="m-todo-progress-chip__panel-1-body m-todo-progress-chip__details">
+            <div data-slot="todo-progress-header" className="m-todo-progress-chip__heading">
+              <span className="m-todo-progress-chip__title">{todos.title}</span>
+              <span className="m-todo-progress-chip__progress">{progress}</span>
+            </div>
+            <TodoPanelBody todos={todos} />
           </div>
-          <TodoPanelBody todos={todos} />
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }

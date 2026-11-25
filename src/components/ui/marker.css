@@ -1,0 +1,79 @@
+@layer components {
+  .m-marker {
+    position: relative;
+    display: flex;
+    min-height: 16px;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+    text-align: left;
+    font: var(--text-body);
+    color: var(--text-secondary);
+  }
+
+  .m-marker a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .m-marker a:hover {
+    color: var(--text);
+  }
+
+  .m-marker[data-variant='separator']::before,
+  .m-marker[data-variant='separator']::after {
+    content: '';
+    height: 1px;
+    min-width: 0;
+    flex: 1;
+    background-color: var(--border-strong);
+  }
+
+  .m-marker[data-variant='separator']::before {
+    margin-inline-end: var(--space-1);
+  }
+
+  .m-marker[data-variant='separator']::after {
+    margin-inline-start: var(--space-1);
+  }
+
+  .m-marker[data-variant='border'] {
+    border-bottom: 1px solid var(--border-strong);
+    padding-bottom: var(--space-2);
+  }
+
+  /* Direct child only: Spinner wraps its svg in a sized span, so a descendant
+     selector would shrink the svg inside its parent. */
+  .m-marker__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-md);
+    height: var(--icon-md);
+    flex-shrink: 0;
+  }
+
+  .m-marker__icon > svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .m-marker__content {
+    min-width: 0;
+    overflow-wrap: break-word;
+  }
+
+  .m-marker[data-variant='separator'] .m-marker__content {
+    flex: none;
+    text-align: center;
+  }
+
+  .m-marker__content > a {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .m-marker__content > a:hover {
+    color: var(--text);
+  }
+}

@@ -71,15 +71,16 @@ function seed(items: AttentionItem[], activeId: string | null = null) {
   })
 }
 
-/** The approval ids on screen, front first. */
+/** The approval ids on screen, front first. The stack keys each row by it and
+ *  writes the key on the row's wrapper (`data-notification-key`). */
 function shownIds(): string[] {
-  return [...document.querySelectorAll('[data-slot="approval-notification"]')].map(
-    (el) => el.getAttribute('data-approval-id') ?? '',
+  return [...document.querySelectorAll('[data-notification-key]:not([data-exiting])')].map(
+    (el) => el.getAttribute('data-notification-key') ?? '',
   )
 }
 
 function card(id: string): HTMLElement {
-  const el = document.querySelector<HTMLElement>(`[data-slot="approval-notification"][data-approval-id="${id}"]`)
+  const el = document.querySelector<HTMLElement>(`[data-notification-key="${id}"]`)
   if (!el) throw new Error(`no notification for ${id}`)
   return el
 }
@@ -124,13 +125,24 @@ describe('approval notifications', () => {
     seed([approval('a', 'c1')])
     render(<ApprovalNotifications onSelect={async () => true} />)
     const buttons = within(card('a')).getAllByRole('button')
+    // The card puts its close button first, in the heading's corner; it has an
+    // icon and no text, its name is the label below.
     expect(buttons.map((b) => b.textContent)).toEqual([
+      '',
       i18n.t('chat.approvalNotification.defer'),
       i18n.t('chat.approvalNotification.view'),
       i18n.t('chat.tool.deny'),
       i18n.t('chat.tool.allow'),
-      '',
     ])
+    // Deny is the one painted as a refusal; Allow is the primary action.
+    expect(within(card('a')).getByRole('button', { name: i18n.t('chat.tool.deny') })).toHaveAttribute(
+      'data-variant',
+      'destructive',
+    )
+    expect(within(card('a')).getByRole('button', { name: i18n.t('chat.tool.allow') })).toHaveAttribute(
+      'data-variant',
+      'primary',
+    )
     expect(within(card('a')).getByRole('button', { name: i18n.t('chat.approvalNotification.ignore') })).toBeTruthy()
     expect(within(card('a')).queryByRole('button', { name: 'Dismiss notification' })).toBeNull()
   })
@@ -230,20 +242,13 @@ describe('approval notifications', () => {
     expect(within(card('a')).getByText(i18n.t('chat.approvalNotification.argumentsTooLong'))).toBeInTheDocument()
   })
 
-  it('replaces queued plan copy with the recovery prompt when delivery needs attention', async () => {
-    seed([reviewAttention('delivery_queued')])
+  it('shows the pending plan review prompt in notifications', async () => {
+    seed([reviewAttention('review')])
     useConversationStore.setState({
       conversations: [{ id: 'conversation-1', title: 'Plan conversation' } as ConversationInfoResponse],
     })
     render(<ApprovalNotifications onSelect={async () => true} />)
-    expect(await screen.findByText(i18n.t('planReview.deliveryQueued'))).toBeInTheDocument()
-
-    act(() => {
-      useConversationStore.setState({ attention: { 'review-1': reviewAttention('delivery_attention') } })
-    })
-
-    expect(await screen.findByText(i18n.t('chat.plan.continuationNeedsAttention'))).toBeInTheDocument()
-    expect(screen.queryByText(i18n.t('planReview.deliveryQueued'))).toBeNull()
+    expect(await screen.findByText(i18n.t('chat.plan.reviewReady'))).toBeInTheDocument()
   })
 })
 
@@ -272,22 +277,19 @@ describe('under a modal overlay', () => {
     )
   }
 
-  function region(): HTMLElement {
-    const el = document.querySelector<HTMLElement>('[data-slot="approval-notifications"]')
-    if (!el) throw new Error('no notification region')
-    return el
-  }
+  /** The region as a reader would find it: `null` while it is out of the
+   *  accessibility tree. */
+  const region = () => screen.queryByRole('region', { name: i18n.t('notifications.region') })
 
   /** React Aria shuts every sibling of a modal out; a stack drawn above the
-   *  dialog would look pressable and be unreachable. */
+   *  dialog would look pressable and be unreachable. The library's dock sees
+   *  that and takes the region out of the tree and of the F6 landmarks. */
   it('is not drawn while a modal has shut it out, and comes back when it closes', async () => {
     seed([approval('a', 'c1')])
     render(<WithModal />)
-    await waitFor(() => expect(region()).toHaveAttribute('data-under-modal'))
-    expect(region()).toHaveClass('hidden')
+    await waitFor(() => expect(region()).toBeNull())
     await userEvent.click(screen.getByRole('button', { name: 'close modal' }))
-    await waitFor(() => expect(region()).not.toHaveAttribute('data-under-modal'))
-    expect(region()).not.toHaveClass('hidden')
+    await waitFor(() => expect(region()).not.toBeNull())
     expect(shownIds()).toEqual(['a'])
   })
 
@@ -309,8 +311,8 @@ describe('under a modal overlay', () => {
     seed([approval('a', 'c1')])
     render(<WithPopover />)
     await screen.findByText('floating')
-    expect(region()).not.toHaveAttribute('data-under-modal')
-    expect(region()).not.toHaveClass('hidden')
+    expect(region()).not.toBeNull()
+    expect(shownIds()).toEqual(['a'])
   })
 })
 
@@ -329,13 +331,12 @@ describe('beside the inbox', () => {
     }
     seed([approval('a', 'c1')])
     render(<Shell />)
-    const region = () => document.querySelector<HTMLElement>('[data-slot="approval-notifications"]')!
-    expect(region()).not.toHaveClass('hidden')
+    expect(shownIds()).toEqual(['a'])
     const bell = screen.getAllByRole('button').find((b) => b.getAttribute('aria-haspopup') === 'dialog')!
     await userEvent.click(bell)
-    await waitFor(() => expect(region()).toHaveClass('hidden'))
+    await waitFor(() => expect(shownIds()).toEqual([]))
     await userEvent.keyboard('{Escape}')
-    await waitFor(() => expect(region()).not.toHaveClass('hidden'))
+    await waitFor(() => expect(shownIds()).toEqual(['a']))
   })
 })
 

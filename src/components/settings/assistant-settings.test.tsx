@@ -181,7 +181,7 @@ describe('AssistantSettings model lock', () => {
     const user = userEvent.setup()
     await openEditor(user)
 
-    const field = screen.getByRole('spinbutton', { name: i18n.t('settings.assistant.contextLimit') })
+    const field = screen.getByRole('textbox', { name: i18n.t('settings.assistant.contextLimit') })
     await user.clear(field)
     await user.type(field, '1000000')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
@@ -196,7 +196,7 @@ describe('AssistantSettings model lock', () => {
     const user = userEvent.setup()
     await openEditor(user)
 
-    const field = screen.getByRole('spinbutton', { name: i18n.t('settings.assistant.contextLimit') })
+    const field = screen.getByRole('textbox', { name: i18n.t('settings.assistant.contextLimit') })
     await user.clear(field)
     await user.type(field, '64000')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
@@ -229,7 +229,7 @@ describe('AssistantSettings model lock', () => {
     const user = userEvent.setup()
     await openEditor(user)
 
-    const field = screen.getByRole('spinbutton', { name: i18n.t('settings.assistant.contextLimit') })
+    const field = screen.getByRole('textbox', { name: i18n.t('settings.assistant.contextLimit') })
     await user.clear(field)
     await user.type(field, '1000000')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))

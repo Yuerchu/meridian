@@ -1,0 +1,126 @@
+@layer components {
+  .ui-tag-group {
+    --ui-tag-height: 28px;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-tag-group[data-size="sm"] {
+    --ui-tag-height: 22px;
+  }
+
+  .ui-tag-group__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* ---------- 一个标签 ---------- */
+  .ui-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    box-sizing: border-box;
+    height: var(--ui-tag-height);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-small);
+    white-space: nowrap;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tag-group[data-size="sm"] .ui-tag {
+    padding: 0 var(--space-2);
+    font: var(--text-caption);
+  }
+
+  /* 有删除按钮时右边少留一点，让 × 贴近边缘 */
+  .ui-tag[data-allows-removing] {
+    padding-inline-end: var(--space-1);
+  }
+
+  .ui-tag[data-hovered]:not([data-disabled]) {
+    border-color: var(--border-hover);
+  }
+
+  /* 可选择的标签（筛选条件）：选中时实心 */
+  .ui-tag[data-selected] {
+    border-color: var(--control-on);
+    background: var(--control-on);
+    color: var(--control-on-fg);
+  }
+
+  .ui-tag[data-focus-visible] {
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-tag[data-disabled] {
+    border-color: var(--border);
+    background: var(--surface-muted);
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-tag__check,
+  .ui-tag__check svg {
+    display: inline-flex;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-tag__label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* ---------- 删除按钮 ---------- */
+  .ui-tag__remove {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: calc(var(--ui-tag-height) - 2 * var(--space-1) - 2px);
+    height: calc(var(--ui-tag-height) - 2 * var(--space-1) - 2px);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tag__remove svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-tag__remove[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  @media (forced-colors: active) {
+    .ui-tag[data-selected] {
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
+    }
+  }
+}

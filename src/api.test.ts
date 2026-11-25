@@ -741,9 +741,9 @@ describe('api', () => {
         expectedGeneration: 3,
         expectedDraftHash: 'draft-hash',
         action: 'request_changes' as const,
+        approvalMode: null,
+        clearContext: false,
       }
-      const delivery = { reviewId: 'review-1' }
-      const continueDelivery = { deliveryId: 'delivery-1' }
       const conflict = { documentId: 'document-1', action: 'restore_db' as const }
 
       await api.getPlanReview(read)
@@ -751,8 +751,6 @@ describe('api', () => {
       await api.savePlanReviewDraft(save)
       await api.discardPlanReviewDraft(discard)
       await api.decidePlanReview(decision)
-      await api.getPlanReviewDelivery(delivery)
-      await api.continuePlanReviewDelivery(continueDelivery)
       await api.resolvePlanFileConflict(conflict)
 
       expect(mockInvoke.mock.calls).toEqual([
@@ -761,8 +759,6 @@ describe('api', () => {
         ['save_plan_review_draft', { request: save }],
         ['discard_plan_review_draft', { request: discard }],
         ['decide_plan_review', { request: decision }],
-        ['get_plan_review_delivery', { request: delivery }],
-        ['continue_plan_review_delivery', { request: continueDelivery }],
         ['resolve_plan_file_conflict', { request: conflict }],
       ])
     })

@@ -1,7 +1,9 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, TextArea } from '@/components/base'
-import { SettingsCard, SettingsRow } from '../primitives'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsPage } from '../settings-page'
 import { parseImportJson, type McpServersJson } from './import-json'
 
@@ -46,56 +48,42 @@ export function McpImportPage({
       subtitle={t('settings.mcp.importJsonHint')}
       footer={
         <>
-          <Button size="small" onPress={() => void handleSubmit()} isDisabled={!text.trim()} isPending={importing}>
+          <Button size="sm" onPress={() => void handleSubmit()} isDisabled={!text.trim()} isPending={importing}>
             {t('settings.mcp.importJsonSubmit')}
           </Button>
-          <Button size="small" variant="secondary" onPress={onCancel}>
+          <Button size="sm" variant="secondary" onPress={onCancel}>
             {t('settings.mcp.importJsonCancel')}
           </Button>
         </>
       }
     >
-      <SettingsCard data-slot="mcp-import-form">
-        <SettingsRow
-          label={t('settings.mcp.importJsonLabel')}
-          stacked
-          className="@sm/pane:flex-col @sm/pane:items-stretch"
-        >
-          {({ labelId }) => (
-            <TextArea
-              aria-labelledby={labelId}
-              aria-describedby={error ? errorId : undefined}
-              aria-invalid={error ? true : undefined}
-              name="mcpImportJson"
-              spellCheck={false}
-              fieldClassName="w-full"
-              className="h-48 font-mono"
-              placeholder={t('settings.mcp.importJsonPlaceholder')}
-              value={text}
-              onChange={(event) => {
-                setText(event.target.value)
-                setError(null)
-              }}
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return
-                if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-                  event.preventDefault()
-                  void handleSubmit()
-                }
-              }}
-            />
-          )}
+      <SettingsGroup>
+        <SettingsRow label={t('settings.mcp.importJsonLabel')}>
+          <TextArea
+            aria-describedby={error ? errorId : undefined}
+            aria-invalid={error ? true : undefined}
+            name="mcpImportJson"
+            spellCheck="false"
+            placeholder={t('settings.mcp.importJsonPlaceholder')}
+            value={text}
+            onChange={(event) => {
+              setText(event)
+              setError(null)
+            }}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault()
+                void handleSubmit()
+              }
+            }}
+          />
         </SettingsRow>
-      </SettingsCard>
+      </SettingsGroup>
       {error && (
-        <p
-          id={errorId}
-          data-slot="mcp-import-error"
-          role="alert"
-          className="px-3 text-body-2-regular text-status-danger"
-        >
+        <Alert id={errorId} data-slot="mcp-import-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
     </SettingsPage>
   )

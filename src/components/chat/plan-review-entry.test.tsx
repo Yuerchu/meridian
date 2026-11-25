@@ -4,7 +4,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import i18n from '@/i18n'
 import { api } from '@/api'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import { useConversationStore } from '@/stores/conversation-store'
 import { planReviewProjection } from '@/lib/plan-review-sync'
@@ -87,7 +87,6 @@ function info(note: string | null = null, state: PlanReviewStatus = 'pending', l
       updated_at: 1,
     },
     comments: [],
-    delivery: null,
   }
 }
 
@@ -112,7 +111,6 @@ function remember(status: PlanReviewStatus) {
         provider_call_id: 'call-1',
         turn_id: 'turn-1',
         status,
-        delivery_state: null,
         lock_version: 0,
       },
     },
@@ -137,8 +135,6 @@ beforeEach(() => {
   decide.mockResolvedValue({
     review_id: 'review-1',
     state: 'approved',
-    delivery_state: 'queued',
-    continuation_turn_id: 't',
   })
 })
 
@@ -163,12 +159,38 @@ describe('PlanReviewEntryBlock', () => {
     inBubble()
     await userEvent.click(screen.getByRole('button', { name: 'Approve and start' }))
     await waitFor(() =>
-      expect(decide).toHaveBeenCalledWith(expect.objectContaining({ reviewId: 'review-1', action: 'approve' })),
+      expect(decide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviewId: 'review-1',
+          action: 'approve',
+          approvalMode: 'default',
+          clearContext: false,
+        }),
+      ),
+    )
+  })
+
+  it('supports approving with accept_edits and clearContext from the options menu', async () => {
+    remember('pending')
+    inBubble()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.moreModes') }))
+    await userEvent.click(
+      await screen.findByRole('menuitem', { name: i18n.t('planReview.mode.clearContextAcceptEdits') }),
+    )
+    await waitFor(() =>
+      expect(decide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviewId: 'review-1',
+          action: 'approve',
+          approvalMode: 'accept_edits',
+          clearContext: true,
+        }),
+      ),
     )
   })
 
   /** The draft holds the reviewer's own note: the card hands over to the page
-   *  instead of deciding past it, and stops offering the two decisions. */
+   *  instead of deciding past it, and stops offering the card decisions. */
   it('hands an unfinished draft back to the review page', async () => {
     remember('pending')
     getPlanReview.mockResolvedValue(info('Half a thought'))
@@ -177,7 +199,7 @@ describe('PlanReviewEntryBlock', () => {
     expect(await screen.findByText(i18n.t('chat.plan.draftInProgress'))).toBeInTheDocument()
     expect(decide).not.toHaveBeenCalled()
     expect(screen.queryByRole('button', { name: 'Approve and start' })).toBeNull()
-    expect(screen.getByRole('button', { name: 'Review plan' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: i18n.t('chat.plan.review') })).toBeInTheDocument()
   })
 
   it('shows a failed decision where it was asked for', async () => {
@@ -197,13 +219,40 @@ describe('PlanReviewEntryBlock', () => {
       updated_at: 2,
     })
     inBubble()
-    await userEvent.click(screen.getByRole('button', { name: 'Send back' }))
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.revise') }))
     await userEvent.type(screen.getByRole('textbox', { name: i18n.t('chat.plan.feedbackLabel') }), 'Add tests')
-    await userEvent.click(screen.getByRole('button', { name: 'Submit feedback' }))
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.sendBack') }))
     await waitFor(() =>
       expect(decide).toHaveBeenCalledWith(
         expect.objectContaining({
           action: 'request_changes',
+          approvalMode: null,
+          clearContext: false,
+          expectedGeneration: 4,
+          expectedDraftHash: 'draft-hash-4',
+        }),
+      ),
+    )
+  })
+
+  it('approves with an inline note from the feedback row', async () => {
+    remember('pending')
+    vi.mocked(api.savePlanReviewDraft).mockResolvedValue({
+      review_id: 'review-1',
+      generation: 4,
+      draft_sha256: 'draft-hash-4',
+      updated_at: 2,
+    })
+    inBubble()
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.revise') }))
+    await userEvent.type(screen.getByRole('textbox', { name: i18n.t('chat.plan.feedbackLabel') }), 'Keep tests fast')
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.plan.approveWithNote') }))
+    await waitFor(() =>
+      expect(decide).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: 'approve',
+          approvalMode: 'default',
+          clearContext: false,
           expectedGeneration: 4,
           expectedDraftHash: 'draft-hash-4',
         }),

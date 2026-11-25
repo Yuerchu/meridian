@@ -1,7 +1,9 @@
+import './auxiliary-model-settings.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { isRemote } from '@/lib/transport'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { SettingsHeader } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import type { ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
@@ -66,7 +68,7 @@ function AuxiliaryModelRow({ providers }: { providers: ProviderInfoResponse[] })
   }
 
   return (
-    <div data-slot="auxiliary-model-settings" className="space-y-4">
+    <div data-slot="auxiliary-model-settings" className="m-auxiliary">
       <SettingsHeader title={t('settings.auxiliaryModel.title')} subtitle={t('settings.auxiliaryModel.subtitle')} />
       <ProviderModelPicker
         providers={providers}
@@ -84,13 +86,9 @@ function AuxiliaryModelRow({ providers }: { providers: ProviderInfoResponse[] })
         isModelDisabledWithoutProvider
       />
       {error && (
-        <p
-          data-slot="auxiliary-model-error"
-          role="alert"
-          className="text-caption-1-regular text-status-danger break-all"
-        >
+        <Alert data-slot="auxiliary-model-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
     </div>
   )

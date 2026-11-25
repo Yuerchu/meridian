@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import { api } from '@/api'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'

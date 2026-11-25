@@ -1,24 +1,21 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import './ime-learning-section.css'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as pickPath, save } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  Chip,
-  ItemCard,
-  ItemCardGroup,
-  SearchField,
-  Separator,
-  Spinner,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { usePlatform } from '@/hooks/use-platform'
 import type { ImeLearnedWordInfoResponse, ImeLearningImportMode, ImeLearningInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -113,6 +110,14 @@ export function ImeLearningSection() {
     }
   }
 
+  const chooseImport = (mode: ImeLearningImportMode) => {
+    const path = pendingImport
+    setPendingImport(null)
+    if (path) void runImport(path, mode)
+  }
+  // The back gesture answers the choice with neither, as Cancel does.
+  useHistoryLevel(pendingImport !== null, () => setPendingImport(null))
+
   const handleImport = async () => {
     setError(null)
     const file = await pickPath({
@@ -133,8 +138,8 @@ export function ImeLearningSection() {
   const handleForgetAll = async () => {
     if (
       !(await confirm({
-        body: t('settings.ime.learned.forgetAllConfirm'),
-        status: 'danger',
+        description: t('settings.ime.learned.forgetAllConfirm'),
+        tone: 'danger',
         confirmLabel: t('settings.ime.learned.forgetAll'),
       }))
     )
@@ -151,27 +156,27 @@ export function ImeLearningSection() {
   }
 
   return (
-    <div data-slot="ime-learned" className="space-y-1.5">
-      <div data-slot="ime-learned-head" className="flex items-center justify-between gap-3">
-        <p data-slot="ime-learned-summary" className="text-caption-1-medium text-text-secondary">
+    <div data-slot="ime-learned" className="m-ime-learned">
+      <div data-slot="ime-learned-head" className="m-ime-learned__head">
+        <p data-slot="ime-learned-summary" className="m-ime-learned__summary">
           {learning === null
             ? t('settings.ime.learned.title')
             : t('settings.ime.learned.summary', { words: learning.words.length, transitions: learning.transitions })}
         </p>
         {learning !== null && (
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="m-ime-learned__actions">
             {can.exportToDisk && (
-              <Button size="small" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
+              <Button size="sm" variant="secondary" onPress={handleExport} isDisabled={busy} isPending={busy}>
                 {t('settings.ime.learned.export')}
               </Button>
             )}
             {can.importFromDisk && (
-              <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy}>
+              <Button size="sm" variant="secondary" onPress={handleImport} isDisabled={busy}>
                 {t('settings.ime.learned.import')}
               </Button>
             )}
             {(learning.words.length > 0 || learning.transitions > 0) && (
-              <Button size="small" variant="secondary" onPress={() => setOpen(!open)}>
+              <Button size="sm" variant="secondary" onPress={() => setOpen(!open)}>
                 {open ? t('settings.ime.learned.close') : t('settings.ime.learned.manage')}
               </Button>
             )}
@@ -180,121 +185,109 @@ export function ImeLearningSection() {
       </div>
 
       {learning === null && !error && (
-        <p data-slot="ime-learned-loading" role="status" className="flex items-center gap-2">
-          <Spinner size="sm" />
-        </p>
+        <div data-slot="ime-learned-loading">
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        </div>
       )}
 
       {error && (
-        <Alert status="danger">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{error}</Alert.Description>
-          </Alert.Content>
+        <Alert shouldAnnounce tone="danger">
+          {error}
         </Alert>
       )}
 
       {notice && (
-        <Alert status="success">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{notice}</Alert.Description>
-          </Alert.Content>
+        <Alert shouldAnnounce tone="success">
+          {notice}
         </Alert>
       )}
 
       {learning !== null && learning.pending > 0 && (
-        <p data-slot="ime-learned-pending" className="text-caption-1-regular text-text-secondary">
+        <p data-slot="ime-learned-pending" className="m-ime-learned__hint">
           {t('settings.ime.learned.pending')}
         </p>
       )}
 
       {open && learning !== null && (
-        <div data-slot="ime-learned-list" className="space-y-2">
-          <SearchField aria-label={t('settings.ime.learned.search')} value={query} onChange={setQuery}>
-            <SearchField.Group>
-              <SearchField.SearchIcon />
-              <SearchField.Input placeholder={t('settings.ime.learned.search')} />
-              <SearchField.ClearButton aria-label={t('settings.ime.learned.clearSearch')} />
-            </SearchField.Group>
-          </SearchField>
+        <div data-slot="ime-learned-list" className="m-ime-learned__list">
+          <SearchField
+            aria-label={t('settings.ime.learned.search')}
+            value={query}
+            onChange={setQuery}
+            placeholder={t('settings.ime.learned.search')}
+          />
 
           {matching.length === 0 ? (
-            <p data-slot="ime-learned-none" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="ime-learned-none" className="m-ime-learned__hint">
               {t('settings.ime.learned.none')}
             </p>
           ) : (
-            <ItemCardGroup variant="outline">
-              {matching.slice(0, SHOWN).map((word, index) => (
-                <Fragment key={word.text}>
-                  {index > 0 && <Separator />}
-                  <ItemCard>
-                    <ItemCard.Content className="min-w-0">
-                      <ItemCard.Title className="flex w-full items-center gap-2">
-                        <span data-slot="ime-learned-word" onPointerEnter={titleIfTruncated} className="truncate">
-                          {word.text}
-                        </span>
-                        {word.user_word && (
-                          <Chip size="sm" variant="soft">
-                            {t('settings.ime.learned.userWord')}
-                          </Chip>
-                        )}
-                      </ItemCard.Title>
-                      <ItemCard.Description>
-                        {t('settings.ime.learned.count', { count: word.count })}
-                      </ItemCard.Description>
-                    </ItemCard.Content>
-                    <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
-                        <Button
-                          iconOnly
-                          leadingIcon={Bin}
-                          size="small"
-                          variant="neutral"
-                          aria-label={t('settings.ime.learned.forget', { word: word.text })}
-                          onPress={() => handleForget(word)}
-                        />
-                        <Tooltip>{t('settings.ime.learned.forget', { word: word.text })}</Tooltip>
-                      </TooltipTrigger>
-                    </ItemCard.Action>
-                  </ItemCard>
-                </Fragment>
+            <SettingsGroup>
+              {matching.slice(0, SHOWN).map((word) => (
+                <SettingsRow
+                  key={word.text}
+                  label={
+                    <span className="m-ime-learned__title">
+                      <span
+                        data-slot="ime-learned-word"
+                        onPointerEnter={titleIfTruncated}
+                        className="m-ime-learned__word"
+                      >
+                        {word.text}
+                      </span>
+                      {word.user_word && <Badge size="sm">{t('settings.ime.learned.userWord')}</Badge>}
+                    </span>
+                  }
+                  description={t('settings.ime.learned.count', { count: word.count })}
+                >
+                  <TooltipTrigger>
+                    <Button
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('settings.ime.learned.forget', { word: word.text })}
+                      onPress={() => handleForget(word)}
+                    />
+                    <Tooltip>{t('settings.ime.learned.forget', { word: word.text })}</Tooltip>
+                  </TooltipTrigger>
+                </SettingsRow>
               ))}
-            </ItemCardGroup>
+            </SettingsGroup>
           )}
           {matching.length > SHOWN && (
-            <p data-slot="ime-learned-more" className="text-caption-1-regular text-text-secondary">
+            <p data-slot="ime-learned-more" className="m-ime-learned__hint">
               {t('settings.ime.learned.more', { count: matching.length - SHOWN })}
             </p>
           )}
 
-          <Button variant="danger" size="small" onPress={handleForgetAll} isDisabled={busy} isPending={busy}>
+          <Button variant="destructive" size="sm" onPress={handleForgetAll} isDisabled={busy} isPending={busy}>
             {t('settings.ime.learned.forgetAll')}
           </Button>
         </div>
       )}
       {confirmDialog}
-      <ConfirmDialog
+      {/* A choice between two real answers, not "are you sure": Add and Replace
+          both proceed, so this is a dialog with three buttons rather than an
+          alert dialog with two. */}
+      <Dialog
         isOpen={pendingImport !== null}
-        title={t('settings.ime.learned.importTitle')}
-        body={t('settings.ime.learned.importChoose')}
-        confirmLabel={t('settings.ime.learned.importAdd')}
-        altLabel={t('settings.ime.learned.importReplace')}
-        status="accent"
-        onConfirm={() => {
-          const path = pendingImport
-          setPendingImport(null)
-          if (path) void runImport(path, 'add')
-        }}
-        onAlt={() => {
-          const path = pendingImport
-          setPendingImport(null)
-          if (path) void runImport(path, 'replace')
-        }}
         onOpenChange={(open) => {
           if (!open) setPendingImport(null)
         }}
-      />
+        heading={t('settings.ime.learned.importTitle')}
+        description={t('settings.ime.learned.importChoose')}
+        size="sm"
+      >
+        <DialogFooter>
+          <Button slot="close" variant="secondary">
+            {t('common.cancel')}
+          </Button>
+          <Button variant="destructive" onPress={() => chooseImport('replace')}>
+            {t('settings.ime.learned.importReplace')}
+          </Button>
+          <Button onPress={() => chooseImport('add')}>{t('settings.ime.learned.importAdd')}</Button>
+        </DialogFooter>
+      </Dialog>
     </div>
   )
 }

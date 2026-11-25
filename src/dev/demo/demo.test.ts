@@ -107,7 +107,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   queue_remove: { args: { request: { conversationId: CONV.rich, id: 'none' } } },
   get_plan_review: { args: { request: { reviewId: PLAN_REVIEW_ID } } },
   list_plan_revisions: { args: { request: { documentId: 'demo-plan-document' } } },
-  get_plan_review_delivery: { args: { request: { reviewId: PLAN_REVIEW_ID } } },
   save_plan_review_draft: {
     args: { request: { reviewId: PLAN_REVIEW_ID, expectedGeneration: 0, normalizedMarkdown: '# x', globalNote: null } },
   },
@@ -120,6 +119,8 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         expectedGeneration: 0,
         expectedDraftHash: 'x',
         action: 'approve',
+        approvalMode: 'default',
+        clearContext: false,
       },
     },
   },
@@ -232,6 +233,23 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   delete_assistant: { args: { id: 'demo-assistant-writer' } },
   list_tool_categories: {},
   list_custom_tools: {},
+  create_custom_tool: {
+    args: {
+      request: {
+        name: 'test',
+        description: 'test',
+        command: '',
+        categoryId: null,
+        parametersSchema: null,
+        argsTemplate: null,
+        workingDirectory: null,
+        timeoutMs: null,
+        permission: null,
+        execution: { kind: 'executable', program: 'echo', args: [{ kind: 'json' }] },
+      },
+    },
+  },
+  update_custom_tool: { args: { request: { id: 'demo-tool-typecheck', description: 'updated' } } },
   delete_custom_tool: { args: { id: 'demo-tool-typecheck' } },
   list_tool_presets: {},
   delete_tool_preset: { args: { id: 'demo-preset-coding' } },
@@ -320,6 +338,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         assistant_id: null,
         admin_users: [],
         ack_emoji_id: '124',
+        private_media_origins: [],
         voice_capture_sessions: [],
         voice_send_enabled: false,
         voice_send_groups: [],
@@ -399,6 +418,34 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
 }
 
 describe('demo fixtures', () => {
+  it('keeps legacy custom tools editable and rejects unsafe enablement atomically', async () => {
+    const backend = createDemoBackend()
+    const legacy = backend.state.customTools[0]
+    legacy.execution = null
+    legacy.is_enabled = false
+    legacy.command = "  printf '%s'  "
+    legacy.args_template = '"{{input}}"'
+    await backend.invoke('update_custom_tool', { request: { id: legacy.id, description: 'edited' } })
+    await expect(
+      backend.invoke('update_custom_tool', { request: { id: legacy.id, isEnabled: true, command: 'changed' } }),
+    ).rejects.toThrow(/Legacy/)
+    expect(backend.state.customTools[0].command).toBe("  printf '%s'  ")
+    expect(backend.state.customTools[0].args_template).toBe('"{{input}}"')
+    expect(backend.state.customTools[0].is_enabled).toBe(false)
+    await backend.invoke('update_custom_tool', {
+      request: {
+        id: legacy.id,
+        isEnabled: true,
+        execution: { kind: 'script', script: 'printf "%s" "$1"', args: [{ kind: 'parameter', name: 'input' }] },
+      },
+    })
+    expect(backend.state.customTools[0].is_enabled).toBe(true)
+    await expect(backend.invoke('update_custom_tool', { request: { id: legacy.id, execution: null } })).rejects.toThrow(
+      /Legacy/,
+    )
+    expect(backend.state.customTools[0].execution?.kind).toBe('script')
+  })
+
   it('has a sample call for every handler', () => {
     expect(Object.keys(DEMO_HANDLERS).filter((name) => !(name in SAMPLES))).toEqual([])
     expect(Object.keys(SAMPLES).filter((name) => !(name in DEMO_HANDLERS))).toEqual([])

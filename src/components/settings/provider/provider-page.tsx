@@ -1,34 +1,24 @@
+import './provider-page.css'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import { Bin, Key, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  DataGrid,
-  Description,
-  Input,
-  Label,
-  Sheet,
-  Spinner,
-  Switch,
-  TextArea,
-  TextField,
-  type DataGridColumn,
-} from '@/components/base'
+import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { PasswordField } from '@/components/yuerchu-ui/components/password-field/password-field'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { formatCurrencyAmount, formatDecimalAmount } from '@/lib/cost-format'
-import {
-  SavedHint,
-  SETTINGS_ROW_SELECT_TRIGGER,
-  SettingsCard,
-  SettingsRow,
-  SettingsSectionLabel,
-  SettingsSelect,
-  SettingsSkeleton,
-} from '../primitives'
+import { SavedHint, SettingsSectionLabel, SettingsSelect, SettingsSkeleton } from '../primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft, useSettingsResume } from '../settings-stack'
 import { CodexAccount } from './codex-account'
@@ -118,7 +108,7 @@ function ModelStatus({ config, listed }: { config?: ModelConfigInfoResponse; lis
   const { t } = useTranslation()
   if (!config) {
     return (
-      <span data-slot="model-status-unconfigured" className="text-text-secondary">
+      <span data-slot="model-status-unconfigured" className="m-provider-page__muted">
         {t('settings.provider.modelNotConfigured')}
       </span>
     )
@@ -126,23 +116,20 @@ function ModelStatus({ config, listed }: { config?: ModelConfigInfoResponse; lis
   return (
     // Wraps rather than widening its column: "not in list" beside "priced" is
     // two lines in a fixed-layout table at the settings width.
-    <span data-slot="model-status" className="inline-flex flex-wrap items-center justify-end gap-x-1.5">
+    <span data-slot="model-status" className="m-provider-page__status">
       {listed === false && (
-        <span data-slot="model-status-unlisted" className="text-text-secondary">
+        <span data-slot="model-status-unlisted" className="m-provider-page__muted">
           {t('settings.provider.modelNotListed')}
         </span>
       )}
       {isPriced(config.effective_pricing) ? (
-        <span
-          data-slot="model-status-priced"
-          className="inline-flex items-center gap-1.5 text-status-success-soft-foreground"
-        >
-          <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-status-success" />
+        <span data-slot="model-status-priced" className="m-provider-page__status-item" data-tone="success">
+          <span data-slot="model-status-dot" aria-hidden className="m-provider-page__status-dot" />
           {t('settings.provider.modelPriced')}
         </span>
       ) : (
-        <span data-slot="model-status-unpriced" className="inline-flex items-center gap-1.5 text-status-warning">
-          <span data-slot="model-status-dot" aria-hidden className="size-1.5 shrink-0 rounded-full bg-status-warning" />
+        <span data-slot="model-status-unpriced" className="m-provider-page__status-item" data-tone="warning">
+          <span data-slot="model-status-dot" aria-hidden className="m-provider-page__status-dot" />
           {t('settings.provider.modelPriceMissing')}
         </span>
       )}
@@ -227,6 +214,7 @@ function ProviderEditor({
   const [modelFilter, setModelFilter] = useState('')
   const [addingModel, setAddingModel] = useState(false)
   const [newModelId, setNewModelId] = useState('')
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
   /** Above this many, a filter box appears. */
   const FILTER_THRESHOLD = 8
   const [deleting, setDeleting] = useState(false)
@@ -260,7 +248,14 @@ function ProviderEditor({
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
-    if (!(await confirm({ body: t('settings.confirmDelete.provider'), confirmLabel: t('common.delete') }))) return
+    if (
+      !(await confirm({
+        description: t('settings.confirmDelete.provider'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setDeleting(true)
     setDeleteError(null)
     try {
@@ -613,6 +608,32 @@ function ProviderEditor({
     onOpenModel(id)
   }
 
+  const closeAddModel = useCallback(() => {
+    setAddingModel(false)
+    setNewModelId('')
+  }, [])
+
+  const requestCloseAddModel = useCallback(async () => {
+    if (!newModelId.trim()) {
+      closeAddModel()
+      return
+    }
+    setConfirmingDiscard(true)
+    const discard = await confirm({
+      heading: t('sheet.discard.title'),
+      description: t('sheet.discard.body'),
+      confirmLabel: t('sheet.discard.confirm'),
+      cancelLabel: t('common.cancel'),
+      tone: 'danger',
+    })
+    setConfirmingDiscard(false)
+    if (discard) closeAddModel()
+  }, [newModelId, closeAddModel, confirm, t])
+
+  useHistoryLevel(addingModel && !confirmingDiscard, () => {
+    void requestCloseAddModel()
+  })
+
   /**
    * What this provider announced, plus anything already configured on it.
    *
@@ -656,27 +677,24 @@ function ProviderEditor({
    * stored figure names no currency and inventing one here would be a claim
    * the database does not make.
    */
-  const modelColumns = useMemo<DataGridColumn<ModelRow>[]>(
+  const modelColumns = useMemo<DataTableColumn<ModelRow>[]>(
     () => [
       {
         id: 'model',
         isRowHeader: true,
         header: t('settings.provider.modelColumn'),
+        sortValue: (row) => row.name,
         cell: (row) => (
-          <span data-slot="model-row-name" className="flex min-w-0 flex-col">
+          <span data-slot="model-row-name" className="m-provider-page__model-name">
             <span
               data-slot="model-row-label"
               onPointerEnter={titleIfTruncated}
-              className="truncate text-body-regular text-text-primary"
+              className="m-provider-page__model-label"
             >
               {row.name}
             </span>
             {row.name !== row.id && (
-              <span
-                data-slot="model-row-id"
-                onPointerEnter={titleIfTruncated}
-                className="truncate text-caption-1-regular text-text-secondary"
-              >
+              <span data-slot="model-row-id" onPointerEnter={titleIfTruncated} className="m-provider-page__model-id">
                 {row.id}
               </span>
             )}
@@ -687,34 +705,43 @@ function ProviderEditor({
         id: 'context',
         header: t('settings.provider.modelContextColumn'),
         align: 'end',
-        headerClassName: 'w-20',
-        cellClassName: 'tabular-nums text-text-secondary',
-        cell: (row) =>
-          row.config
-            ? formatTokenCount(row.config.profile.context_window, locale)
-            : t('settings.provider.modelNoValue'),
+        width: 80,
+        sortValue: (row) => row.config?.profile.context_window ?? null,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {row.config
+              ? formatTokenCount(row.config.profile.context_window, locale)
+              : t('settings.provider.modelNoValue')}
+          </span>
+        ),
       },
       {
         id: 'input',
         header: t('settings.provider.modelInputColumn'),
         align: 'end',
-        headerClassName: 'w-20',
-        cellClassName: 'tabular-nums text-text-secondary',
-        cell: (row) => formatRate(row.config?.effective_pricing.input_price ?? null, locale, t),
+        width: 80,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {formatRate(row.config?.effective_pricing.input_price ?? null, locale, t)}
+          </span>
+        ),
       },
       {
         id: 'output',
         header: t('settings.provider.modelOutputColumn'),
         align: 'end',
-        headerClassName: 'w-20',
-        cellClassName: 'tabular-nums text-text-secondary',
-        cell: (row) => formatRate(row.config?.effective_pricing.output_price ?? null, locale, t),
+        width: 80,
+        cell: (row) => (
+          <span className="m-provider-page__figure-value">
+            {formatRate(row.config?.effective_pricing.output_price ?? null, locale, t)}
+          </span>
+        ),
       },
       {
         id: 'status',
         header: t('settings.provider.modelStatusColumn'),
         align: 'end',
-        headerClassName: 'w-24',
+        width: 96,
         cell: (row) => <ModelStatus config={row.config} listed={row.listed} />,
       },
     ],
@@ -752,63 +779,50 @@ function ProviderEditor({
       : undefined
 
   return (
-    <div data-slot="provider-editor" className="flex flex-col gap-6">
+    <div data-slot="provider-editor" className="m-provider-page">
       {/* What the row is and how it is reached, as rows in one card — the MCP
           server page's grammar. Each row's label is a `<p>`, so every control
           names itself through the ids the row hands it. */}
-      <SettingsCard data-slot="provider-identity">
-        <SettingsRow label={t('settings.provider.name')} stacked>
-          {({ labelId }) => (
-            <Input
-              aria-labelledby={labelId}
-              name={`providerName-${provider.id}`}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              fieldClassName="w-full @sm/pane:w-64"
-            />
-          )}
-        </SettingsRow>
+      <div data-slot="provider-identity">
+        <SettingsGroup>
+          <SettingsRow label={t('settings.provider.name')}>
+            <TextField name={`providerName-${provider.id}`} value={name} onChange={(e) => setName(e)} />
+          </SettingsRow>
 
-        {/* Beside the name because it is the other half of "which row is
+          {/* Beside the name because it is the other half of "which row is
             this": a second Anthropic row for Vertex and a relay in front of
             OpenAI both draw the vendor's own mark, or a generic cloud, until
             somebody says otherwise. */}
-        <SettingsRow label={t('settings.provider.icon')} data-slot="provider-icon-field">
-          {({ labelId }) => (
+          <SettingsRow label={t('settings.provider.icon')}>
             <ProviderIconPicker
+              ariaLabel={t('settings.provider.icon')}
               value={icon}
               catalogId={provider.catalog_id}
               providerType={providerType}
               onChange={setIcon}
-              labelledBy={labelId}
             />
-          )}
-        </SettingsRow>
+          </SettingsRow>
 
-        <SettingsRow label={t('settings.provider.type')}>
-          {({ labelId }) => (
+          <SettingsRow label={t('settings.provider.type')}>
             <SettingsSelect
-              ariaLabelledBy={labelId}
+              ariaLabel={t('settings.provider.type')}
               value={providerType}
               options={typeOptions}
               onChange={handleProviderTypeChange}
               disabled={isRemote}
-              triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
             />
-          )}
-        </SettingsRow>
+          </SettingsRow>
 
-        {/* Only where the vendor lists more than one way in. This is the one
+          {/* Only where the vendor lists more than one way in. This is the one
             control that writes `credential_kind`, and without it a login could
             only be changed by editing the database by hand. */}
-        {(rowEntry?.auth.length ?? 0) > 1 && (
-          <SettingsRow
-            label={t('settings.provider.authMethod')}
-            description={usesChatGptLogin(provider) ? t('settings.provider.authMethodCodexHint') : undefined}
-          >
-            {({ labelId }) => (
+          {(rowEntry?.auth.length ?? 0) > 1 && (
+            <SettingsRow
+              label={t('settings.provider.authMethod')}
+              description={usesChatGptLogin(provider) ? t('settings.provider.authMethodCodexHint') : undefined}
+            >
               <SettingsSelect
-                ariaLabelledBy={labelId}
+                ariaLabel={t('settings.provider.authMethod')}
                 value={activeAuth?.id ?? ''}
                 options={(rowEntry?.auth ?? []).map((a) => ({
                   value: a.id,
@@ -816,34 +830,26 @@ function ProviderEditor({
                 }))}
                 onChange={handleAuthOptionChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
-            )}
-          </SettingsRow>
-        )}
+            </SettingsRow>
+          )}
 
-        {activeAuth?.credential_kind === 'none' ? (
-          <SettingsRow
-            label={t('settings.provider.modelPath')}
-            description={t('settings.provider.modelPathHint')}
-            stacked
-            className="@sm/pane:flex-col @sm/pane:items-stretch"
-          >
-            {({ labelId }) => (
-              <div data-slot="model-path-row" className="flex w-full gap-2">
-                <Input
-                  aria-labelledby={labelId}
-                  name={`providerModelPath-${provider.id}`}
-                  disabled={isRemote}
-                  spellCheck={false}
-                  value={baseUrl === 'local://' ? '' : baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                  placeholder={t('settings.provider.modelPathPlaceholder')}
-                  fieldClassName="w-full"
-                />
+          {activeAuth?.credential_kind === 'none' ? (
+            <SettingsRow label={t('settings.provider.modelPath')} description={t('settings.provider.modelPathHint')}>
+              <div data-slot="model-path-row" className="m-provider-page__field-row">
+                <div className="m-provider-page__grow">
+                  <TextField
+                    name={`providerModelPath-${provider.id}`}
+                    isDisabled={isRemote}
+                    spellCheck="false"
+                    value={baseUrl === 'local://' ? '' : baseUrl}
+                    onChange={(e) => setBaseUrl(e)}
+                    placeholder={t('settings.provider.modelPathPlaceholder')}
+                  />
+                </div>
                 {!isRemote && (
                   <Button
-                    size="small"
+                    size="sm"
                     variant="secondary"
                     onPress={async () => {
                       const file = await pickModelFile()
@@ -854,44 +860,36 @@ function ProviderEditor({
                   </Button>
                 )}
               </div>
-            )}
-          </SettingsRow>
-        ) : (
-          <SettingsRow
-            label={t('settings.provider.baseUrl')}
-            stacked
-            className="@sm/pane:flex-col @sm/pane:items-stretch"
-          >
-            {({ labelId }) => (
-              <Input
-                aria-labelledby={labelId}
-                name={`providerBaseUrl-${provider.id}`}
-                disabled={isRemote}
-                type="url"
-                inputMode="url"
-                spellCheck={false}
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={
-                  defaultUrlFor(activeAuth, apiFormat) ??
-                  URL_PLACEHOLDERS[apiFormat] ??
-                  URL_PLACEHOLDERS.chat_completions
-                }
-                fieldClassName="w-full"
-              />
-            )}
-          </SettingsRow>
-        )}
+            </SettingsRow>
+          ) : (
+            <SettingsRow label={t('settings.provider.baseUrl')}>
+              <div className="m-provider-page__grow">
+                <TextField
+                  name={`providerBaseUrl-${provider.id}`}
+                  isDisabled={isRemote}
+                  type="url"
+                  inputMode="url"
+                  spellCheck="false"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e)}
+                  placeholder={
+                    defaultUrlFor(activeAuth, apiFormat) ??
+                    URL_PLACEHOLDERS[apiFormat] ??
+                    URL_PLACEHOLDERS.chat_completions
+                  }
+                />
+              </div>
+            </SettingsRow>
+          )}
 
-        {/* One dialect means there is nothing to choose — which is what the old
+          {/* One dialect means there is nothing to choose — which is what the old
             `SINGLE_FORMAT_TYPES` denylist said about Anthropic, now read off the
             data. While the catalog is loading nothing is known, so the selector
             stays hidden rather than offering a set that may be wrong. */}
-        {formatsFor(activeAuth).length > 1 && (
-          <SettingsRow label={t('settings.provider.apiFormat')} description={formatDescription}>
-            {({ labelId }) => (
+          {formatsFor(activeAuth).length > 1 && (
+            <SettingsRow label={t('settings.provider.apiFormat')} description={formatDescription}>
               <SettingsSelect
-                ariaLabelledBy={labelId}
+                ariaLabel={t('settings.provider.apiFormat')}
                 value={apiFormat}
                 options={
                   providerType === 'google'
@@ -900,78 +898,59 @@ function ProviderEditor({
                 }
                 onChange={handleApiFormatChange}
                 disabled={isRemote}
-                triggerClassName={SETTINGS_ROW_SELECT_TRIGGER}
               />
-            )}
-          </SettingsRow>
-        )}
+            </SettingsRow>
+          )}
 
-        {offersCodexRequestShape && (
-          <SettingsRow
-            label={t('settings.provider.codexRequestShape')}
-            description={t('settings.provider.codexRequestShapeHint')}
-            data-slot="provider-codex-request-shape"
-          >
-            {({ labelId, descriptionId }) => (
-              <Switch
-                aria-labelledby={labelId}
-                aria-describedby={descriptionId}
-                isSelected={codexRequestShape}
-                onChange={setCodexRequestShape}
-              />
-            )}
-          </SettingsRow>
-        )}
-        {/* Only once the shape is on: an override for a version nothing is
+          {offersCodexRequestShape && (
+            <SettingsRow
+              label={t('settings.provider.codexRequestShape')}
+              description={t('settings.provider.codexRequestShapeHint')}
+            >
+              <Switch isSelected={codexRequestShape} onChange={setCodexRequestShape} />
+            </SettingsRow>
+          )}
+          {/* Only once the shape is on: an override for a version nothing is
             claiming reads as a setting that does nothing. The field itself is
             global — one install claims one Codex version — which the
             description says rather than the layout implying. */}
-        {offersCodexRequestShape && codexRequestShape && (
-          <SettingsRow
-            label={t('settings.provider.codexClientVersion')}
-            description={t('settings.provider.codexClientVersionHint')}
-            stacked
-          >
-            {({ labelId, descriptionId }) => (
-              <Input
-                aria-labelledby={labelId}
-                aria-describedby={descriptionId}
+          {offersCodexRequestShape && codexRequestShape && (
+            <SettingsRow
+              label={t('settings.provider.codexClientVersion')}
+              description={t('settings.provider.codexClientVersionHint')}
+            >
+              <TextField
                 name="codexClientVersion"
-                spellCheck={false}
+                spellCheck="false"
                 value={codexClientVersion}
-                onChange={(e) => setCodexClientVersion(e.target.value)}
+                onChange={(e) => setCodexClientVersion(e)}
                 placeholder={t('settings.provider.codexClientVersionPlaceholder')}
-                fieldClassName="w-full @sm/pane:w-48"
               />
-            )}
-          </SettingsRow>
-        )}
-        {providerType === 'litert_lm' && (
-          <LocalModelSettings
-            key={`${provider.id}:${baseUrl}:${localBackend}`}
-            providerId={provider.id}
-            modelPath={baseUrl}
-            backend={localBackend}
-            onBackendChange={setLocalBackend}
-          />
-        )}
-      </SettingsCard>
+            </SettingsRow>
+          )}
+          {providerType === 'litert_lm' && (
+            <LocalModelSettings
+              key={`${provider.id}:${baseUrl}:${localBackend}`}
+              providerId={provider.id}
+              modelPath={baseUrl}
+              backend={localBackend}
+              onBackendChange={setLocalBackend}
+            />
+          )}
+        </SettingsGroup>
+      </div>
 
       {/* Save writes the card above and nothing below it: the key has its own
           button, the models are their own pages. */}
-      <div data-slot="provider-editor-actions" className="flex items-center gap-2">
-        <Button size="small" onPress={handleSave} isPending={saving}>
+      <div data-slot="provider-editor-actions" className="m-provider-page__actions">
+        <Button size="sm" onPress={handleSave} isPending={saving}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint />}
       </div>
       {saveError && (
-        <Alert data-slot="provider-save-error" status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.saveError')}</Alert.Title>
-            <Alert.Description className="break-all">{saveError}</Alert.Description>
-          </Alert.Content>
+        <Alert data-slot="provider-save-error" tone="danger" shouldAnnounce heading={t('settings.provider.saveError')}>
+          {saveError}
         </Alert>
       )}
 
@@ -981,29 +960,25 @@ function ProviderEditor({
       {activeAuth?.credential_kind === 'none' ? null : usesChatGptLogin(provider) ? (
         <CodexAccount />
       ) : (
-        <div data-slot="provider-credentials" className="flex flex-col gap-2">
-          <SettingsCard>
+        <div data-slot="provider-credentials" className="m-provider-page__section">
+          <SettingsGroup>
             <SettingsRow
               label={
                 usesVertexServiceAccount(provider)
                   ? t('settings.provider.vertexServiceAccountJson')
                   : t('settings.provider.apiKey')
               }
-              stacked
-              className="@sm/pane:flex-col @sm/pane:items-stretch"
             >
-              {({ labelId }) => (
-                <div data-slot="provider-api-key-row" className="flex w-full gap-2">
+              <div data-slot="provider-api-key-row" className="m-provider-page__field-row">
+                <div className="m-provider-page__grow">
                   {usesVertexServiceAccount(provider) ? (
                     <TextArea
-                      aria-labelledby={labelId}
                       name={`providerApiKey-${provider.id}`}
                       autoComplete="off"
                       rows={6}
-                      resize="vertical"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1011,17 +986,15 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.vertexServiceAccountPlaceholder')
                       }
-                      fieldClassName="min-w-0 flex-1 font-mono"
                     />
                   ) : (
-                    <Input
-                      aria-labelledby={labelId}
-                      type="password"
+                    <PasswordField
                       name={`providerApiKey-${provider.id}`}
-                      autoComplete="off"
+                      // A secret, not an account password; the library has no purpose for it yet (Yuerchu/ui#570).
+                      autoComplete="current-password"
                       value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      disabled={keyStatus === 'loading' || savingKey}
+                      onChange={setApiKey}
+                      isDisabled={keyStatus === 'loading' || savingKey}
                       placeholder={
                         keyStatus === 'loading'
                           ? t('settings.provider.apiKeyChecking')
@@ -1029,16 +1002,13 @@ function ProviderEditor({
                             ? t('settings.provider.apiKeyPlaceholderSet')
                             : t('settings.provider.apiKeyPlaceholder')
                       }
-                      // The shell is what sits in this row (`className` reaches the
-                      // inner <input>); without `flex-1 min-w-0` the row grew to the
-                      // input's intrinsic width plus the button and ran off a phone.
-                      fieldClassName="min-w-0 flex-1"
                     />
                   )}
+                </div>
+                <div className="m-provider-page__key-action">
                   <Button
-                    leadingIcon={Key}
+                    icon={<Key />}
                     variant="secondary"
-                    className="shrink-0"
                     onPress={handleSaveKey}
                     isDisabled={!apiKey.trim() || keyStatus === 'loading'}
                     isPending={savingKey}
@@ -1046,42 +1016,29 @@ function ProviderEditor({
                     {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
                   </Button>
                 </div>
-              )}
+              </div>
             </SettingsRow>
-          </SettingsCard>
+          </SettingsGroup>
           {keyStatus === 'loading' && (
-            <p
-              data-slot="provider-key-checking"
-              className="flex items-center gap-1.5 px-3 text-caption-1-regular text-text-secondary"
-            >
-              <Spinner size="sm" color="current" />
+            <div data-slot="provider-key-checking" className="m-provider-page__note">
+              <Spinner size="sm" />
               {t('settings.provider.apiKeyChecking')}
-            </p>
+            </div>
           )}
           {keyStatus === 'set' && (
-            <p
-              data-slot="provider-key-saved"
-              className="px-3 text-caption-1-regular text-status-success-soft-foreground"
-            >
+            <p data-slot="provider-key-saved" className="m-provider-page__note" data-tone="success">
               {t('settings.provider.keySaved')}
             </p>
           )}
           {keyStatus === 'error' && (
-            <p
-              data-slot="provider-key-check-failed"
-              className="px-3 text-caption-1-regular text-status-warning-soft-foreground"
-            >
+            <p data-slot="provider-key-check-failed" className="m-provider-page__note" data-tone="warning">
               {t('settings.provider.apiKeyCheckFailed')}
             </p>
           )}
           {credentialError && (
-            <p
-              data-slot="provider-credential-error"
-              role="alert"
-              className="px-3 text-caption-1-regular text-status-danger break-all"
-            >
+            <Alert data-slot="provider-credential-error" tone="danger" shouldAnnounce>
               {credentialError}
-            </p>
+            </Alert>
           )}
         </div>
       )}
@@ -1091,12 +1048,12 @@ function ProviderEditor({
           drift shows up rather than hiding. This only keeps the button off the
           panels where it could never do anything. */}
       {balanceEntry(catalog, provider.catalog_id, providerType)?.balance === true && (
-        <div data-slot="provider-balance" className="flex flex-col gap-2">
-          <SettingsCard>
-            <SettingsRow label={t('settings.provider.balance')} data-slot="provider-balance-header">
+        <div data-slot="provider-balance" className="m-provider-page__section">
+          <SettingsGroup>
+            <SettingsRow label={t('settings.provider.balance')}>
               <Button
-                size="small"
-                leadingIcon={RefreshCw}
+                size="sm"
+                icon={<RefreshCw />}
                 variant="secondary"
                 onPress={handleFetchBalance}
                 isDisabled={keyStatus !== 'set'}
@@ -1106,9 +1063,9 @@ function ProviderEditor({
               </Button>
             </SettingsRow>
             {balance && (
-              <div data-slot="provider-balance-card" className="flex flex-col gap-1.5 py-2.5 pr-2.5">
+              <div data-slot="provider-balance-card" className="m-provider-page__balance">
                 {!balance.is_available && (
-                  <p data-slot="provider-balance-unavailable" className="text-caption-1-regular text-status-danger">
+                  <p data-slot="provider-balance-unavailable" className="m-provider-page__note" data-tone="danger">
                     {t('settings.provider.balanceUnavailable')}
                   </p>
                 )}
@@ -1116,15 +1073,15 @@ function ProviderEditor({
                   <div
                     key={account.currency}
                     data-slot="provider-balance-account"
-                    className="flex items-baseline justify-between gap-2"
+                    className="m-provider-page__balance-account"
                   >
-                    <span data-slot="provider-balance-total" className="text-body-regular">
+                    <span data-slot="provider-balance-total" className="m-provider-page__balance-total">
                       {formatBalance(account.total_balance, account.currency)}
                     </span>
                     {/* The split is the point: a total held up by expiring
                         promotional credit is closer to empty than it looks. */}
                     {account.topped_up_balance != null && account.granted_balance != null && (
-                      <span data-slot="provider-balance-split" className="text-caption-1-regular text-text-secondary">
+                      <span data-slot="provider-balance-split" className="m-provider-page__muted">
                         {t('settings.provider.balanceSplit', {
                           toppedUp: formatDecimalAmount(account.topped_up_balance, locale, 2, 2),
                           granted: formatDecimalAmount(account.granted_balance, locale, 2, 2),
@@ -1134,21 +1091,17 @@ function ProviderEditor({
                   </div>
                 ))}
                 {balance.accounts.length === 0 && (
-                  <p data-slot="provider-balance-no-detail" className="text-caption-1-regular text-text-secondary">
+                  <p data-slot="provider-balance-no-detail" className="m-provider-page__muted">
                     {t('settings.provider.balanceNoDetail')}
                   </p>
                 )}
               </div>
             )}
-          </SettingsCard>
+          </SettingsGroup>
           {balanceError && (
-            <p
-              data-slot="provider-balance-error"
-              role="alert"
-              className="px-3 text-caption-1-regular text-status-danger break-all"
-            >
+            <Alert data-slot="provider-balance-error" tone="danger" shouldAnnounce>
               {balanceError}
-            </p>
+            </Alert>
           )}
         </div>
       )}
@@ -1156,16 +1109,16 @@ function ProviderEditor({
       {/* A section of its own, but not a `SettingsSection`: that wraps its
           children in a card, and the table is its own card already — a box
           inside a box is what the page grammar exists to stop. */}
-      <div data-slot="provider-models" className="flex w-full flex-col gap-2">
+      <div data-slot="provider-models" className="m-provider-page__section">
         {providerType === 'litert_lm' && (
-          <p className="px-3 text-caption-1-regular text-text-secondary">{t('settings.localModel.aliasesHint')}</p>
+          <p className="m-provider-page__note">{t('settings.localModel.aliasesHint')}</p>
         )}
-        <div data-slot="provider-models-header" className="flex items-center justify-between gap-2">
-          <SettingsSectionLabel data-slot="provider-models-label" className="w-auto min-w-0 truncate">
+        <div data-slot="provider-models-header" className="m-provider-page__models-header">
+          <SettingsSectionLabel data-slot="provider-models-label" className="m-provider-page__models-label">
             {t('settings.provider.models')}
           </SettingsSectionLabel>
-          <div data-slot="provider-models-actions" className="flex shrink-0 items-center gap-1">
-            <Button size="small" leadingIcon={Plus} variant="secondary" onPress={() => setAddingModel(true)}>
+          <div data-slot="provider-models-actions" className="m-provider-page__models-actions">
+            <Button size="sm" icon={<Plus />} variant="secondary" onPress={() => setAddingModel(true)}>
               {t('settings.provider.addModel')}
             </Button>
             {/* `keyStatus` is a proxy for "a request can be made", and it is only
@@ -1175,8 +1128,8 @@ function ProviderEditor({
                 here kept the button permanently grey on the rows the exemption
                 was written for. */}
             <Button
-              size="small"
-              leadingIcon={RefreshCw}
+              size="sm"
+              icon={<RefreshCw />}
               variant="secondary"
               onPress={handleFetchModels}
               isDisabled={activeAuth?.credential_kind !== 'none' && !usesChatGptLogin(provider) && keyStatus !== 'set'}
@@ -1187,13 +1140,9 @@ function ProviderEditor({
           </div>
         </div>
         {modelsError && (
-          <p
-            data-slot="provider-models-error"
-            role="alert"
-            className="px-3 text-caption-1-regular text-status-danger break-all"
-          >
+          <Alert data-slot="provider-models-error" tone="danger" shouldAnnounce>
             {modelsError}
-          </p>
+          </Alert>
         )}
         {/* A filter rather than a scroller: a provider that answers with two
             hundred models is common, and a box inside a box is what the page
@@ -1201,95 +1150,70 @@ function ProviderEditor({
             to what matched — gated on the matches, a query with none took the
             box away along with the text that could be corrected. */}
         {allModels.length > FILTER_THRESHOLD && (
-          <Input
+          <TextField
             aria-label={t('settings.provider.filterModels')}
             name={`modelFilter-${provider.id}`}
             value={modelFilter}
-            onChange={(event) => setModelFilter(event.target.value)}
+            onChange={(event) => setModelFilter(event)}
             placeholder={t('settings.provider.filterModels')}
           />
         )}
         {allModels.length > 0 && visibleModels.length === 0 && (
-          <p
-            data-slot="provider-models-no-match"
-            role="status"
-            className="px-3 text-caption-1-regular text-text-secondary"
-          >
+          <p data-slot="provider-models-no-match" role="status" className="m-provider-page__note">
             {t('settings.provider.filterNoMatch')}
           </p>
         )}
         {visibleModels.length > 0 && (
-          <div data-slot="provider-model-list">
+          <div data-slot="provider-model-list" className="m-provider-page__model-list">
             {/* A row is still a way into the model's page — `onRowAction`
                 rather than selection, for the reason the provider list gives:
                 a selected row would keep a highlight on a page nobody is
-                looking at. Fixed layout, so the four figures keep the widths
-                their headers give them and the model column takes the rest —
-                about 200px at the settings width, where a long wire id
-                truncates. Below 32rem (a phone) the table scrolls sideways
-                inside its own card instead of each column collapsing to two
-                characters. */}
-            <DataGrid<ModelRow>
+                looking at. */}
+            <DataTable<ModelRow>
               aria-label={t('settings.provider.models')}
-              items={visibleModels}
+              rows={visibleModels}
               columns={modelColumns}
-              contentClassName="min-w-lg table-fixed"
+              getRowId={(row) => row.id}
               onRowAction={(key) => typeof key === 'string' && onOpenModel(key)}
             />
           </div>
         )}
-        <Sheet
+        <Drawer
           isOpen={addingModel}
           onOpenChange={(open) => {
-            setAddingModel(open)
-            if (!open) setNewModelId('')
+            if (open) setAddingModel(true)
+            else void requestCloseAddModel()
           }}
-          placement="bottom"
-          // Typed but unsubmitted is unsaved work: dragging the sheet away
-          // would lose it silently, which is the one thing the drag must not do.
-          isDirty={newModelId.trim().length > 0}
+          side="bottom"
+          size="sm"
+          heading={t('settings.provider.addModel')}
+          footer={
+            <>
+              <Button variant="secondary" onPress={() => void requestCloseAddModel()}>
+                {t('common.cancel')}
+              </Button>
+              <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
+                {t('common.confirm')}
+              </Button>
+            </>
+          }
         >
-          <Sheet.Backdrop>
-            {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
-              sheet's default `background-primary`: a field's tertiary well is the same
-              neutral-800 as primary in dark, so on the default the field had no edge. */}
-            <Sheet.Content className="mx-auto bg-background-full sm:max-w-lg sm:rounded-b-2xl">
-              <Sheet.Dialog aria-label={t('settings.provider.addModel')} className="pb-[max(1rem,var(--safe-bottom))]">
-                <Sheet.Handle />
-                <Sheet.Header>
-                  <Sheet.Heading>{t('settings.provider.addModel')}</Sheet.Heading>
-                </Sheet.Header>
-                <Sheet.Body className="space-y-2">
-                  <TextField>
-                    <Label>{t('settings.provider.modelId')}</Label>
-                    <Input
-                      name={`newModelId-${provider.id}`}
-                      autoComplete="off"
-                      value={newModelId}
-                      onChange={(event) => setNewModelId(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.nativeEvent.isComposing) return
-                        if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
-                      }}
-                      placeholder="gpt-6-preview"
-                    />
-                    <Description className="text-caption-1-regular">{t('settings.provider.addModelHint')}</Description>
-                  </TextField>
-                </Sheet.Body>
-                <Sheet.Footer>
-                  <Button slot="close" variant="secondary">
-                    {t('common.cancel')}
-                  </Button>
-                  <Button isDisabled={!newModelId.trim()} onPress={handleAddModel}>
-                    {t('common.confirm')}
-                  </Button>
-                </Sheet.Footer>
-              </Sheet.Dialog>
-            </Sheet.Content>
-          </Sheet.Backdrop>
-        </Sheet>
+          <TextField
+            label={t('settings.provider.modelId')}
+            name={`newModelId-${provider.id}`}
+            autoComplete="off"
+            value={newModelId}
+            onChange={setNewModelId}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return
+              if (event.key === 'Enter' && newModelId.trim()) handleAddModel()
+            }}
+            placeholder="gpt-6-preview"
+            description={t('settings.provider.addModelHint')}
+          />
+        </Drawer>
         {allModels.length === 0 && !fetchingModels && !modelsError && (
-          <p data-slot="provider-models-hint" className="px-3 text-caption-1-regular text-text-secondary">
+          <p data-slot="provider-models-hint" className="m-provider-page__note">
             {t('settings.provider.fetchModelsHint')}
           </p>
         )}
@@ -1297,25 +1221,21 @@ function ProviderEditor({
 
       {/* The profile page's closing card, as the MCP server page has it: a row
           saying what the action does, its button on the right. */}
-      <div data-slot="provider-danger-zone" className="flex flex-col gap-2">
-        <SettingsCard>
+      <div data-slot="provider-danger-zone" className="m-provider-page__section">
+        <SettingsGroup>
           <SettingsRow
             label={t('settings.provider.deleteProvider')}
             description={t('settings.provider.deleteProviderHint')}
           >
-            <Button size="small" leadingIcon={Bin} variant="danger" onPress={handleDelete} isPending={deleting}>
+            <Button size="sm" icon={<Bin />} variant="destructive" onPress={handleDelete} isPending={deleting}>
               {deleting ? t('settings.provider.deletingProvider') : t('common.delete')}
             </Button>
           </SettingsRow>
-        </SettingsCard>
+        </SettingsGroup>
         {deleteError && (
-          <p
-            data-slot="provider-delete-error"
-            role="alert"
-            className="px-3 text-caption-1-regular text-status-danger break-all"
-          >
+          <Alert data-slot="provider-delete-error" tone="danger" shouldAnnounce>
             {deleteError}
-          </p>
+          </Alert>
         )}
       </div>
       {confirmDialog}
@@ -1361,12 +1281,7 @@ export function ProviderPage({
   if (!provider) {
     return (
       <SettingsPage title={t('settings.provider.title')}>
-        <Alert status="warning" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.provider.selectProvider')}</Alert.Title>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning" shouldAnnounce heading={t('settings.provider.selectProvider')} />
       </SettingsPage>
     )
   }

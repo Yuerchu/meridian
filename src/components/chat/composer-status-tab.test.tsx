@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import i18n from '@/i18n'
 import { ComposerStatusTab, ProjectBranchChip } from './composer-status-tab'
 import { TodoProgressChip } from './todo-progress-chip'
+import { TodoCurrentRow } from './todo-bar'
 import type { TodoArgs } from './todo-list'
 
 const TODOS: TodoArgs = {
@@ -41,7 +42,7 @@ describe('ProjectBranchChip', () => {
   it('names the branch, announced as one', () => {
     render(<ProjectBranchChip branch={{ status: 'branch', name: 'feat/design-parity' }} />)
     expect(screen.getByText('feat/design-parity')).toBeInTheDocument()
-    expect(screen.getByText(i18n.t('composer.branch'))).toHaveClass('sr-only')
+    expect(screen.getByText(i18n.t('composer.branch'))).toHaveClass('m-composer-status-tab__sr')
   })
 
   it('says a detached HEAD in words rather than as a branch name', () => {
@@ -78,10 +79,19 @@ describe('TodoProgressChip', () => {
 })
 
 describe('the progress ring', () => {
-  it('is drawn at 16px in the chip, not the ring default of 24px', () => {
-    render(<TodoProgressChip todos={TODOS} />)
-    const ring = document.querySelector('[data-slot="todo-progress-chip"] [role="progressbar"]')!
-    expect(ring.className).toMatch(/\bsize-4\b/)
-    expect(ring.className).not.toMatch(/\bsize-6\b/)
+  it.each([
+    ['chip', TodoProgressChip],
+    ['current row', TodoCurrentRow],
+  ] as const)('uses the library small preset in the %s without announcing the count twice', (_placement, Component) => {
+    render(<Component todos={TODOS} />)
+    const ring = screen.getByRole('progressbar', { hidden: true })
+    expect(ring).toHaveAttribute('data-size', 'sm')
+    expect(ring).toHaveClass('ui-progress-circle', { exact: true })
+    expect(ring).not.toHaveAttribute('style')
+    expect(ring).toHaveAttribute('aria-valuenow', '1')
+    expect(ring).toHaveAttribute('aria-valuemax', '3')
+    expect(ring.closest('[data-slot="todo-ring"]')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.queryByRole('progressbar')).toBeNull()
+    expect(screen.getByText('1/3')).toBeInTheDocument()
   })
 })

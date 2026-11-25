@@ -1,0 +1,363 @@
+@layer components {
+  .m-usage-settings__refreshing {
+    align-self: flex-end;
+  }
+
+  .m-usage-settings__filter {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-1);
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .m-usage-settings__filter-label,
+  .m-usage-settings__note,
+  .m-usage-settings__warning,
+  .m-usage-settings__kpi-note,
+  .m-usage-settings__kpi-title,
+  .m-usage-settings__card-title,
+  .m-usage-settings__cell,
+  .m-usage-settings__part-label,
+  .m-usage-settings__legend-label,
+  .m-usage-settings__row-summary,
+  .m-usage-settings__bar-label {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-usage-settings__filter-label {
+    font: var(--text-small);
+  }
+
+  .m-usage-settings__filters,
+  .m-usage-settings__card-header,
+  .m-usage-settings__breakdown-header,
+  .m-usage-settings__part-label,
+  .m-usage-settings__legend,
+  .m-usage-settings__legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-usage-settings__filters,
+  .m-usage-settings__breakdown-header,
+  .m-usage-settings__legend {
+    flex-wrap: wrap;
+  }
+
+  .m-usage-settings__filters {
+    gap: var(--space-3) var(--space-6);
+  }
+
+  .m-usage-settings__legend {
+    gap: var(--space-1) var(--space-4);
+  }
+
+  .m-usage-settings__error-text,
+  .m-usage-settings__truncate,
+  .m-usage-settings__value,
+  .m-usage-settings__part-name,
+  .m-usage-settings__part-value,
+  .m-usage-settings__row-label,
+  .m-usage-settings__row-summary,
+  .m-usage-settings__card-title,
+  .m-usage-settings__bar-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-usage-settings__error-text {
+    overflow: visible;
+    text-overflow: unset;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .m-usage-settings__kpis,
+  .m-usage-settings__misses,
+  .m-usage-settings__charts,
+  .m-usage-settings__parts,
+  .m-usage-settings__skeleton-kpis,
+  .m-usage-settings__skeleton-charts {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
+
+  .m-usage-settings__parts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-6);
+  }
+
+  .m-usage-settings__kpi,
+  .m-usage-settings__card,
+  .m-usage-settings__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .m-usage-settings__kpi,
+  .m-usage-settings__card {
+    padding: var(--space-4);
+    border-radius: var(--radius-panel);
+    background: var(--surface-muted);
+  }
+
+  .m-usage-settings__card {
+    --ui-chart-bg: var(--surface-muted);
+
+    gap: var(--space-3);
+  }
+
+  .m-usage-settings__card-header {
+    align-items: flex-start;
+    gap: var(--space-3);
+  }
+
+  .m-usage-settings__card-title {
+    flex: 1;
+    font: var(--text-body-medium);
+  }
+
+  .m-usage-settings__kpi-title {
+    font: var(--text-body-medium);
+  }
+
+  .m-usage-settings__value,
+  .m-usage-settings__part-value,
+  .m-usage-settings__cell-strong {
+    color: var(--text);
+    font: var(--text-body-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-usage-settings__value {
+    display: block;
+    font: var(--text-title-3);
+  }
+
+  .m-usage-settings__kpi-body,
+  .m-usage-settings__part,
+  .m-usage-settings__row-group {
+    min-width: 0;
+  }
+
+  .m-usage-settings__row-group,
+  .m-usage-settings__truncate,
+  .m-usage-settings__row-label,
+  .m-usage-settings__row-summary {
+    display: block;
+  }
+
+  .m-usage-settings__warning[data-tone='warning'] {
+    color: var(--warning-fg);
+  }
+
+  .m-usage-settings__start {
+    align-self: flex-start;
+  }
+
+  .m-usage-settings__title {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-usage-settings__cell,
+  .m-usage-settings__cell-strong {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .m-usage-settings__tree-cell {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .m-usage-settings__tree-cell[data-level='2'] {
+    padding-inline-start: var(--space-5);
+  }
+
+  .m-usage-settings__tree-spacer {
+    flex-shrink: 0;
+    width: var(--control-sm);
+  }
+
+  .m-usage-settings__tree-content {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .m-usage-settings__expand-icon {
+    display: inline-flex;
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-usage-settings__expand-icon[data-expanded] {
+    transform: rotate(90deg);
+  }
+
+  .m-usage-bar-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .m-usage-bar-list__row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    height: var(--control-md);
+    padding-inline: var(--space-3);
+    border-radius: var(--radius-item);
+  }
+
+  .m-usage-bar-list__bar {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    min-width: 2px;
+    border-radius: var(--radius-item);
+    background: color-mix(in srgb, var(--series-4) 14%, transparent);
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-usage-bar-list__row:hover .m-usage-bar-list__bar {
+    background: color-mix(in srgb, var(--series-4) 26%, transparent);
+  }
+
+  .m-usage-bar-list__label,
+  .m-usage-bar-list__value,
+  .m-usage-bar-list__share {
+    position: relative;
+  }
+
+  .m-usage-bar-list__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .m-usage-bar-list__value {
+    color: var(--text);
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-usage-bar-list__share {
+    width: 2.5rem;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .m-usage-settings__row-label[data-muted],
+  .m-usage-settings__cell-strong[data-muted],
+  .m-usage-settings__muted {
+    color: var(--text-secondary);
+  }
+
+  .m-usage-settings__row-label[data-deleted] {
+    font-style: italic;
+  }
+
+  .m-usage-settings__swatch {
+    flex-shrink: 0;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-pill);
+  }
+
+  .m-usage-settings__bars {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-usage-settings__bar-row {
+    display: grid;
+    grid-template-columns: minmax(5rem, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-usage-settings__bar-label {
+    max-width: 10rem;
+  }
+
+  .m-usage-settings__bar {
+    display: flex;
+    height: 0.875rem;
+    min-width: 0;
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background: var(--surface-inset);
+  }
+
+  .m-usage-settings__bar-seg {
+    display: block;
+    height: 100%;
+  }
+
+  .m-usage-settings__bar-seg:first-child {
+    border-start-start-radius: var(--radius-control);
+    border-end-start-radius: var(--radius-control);
+  }
+
+  .m-usage-settings__bar-seg:last-child {
+    border-start-end-radius: var(--radius-control);
+    border-end-end-radius: var(--radius-control);
+  }
+
+  .m-usage-settings__skeleton {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  @container pane (width >= 24rem) {
+    .m-usage-settings__kpis,
+    .m-usage-settings__skeleton-kpis,
+    .m-usage-settings__parts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .m-usage-settings__misses {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @container pane (width >= 42rem) {
+    .m-usage-settings__kpis,
+    .m-usage-settings__skeleton-kpis,
+    .m-usage-settings__parts {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .m-usage-settings__charts,
+    .m-usage-settings__skeleton-charts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}

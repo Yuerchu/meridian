@@ -1,0 +1,139 @@
+@layer components {
+  .m-attachment-tiles {
+    display: flex;
+    min-width: 0;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding: var(--space-1);
+    outline: none;
+    scrollbar-width: none;
+  }
+
+  .m-attachment-tiles::-webkit-scrollbar {
+    display: none;
+  }
+
+  .m-attachment-tiles > * {
+    flex-shrink: 0;
+  }
+
+  .m-attachment-tiles__drop-indicator {
+    width: 2px;
+    align-self: stretch;
+    border-radius: var(--radius-pill);
+    background-color: var(--accent);
+  }
+
+  .m-attachment-tiles__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  .m-attachment-tiles__tile {
+    border-radius: var(--radius-item);
+    outline: none;
+  }
+
+  .m-attachment-tiles__tile[data-dragging] {
+    opacity: 0.5;
+  }
+
+  .m-attachment-tiles__tile[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-attachment-tiles__card {
+    position: relative;
+    width: 3.5rem;
+    height: 3.5rem;
+    overflow: hidden;
+    border-radius: var(--radius-item);
+    border: 1px solid var(--border-strong);
+    background-color: var(--surface);
+  }
+
+  .m-attachment-tiles__card[data-missing] {
+    border-color: var(--danger);
+  }
+
+  .m-attachment-tiles__preview {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .m-attachment-tiles__icon {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: var(--space-2);
+    display: flex;
+    justify-content: center;
+  }
+
+  .m-attachment-tiles__glyph {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--text-secondary);
+  }
+
+  .m-attachment-tiles__name {
+    position: absolute;
+    inset-inline: 0.375rem;
+    inset-block-end: var(--space-1);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    font: var(--text-label);
+    color: var(--text-secondary);
+  }
+
+  .m-attachment-tiles__name[data-missing] {
+    color: var(--danger-fg);
+  }
+
+  /* The tile's number: top-left, over a picture as readably as over a document. */
+  .m-attachment-tiles__order {
+    position: absolute;
+    inset-inline-start: 3px;
+    inset-block-start: 3px;
+    display: flex;
+    height: 1rem;
+    min-width: 1rem;
+    align-items: center;
+    justify-content: center;
+    padding-inline: var(--space-1);
+    border: 0;
+    border-radius: calc(var(--radius-item) - 6px);
+    background-color: color-mix(in oklch, var(--surface) 80%, transparent);
+    font: var(--text-label);
+    font-variant-numeric: tabular-nums;
+    color: var(--text-secondary);
+  }
+
+  button.m-attachment-tiles__order {
+    cursor: grab;
+    outline: none;
+  }
+
+  button.m-attachment-tiles__order[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* A secondary button carries its own fill, so it stays legible over a
+     photo as well as over a file glyph. */
+  .m-attachment-tiles__remove {
+    position: absolute;
+    inset-block-start: var(--space-1);
+    inset-inline-end: var(--space-1);
+    display: flex;
+  }
+}

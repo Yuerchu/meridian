@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import './approval-notifications.css'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Notification, NotificationViewport, type NotificationAction } from '@/components/base'
-import { useUndoStore } from '@/stores/undo-store'
-import { UndoNotification } from './undo-notification'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import {
+  NotificationCard,
+  NotificationStack,
+} from '@/components/yuerchu-ui/components/notification-stack/notification-stack'
+import { UndoToast } from './undo-toast'
 import { ArrowRight, Check, Clock, X } from '@keyline-icons/react/two-tone'
 
 import { ToolArgsSummary, escalationPromptKey, toolLabel } from '@/components/chat/tool-call-block'
 import { useConversationStore, type AttentionItem } from '@/stores/conversation-store'
-import { cx } from '@/utils/cx'
 import {
   ACTION_VARIANT,
   MAX_VISIBLE,
@@ -48,19 +51,20 @@ import {
  *
  * Top-centre. The bottom of the window is the composer's, and on Android the
  * soft keyboard's — a notification there is either under the keyboard or on
- * top of what is being typed. The official viewport does not know about
- * safe-area insets, so the top offset is widened to clear the status bar here
- * rather than in the vendored file. Its `z-100` is the registry's own.
+ * top of what is being typed. The stack starts below the frame's header, not
+ * over it (`approval-notifications.css`), through the library's own
+ * `--ui-notification-top`.
  *
- * **Under a modal it is not drawn at all.** That `z-100` puts the stack over
- * every overlay, but a modal `Modal`/`Sheet`/`Popover` runs React Aria's
- * `ariaHideOutside`, which makes every other child of `body` `inert` — and the
- * viewport is one. So the rows stayed on top of the dialog, looked pressable,
- * and neither a pointer nor a screen reader could reach them. What is watched is
- * that consequence itself (`useMadeInertByModal`), not a guess at which
- * overlays are open: a non-modal popover calls `keepVisible` instead and never
- * sets it, and the attribute is removed by the same ref count that set it when
- * the last modal closes. The inbox is unaffected; it is a way in, not a layer.
+ * **Under a modal it is not drawn at all, and that is the library's.** A modal
+ * overlay makes every other child of `body` `inert`; the stack's dock watches
+ * for that and hides itself, leaving the F6 landmarks too, so a row drawn above
+ * a dialog that nobody can reach never happens. A non-modal popover sets
+ * nothing and leaves the stack alone. The inbox is unaffected; it is a way in,
+ * not a layer.
+ *
+ * **The undo offer is a Toast, not a row here.** It used to share this
+ * stack's head; the library keeps Toasts at the edge and pending questions
+ * beside them, so it is `UndoToast`, mounted beside the stack.
  *
  * **Ignoring takes a row off this stack and nowhere else.** The question is
  * still owed: it stays in `attention`, the inbox lists it and the sidebar dot
@@ -83,58 +87,20 @@ export function ApprovalNotifications({
   const { listed } = usePendingAttention(transcriptInert, boardOpen)
   const ignored = useConversationStore((s) => s.stackIgnored)
   const approvals = useMemo(
-    () => listed.filter((item) => !ignored[item.approvalId]).slice(0, MAX_VISIBLE),
-    [listed, ignored],
+    () => (inboxOpen ? [] : listed.filter((item) => !ignored[item.approvalId]).slice(0, MAX_VISIBLE)),
+    [listed, ignored, inboxOpen],
   )
-  const underModal = useMadeInertByModal(VIEWPORT_SLOT)
-  const undo = useUndoStore((s) => s.pending)
 
   return (
-    <NotificationViewport
-      data-slot={VIEWPORT_SLOT}
-      data-under-modal={underModal || undefined}
-      role="region"
-      aria-label={t('notifications.region')}
-      position="top-center"
-      className={cx(
-        // Below the frame's header (12px frame inset + 48px header + a 12px
-        // gap), not over it: at the registry's own 12/24px the stack covered
-        // the conversation title and the header's controls.
-        'top-[calc(var(--safe-top,0px)+4.5rem)] sm:top-[calc(var(--safe-top,0px)+4.5rem)]',
-        (underModal || inboxOpen) && 'hidden',
-      )}
-    >
-      {/* Rendered only while there is one: the viewport wraps every child in a
-          row of its own, and an empty one would still take a gap. */}
-      {undo && (
-        <UndoNotification key={`undo:${undo.conversationId}`} deletion={undo} hidden={underModal || inboxOpen} />
-      )}
-      {approvals.map((item) => (
-        <ApprovalNotification key={item.approvalId} item={item} onSelect={onSelect} />
-      ))}
-    </NotificationViewport>
+    <>
+      <NotificationStack placement="top" collapsible aria-label={t('notifications.region')}>
+        {approvals.map((item) => (
+          <ApprovalNotification key={item.approvalId} item={item} onSelect={onSelect} />
+        ))}
+      </NotificationStack>
+      <UndoToast />
+    </>
   )
-}
-
-const VIEWPORT_SLOT = 'approval-notifications'
-
-/**
- * Whether a modal overlay has shut this portal out. React Aria marks every
- * sibling of the modal `inert` (or `aria-hidden` where `inert` is not
- * supported, as in jsdom) and removes it again when the last modal closes.
- */
-function useMadeInertByModal(slot: string): boolean {
-  const [inert, setInert] = useState(false)
-  useEffect(() => {
-    const el = document.querySelector<HTMLElement>(`[data-slot="${slot}"]`)
-    if (!el) return
-    const read = () => setInert(el.hasAttribute('inert') || el.getAttribute('aria-hidden') === 'true')
-    read()
-    const observer = new MutationObserver(read)
-    observer.observe(el, { attributes: true, attributeFilter: ['inert', 'aria-hidden'] })
-    return () => observer.disconnect()
-  }, [slot])
-  return inert
 }
 
 const ACTION_ICON = { defer: Clock, view: ArrowRight, deny: X, allow: Check } as const
@@ -155,32 +121,22 @@ export function ApprovalNotification({
   // Two ways past a row without deciding: "later" sends it to the back of this
   // stack, the close button ("ignore") takes it off this stack. Neither loses
   // the question — it is still in the inbox and on the sidebar until answered.
-  const actions: NotificationAction[] = attentionActionIds(shape).map((id) => {
-    const Icon = ACTION_ICON[id]
-    return {
-      label: (
-        <>
-          <Icon className="size-3.5" aria-hidden />
-          {attentionActionLabel(t, item, id)}
-        </>
-      ),
-      variant: ACTION_VARIANT[id],
-      onPress: () => act(item, id),
-    }
-  })
-
+  // Pressing a button does not remove the card: the answer writes the store,
+  // and the row goes when the store says so.
   return (
-    <Notification
-      data-slot="approval-notification"
-      data-approval-id={item.approvalId}
-      status="neutral"
-      title={title ?? t('chat.newChat')}
+    <NotificationCard
+      heading={title ?? t('chat.newChat')}
       description={<AttentionSummary item={item} shape={shape} />}
-      actions={actions}
-      dismissible
-      closeLabel={t('chat.approvalNotification.ignore')}
+      actions={attentionActionIds(shape).map((id) => {
+        const Icon = ACTION_ICON[id]
+        return (
+          <Button key={id} size="sm" variant={ACTION_VARIANT[id]} icon={<Icon />} onPress={() => act(item, id)}>
+            {attentionActionLabel(t, item, id)}
+          </Button>
+        )
+      })}
+      dismissLabel={t('chat.approvalNotification.ignore')}
       onDismiss={() => ignoreOnStack(item.approvalId)}
-      introDelay={0}
     />
   )
 }
@@ -203,39 +159,23 @@ const WITHHELD_MESSAGE = {
  * decision has been withdrawn from the row — why. Shared by the notification and the inbox, so a call reads the
  * same wherever it is offered.
  *
- * It lands inside the row's `<p>`, so everything in it is a span.
+ * Spans throughout, so it also reads inside a row of text.
  */
 export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: AttentionShape }) {
   const { t } = useTranslation()
   if (item.kind === 'plan_review') {
-    return (
-      <span data-slot="approval-notification-plan-message">
-        {item.stage === 'review'
-          ? t('chat.plan.reviewReady')
-          : item.stage === 'delivery_queued'
-            ? t('planReview.deliveryQueued')
-            : t('chat.plan.continuationNeedsAttention')}
-      </span>
-    )
+    return <span data-slot="approval-notification-plan-message">{t('chat.plan.reviewReady')}</span>
   }
   return (
     <>
-      <span data-slot="approval-notification-call" className="flex min-w-0 items-start gap-1.5">
-        <span data-slot="approval-notification-tool-name" className="shrink-0 text-body-2-medium leading-5">
+      <span data-slot="approval-notification-call" className="m-attention__call" data-clamped={shape.fits ? null : ''}>
+        <span data-slot="approval-notification-tool-name" className="m-attention__tool">
           {toolLabel(t, item.toolName)}
         </span>
         {/* The whole value, never the key's compact form: this row is a
             decision, and the summary is what it rests on. Clamped only when it
             does not fit, and then the decision is not offered here. */}
-        <ToolArgsSummary
-          toolName={item.toolName}
-          args={shape.args}
-          className={
-            shape.fits
-              ? 'whitespace-pre-wrap [overflow-wrap:anywhere]'
-              : 'line-clamp-3 [display:-webkit-box] whitespace-pre-wrap [overflow-wrap:anywhere]'
-          }
-        />
+        <ToolArgsSummary toolName={item.toolName} args={shape.args} className="m-attention__args" />
       </span>
       {/* Under the name, exactly as the card draws it: what the call *is*
           keeps the first line and what it is *for* gets the second — the
@@ -243,11 +183,8 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
       {shape.description !== null && (
         <span
           data-slot="approval-notification-tool-description"
-          className={
-            shape.fits
-              ? 'mt-0.5 block break-words text-caption-1-regular'
-              : 'mt-0.5 line-clamp-2 break-words text-caption-1-regular'
-          }
+          className="m-attention__description"
+          data-clamped={shape.fits ? null : ''}
         >
           {shape.description}
         </span>
@@ -255,14 +192,10 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
       {/* Read-only tools only: the arguments that narrow what is read, each as
           it will be read. A decision offered here rests on them too. */}
       {shape.scope.length > 0 && (
-        <span data-slot="approval-notification-scope" className="mt-0.5 block font-mono text-caption-1-regular">
+        <span data-slot="approval-notification-scope" className="m-attention__scope">
           {shape.scope.map((arg) => (
-            <span
-              key={arg.key}
-              data-slot="approval-notification-scope-arg"
-              className="block whitespace-pre-wrap [overflow-wrap:anywhere]"
-            >
-              <span data-slot="approval-notification-scope-key" className="text-text-secondary">
+            <span key={arg.key} data-slot="approval-notification-scope-arg" className="m-attention__scope-arg">
+              <span data-slot="approval-notification-scope-key" className="m-attention__scope-key">
                 {arg.key}
               </span>{' '}
               {arg.value}
@@ -273,7 +206,7 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
       {/* Only a tool approval is ever withheld; a question with a form behind
           it was never going to be answered from a row. */}
       {shape.withheld !== null && (
-        <span data-slot={WITHHELD_SLOT[shape.withheld]} className="mt-1 block text-caption-1-regular">
+        <span data-slot={WITHHELD_SLOT[shape.withheld]} className="m-attention__note">
           {t(WITHHELD_MESSAGE[shape.withheld])}
         </span>
       )}
@@ -281,7 +214,7 @@ export function AttentionSummary({ item, shape }: { item: AttentionItem; shape: 
           it, or the settings that say where it runs could not be read. Without
           this the second question looks identical to the first. */}
       {item.retry !== undefined && (
-        <span data-slot="approval-notification-retry-prompt" className="mt-1 block text-caption-1-regular">
+        <span data-slot="approval-notification-retry-prompt" className="m-attention__note">
           {t(escalationPromptKey(item.retry.kind))}
         </span>
       )}

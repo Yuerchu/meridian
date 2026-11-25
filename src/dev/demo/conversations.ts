@@ -29,7 +29,6 @@ export interface DemoThread {
   turns: TurnInfoResponse[]
   pending: PendingApprovalInfoResponse[]
   planReviews: PlanReviewSummaryInfoResponse[]
-  planBarrier: boolean
   subRuns: SubAgentRunInfoResponse[]
   shellResults: Record<string, UserCommandResultResponse>
   contextContents: Record<string, string>
@@ -73,7 +72,6 @@ function emptyThread(): DemoThread {
     turns: [],
     pending: [],
     planReviews: [],
-    planBarrier: false,
     subRuns: [],
     shellResults: {},
     contextContents: {},
@@ -490,7 +488,7 @@ export const PLAN_MARKDOWN = [
 function planThread(now: number): DemoThread {
   const w = new Writer(CONV.plan, now)
   const t = 'demo-turn-plan'
-  w.turn(t, 40, { status: 'waiting_review' })
+  w.turn(t, 40, { status: 'running' })
   w.add({ role: 'user', content: '先出一个导出功能的计划，我看过再动手。', turn_id: t }, 40)
   w.add(
     {
@@ -517,10 +515,8 @@ function planThread(now: number): DemoThread {
     provider_call_id: 'call-exit-plan',
     turn_id: t,
     status: 'pending',
-    delivery_state: null,
     lock_version: 1,
   })
-  w.thread.planBarrier = true
   return w.thread
 }
 

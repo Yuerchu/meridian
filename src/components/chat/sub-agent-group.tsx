@@ -1,21 +1,38 @@
-import { useMemo } from 'react'
+import './sub-agent-group.css'
+import { useContext, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Chip, ListBox, Spinner } from '@/components/base'
-import { ShimmerText } from '@/components/application/agent-log/agent-log'
-import { Ban, CircleCheck, CircleQuestion, Compass, SkipForward, TriangleAlert } from '@keyline-icons/react/two-tone'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import {
+  Ban,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  CircleQuestion,
+  CircleX,
+  Compass,
+  SkipForward,
+  TriangleAlert,
+} from '@keyline-icons/react/two-tone'
 import { ToolFields } from '@/components/ui/tool-value'
 import { parsePartialObject } from '@/lib/partial-json'
 import { isAskTool, toolUi } from '@/lib/tool-catalog'
-import { BUBBLE_BLOCK } from '@/components/ui/bubble'
+import { BUBBLE_BLOCK } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { ChatToolPresentationContext } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
 import { useConversationStore } from '@/stores/conversation-store'
 import { parseSubAgentResult, splitTruncation, type SubAgentOutcome, type SubAgentResult } from '@/lib/tool-output'
-import { cx } from '@/utils/cx'
 import { AskUserBlock, PendingApproval, toolLabel } from './tool-call-block'
 import { firstLineOf, latestStep } from './latest-step'
 import { useSubAgentSheet } from './sub-agent-sheet-context'
 import type { ToolCallDisplay } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /**
  * The delegations a bubble made, as one group: a row per run.
@@ -123,34 +140,33 @@ export function SubAgentStatusChip({ outcome }: { outcome: SubAgentVerdict }) {
   const label = t(`chat.tool.panel.status.${outcome}`)
   const icon =
     outcome === 'running' ? (
-      <Spinner size="sm" color="current" />
+      <span aria-hidden>
+        <Spinner size="sm" />
+      </span>
     ) : outcome === 'done' ? (
-      <CircleCheck className="size-3" />
+      <CircleCheck className="m-sub-agent-group__badge-icon" />
     ) : outcome === 'failed' ? (
-      <TriangleAlert className="size-3" />
+      <TriangleAlert className="m-sub-agent-group__badge-icon" />
     ) : (
-      <Ban className="size-3" />
+      <Ban className="m-sub-agent-group__badge-icon" />
     )
   return (
-    // The attributes ride a span of our own: Chip keeps what it is handed to
-    // itself.
-    <span data-slot="sub-agent-status" data-outcome={outcome} className="contents">
-      <Chip
+    <span data-slot="sub-agent-status" data-outcome={outcome} className="m-sub-agent-group__status">
+      <Badge
         size="sm"
-        variant="soft"
-        color={
+        tone={
           outcome === 'done'
             ? 'success'
             : outcome === 'failed'
               ? 'danger'
               : outcome === 'running'
-                ? 'default'
+                ? 'neutral'
                 : 'warning'
         }
       >
         {icon}
         {label}
-      </Chip>
+      </Badge>
     </span>
   )
 }
@@ -192,23 +208,6 @@ function stateOf(row: Row): RowState {
   }
 }
 
-const DOT: Record<RowState, string> = {
-  done: 'bg-status-success',
-  running: 'bg-status-info ring-4 ring-status-info/20',
-  // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-  waiting: 'bg-status-warning ring-4 ring-status-warning/25 animate-pulse motion-reduce:animate-none',
-  failed: 'bg-status-danger',
-  idle: 'bg-background-secondary-default',
-}
-
-const TICK: Record<RowState, string> = {
-  done: 'bg-status-success',
-  running: 'bg-status-info',
-  waiting: 'bg-status-warning',
-  failed: 'bg-status-danger',
-  idle: 'bg-background-secondary-default',
-}
-
 function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
   const { t } = useTranslation()
   const run = row.call.sub_agent
@@ -236,15 +235,8 @@ function SubAgentRowLine({ row, state }: { row: Row; state: RowState }) {
   }
   if (!text) return null
   return (
-    <div
-      data-slot="sub-agent-row-line"
-      data-tone={tone}
-      className={cx(
-        'truncate text-caption-1-regular',
-        tone === 'warn' ? 'text-status-warning-soft-foreground' : 'text-text-secondary',
-      )}
-    >
-      {tone === 'live' ? <ShimmerText>{text}</ShimmerText> : text}
+    <div data-slot="sub-agent-row-line" data-tone={tone} className="m-sub-agent-group__row-line">
+      {tone === 'live' ? <span className="m-sub-agent-group__shimmer">{text}</span> : text}
     </div>
   )
 }
@@ -262,11 +254,14 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
   // though, and reading it from the transcript costs nothing and stops this
   // from being the thing that breaks if nesting is ever allowed.
   const conversationId = useTranscriptConversationId()
+  const presentation = useContext(ChatToolPresentationContext)
   const rows = useMemo(() => rowsOf(calls), [calls])
   if (rows.length === 0) return null
 
   const states = rows.map(stateOf)
   const count = (state: RowState) => states.filter((s) => s === state).length
+  const groupState: RowState =
+    count('waiting') > 0 ? 'waiting' : count('running') > 0 ? 'running' : count('failed') > 0 ? 'failed' : 'done'
   const summary = [
     count('done') > 0 && t('chat.subAgent.count.done', { count: count('done') }),
     count('running') > 0 && t('chat.subAgent.count.running', { count: count('running') }),
@@ -287,6 +282,8 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
     else openConversation(run.conversation_id)
   }
 
+  const asBubble = presentation === 'bubble'
+
   return (
     // A block of the bubble like any other, which is what it always looked
     // like — a head row over its contents, in the bubble's own fill — while
@@ -294,88 +291,106 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
     // the fill, the radius and the shared corners the rest of them get.
     <div
       data-slot="sub-agent-group"
-      data-bubble-block=""
-      className={cx(BUBBLE_BLOCK, 'flex w-full flex-col text-caption-1-regular')}
+      data-presentation={presentation}
+      data-state={groupState}
+      data-bubble-block={asBubble ? '' : undefined}
+      className={joinClasses(asBubble && BUBBLE_BLOCK, 'm-sub-agent-group')}
     >
-      <div
-        data-slot="sub-agent-group-header"
-        className="flex items-center gap-2 border-b border-border-button-default/50 px-3 py-1.5 text-text-secondary"
-      >
-        <span data-slot="sub-agent-group-title" className="text-caption-1-medium text-text-primary">
+      <div data-slot="sub-agent-group-header" className="m-sub-agent-group__header">
+        {groupState === 'running' ? (
+          <span aria-hidden data-slot="sub-agent-group-status-icon">
+            <Spinner size="sm" />
+          </span>
+        ) : groupState === 'waiting' ? (
+          <CircleAlert
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="waiting"
+            className="m-sub-agent-group__status-icon"
+          />
+        ) : groupState === 'failed' ? (
+          <CircleX
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="failed"
+            className="m-sub-agent-group__status-icon"
+          />
+        ) : (
+          <CircleCheck
+            aria-hidden
+            data-slot="sub-agent-group-status-icon"
+            data-state="done"
+            className="m-sub-agent-group__status-icon"
+          />
+        )}
+        <span data-slot="sub-agent-group-title" className="m-sub-agent-group__title">
           {t('chat.subAgent.group', { count: rows.length })}
         </span>
-        {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
-        <span data-slot="sub-agent-group-ticks" aria-hidden className="ml-auto flex gap-0.5">
-          {states.map((state, i) => (
-            <i
-              key={i}
-              data-slot="sub-agent-group-tick"
-              data-state={state}
-              className={cx('block h-1 w-4 rounded-sm', TICK[state])}
-            />
-          ))}
+        <span className="m-sub-agent-group__header-end">
+          {summary.length > 0 && <span data-slot="sub-agent-group-summary">{summary.join(' · ')}</span>}
+          <span data-slot="sub-agent-group-ticks" aria-hidden className="m-sub-agent-group__ticks">
+            {states.map((state, i) => (
+              <i key={i} data-slot="sub-agent-group-tick" data-state={state} className="m-sub-agent-group__tick" />
+            ))}
+          </span>
         </span>
       </div>
-      <ListBox
-        aria-label={t('chat.subAgent.listLabel')}
-        className="p-1"
-        onAction={(key) => {
-          const row = rows.find((r) => r.call.call_id === String(key))
-          if (row) open(row)
-        }}
-      >
-        {rows.map((row, i) => {
-          const state = states[i]
-          const readOnly = row.delegation.kind === 'explore'
-          const steps = Math.max(row.call.sub_agent?.steps ?? 0, row.report?.steps ?? 0)
-          return (
-            <ListBox.Item
-              key={row.call.call_id}
-              id={row.call.call_id}
-              textValue={row.delegation.description}
-              isDisabled={!row.call.sub_agent}
-              data-state={state}
-              className="rounded-lg px-2 py-1.5"
-            >
-              <div
-                data-slot="sub-agent-row"
-                className="grid w-full min-w-0 grid-cols-[auto_auto_1fr_auto] items-center gap-2.5"
+      <div className="m-sub-agent-group__list">
+        <ListBox
+          aria-label={t('chat.subAgent.listLabel')}
+          onAction={(key) => {
+            const row = rows.find((r) => r.call.call_id === String(key))
+            if (row) open(row)
+          }}
+        >
+          {rows.map((row, i) => {
+            const state = states[i]
+            const readOnly = row.delegation.kind === 'explore'
+            const steps = Math.max(row.call.sub_agent?.steps ?? 0, row.report?.steps ?? 0)
+            return (
+              <ListBoxItem
+                key={row.call.call_id}
+                id={row.call.call_id}
+                textValue={row.delegation.description}
+                isDisabled={!row.call.sub_agent}
+                data-state={state}
               >
-                <span
-                  data-slot="sub-agent-row-dot"
-                  aria-hidden
-                  className={cx('block size-2 rounded-full', DOT[state])}
-                />
-                <span
-                  data-slot="sub-agent-row-kind"
-                  className="flex items-center gap-1 text-caption-1-medium text-text-primary"
-                >
-                  {readOnly ? (
-                    <Compass aria-hidden className="size-3.5 text-text-secondary" />
-                  ) : (
-                    <SkipForward aria-hidden className="size-3.5 text-text-secondary" />
-                  )}
-                  {t(`chat.subAgent.${row.delegation.kind}`)}
-                </span>
-                <span data-slot="sub-agent-row-body" className="min-w-0">
+                <div data-slot="sub-agent-row" className="m-sub-agent-group__row">
                   <span
-                    data-slot="sub-agent-row-title"
-                    onPointerEnter={titleIfTruncated}
-                    className="block truncate text-body-regular text-text-primary"
-                  >
-                    {row.delegation.description}
+                    data-slot="sub-agent-row-dot"
+                    data-state={state}
+                    aria-hidden
+                    className="m-sub-agent-group__dot"
+                  />
+                  <span data-slot="sub-agent-row-kind" className="m-sub-agent-group__kind">
+                    {readOnly ? (
+                      <Compass aria-hidden className="m-sub-agent-group__kind-icon" />
+                    ) : (
+                      <SkipForward aria-hidden className="m-sub-agent-group__kind-icon" />
+                    )}
+                    {t(`chat.subAgent.${row.delegation.kind}`)}
                   </span>
-                  <SubAgentRowLine row={row} state={state} />
-                </span>
-                <span data-slot="sub-agent-row-end" className="flex items-center gap-2 text-text-secondary">
-                  {row.outcome && row.outcome !== 'running' && <SubAgentStatusChip outcome={row.outcome} />}
-                  <LiveSteps run={row.call.sub_agent} fallback={steps} />
-                </span>
-              </div>
-            </ListBox.Item>
-          )
-        })}
-      </ListBox>
+                  <span data-slot="sub-agent-row-body" className="m-sub-agent-group__row-body">
+                    <span
+                      data-slot="sub-agent-row-title"
+                      onPointerEnter={titleIfTruncated}
+                      className="m-sub-agent-group__row-title"
+                    >
+                      {row.delegation.description}
+                    </span>
+                    <SubAgentRowLine row={row} state={state} />
+                  </span>
+                  <span data-slot="sub-agent-row-end" className="m-sub-agent-group__row-end">
+                    {row.outcome && row.outcome !== 'running' && <SubAgentStatusChip outcome={row.outcome} />}
+                    <LiveSteps run={row.call.sub_agent} fallback={steps} />
+                    {row.call.sub_agent && <ChevronRight aria-hidden className="m-sub-agent-group__chevron" />}
+                  </span>
+                </div>
+              </ListBoxItem>
+            )
+          })}
+        </ListBox>
+      </div>
 
       {rows.map((row) => {
         const nested = row.call.nested_approval
@@ -383,13 +398,9 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
         // The question the run raised. Asked here because this is where
         // somebody is looking — its own conversation may never be opened.
         return (
-          <div
-            key={nested.approval_id}
-            data-slot="sub-agent-question"
-            className="space-y-2 border-t border-border-button-default/50 px-3 py-2"
-          >
-            <div data-slot="sub-agent-question-header" className="flex items-start gap-1.5 px-0.5 text-text-secondary">
-              <CircleQuestion className="size-3.5 shrink-0" />
+          <div key={nested.approval_id} data-slot="sub-agent-question" className="m-sub-agent-group__question">
+            <div data-slot="sub-agent-question-header" className="m-sub-agent-group__question-header">
+              <CircleQuestion className="m-sub-agent-group__question-icon" />
               <span data-slot="sub-agent-question-text">
                 {row.delegation.description} · {t('chat.subAgent.asksFor', { tool: nested.tool_name })}
               </span>
@@ -426,12 +437,11 @@ export function SubAgentGroup({ calls }: { calls: ToolCallDisplay[] }) {
 
       {rows.map((row) =>
         row.report?.stranded ? (
-          <Alert key={row.call.call_id} data-slot="sub-agent-stranded" status="warning" className="m-2 mt-0">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Description>{row.report.stranded}</Alert.Description>
-            </Alert.Content>
-          </Alert>
+          <div key={row.call.call_id} className="m-sub-agent-group__stranded">
+            <Alert data-slot="sub-agent-stranded" tone="warning">
+              {row.report.stranded}
+            </Alert>
+          </div>
         ) : null,
       )}
     </div>
@@ -446,7 +456,7 @@ function LiveSteps({ run, fallback }: { run: ToolCallDisplay['sub_agent']; fallb
   const steps = Math.max(live ?? 0, fallback)
   if (steps === 0) return null
   return (
-    <span data-slot="sub-agent-row-steps" className="tabular-nums">
+    <span data-slot="sub-agent-row-steps" className="m-sub-agent-group__steps">
       {t('chat.subAgent.steps', { count: steps })}
     </span>
   )

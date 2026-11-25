@@ -275,12 +275,6 @@ pub async fn send_acp_prompt(app: tauri::AppHandle, request: AcpPromptSendReques
     let services = app.services();
     // First, before anything slow: from here on a stop has somewhere to land.
     let pending = services.acp.begin_send(&conversation_id);
-    if meridian_core::agent::queue::has_plan_review_barrier(&services, &conversation_id).await? {
-        return Err(
-            "This conversation is waiting for plan review or its continuation. Finish it before sending another ACP prompt."
-                .into(),
-        );
-    }
     let parsed = meridian_core::workspace::reference::parse_message_references(&message);
     let references =
         meridian_core::workspace::reference::reconcile_references(context_refs.0.unwrap_or_default(), parsed)?;
@@ -389,12 +383,6 @@ pub async fn import_acp_session(
 #[tauri::command]
 pub async fn attach_acp_session(app: tauri::AppHandle, request: AcpSessionAttachRequest) -> Result<(), String> {
     let services = app.services();
-    if meridian_core::agent::queue::has_plan_review_barrier(&services, &request.conversation_id).await? {
-        return Err(
-            "This conversation is waiting for plan review or its continuation. Finish it before attaching another ACP session."
-                .into(),
-        );
-    }
     acp::import::attach(&services, &request.conversation_id, &request.session_id, &request.cwd).await
 }
 

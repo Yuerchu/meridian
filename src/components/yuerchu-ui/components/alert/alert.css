@@ -1,0 +1,86 @@
+@layer components {
+  .ui-alert {
+    --ui-alert-bg: var(--info-bg);
+    --ui-alert-accent: var(--info-fg);
+
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid transparent; /* 高对比度模式下显示边界 */
+    border-radius: var(--radius-panel);
+    background: var(--ui-alert-bg);
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .ui-alert[data-tone="success"] {
+    --ui-alert-bg: var(--success-bg);
+    --ui-alert-accent: var(--success-fg);
+  }
+
+  .ui-alert[data-tone="warning"] {
+    --ui-alert-bg: var(--warning-bg);
+    --ui-alert-accent: var(--warning-fg);
+  }
+
+  .ui-alert[data-tone="danger"] {
+    --ui-alert-bg: var(--danger-bg);
+    --ui-alert-accent: var(--danger-fg);
+  }
+
+  .ui-alert__icon {
+    flex: none;
+    display: inline-flex;
+    margin-block: calc((1lh - var(--icon-lg)) / 2);
+    color: var(--ui-alert-accent);
+  }
+
+  .ui-alert__icon svg {
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+  }
+
+  .ui-alert__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-alert__heading {
+    margin: 0;
+    font: var(--text-body-medium);
+  }
+
+  /* 正文也用 --text：浅底上的次要文字对比度刚过 4.5，提示框正文要读，用正文色更清楚 */
+  .ui-alert__content {
+    color: var(--text);
+  }
+
+  .ui-alert__heading + .ui-alert__content {
+    font: var(--text-small);
+  }
+
+  .ui-alert__content > :first-child {
+    margin-block-start: 0;
+  }
+
+  .ui-alert__content > :last-child {
+    margin-block-end: 0;
+  }
+
+  .ui-alert__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin-block-start: var(--space-2);
+  }
+
+  .ui-alert .ui-alert__close {
+    margin-block: calc((1lh - var(--control-sm)) / 2);
+    margin-inline-end: calc(-1 * var(--space-2));
+  }
+}

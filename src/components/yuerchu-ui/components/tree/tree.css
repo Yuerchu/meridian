@@ -1,0 +1,274 @@
+@layer components {
+  .ui-tree {
+    --ui-tree-indent: var(--space-4);
+    --ui-tree-chevron: var(--space-5);
+    --ui-tree-row: var(--control-md);
+
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-1);
+    outline: 1px solid transparent; /* 高对比度模式下显示边界 */
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  /* 小号：行矮一档、缩进和展开按钮小一点、字小一号 */
+  .ui-tree[data-size="sm"] {
+    --ui-tree-indent: var(--space-3);
+    --ui-tree-chevron: var(--space-4);
+    --ui-tree-row: var(--control-sm);
+
+    font: var(--text-small);
+  }
+
+  .ui-tree[data-size="sm"] .ui-tree-item[data-selected] {
+    font: var(--text-small-medium);
+  }
+
+  /* 层级竖线（showGuides）：每一层一条，对准那一层展开按钮的中心。按层级在行的左边画重复的细线，
+     上下行之间没有空隙，连起来就是一条线 */
+  .ui-tree {
+    --ui-tree-guide-x: calc(var(--space-1) + var(--ui-tree-chevron) / 2);
+  }
+
+  /* 多选时每行前面有勾选框：竖线对准上一层勾选框的中心，缩进加宽到一个勾选框加间距，
+     子项的勾选框排在上一层展开按钮的下面，竖线不会穿过任何控件 */
+  .ui-tree[data-guides][data-selection-mode="multiple"] {
+    --ui-tree-indent: calc(var(--icon-md) + var(--space-1));
+    --ui-tree-guide-x: calc(var(--space-1) + var(--icon-md) / 2);
+  }
+
+  /* 伪元素从第一条线往前半个缩进的地方开始，每个缩进宽的格子正中间一条线：第 k 条落在 guide-x + (k - 1) × 缩进 */
+  .ui-tree[data-guides] .ui-tree-item::before {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--ui-tree-guide-x) - var(--ui-tree-indent) / 2);
+    width: calc((var(--ui-tree-level, 1) - 1) * var(--ui-tree-indent));
+    background: repeating-linear-gradient(
+      to right,
+      transparent 0 calc(50% - 0.5px),
+      var(--border) calc(50% - 0.5px) calc(50% + 0.5px),
+      transparent calc(50% + 0.5px) 100%
+    ) 0 0 / var(--ui-tree-indent) 100%;
+    pointer-events: none;
+    content: "";
+  }
+
+  .ui-tree[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* ---------- 一行 ---------- */
+  .ui-tree-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    box-sizing: border-box;
+    position: relative;
+    min-height: var(--ui-tree-row);
+    padding-inline: calc((var(--ui-tree-level, 1) - 1) * var(--ui-tree-indent) + var(--space-1)) var(--space-2);
+    border-radius: var(--radius-item);
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tree-item[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .ui-tree-item[data-selected] {
+    background: var(--surface-muted);
+    font: var(--text-body-medium);
+  }
+
+  .ui-tree-item[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-tree-item[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-tree-item[data-href] {
+    cursor: pointer;
+  }
+
+  /* ---------- 展开按钮（叶子节点是同样大小的空位） ---------- */
+  .ui-tree-item__chevron {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-tree-chevron);
+    height: var(--ui-tree-chevron);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-item) / 2);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .ui-tree-item__chevron svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    transition: rotate var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tree-item[data-expanded] .ui-tree-item__chevron svg {
+    rotate: 90deg;
+  }
+
+  .ui-tree-item__chevron[data-hovered]:not([data-disabled]) {
+    background: var(--surface);
+    color: var(--text);
+  }
+
+  .ui-tree-item__icon {
+    flex: none;
+    display: inline-flex;
+    color: var(--text-secondary);
+  }
+
+  .ui-tree-item__icon > svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-tree-item__label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-tree-item__actions {
+    flex: none;
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  /* ---------- 拖动排序 ---------- */
+  .ui-tree-item__drag {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: var(--space-4);
+    height: var(--ui-tree-chevron);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--radius-item) / 2);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: grab;
+  }
+
+  .ui-tree-item__drag svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-tree-item__drag[data-hovered]:not([data-disabled]) {
+    color: var(--text);
+  }
+
+  .ui-tree-item__drag[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  /* 正在拖的行：变淡留在原位 */
+  .ui-tree-item[data-dragging] {
+    opacity: 0.4;
+  }
+
+  /* 拖进这一项（成为它的子项）：整行描边 */
+  .ui-tree-item[data-drop-target] {
+    background: var(--surface-muted);
+    box-shadow: inset 0 0 0 2px var(--text);
+  }
+
+  /* 放在两行之间：一条线，起点缩进到放下后的层级 */
+  .ui-tree__drop-indicator {
+    position: relative;
+    height: 0;
+  }
+
+  .ui-tree__drop-indicator[data-drop-target]::before {
+    position: absolute;
+    inset-inline: calc((var(--ui-tree-level, 1) - 1) * var(--ui-tree-indent) + var(--space-1)) var(--space-1);
+    top: -1px;
+    height: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--text);
+    content: "";
+  }
+
+  .ui-tree__drag-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 280px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .ui-tree__drag-preview svg {
+    flex: none;
+    width: var(--icon-md);
+    height: var(--icon-md);
+    color: var(--text-secondary);
+  }
+
+  .ui-tree__drag-preview-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-tree__drag-preview-count {
+    flex: none;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--ink);
+    color: var(--ink-fg);
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-tree__empty {
+    padding: var(--space-6) var(--space-4);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    text-align: center;
+  }
+
+  @media (forced-colors: active) {
+    .ui-tree__drop-indicator[data-drop-target]::before {
+      background: CanvasText;
+    }
+
+    .ui-tree-item[data-drop-target] {
+      outline: 2px solid Highlight;
+    }
+
+    .ui-tree-item[data-selected] {
+      outline: 2px solid Highlight;
+      outline-offset: calc(-1 * var(--focus-ring-width));
+    }
+  }
+}

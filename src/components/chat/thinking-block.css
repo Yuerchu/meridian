@@ -1,0 +1,88 @@
+@layer components {
+  .m-shimmer-text {
+    background: linear-gradient(90deg, var(--text-secondary) 35%, var(--text) 50%, var(--text-secondary) 65%) 0 0 / 300%
+      100%;
+    background-clip: text;
+    color: transparent;
+    animation: m-thinking-shimmer var(--dur-shimmer) var(--ease-linear) infinite;
+  }
+
+  @keyframes m-thinking-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+
+    to {
+      background-position: 0 0;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .m-shimmer-text {
+      background: none;
+      color: CanvasText;
+    }
+  }
+
+  .m-thinking-block {
+    margin-bottom: 6px;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+  }
+
+  .m-thinking-block[data-shape='titles'] {
+    gap: 2px;
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-thinking-block[data-shape='fold'] {
+    gap: 6px;
+  }
+
+  .m-thinking-block__title {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .m-thinking-block__icon {
+    width: 12px;
+    height: 12px;
+    flex-shrink: 0;
+  }
+
+  .m-thinking-block__title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-thinking-block__row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .m-thinking-block__chevron {
+    width: 12px;
+    height: 12px;
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-thinking-block__chevron[data-expanded] {
+    transform: rotate(180deg);
+  }
+
+  .m-thinking-block__markdown {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-thinking-block__markdown strong {
+    font-weight: 500;
+  }
+}

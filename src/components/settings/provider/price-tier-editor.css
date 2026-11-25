@@ -1,0 +1,39 @@
+@layer components {
+  .m-price-tier,
+  .m-price-tier__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-price-tier__hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-price-tier__card {
+    padding: var(--space-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+  }
+
+  .m-price-tier__header {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--space-2);
+  }
+
+  .m-price-tier__rates {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-2);
+  }
+
+  @container (width >= 420px) {
+    .m-price-tier__rates {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+}

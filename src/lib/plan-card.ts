@@ -1,5 +1,11 @@
 import { api } from '@/api'
-import { PlanDecisionAttempt, PlanDecisionInDoubtError, planReviewActionRules } from './plan-review-draft'
+import {
+  PLAN_APPROVAL_OPTIONS,
+  PlanDecisionAttempt,
+  PlanDecisionInDoubtError,
+  planReviewActionRules,
+  type PlanApprovalOptions,
+} from './plan-review-draft'
 import { planCommentRequests, planDraftPayload, projectPlanReviewDraft } from './plan-review-projection'
 import { planReviewProjection, receivePlanReview } from './plan-review-sync'
 import type { PlanReviewDecisionResponse, PlanReviewInfoResponse } from '@/types'
@@ -50,6 +56,7 @@ export function planExcerpt(markdown: string): PlanExcerpt {
  * attempt is the only thing in the draft, and it is that same note.
  */
 function pristine(info: PlanReviewInfoResponse, allowNote: string | null): boolean {
+  if (info.review.state !== 'pending') return false
   const projected = projectPlanReviewDraft(info)
   const note = projected.globalNote.trim()
   if (note && note !== allowNote?.trim()) return false
@@ -61,10 +68,10 @@ function pristine(info: PlanReviewInfoResponse, allowNote: string | null): boole
     globalNote: null,
     saveState: 'saved',
     isHistorical: false,
-  }).canApprove
+  }).isPristine
 }
 
-/** Whether the card may offer its two decisions on this read of the review. */
+/** Whether the card may offer its direct decisions on this read of the review. */
 export function draftIsPristine(info: PlanReviewInfoResponse): boolean {
   return pristine(info, null)
 }
@@ -80,20 +87,38 @@ export type PlanCardOutcome =
  * Approve from the transcript card: the same `decide_plan_review` the review
  * page calls, against a draft read at the moment of the press — never a copy
  * the card fetched earlier, since the review page may have been used since.
- * The generation and hash it sends are that read's, so a save landing in
- * between is a conflict, as it is for the page.
+ * When `note` is provided, it is saved into the draft's global note first so
+ * the backend carries it into the approval result.
  */
-export async function approveFromCard(reviewId: string, attempt: PlanDecisionAttempt): Promise<PlanCardOutcome> {
+export async function approveFromCard(
+  reviewId: string,
+  attempt: PlanDecisionAttempt,
+  options: PlanApprovalOptions = PLAN_APPROVAL_OPTIONS.default,
+  note?: string,
+): Promise<PlanCardOutcome> {
+  const trimmedNote = note?.trim() ?? ''
   const info = await api.getPlanReview({ reviewId })
   if (info.review.state !== 'pending') return settledBy(info)
-  if (!pristine(info, null)) return { kind: 'draft_in_progress' }
+  if (!pristine(info, trimmedNote || null)) return { kind: 'draft_in_progress' }
+  const held = attempt.current()
+  if (held && held.action !== 'approve') throw new PlanDecisionInDoubtError(held.action)
+  let generation = info.draft.generation
+  let draftHash = info.draft.draft_sha256
+  if (trimmedNote && (info.draft.global_note ?? '').trim() !== trimmedNote) {
+    const payload = planDraftPayload({ ...projectPlanReviewDraft(info), globalNote: trimmedNote })
+    const saved = await api.savePlanReviewDraft({ reviewId, expectedGeneration: generation, ...payload })
+    generation = saved.generation
+    draftHash = saved.draft_sha256
+  }
   const { id } = attempt.forAction('approve')
   const result = await api.decidePlanReview({
     reviewId,
     decisionId: id,
-    expectedGeneration: info.draft.generation,
-    expectedDraftHash: info.draft.draft_sha256,
+    expectedGeneration: generation,
+    expectedDraftHash: draftHash,
     action: 'approve',
+    approvalMode: options.approvalMode,
+    clearContext: options.clearContext,
   })
   attempt.reset()
   await takeInDecision(reviewId)
@@ -163,6 +188,8 @@ export async function sendBackFromCard(
     expectedGeneration: generation,
     expectedDraftHash: draftHash,
     action: 'request_changes',
+    approvalMode: null,
+    clearContext: false,
   })
   attempt.reset()
   await takeInDecision(reviewId)

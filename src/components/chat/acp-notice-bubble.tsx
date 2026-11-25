@@ -1,8 +1,8 @@
+import './acp-notice-bubble.css'
 import { useContext } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button } from '@/components/base'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
-import { cx } from '@/utils/cx'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { AcpNoticeActionsContext } from './acp-notice-actions'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
 
@@ -34,29 +34,28 @@ export function AcpNoticeBubble({
       data-severity={notice.severity}
       data-category={notice.category}
       variant={isError ? 'destructive' : 'muted'}
-      className="max-w-[85%]"
+      className="m-acp-notice"
     >
-      <BubbleContent className={cx('space-y-2', !isError && 'text-status-warning-soft-foreground')}>
-        <div data-slot="acp-notice-head" className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <span data-slot="acp-notice-category" className="text-caption-1-regular opacity-80">
+      <BubbleContent data-severity={notice.severity} className="m-acp-notice__content">
+        <div data-slot="acp-notice-head" className="m-acp-notice__head">
+          <span data-slot="acp-notice-category" className="m-acp-notice__category">
             {t(`chat.acpNotice.category.${notice.category}`)}
           </span>
-          <span data-slot="acp-notice-title" className="text-body-medium">
+          <span data-slot="acp-notice-title" className="m-acp-notice__title">
             {notice.title}
           </span>
         </div>
         {notice.details !== null && (
-          <p data-slot="acp-notice-details" className="text-caption-1-regular whitespace-pre-wrap opacity-90">
+          <p data-slot="acp-notice-details" className="m-acp-notice__details">
             {notice.details}
           </p>
         )}
         {(canRetry || canRestart || wantsLogin) && (
-          <div data-slot="acp-notice-actions" className="flex flex-wrap items-center gap-2 pt-1">
+          <div data-slot="acp-notice-actions" className="m-acp-notice__actions">
             {canRetry && (
               <Button
-                size="small"
+                size="sm"
                 variant="secondary"
-                className="rounded-lg"
                 onPress={() => {
                   if (retryText !== null) actions?.retry(retryText)
                 }}
@@ -65,12 +64,12 @@ export function AcpNoticeBubble({
               </Button>
             )}
             {canRestart && (
-              <Button size="small" variant="secondary" className="rounded-lg" onPress={() => actions?.restartAgent()}>
+              <Button size="sm" variant="secondary" onPress={() => actions?.restartAgent()}>
                 {t('chat.acpNotice.action.newSession')}
               </Button>
             )}
             {wantsLogin && (
-              <span data-slot="acp-notice-login-hint" className="text-caption-1-regular opacity-80">
+              <span data-slot="acp-notice-login-hint" className="m-acp-notice__login-hint">
                 {t('chat.acpNotice.loginHint')}
               </span>
             )}
@@ -91,7 +90,7 @@ export function AcpNoticeList({
 }) {
   if (notices.length === 0) return null
   return (
-    <div data-slot="acp-notices" className="flex flex-col gap-2 pl-10">
+    <div data-slot="acp-notices" className="m-acp-notice-list">
       {notices.map((notice) => (
         <AcpNoticeBubble key={notice.id} notice={notice} retryText={retryText} />
       ))}

@@ -1,9 +1,9 @@
+import './composer-suggestions.css'
 import { useEffect, useRef, type CSSProperties } from 'react'
 import { Folder, Terminal } from '@keyline-icons/react/two-tone'
 
 import { fileIconUrl } from '@/lib/file-icon'
 import { COMPOSER_COMMANDS } from '@/lib/composer-commands'
-import { cx } from '@/utils/cx'
 import { suggestionOptionId } from '@/hooks/use-composer-typeahead'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -60,7 +60,7 @@ export function ComposerSuggestions({
 
   return (
     <div
-      className="absolute inset-x-0 bottom-full z-40 mb-2 max-h-72 overflow-y-auto rounded-2xl bg-background-primary-default p-1.5 text-text-primary shadow-dropdown"
+      className="m-composer-suggestions"
       // The textarea owns keyboard focus and aria-activedescendant. Pointer
       // selection must not blur it before the replacement has read its caret.
       onMouseDown={(event) => event.preventDefault()}
@@ -72,7 +72,7 @@ export function ComposerSuggestions({
         role="listbox"
         aria-label={ariaLabel}
         data-slot="composer-suggestions-list"
-        className="max-h-68 overflow-y-auto outline-none"
+        className="m-composer-suggestions__list"
       >
         {items.map((item, index) => {
           const icon = item.path && item.kind === 'file' ? fileIconUrl(item.path) : undefined
@@ -86,35 +86,34 @@ export function ComposerSuggestions({
               data-highlighted={active || undefined}
               data-slot="composer-suggestion"
               onClick={() => onAction(item)}
-              className="flex min-h-10 items-center rounded-xl px-2.5 py-2 outline-none hover:bg-background-primary-hover data-highlighted:bg-dropdown-item-hover-background"
+              className="m-composer-suggestions__item"
             >
               <span
                 data-slot="composer-suggestion-row"
-                className={cx(
-                  'w-full min-w-0 items-center gap-2.5 text-left',
-                  item.kind === 'command' ? 'grid' : 'flex',
-                )}
+                data-kind={item.kind}
+                className="m-composer-suggestions__row"
                 style={item.kind === 'command' ? COMMAND_ROW_STYLE : undefined}
               >
                 {icon ? (
-                  <img data-slot="composer-suggestion-icon" src={icon} alt="" className="size-4 shrink-0" />
-                ) : item.kind === 'directory' ? (
-                  <Folder className="size-4 shrink-0 text-text-secondary" />
-                ) : item.kind === 'command' ? (
-                  <Terminal className="size-4 shrink-0 text-text-secondary" />
-                ) : (
-                  <span
+                  <img
                     data-slot="composer-suggestion-icon"
-                    aria-hidden
-                    className="size-4 shrink-0 text-center text-caption-1-regular text-text-secondary"
-                  >
+                    src={icon}
+                    alt=""
+                    className="m-composer-suggestions__icon"
+                  />
+                ) : item.kind === 'directory' ? (
+                  <Folder aria-hidden className="m-composer-suggestions__icon" />
+                ) : item.kind === 'command' ? (
+                  <Terminal aria-hidden className="m-composer-suggestions__icon" />
+                ) : (
+                  <span data-slot="composer-suggestion-icon" aria-hidden className="m-composer-suggestions__bullet">
                     ·
                   </span>
                 )}
                 <span
                   data-slot="composer-suggestion-label"
                   onPointerEnter={titleIfTruncated}
-                  className={cx('min-w-0 truncate text-left text-body-medium', item.kind !== 'command' && 'flex-1')}
+                  className="m-composer-suggestions__label"
                 >
                   {item.label}
                 </span>
@@ -122,10 +121,7 @@ export function ComposerSuggestions({
                   <span
                     data-slot="composer-suggestion-detail"
                     onPointerEnter={titleIfTruncated}
-                    className={cx(
-                      'min-w-0 truncate text-left text-caption-1-regular text-text-secondary',
-                      item.kind !== 'command' && 'max-w-1/2',
-                    )}
+                    className="m-composer-suggestions__detail"
                   >
                     {item.detail}
                   </span>

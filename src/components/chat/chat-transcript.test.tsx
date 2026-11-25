@@ -8,7 +8,9 @@ import { ChatTranscript } from './chat-transcript'
 const scroller = vi.hoisted(() => ({ scrollToMessage: vi.fn() }))
 
 vi.mock('@/hooks/use-android-insets', () => ({ useImeBottom: () => 0 }))
-vi.mock('motion/react', () => ({
+// Partial: the library's Button animates its label with motion/react too.
+vi.mock('motion/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('motion/react')>()),
   LazyMotion: ({ children }: { children: React.ReactNode }) => children,
   domAnimation: {},
 }))

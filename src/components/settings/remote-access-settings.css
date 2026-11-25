@@ -1,0 +1,90 @@
+@layer components {
+  .m-remote__status {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-remote__hint,
+  .m-remote__status-title {
+    margin: 0;
+  }
+
+  .m-remote__hint {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-remote__group-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-remote__group-rows + .m-remote__group-rows,
+  .m-remote__group-rows > .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-remote__token-row,
+  .m-remote__actions,
+  .m-remote__status-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-remote__token-row {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .m-remote__token-field {
+    flex: 1 1 12rem;
+    min-width: 0;
+  }
+
+  .m-remote__actions {
+    gap: var(--space-3);
+    padding-block-start: var(--space-2);
+  }
+
+  .m-remote__saved {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .m-remote__status-title {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .m-remote__dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+  }
+
+  .m-remote__dot[data-running] {
+    background: var(--success-fg);
+  }
+
+  .m-remote__empty-row {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-remote__address-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+}

@@ -1,0 +1,19 @@
+@layer components {
+  .m-acp__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-acp__note,
+  [data-slot='acp-check-error'] {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .m-acp__note {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+}

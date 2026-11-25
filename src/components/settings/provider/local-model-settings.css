@@ -1,0 +1,30 @@
+@layer components {
+  .m-local-model__stack {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .m-local-model__value {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-local-model__value[data-wrap='anywhere'] {
+    overflow-wrap: anywhere;
+  }
+
+  .m-local-model__note {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-local-model__missing {
+    margin: 0;
+    color: var(--danger-fg);
+    font: var(--text-body);
+  }
+}

@@ -21,10 +21,10 @@ function asPreference(value: string | null | undefined): ThemePreference {
 }
 
 function applyToDOM(resolved: ResolvedTheme) {
-  const root = document.documentElement
-  // `dark` is the only class anything reads (`@custom-variant dark` in
-  // globals.css); light is its absence.
-  root.classList.toggle('dark', resolved === 'dark')
+  // Yuerchu UI's tokens switch on `data-theme`. Always written, light included:
+  // with the attribute absent the library follows the OS instead, which is not
+  // what a user who chose "light" on a dark system asked for.
+  document.documentElement.dataset.theme = resolved
 }
 
 type ThemeContextValue = {

@@ -8,6 +8,7 @@
 // Every tenth row of the new page is an assistant's markdown naming a sticker
 // as `[emoji:name]` — the path `MarkdownContent` takes — so both sticker
 // surfaces are measured under the one playback scope.
+import './sticker-lab.css'
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
 import type { EmojiMap } from '@/components/chat/emoji-renderer'
@@ -16,7 +17,6 @@ import { StickerThumb } from '@/components/chat/sticker-thumb'
 import { useStickerPlayback } from '@/components/chat/sticker-playback'
 import { seedStickerUrl } from '@/lib/sticker-urls'
 import type { EmojiInfoResponse } from '@/types'
-import { cx } from '@/utils/cx'
 
 const COUNT = 200
 
@@ -66,7 +66,7 @@ const GatedSticker = memo(function GatedSticker({ src }: { src: string }) {
   const box = useRef<HTMLDivElement>(null)
   const { near, playing } = useStickerPlayback(box, { autoplay: true, explicit: false })
   return (
-    <div ref={box} data-slot="sticker-lab-gated" className="size-32 shrink-0">
+    <div ref={box} data-slot="sticker-lab-gated" className="m-dev-sticker-lab__gated">
       <StickerThumb src={src} near={near} playing={playing} fallback={null} />
     </div>
   )
@@ -96,7 +96,7 @@ function useLabEmojiMap(sources: string[] | null): EmojiMap {
 
 const MarkdownRow = memo(function MarkdownRow({ i, emojiMap }: { i: number; emojiMap: EmojiMap }) {
   return (
-    <div data-slot="sticker-lab-markdown" className="max-w-md rounded-2xl bg-background-secondary-default px-4 py-2">
+    <div data-slot="sticker-lab-markdown" className="m-dev-sticker-lab__markdown">
       <MarkdownContent
         content={`第 ${i + 1} 行是一段回复，贴纸夹在正文里：[emoji:lab-${i + 1}] 后面还有一句话。`}
         emojiMap={emojiMap}
@@ -115,7 +115,7 @@ const LegacySticker = memo(function LegacySticker({ src }: { src: string }) {
       loading="lazy"
       width={128}
       height={128}
-      className="size-32 object-contain"
+      className="m-dev-sticker-lab__legacy"
     />
   )
 })
@@ -124,18 +124,19 @@ export default function StickerLab({ legacy }: { legacy: boolean }) {
   const sources = useSources()
   const emojiMap = useLabEmojiMap(legacy ? null : sources)
   return (
-    <div data-slot="sticker-lab" className="flex h-screen flex-col bg-background-full text-text-primary">
-      <header data-slot="sticker-lab-header" className="flex items-center gap-4 px-6 py-3">
-        <h1 data-slot="sticker-lab-title" className="text-headline-semibold">
+    <div data-slot="sticker-lab" className="m-dev-sticker-lab">
+      <header data-slot="sticker-lab-header" className="m-dev-sticker-lab__header">
+        <h1 data-slot="sticker-lab-title" className="m-dev-sticker-lab__title">
           {legacy ? '贴纸：旧（全部自动播放）' : '贴纸：新（可见 + 非滚动 + 上限）'}
         </h1>
       </header>
-      <div data-slot="sticker-lab-scroller" id="sticker-lab-scroller" className="min-h-0 flex-1 overflow-y-auto px-6">
+      <div data-slot="sticker-lab-scroller" id="sticker-lab-scroller" className="m-dev-sticker-lab__scroller">
         {sources?.map((src, i) => (
           <div
             key={i}
             data-slot="sticker-lab-row"
-            className={cx('flex py-2', i % 2 === 0 ? 'justify-start' : 'justify-end')}
+            className="m-dev-sticker-lab__row"
+            data-align={i % 2 === 0 ? 'start' : 'end'}
           >
             {legacy ? (
               <LegacySticker src={src} />

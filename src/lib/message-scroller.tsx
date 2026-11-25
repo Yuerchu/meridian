@@ -1,5 +1,4 @@
 import * as React from 'react'
-import { dom } from '@/components/base'
 
 /**
  * The transcript scroller.
@@ -1314,9 +1313,10 @@ function Anchor({ messageId, ref, ...props }: MessageScrollerAnchorProps) {
   return <div ref={setRef} data-slot="message-scroller-anchor" data-message-anchor={messageId} {...props} />
 }
 
-export interface MessageScrollerButtonProps extends React.ComponentProps<typeof dom.button> {
+export interface MessageScrollerButtonProps extends React.ComponentProps<'button'> {
   behavior?: ScrollBehavior
   direction?: 'start' | 'end'
+  render?: (props: React.ComponentProps<'button'>) => React.ReactElement
 }
 
 function Button({
@@ -1347,30 +1347,34 @@ function Button({
     ),
   )
 
-  return (
-    <dom.button
-      data-slot="message-scroller-button"
-      data-active={active ? 'true' : 'false'}
-      data-direction={String(direction)}
-      type={type}
-      // Nothing to scroll toward means nothing to focus either, so an
-      // inactive control does not become an extra tab stop.
-      inert={!active}
-      tabIndex={active ? tabIndex : -1}
-      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
-        if (!active) return
-        onClickRef.current?.(event)
-        if (event.defaultPrevented) return
-        if (direction === 'start') scrollToStart({ behavior })
-        else scrollToEnd({ behavior })
-        viewportRef.current?.focus({ preventScroll: true })
-      }}
-      render={render}
-      {...props}
-    >
-      {children ?? <span data-slot="message-scroller-button-label">Scroll to {direction}</span>}
-    </dom.button>
-  )
+  const domProps: React.ComponentProps<'button'> & {
+    'data-slot': string
+    'data-active': 'true' | 'false'
+    'data-direction': string
+  } = {
+    'data-slot': 'message-scroller-button',
+    'data-active': active ? 'true' : 'false',
+    'data-direction': String(direction),
+    type,
+    // Nothing to scroll toward means nothing to focus either, so an
+    // inactive control does not become an extra tab stop.
+    inert: !active,
+    tabIndex: active ? tabIndex : -1,
+    onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+      if (!active) return
+      onClickRef.current?.(event)
+      if (event.defaultPrevented) return
+      if (direction === 'start') scrollToStart({ behavior })
+      else scrollToEnd({ behavior })
+      viewportRef.current?.focus({ preventScroll: true })
+    },
+    ...props,
+    children: children ?? <span data-slot="message-scroller-button-label">Scroll to {direction}</span>,
+  }
+
+  if (render) return render(domProps)
+  // eslint-disable-next-line no-restricted-syntax -- headless primitive fallback when no render prop is provided
+  return <button {...domProps} />
 }
 
 /* ------------------------------------------------------------------ hooks */

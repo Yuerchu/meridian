@@ -116,12 +116,6 @@ macro_rules! with_all_commands {
             async commands::plan_review => submit_plan_review_decision(
                 request: $crate::commands::plan_review::PlanReviewDecisionRequest,
             ),
-            async commands::plan_review => get_plan_review_delivery(
-                request: $crate::commands::plan_review::PlanReviewDeliveryReadRequest,
-            ),
-            async commands::plan_review => invoke_plan_review_delivery(
-                request: $crate::commands::plan_review::PlanReviewDeliveryContinueRequest,
-            ),
             async commands::plan_review => resolve_plan_file_conflict(
                 request: $crate::commands::plan_review::PlanFileConflictResolveRequest,
             ),

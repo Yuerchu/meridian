@@ -1,0 +1,293 @@
+@layer components {
+  .ui-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .ui-radio-group__items {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .ui-radio-group[data-orientation="horizontal"] .ui-radio-group__items {
+    flex-flow: row wrap;
+    column-gap: var(--space-4);
+  }
+
+  /* ---------- 一个选项 ---------- */
+  .ui-radio {
+    --ui-radio-size: var(--icon-md);
+
+    display: inline-flex;
+    align-items: flex-start;
+    gap: var(--space-2);
+    color: var(--text);
+    font: var(--text-body);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  @media (pointer: coarse) {
+    .ui-radio {
+      --ui-radio-size: var(--icon-lg);
+    }
+  }
+
+  .ui-radio__circle {
+    flex: none;
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-radio-size);
+    height: var(--ui-radio-size);
+    margin-block: calc((1lh - var(--ui-radio-size)) / 2);
+    border: 1px solid var(--border-control);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      transform var(--dur-spring) var(--ease-spring);
+  }
+
+  /* 中间的圆点：选中时从 0 放大到 40% */
+  .ui-radio__circle::after {
+    width: 40%;
+    height: 40%;
+    border-radius: inherit;
+    background: var(--control-on-fg);
+    content: "";
+    scale: 0;
+    transition: scale var(--dur-spring) var(--ease-spring);
+  }
+
+  .ui-radio[data-hovered]:not([data-disabled]) .ui-radio__circle {
+    border-color: var(--text);
+  }
+
+  .ui-radio[data-pressed]:not([data-disabled], [data-readonly]) .ui-radio__circle {
+    transform: scale(var(--press-scale));
+    transition-duration: var(--dur-fast), var(--dur-fast), var(--dur-instant);
+  }
+
+  .ui-radio[data-selected] .ui-radio__circle {
+    border-color: var(--control-on);
+    background: var(--control-on);
+  }
+
+  .ui-radio[data-selected] .ui-radio__circle::after {
+    scale: 1;
+  }
+
+  .ui-radio[data-selected][data-hovered]:not([data-disabled]) .ui-radio__circle {
+    border-color: var(--control-on-hover);
+    background: var(--control-on-hover);
+  }
+
+  /* 焦点环画在圆圈上（焦点在隐藏的 input 上，label 只带 data-focus-visible，base.css 不在整行上画） */
+  .ui-radio[data-focus-visible] .ui-radio__circle {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-radio[data-invalid] .ui-radio__circle {
+    border-color: var(--danger);
+  }
+
+  .ui-radio[data-invalid][data-selected] .ui-radio__circle {
+    background: var(--danger);
+  }
+
+  .ui-radio[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-radio[data-disabled] .ui-radio__circle {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  .ui-radio[data-disabled][data-selected] .ui-radio__circle::after {
+    background: var(--text-muted);
+  }
+
+  .ui-radio[data-readonly] {
+    cursor: default;
+  }
+
+  .ui-radio__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ui-radio__description {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-radio[data-disabled] .ui-radio__description {
+    color: var(--text-muted);
+  }
+
+  /* ---------- 卡片（variant="card"）：整张卡片可以点，控件在右边；选中时边框换成 Ink、底色加深一档 ---------- */
+  .ui-radio[data-variant="card"] {
+    display: flex;
+    flex-direction: row-reverse;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 横排的卡片平分一行，放不下时换行 */
+  .ui-radio-group[data-orientation="horizontal"] .ui-radio[data-variant="card"] {
+    flex: 1 1 200px;
+    width: auto;
+  }
+
+  .ui-radio[data-variant="card"] .ui-radio__text {
+    flex: 1;
+  }
+
+  .ui-radio[data-variant="card"] .ui-radio__label {
+    font: var(--text-body-medium);
+  }
+
+  .ui-radio[data-variant="card"][data-hovered]:not([data-disabled]) {
+    background: var(--surface-sunken);
+  }
+
+  .ui-radio[data-variant="card"][data-selected] {
+    border-color: var(--control-on);
+    background: var(--surface-muted);
+  }
+
+  .ui-radio[data-variant="card"][data-invalid] {
+    border-color: var(--danger);
+  }
+
+  .ui-radio[data-variant="card"][data-disabled] {
+    border-color: var(--border);
+    background: var(--surface-muted);
+  }
+
+  /* ---------- 图选：选项以图为主（主题、布局、模板）。选中时描边加角上一个勾 ---------- */
+  .ui-radio-group:has(.ui-radio[data-variant="image"]) {
+    width: 100%;
+  }
+
+  .ui-radio-group__items:has(> .ui-radio[data-variant="image"]) {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: var(--space-3);
+  }
+
+  .ui-radio[data-variant="image"] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-radio__image {
+    position: relative;
+    display: block;
+    overflow: hidden;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-item);
+    background: var(--surface-sunken);
+    transition: border-color var(--dur-fast) var(--ease-standard), box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-radio__image > :is(img, svg, video) {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+
+  .ui-radio[data-variant="image"][data-hovered]:not([data-disabled]) .ui-radio__image {
+    border-color: var(--border-hover);
+  }
+
+  /* 选中：2px 描边（内层 1px 边框 + 1px 外圈），角上勾 */
+  .ui-radio[data-variant="image"][data-selected] .ui-radio__image {
+    border-color: var(--control-on);
+    box-shadow: 0 0 0 1px var(--control-on);
+  }
+
+  .ui-radio[data-variant="image"][data-focus-visible] .ui-radio__image {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-radio__check {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    border-radius: var(--radius-pill);
+    background: var(--control-on);
+    color: var(--control-on-fg);
+  }
+
+  .ui-radio__check svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-radio[data-variant="image"][data-selected] .ui-radio__check {
+    display: inline-flex;
+  }
+
+  .ui-radio[data-variant="image"] .ui-radio__label {
+    font: var(--text-small-medium);
+  }
+
+  .ui-radio[data-variant="image"][data-disabled] .ui-radio__image {
+    opacity: 0.5;
+  }
+
+  @media (forced-colors: active) {
+    .ui-radio[data-variant="image"][data-selected] .ui-radio__image {
+      border-color: Highlight;
+      box-shadow: 0 0 0 1px Highlight;
+    }
+
+    .ui-radio__circle {
+      border-color: CanvasText;
+    }
+
+    .ui-radio[data-selected] .ui-radio__circle {
+      border-color: Highlight;
+      background: Canvas;
+    }
+
+    .ui-radio[data-selected] .ui-radio__circle::after {
+      background: Highlight;
+    }
+
+    .ui-radio[data-focus-visible] .ui-radio__circle {
+      outline-color: Highlight;
+    }
+
+    .ui-radio[data-disabled] .ui-radio__circle {
+      border-color: GrayText;
+    }
+  }
+}

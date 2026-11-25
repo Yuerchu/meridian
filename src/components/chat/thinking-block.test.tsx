@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { fireEvent, render, screen } from '@testing-library/react'
 
 vi.mock('@tauri-apps/plugin-shell', () => ({ open: vi.fn(() => Promise.resolve()) }))
@@ -46,10 +48,9 @@ describe('ThinkingRow', () => {
 
   it('shimmers the latest title while the thought is still arriving', () => {
     const { container } = render(<ThinkingRow text="**One****Two**" panelKey="m1:1:thinking" isStreaming />)
-    // boardui's `ShimmerText` (agent-log) is the class, not a data-slot.
-    const shimmer = container.querySelector('.agent-progress-loading-text')
+    const shimmer = container.querySelector('.m-shimmer-text')
     expect(shimmer?.textContent).toBe('Two')
-    expect(screen.getByText('One').closest('.agent-progress-loading-text')).toBeNull()
+    expect(screen.getByText('One').closest('.m-shimmer-text')).toBeNull()
   })
 
   it('folds a thought with a body behind a badge and draws it as small Markdown', () => {
@@ -63,8 +64,10 @@ describe('ThinkingRow', () => {
     const title = screen.getByText('Filtering endpoint findings')
     expect(title.tagName).toBe('STRONG')
     const panel = title.closest('[data-slot="markdown-content"]')
-    expect(panel?.className).toContain('text-caption-1-regular')
-    expect(panel?.className).toContain('text-text-secondary')
+    expect(panel?.className).toContain('m-thinking-block__markdown')
+    const css = readFileSync(resolve(__dirname, 'thinking-block.css'), 'utf8')
+    expect(css).toMatch(/\.m-thinking-block__markdown\s*\{[^}]*font:\s*var\(--text-caption\)/)
+    expect(css).toMatch(/\.m-thinking-block__markdown\s*\{[^}]*color:\s*var\(--text-secondary\)/)
     expect(screen.getByText('Only the auth ones.')).toBeInTheDocument()
   })
 

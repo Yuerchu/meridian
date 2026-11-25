@@ -1,0 +1,54 @@
+@layer components {
+  .m-codex-account,
+  .m-codex-account__card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-codex-account {
+    gap: var(--space-3);
+    padding-block-start: var(--space-4);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-codex-account__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+  }
+
+  .m-codex-account__label,
+  .m-codex-account__meta,
+  .m-codex-account__email,
+  .m-codex-account__signed-out {
+    margin: 0;
+  }
+
+  .m-codex-account__label,
+  .m-codex-account__meta {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-codex-account__meta[data-wrap='anywhere'] {
+    overflow-wrap: anywhere;
+  }
+
+  .m-codex-account__card {
+    gap: var(--space-2);
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+  }
+
+  .m-codex-account__email {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .m-codex-account__signed-out {
+    color: var(--warning-fg);
+    font: var(--text-body);
+  }
+}

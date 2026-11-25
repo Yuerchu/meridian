@@ -497,8 +497,6 @@ mod tests {
             "set_plan_review_draft",
             "delete_plan_review_draft",
             "submit_plan_review_decision",
-            "get_plan_review_delivery",
-            "invoke_plan_review_delivery",
             "resolve_plan_file_conflict",
         ];
         for name in expected {

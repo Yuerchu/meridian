@@ -1,25 +1,25 @@
+import './primitives.css'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button as AriaButton, type ButtonProps as AriaButtonProps } from 'react-aria-components'
-import { Select, SelectItem, Skeleton } from '@/components/base'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { Check, ChevronRight, Plus } from '@keyline-icons/react/two-tone'
 
-import { cx } from '@/utils/cx'
 import { titleIfTruncated } from '@/lib/truncation'
 
 /**
- * The three shapes every settings panel was already drawing by hand.
+ * The page-level pieces every settings panel shares: the pane and its width,
+ * the header, the hand-rolled rows a card of settings rows can be made of (a
+ * row that opens something, the row that adds one) and the small marks around
+ * them. The card grammar itself — a group with its heading, a row with its
+ * label and control — is the library's SettingsGroup / SettingsRow, which
+ * names the row's control through React Aria context; use those directly.
  *
- * Extracted for one reason above tidiness: "narrow screens go full width" and
- * "a settings row is 52px tall" are single edits here and a dozen edits spread
- * across eleven files otherwise.
- *
- * There is deliberately no `SettingsField`: `TextField` is one, and
- * the panels use it directly. It wires the label to its control itself, which
- * is what retired the `useId` that every field used to carry, and its label is
- * left at Label's own weight rather than pushed back down to `text-caption-1-regular` — the
- * four slightly different ways that override had been written are what made
- * the case for stopping.
+ * There is deliberately no `SettingsField`: `TextField` is one, and the panels
+ * use it directly. It wires the label to its control itself, which is what
+ * retired the `useId` that every field used to carry.
  */
 
 /**
@@ -38,11 +38,7 @@ import { titleIfTruncated } from '@/lib/truncation'
  */
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="settings-pane"
-      className={cx('@container/pane mx-auto w-full max-w-settings space-y-6', className)}
-      {...props}
-    />
+    <div data-slot="settings-pane" className={['m-settings-pane', className].filter(Boolean).join(' ')} {...props} />
   )
 }
 
@@ -58,40 +54,23 @@ export function SettingsHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div data-slot="settings-header" className={cx('flex items-start justify-between gap-2', className)} {...props}>
-      <div data-slot="settings-header-text" className="min-w-0">
-        <h2 data-slot="settings-header-title" className="text-title-3-medium">
+    <div data-slot="settings-header" className={['m-settings-header', className].filter(Boolean).join(' ')} {...props}>
+      <div data-slot="settings-header-text" className="m-settings-header__text">
+        <h2 data-slot="settings-header-title" className="m-settings-header__title">
           {title}
         </h2>
         {subtitle && (
-          <p data-slot="settings-header-subtitle" className="mt-1 text-caption-1-regular text-text-secondary">
+          <p data-slot="settings-header-subtitle" className="m-settings-header__subtitle">
             {subtitle}
           </p>
         )}
       </div>
       {actions && (
-        <div data-slot="settings-header-actions" className="flex shrink-0 items-center gap-1">
+        <div data-slot="settings-header-actions" className="m-settings-header__actions">
           {actions}
         </div>
       )}
     </div>
-  )
-}
-
-/**
- * A group of settings, drawn as one card with its rows dividing themselves.
- *
- * boardui's settings grammar, adopted whole: the left padding lives on the card
- * so each row's rule stops short of the card's edge rather than running into
- * it. Compose a section as a label above one of these.
- */
-export function SettingsCard({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      data-slot="settings-card"
-      className={cx('flex w-full flex-col rounded-2xl bg-background-secondary-default pl-3', className)}
-      {...props}
-    />
   )
 }
 
@@ -100,133 +79,7 @@ export function SettingsSectionLabel({ className, ...props }: React.ComponentPro
   return (
     <h3
       data-slot="settings-section-label"
-      className={cx('w-full px-3 text-body-2-medium text-text-secondary', className)}
-      {...props}
-    />
-  )
-}
-
-/** A label above a card, and the card. The shape every section has. */
-export function SettingsSection({
-  label,
-  actions,
-  className,
-  children,
-  ...props
-}: Omit<React.ComponentProps<'div'>, 'children'> & {
-  label?: React.ReactNode
-  /** Sits at the end of the label's line — a refresh, an add, a reset. */
-  actions?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div data-slot="settings-section" className={cx('flex w-full flex-col gap-2', className)} {...props}>
-      {(label || actions) && (
-        <div data-slot="settings-section-bar" className="flex items-center justify-between gap-2">
-          {label ? <SettingsSectionLabel>{label}</SettingsSectionLabel> : <span data-slot="settings-section-spacer" />}
-          {actions && (
-            <div data-slot="settings-section-actions" className="flex shrink-0 items-center gap-1">
-              {actions}
-            </div>
-          )}
-        </div>
-      )}
-      <SettingsCard>{children}</SettingsCard>
-    </div>
-  )
-}
-
-/**
- * A select sitting on a `SettingsRow`'s right: the registry's settings-general
- * `SELECT_TRIGGER`, the 32px compact trigger that hugs its value, rather than
- * the full-width form trigger a stacked field uses.
- */
-export const SETTINGS_ROW_SELECT_TRIGGER = 'h-8 w-auto gap-1 rounded-lg px-2 py-1.5'
-
-export interface SettingsRowIds {
-  labelId: string
-  descriptionId?: string
-}
-
-/**
- * One setting: what it is on the left, the control for it on the right.
- *
- * The label is a `<p>` rather than a `<label>`, because what sits on the right
- * is not always a labellable control — it is sometimes a button, sometimes a
- * read-only value. So the control names itself, either with its own
- * `aria-label` or by taking the ids this hands to a function child. A row whose
- * control is anonymous reads as a switch with no name at all.
- *
- * `stacked` drops the control under the label below `@sm/pane`, for the ones
- * that cannot shrink — a URL field, a long text input. Ordinary rows stay a row
- * at every width because their controls are compact and the label wraps.
- */
-export function SettingsRow({
-  label,
-  description,
-  stacked,
-  className,
-  children,
-  ...props
-}: Omit<React.ComponentProps<'div'>, 'children'> & {
-  label: React.ReactNode
-  description?: React.ReactNode
-  stacked?: boolean
-  children?: React.ReactNode | ((ids: SettingsRowIds) => React.ReactNode)
-}) {
-  const labelId = React.useId()
-  const descriptionId = React.useId()
-  return (
-    <div
-      data-slot="settings-row"
-      className={cx(
-        'flex min-h-[52px] w-full gap-4 border-b border-separator-border py-2.5 pr-2.5 last:border-b-0',
-        stacked
-          ? 'flex-col items-stretch gap-2 @sm/pane:flex-row @sm/pane:items-center @sm/pane:gap-4'
-          : 'items-center justify-between',
-        className,
-      )}
-      {...props}
-    >
-      <div data-slot="settings-row-text" className="flex min-w-0 flex-col">
-        <p data-slot="settings-row-label" id={labelId} className="text-body-regular text-text-primary">
-          {label}
-        </p>
-        {description && (
-          <p
-            data-slot="settings-row-description"
-            id={descriptionId}
-            className="text-body-2-regular text-text-secondary"
-          >
-            {description}
-          </p>
-        )}
-      </div>
-      <div data-slot="settings-row-control" className={cx('flex items-center gap-2', stacked ? 'min-w-0' : 'shrink-0')}>
-        {typeof children === 'function'
-          ? children({ labelId, descriptionId: description ? descriptionId : undefined })
-          : children}
-      </div>
-    </div>
-  )
-}
-
-/**
- * The grey read-only value beside a row's label.
- *
- * Not an input: it presents something stored rather than inviting an edit — a
- * device id, a path, an account. One step darker than the card it sits on, the
- * way a field would be.
- */
-export function SettingsValueField({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div
-      data-slot="settings-value-field"
-      className={cx(
-        'flex h-8 w-[202px] max-w-full shrink-0 items-center gap-1 rounded-2lg bg-background-tertiary-default px-3',
-        'truncate text-body-2-regular text-text-primary',
-        className,
-      )}
+      className={['m-settings-section-label', className].filter(Boolean).join(' ')}
       {...props}
     />
   )
@@ -275,30 +128,15 @@ export function SettingsNavRow({
       // said it to nobody else. Both places that had built this by hand were
       // missing it.
       aria-current={isActive || undefined}
-      className={cx(
-        'flex w-full cursor-pointer items-center gap-2 rounded-2lg p-2 text-left',
-        'outline-none transition-colors duration-150 ease data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-        isActive ? 'bg-background-secondary-hover' : 'data-[hovered]:bg-background-secondary-hover/60',
-        className,
-      )}
+      className={['m-settings-nav-row', className].filter(Boolean).join(' ')}
       {...props}
     >
       {icon && (
-        <span
-          data-slot="settings-nav-row-icon"
-          className="flex size-5 shrink-0 items-center justify-center text-foreground-icon-secondary [&_svg]:size-5"
-        >
+        <span data-slot="settings-nav-row-icon" className="m-settings-nav-row__icon">
           {icon}
         </span>
       )}
-      <span
-        data-slot="settings-nav-row-label"
-        id={labelId}
-        className={cx(
-          'min-w-0 flex-1 truncate text-body-medium',
-          isActive ? 'text-text-primary' : 'text-text-secondary',
-        )}
-      >
+      <span data-slot="settings-nav-row-label" id={labelId} className="m-settings-nav-row__label">
         {label}
       </span>
       {value && (
@@ -306,25 +144,27 @@ export function SettingsNavRow({
           data-slot="settings-nav-row-value"
           onPointerEnter={titleIfTruncated}
           id={valueId}
-          className="shrink-0 truncate text-caption-1-regular text-text-secondary"
+          className="m-settings-nav-row__value"
         >
           {value}
         </span>
       )}
-      {trailing === undefined ? <ChevronRight className="size-4 shrink-0 text-foreground-icon-secondary" /> : trailing}
+      {trailing === undefined ? (
+        <ChevronRight size={16} aria-hidden className="m-settings-nav-row__chevron" />
+      ) : (
+        trailing
+      )}
     </AriaButton>
   )
 }
 
 /**
- * A row of a `SettingsCard` that opens something: a provider, a server.
+ * A row of a settings card that opens something: a provider, a server.
  *
  * `SettingsNavRow` is the settings modal's *rail* row — its own rounded wash,
- * drawn on the page. A list of things inside a card is the other grammar
- * (settings-tools.tsx, `ServerRow`): the card's `pl-3`, `py-2.5 pr-2.5`, a
- * 52px floor and a rule under every row but the last. So the row carries no
- * fill of its own — a wash starting 12px in from the card's edge reads as a
- * mistake — and says "this goes somewhere" with the chevron, which steps up a
+ * drawn on the page. A list of things inside a card is the other grammar: the
+ * card's row padding, a rule under every row but the last, no fill of the
+ * row's own, and "this goes somewhere" said by the chevron, which steps up a
  * shade on hover.
  *
  * Named the way `SettingsNavRow` is: the label is the name, and the badge,
@@ -343,7 +183,7 @@ export function SettingsLinkRow({
   className?: string
   icon?: React.ReactNode
   label: React.ReactNode
-  /** A tag beside the label — a transport, a kind. */
+  /** A tag beside the label — a transport, a kind. The library's Badge. */
   badge?: React.ReactNode
   /** A second line under the label. */
   description?: React.ReactNode
@@ -360,31 +200,26 @@ export function SettingsLinkRow({
       data-slot="settings-link-row"
       aria-labelledby={labelId}
       aria-describedby={describedBy || undefined}
-      className={cx(
-        'group/link-row flex min-h-[52px] w-full cursor-pointer items-center gap-2.5 py-2.5 pr-2.5 text-left',
-        'border-b border-separator-border last:border-b-0',
-        'outline-none data-[focus-visible]:rounded-lg data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
-        className,
-      )}
+      className={['m-settings-link-row', className].filter(Boolean).join(' ')}
       {...props}
     >
       {icon && (
-        <span data-slot="settings-link-row-icon" className="flex shrink-0 items-center justify-center">
+        <span data-slot="settings-link-row-icon" className="m-settings-link-row__icon">
           {icon}
         </span>
       )}
-      <span data-slot="settings-link-row-text" className="flex min-w-0 flex-1 flex-col">
-        <span data-slot="settings-link-row-title" className="flex min-w-0 items-center gap-2">
+      <span data-slot="settings-link-row-text" className="m-settings-link-row__text">
+        <span data-slot="settings-link-row-title" className="m-settings-link-row__title">
           <span
             id={labelId}
             data-slot="settings-link-row-label"
             onPointerEnter={titleIfTruncated}
-            className="truncate text-body-medium text-text-primary"
+            className="m-settings-link-row__label"
           >
             {label}
           </span>
           {badge && (
-            <span id={badgeId} data-slot="settings-link-row-badge" className="flex shrink-0 items-center">
+            <span id={badgeId} data-slot="settings-link-row-badge" className="m-settings-link-row__badge">
               {badge}
             </span>
           )}
@@ -394,7 +229,7 @@ export function SettingsLinkRow({
             id={descriptionId}
             data-slot="settings-link-row-description"
             onPointerEnter={titleIfTruncated}
-            className="truncate text-body-2-regular text-text-secondary"
+            className="m-settings-link-row__description"
           >
             {description}
           </span>
@@ -405,15 +240,12 @@ export function SettingsLinkRow({
           id={valueId}
           data-slot="settings-link-row-value"
           onPointerEnter={titleIfTruncated}
-          className="max-w-[40%] shrink-0 truncate text-body-2-regular text-text-secondary"
+          className="m-settings-link-row__value"
         >
           {value}
         </span>
       )}
-      <ChevronRight
-        aria-hidden
-        className="size-4 shrink-0 text-foreground-icon-tertiary transition-colors duration-150 ease group-data-[hovered]/link-row:text-foreground-icon-secondary"
-      />
+      <ChevronRight size={16} aria-hidden className="m-settings-link-row__chevron" />
     </AriaButton>
   )
 }
@@ -421,15 +253,14 @@ export function SettingsLinkRow({
 /**
  * The last row of a list card, which adds one more.
  *
- * settings-tools.tsx's `NewServerRow`: a 32px tertiary tile holding a plus,
- * the action in `body-medium` and what it does underneath. The tile is what
- * answers the hover, as it is there. Named by its label alone — the
- * description is a description.
+ * A tile holding a plus, the action in body text and what it does underneath.
+ * The tile is what answers the hover, as it is there. Named by its label
+ * alone — the description is a description.
  */
 export function SettingsAddRow({
   label,
   description,
-  icon = <Plus className="size-5 shrink-0 text-foreground-icon-secondary" aria-hidden />,
+  icon = <Plus size={16} className="m-settings-add-row__glyph" aria-hidden />,
   className,
   ...props
 }: Omit<AriaButtonProps, 'className' | 'children'> & {
@@ -445,30 +276,18 @@ export function SettingsAddRow({
       data-slot="settings-add-row"
       aria-labelledby={labelId}
       aria-describedby={description ? descriptionId : undefined}
-      className={cx(
-        'group/add-row flex min-h-[52px] w-full cursor-pointer items-center gap-2.5 py-2.5 pr-2.5 text-left',
-        'border-b border-separator-border last:border-b-0',
-        'outline-none data-[focus-visible]:rounded-lg data-[focus-visible]:ring-2 data-[focus-visible]:ring-inset data-[focus-visible]:ring-border-focus-ring',
-        'data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50',
-        className,
-      )}
+      className={['m-settings-add-row', className].filter(Boolean).join(' ')}
       {...props}
     >
-      <span
-        data-slot="settings-add-row-tile"
-        className={cx(
-          'flex size-8 shrink-0 items-center justify-center rounded-lg bg-background-tertiary-default',
-          'transition-colors duration-150 ease group-data-[hovered]/add-row:bg-background-tertiary-hover',
-        )}
-      >
+      <span data-slot="settings-add-row-tile" className="m-settings-add-row__tile">
         {icon}
       </span>
-      <span data-slot="settings-add-row-text" className="flex min-w-0 flex-col">
+      <span data-slot="settings-add-row-text" className="m-settings-add-row__text">
         <span
           id={labelId}
           data-slot="settings-add-row-label"
           onPointerEnter={titleIfTruncated}
-          className="truncate text-body-medium text-text-primary"
+          className="m-settings-add-row__label"
         >
           {label}
         </span>
@@ -477,7 +296,7 @@ export function SettingsAddRow({
             id={descriptionId}
             data-slot="settings-add-row-description"
             onPointerEnter={titleIfTruncated}
-            className="truncate text-body-2-regular text-text-secondary"
+            className="m-settings-add-row__description"
           >
             {description}
           </span>
@@ -488,33 +307,10 @@ export function SettingsAddRow({
 }
 
 /**
- * A small grey tag on a settings card: a kind, a transport, a category.
- *
- * settings-general.tsx's "Current plan" tag. Not `Chip`: every Chip fill is
- * `background-secondary`, which is exactly the card's own colour, so on a
- * card a Chip is text with no box. The registry answers that with the
- * tertiary step, and so does this.
- */
-export function SettingsTag({ className, ...props }: React.ComponentProps<'span'>) {
-  return (
-    <span
-      data-slot="settings-tag"
-      className={cx(
-        'inline-flex w-fit shrink-0 items-center gap-1 rounded-md bg-background-tertiary-default px-1.5 py-0.5',
-        'text-caption-1-medium whitespace-nowrap text-text-secondary',
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
-/**
  * A quiet text action inside a list — "Show all 15", "Show output".
  *
- * settings-tools.tsx's `InlineAction`: tertiary ink stepping up to secondary
- * on hover, no fill, no box. A full-width grey button in that place outweighs
- * the rows it is only offering more of.
+ * Secondary ink stepping up to primary on hover, no fill, no box. A full-width
+ * grey button in that place outweighs the rows it is only offering more of.
  */
 export function SettingsInlineAction({
   className,
@@ -523,12 +319,7 @@ export function SettingsInlineAction({
   return (
     <AriaButton
       data-slot="settings-inline-action"
-      className={cx(
-        'w-fit cursor-pointer rounded-sm text-body-2-regular whitespace-nowrap text-text-secondary',
-        'outline-none transition-colors duration-150 ease',
-        'data-[hovered]:text-text-primary data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-        className,
-      )}
+      className={['m-settings-inline-action', className].filter(Boolean).join(' ')}
       {...props}
     />
   )
@@ -547,10 +338,10 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
     <span
       data-slot="saved-hint"
       role="status"
-      className={cx('flex items-center gap-1 text-caption-1-regular text-status-success-soft-foreground', className)}
+      className={['m-saved-hint', className].filter(Boolean).join(' ')}
       {...props}
     >
-      <Check className="size-3.5" />
+      <Check size={14} aria-hidden className="m-saved-hint__icon" />
       {t('common.saved')}
     </span>
   )
@@ -566,7 +357,8 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
  * part of the page.
  *
  * Sized to what it stands in for: the bars match `SettingsHeader`'s two lines
- * and `SettingsRow`'s 52px, so nothing moves when the real thing replaces it.
+ * and a library settings row's height (12px padding over ~20px of text), so
+ * nothing moves when the real thing replaces it.
  *
  * `role="status"` with a label, because a screen reader gets nothing at all
  * from a column of grey boxes — it is the one thing the line of text it
@@ -580,19 +372,19 @@ export function SettingsSkeleton({ rows = 4, className, ...props }: React.Compon
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className={cx('mx-auto w-full max-w-settings space-y-6', className)}
+      className={['m-settings-skeleton', className].filter(Boolean).join(' ')}
       {...props}
     >
-      <div data-slot="settings-skeleton-header" className="space-y-2">
-        <Skeleton className="h-5 w-40 rounded-md" />
-        <Skeleton className="h-3 w-64 rounded-md" />
+      <div data-slot="settings-skeleton-header" className="m-settings-skeleton__header">
+        <Skeleton width="10rem" />
+        <Skeleton width="16rem" />
       </div>
-      {/* One card of rows, sized to `SettingsRow`'s 52px rather than the 44px
-          the navigation row used to be, so nothing moves when the real thing
+      {/* One card of rows, sized to a library settings row — 12px padding
+          each side of a ~20px line — so nothing moves when the real thing
           replaces it. */}
-      <div data-slot="settings-skeleton-rows" className="space-y-1">
+      <div data-slot="settings-skeleton-rows" className="m-settings-skeleton__rows">
         {Array.from({ length: rows }, (_, i) => (
-          <Skeleton key={i} className="h-[52px] w-full rounded-2xl" />
+          <Skeleton key={i} shape="rect" width="100%" height="44px" />
         ))}
       </div>
     </div>
@@ -611,10 +403,7 @@ type SettingsSelectBase<T extends string> = {
   description?: React.ReactNode
   placeholder?: string
   disabled?: boolean
-  className?: string
-  triggerClassName?: string
-  /** Only the one caller that shrinks its rows needs this. */
-  itemClassName?: string
+  size?: 'sm' | 'md' | 'lg'
 }
 
 /**
@@ -634,7 +423,7 @@ export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
   )
 
 /**
- * The seven-layer `Select` every panel was writing out by hand.
+ * A named, typed setting whose selection cannot be cleared.
  *
  * The lines saved are not the reason. React Aria hands `onChange` a `Key | null`,
  * and the twenty call sites had five different ways of narrowing it back —
@@ -652,14 +441,12 @@ export function SettingsSelect<T extends string>({
   description,
   placeholder,
   disabled,
-  className,
-  triggerClassName,
-  itemClassName,
+  size,
 }: SettingsSelectProps<T>) {
   return (
     <Select
       data-slot="settings-select"
-      className={className}
+      size={size}
       label={label}
       description={description}
       aria-label={ariaLabel}
@@ -670,12 +457,11 @@ export function SettingsSelect<T extends string>({
       onSelectionChange={(key) => {
         if (key != null) onChange(String(key) as T)
       }}
-      triggerClassName={triggerClassName}
     >
       {options.map((option) => (
-        <SelectItem key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
+        <ListBoxItem key={option.value} id={option.value} textValue={option.label}>
           {option.label}
-        </SelectItem>
+        </ListBoxItem>
       ))}
     </Select>
   )

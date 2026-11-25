@@ -43,7 +43,9 @@ export async function openApp(page: Page, { theme, quiet = true, background = fa
   const flags = [quiet && 'quiet', background && 'background'].filter(Boolean)
   await page.goto(flags.length > 0 ? `/?demo=${flags.join(',')}` : '/')
   await expect(page.getByText('演示数据')).toBeVisible()
-  await expect(page.locator('html')).toHaveClass(theme === 'dark' ? /\bdark\b/ : /^(?!.*\bdark\b)/)
+  // Yuerchu UI's tokens switch on `data-theme`; the pre-paint script and lib/theme
+  // write that attribute, and there is no `dark` class any more.
+  await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
   await settle(page)
 }
 
@@ -78,21 +80,34 @@ async function revealSidebar(page: Page): Promise<void> {
   await expect(page.getByRole('dialog')).toBeVisible()
 }
 
+/** The active sidebar container: the open drawer on narrow viewports, or the panel on desktop. */
+function sidebarScope(page: Page) {
+  return isNarrow(page) ? page.getByRole('dialog') : page.locator('.ui-sidebar__panel')
+}
+
 export async function openConversation(page: Page, title: string): Promise<void> {
   await revealSidebar(page)
-  await page.getByRole('row', { name: title, exact: true }).click()
+  await sidebarScope(page)
+    .locator('.ui-nav-item', { has: page.locator('.m-sidebar__conv-title').getByText(title, { exact: true }) })
+    .click()
   await expect(page.getByRole('heading', { level: 1, name: title })).toBeVisible()
-  await expect(page.getByRole('log')).toBeVisible()
+  // The transcript is a log, but it is no longer the only one: the library's
+  // notification stack and React Aria each mount a live region with the same
+  // role, so a bare `getByRole('log')` matches three.
+  await expect(page.locator('[data-slot="message-scroller-content"]')).toBeVisible()
   await settle(page)
 }
 
 export async function openSettings(page: Page, section?: string, heading = section): Promise<void> {
   await revealSidebar(page)
-  await page.getByRole('row', { name: '设置', exact: true }).click()
+  await sidebarScope(page).getByRole('button', { name: '设置', exact: true }).click()
   await expect(page.getByRole('heading', { level: 1, name: '设置' })).toBeVisible()
   if (section) {
     await revealSidebar(page)
-    await page.getByRole('row', { name: section, exact: true }).click()
+    await sidebarScope(page)
+      .getByRole('navigation', { name: '设置' })
+      .getByRole('button', { name: section, exact: true })
+      .click()
     // The settings pages are a lazily loaded chunk behind a Suspense with no
     // placeholder, so an empty pane is a stable frame too: wait for the page.
     await expect(page.getByRole('heading', { level: 2, name: heading, exact: true })).toBeVisible()
@@ -137,7 +152,8 @@ export async function openLocalModel(page: Page): Promise<void> {
   await page.getByRole('button', { name: '获取模型列表', exact: true }).click()
   await expect(page.getByRole('row', { name: 'demo-12b-gpu.litertlm', exact: true })).toBeVisible()
   const backendOverflow = await page.getByRole('button', { name: /文本推理后端/ }).evaluate((element) => {
-    const row = element.closest('[data-slot="settings-row"]')
+    // The library's settings row has no data-slot; the class is the row.
+    const row = element.closest('.ui-settings-row')
     if (row === null) throw new Error('backend has no settings row')
     return element.getBoundingClientRect().right - row.getBoundingClientRect().right
   })

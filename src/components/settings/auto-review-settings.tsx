@@ -1,7 +1,17 @@
+import './auto-review-settings.css'
+import { Select } from '@/components/yuerchu-ui/components/select/select'
+import { ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Description, Input, Label, Select, SelectItem, TextArea, TextField } from '@/components/base'
-import { CellSwitch } from '@/components/base'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+
 import { api } from '@/api'
 import type { PreferenceModelSelectionRequest, ProviderInfoResponse, ProviderModelInfoResponse } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
@@ -143,16 +153,16 @@ function ModelPicker({
   ]
 
   return (
-    <div data-slot="model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+    <div data-slot="model-picker" className="m-autoreview__picker">
       <Select
         aria-label={t('settings.assistant.provider')}
         selectedKey={providerId || '_none'}
         onSelectionChange={(v) => emit(!v || v === '_none' ? '' : String(v), '')}
       >
         {providerOptions.map((o) => (
-          <SelectItem key={o.value} id={o.value} textValue={o.label}>
+          <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
             {o.label}
-          </SelectItem>
+          </ListBoxItem>
         ))}
       </Select>
       {/* A provider whose model list has not been fetched yet still has to be
@@ -165,19 +175,19 @@ function ModelPicker({
           onSelectionChange={(v) => emit(providerId, !v || v === '_none' ? '' : String(v))}
         >
           {modelOptions.map((o) => (
-            <SelectItem key={o.value} id={o.value} textValue={o.label}>
+            <ListBoxItem key={o.value} id={o.value} textValue={o.label}>
               {o.label}
-            </SelectItem>
+            </ListBoxItem>
           ))}
         </Select>
       ) : (
-        <Input
+        <TextField
           aria-label={t('settings.assistant.model')}
           value={modelId}
-          onChange={(e) => setModelId(e.target.value)}
+          onChange={(e) => setModelId(e)}
           onBlur={() => emit(providerId, modelId)}
           placeholder={t('settings.assistant.modelPlaceholder')}
-          disabled={!providerId}
+          isDisabled={!providerId}
         />
       )}
     </div>
@@ -198,11 +208,9 @@ function RuleBox({
   onChange: (next: string) => void
 }) {
   return (
-    <TextField>
-      <Label>{label}</Label>
-      <TextArea rows={3} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} />
-      <Description>{hint}</Description>
-    </TextField>
+    <SettingsRow layout="stacked" label={label} description={hint}>
+      <TextArea rows={3} value={value} placeholder={placeholder} onChange={onChange} />
+    </SettingsRow>
   )
 }
 
@@ -299,13 +307,13 @@ export function AutoReviewSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.autoReview.title')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.autoReview.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.autoReview.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
               onPress={() => {
                 setLoading(true)
@@ -314,7 +322,9 @@ export function AutoReviewSettings() {
             >
               {t('common.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -331,119 +341,110 @@ export function AutoReviewSettings() {
       {/* Above the reviewer, because it applies whether or not there is one:
           this is how long a person is waited for, and the reviewer is who
           answers when nobody does. */}
-      <TextField>
-        <Label>{t('settings.approvals.ttl')}</Label>
-        <Input
-          type="number"
-          min={0}
-          max={MAX_TTL_MINUTES}
-          className="max-w-32"
-          value={settings.ttl}
-          onChange={(e) => setSettings({ ...settings, ttl: e.target.value })}
-        />
-        <Description>{t('settings.approvals.ttlHint')}</Description>
+      <div className="m-autoreview__stack">
+        <SettingsGroup>
+          <SettingsRow label={t('settings.approvals.ttl')} description={t('settings.approvals.ttlHint')}>
+            <div className="m-autoreview__ttl">
+              <NumberField
+                value={draftToNumber(settings.ttl)}
+                onChange={(value) => setSettings({ ...settings, ttl: numberToDraft(value) })}
+                minValue={0}
+                maxValue={MAX_TTL_MINUTES}
+                formatOptions={PLAIN_INTEGER}
+              />
+            </div>
+          </SettingsRow>
+        </SettingsGroup>
         {normaliseTtl(settings.ttl) === 0 && (
-          <p data-slot="approvals-ttl-never" className="text-caption-1-regular text-status-warning-soft-foreground">
+          <Alert data-slot="approvals-ttl-never" tone="warning">
             {t('settings.approvals.ttlNever')}
-          </p>
+          </Alert>
         )}
-      </TextField>
-
-      <div data-slot="autoreview-enable" className="space-y-1.5">
-        <CellSwitch
-          aria-label={t('settings.autoReview.enable')}
-          aria-describedby="autoreview-enabled-hint"
-          isSelected={settings.enabled}
-          onChange={(selected) => setSettings({ ...settings, enabled: selected })}
-        >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p
-          id="autoreview-enabled-hint"
-          data-slot="autoreview-enable-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
-          {t('settings.autoReview.enableHint')}
-        </p>
       </div>
 
-      <div data-slot="autoreview-model" className="space-y-1.5">
-        <span data-slot="autoreview-model-label" className="text-body-medium">
-          {t('settings.autoReview.model')}
-        </span>
-        <p data-slot="autoreview-model-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.autoReview.modelHint')}
-        </p>
-        <ModelPicker
-          providers={providers}
-          value={settings.model}
-          onChange={(model) => setSettings({ ...settings, model })}
-        />
+      <div className="m-autoreview__stack">
+        <SettingsGroup>
+          <div data-slot="autoreview-enable" className="m-autoreview__slot">
+            <SettingsRow
+              label={t('settings.autoReview.enable')}
+              description={<span data-slot="autoreview-enable-hint">{t('settings.autoReview.enableHint')}</span>}
+            >
+              <Switch
+                isSelected={settings.enabled}
+                onChange={(selected) => setSettings({ ...settings, enabled: selected })}
+              />
+            </SettingsRow>
+          </div>
+
+          <div data-slot="autoreview-model" className="m-autoreview__slot">
+            <SettingsRow
+              layout="stacked"
+              label={<span data-slot="autoreview-model-label">{t('settings.autoReview.model')}</span>}
+              description={<span data-slot="autoreview-model-hint">{t('settings.autoReview.modelHint')}</span>}
+            >
+              <ModelPicker
+                providers={providers}
+                value={settings.model}
+                onChange={(model) => setSettings({ ...settings, model })}
+              />
+            </SettingsRow>
+          </div>
+
+          <div data-slot="autoreview-escalate" className="m-autoreview__slot">
+            <SettingsRow
+              label={t('settings.autoReview.escalate')}
+              description={<span data-slot="autoreview-escalate-hint">{t('settings.autoReview.escalateHint')}</span>}
+            >
+              <Switch
+                isSelected={settings.escalate}
+                onChange={(selected) => setSettings({ ...settings, escalate: selected })}
+              />
+            </SettingsRow>
+          </div>
+        </SettingsGroup>
         {incomplete && (
-          <p data-slot="autoreview-no-model" className="text-caption-1-regular text-status-warning-soft-foreground">
+          <Alert data-slot="autoreview-no-model" tone="warning">
             {t('settings.autoReview.noModel')}
-          </p>
+          </Alert>
         )}
       </div>
 
-      <div data-slot="autoreview-escalate" className="space-y-1.5">
-        <CellSwitch
-          aria-label={t('settings.autoReview.escalate')}
-          aria-describedby="autoreview-escalate-hint"
-          isSelected={settings.escalate}
-          onChange={(selected) => setSettings({ ...settings, escalate: selected })}
-        >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.autoReview.escalate')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p
-          id="autoreview-escalate-hint"
-          data-slot="autoreview-escalate-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
-          {t('settings.autoReview.escalateHint')}
-        </p>
-      </div>
-
-      <RuleBox
-        label={t('settings.autoReview.environment')}
-        hint={t('settings.autoReview.environmentHint')}
-        value={settings.environment}
-        placeholder={t('settings.autoReview.environmentPlaceholder')}
-        onChange={(environment) => setSettings({ ...settings, environment })}
-      />
-      <RuleBox
-        label={t('settings.autoReview.allow')}
-        hint={t('settings.autoReview.allowHint')}
-        value={settings.allow}
-        placeholder={t('settings.autoReview.allowPlaceholder')}
-        onChange={(allow) => setSettings({ ...settings, allow })}
-      />
-      <RuleBox
-        label={t('settings.autoReview.deny')}
-        hint={t('settings.autoReview.denyHint')}
-        value={settings.deny}
-        placeholder={t('settings.autoReview.denyPlaceholder')}
-        onChange={(deny) => setSettings({ ...settings, deny })}
-      />
+      <SettingsGroup>
+        <RuleBox
+          label={t('settings.autoReview.environment')}
+          hint={t('settings.autoReview.environmentHint')}
+          value={settings.environment}
+          placeholder={t('settings.autoReview.environmentPlaceholder')}
+          onChange={(environment) => setSettings({ ...settings, environment })}
+        />
+        <RuleBox
+          label={t('settings.autoReview.allow')}
+          hint={t('settings.autoReview.allowHint')}
+          value={settings.allow}
+          placeholder={t('settings.autoReview.allowPlaceholder')}
+          onChange={(allow) => setSettings({ ...settings, allow })}
+        />
+        <RuleBox
+          label={t('settings.autoReview.deny')}
+          hint={t('settings.autoReview.denyHint')}
+          value={settings.deny}
+          placeholder={t('settings.autoReview.denyPlaceholder')}
+          onChange={(deny) => setSettings({ ...settings, deny })}
+        />
+      </SettingsGroup>
 
       {error && (
-        <p data-slot="autoreview-error" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="autoreview-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="autoreview-actions" className="flex items-center gap-3">
+      <div data-slot="autoreview-actions" className="m-autoreview__actions">
         <Button onPress={handleSave} isDisabled={saving}>
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="autoreview-saved" className="text-caption-1-regular text-status-success">
+          <span data-slot="autoreview-saved" className="m-autoreview__saved">
             {t('common.saved')}
           </span>
         )}

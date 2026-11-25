@@ -1,0 +1,127 @@
+@layer components {
+  .ui-card {
+    --ui-card-padding: var(--space-5);
+
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    box-sizing: border-box;
+    min-width: 0;
+    padding: var(--ui-card-padding);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+    transition:
+      box-shadow var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* ---------- 标题区 ---------- */
+  .ui-card__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .ui-card__titles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-card__heading {
+    margin: 0;
+    font: var(--text-title-3);
+  }
+
+  .ui-card__description {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* 操作按钮浮在铺满卡片的链接上面，仍然能单独点 */
+  .ui-card__actions {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    display: flex;
+    gap: var(--space-1);
+    margin-block: calc(-1 * var(--space-1));
+  }
+
+  .ui-card__body {
+    min-width: 0;
+  }
+
+  /* 正文里的按钮、链接、输入框也浮在铺满的链接上面 */
+  .ui-card[data-interactive] .ui-card__body :is(a, button, input, select, textarea, [tabindex]) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 底栏是沉进卡片的槽（--surface-inset，同 Tray）：贴到卡片的左、右、下三边，底角跟着卡片的圆角。
+     不用 overflow 裁切卡片，免得裁掉焦点环和弹出层。
+     操作靠右；开头是说明文字（span、p、small）时它在左边，把操作推到右边 */
+  .ui-card__footer {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: var(--space-2);
+    margin: 0 calc(-1 * var(--ui-card-padding)) calc(-1 * var(--ui-card-padding));
+    padding: var(--space-3) var(--ui-card-padding);
+    border-end-start-radius: calc(var(--radius-panel) - 1px);
+    border-end-end-radius: calc(var(--radius-panel) - 1px);
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .ui-card__footer > :is(span, p, small):first-child {
+    margin-inline-end: auto;
+  }
+
+  /* 高对比度模式下底色不显示：补一条上边线分开 */
+  @media (forced-colors: active) {
+    .ui-card__footer {
+      border-block-start: 1px solid CanvasText;
+    }
+  }
+
+  /* ---------- 整张可点：标题链接用伪元素铺满卡片 ---------- */
+  .ui-card__link {
+    color: inherit;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .ui-card__link::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    content: "";
+  }
+
+  .ui-card[data-interactive]:has(.ui-card__link[data-hovered]:not([data-disabled])) {
+    border-color: var(--border-strong);
+    box-shadow: var(--shadow-raised);
+  }
+
+  /* 焦点环画在卡片上，而不是标题文字上：链接自己的焦点环换成透明（高对比度模式下仍会显示） */
+  .ui-card__link[data-focus-visible] {
+    outline-color: transparent;
+  }
+
+  .ui-card[data-interactive]:has(.ui-card__link[data-focus-visible]) {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+}

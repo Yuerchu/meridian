@@ -317,7 +317,6 @@ describe('the event socket', () => {
         revision_id: 'revision-1',
         turn_id: 'turn-1',
         status: 'approved',
-        delivery_state: 'queued',
         lock_version: 1,
       }
 

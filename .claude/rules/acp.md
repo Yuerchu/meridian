@@ -329,7 +329,12 @@ the machines that want this already have node and a signed-in `claude`.
   `MERIDIAN_ACP_HOSTED` on the child and the two hook scripts in
   `~/.claude/plugins/local/meridian-plan-gate/scripts/` stand down when they see it. The
   gates keep doing what they are for: sessions Meridian did not start. The variable name
-  is a contract across the two repositories.
+  is a contract across the two repositories. The adapter starts with only platform lookup,
+  home, temporary-directory and locale variables; it does not inherit provider credentials or
+  runtime options from Meridian. Authentication must work from the adapter's own configuration.
+  ACP and MCP stdio share `child_env`'s `env_clear` plus positive platform allowlist. MCP may
+  overlay explicitly configured variables, but `MERIDIAN_*` names are reserved (case-insensitive);
+  only the ACP launcher sets its hosted marker. Invalid or Windows case-colliding keys fail before spawn.
 - **A session is resumed, not restarted, and `acp_sessions` is what makes that possible.**
   The working directory used to be a preference (`acp.cwd.<conversation_id>`) holding half
   the answer: the directory survived a restart and the session id was never written down at

@@ -1,0 +1,22 @@
+@layer components {
+  /* 框选：框画在列表里（绝对定位，跟着内容滚动） */
+  [data-marquee],
+  [data-marquee-frame] {
+    position: relative;
+  }
+
+  [data-marquee-active] {
+    cursor: crosshair;
+    user-select: none;
+  }
+
+  .ui-marquee {
+    position: absolute;
+    z-index: var(--z-sticky);
+    box-sizing: border-box;
+    border: 1px solid var(--accent);
+    border-radius: 2px;
+    background: var(--accent-subtle);
+    pointer-events: none;
+  }
+}

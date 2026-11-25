@@ -1,7 +1,6 @@
 // Sample data shared by the gallery pages. Shapes are the real response types,
 // so a contract change that breaks a fixture is a type error here too.
 import { decimal } from '@/lib/decimal'
-import type { StickerGridItem } from '@/components/chat/sticker-grid'
 import type { TouchedFile } from '@/lib/touched-files'
 import type {
   ConversationInfoResponse,
@@ -119,24 +118,6 @@ export function pgUsage(over: Partial<TurnUsageInfoResponse> = {}): TurnUsageInf
     ...over,
   }
 }
-
-/**
- * An animated sticker without a backend: an SVG whose SMIL animation plays in
- * an `<img>` and stops at its first frame when drawn into a canvas, which is
- * the same still/playing split a GIF gets.
- */
-function pgSticker(i: number): StickerGridItem {
-  const hue = (i * 47) % 360
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><rect width="96" height="96" rx="20" fill="hsl(${hue} 70% 60%)"/><circle cx="48" cy="48" r="18" fill="white"><animate attributeName="r" values="10;30;10" dur="1.2s" repeatCount="indefinite"/></circle><text x="48" y="90" font-size="12" text-anchor="middle" fill="white">${i + 1}</text></svg>`
-  return {
-    id: `pg-sticker-${i}`,
-    name: `贴纸 ${i + 1}`,
-    textValue: `贴纸 ${i + 1}`,
-    url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-  }
-}
-
-export const PG_STICKERS = Array.from({ length: 30 }, (_, i) => pgSticker(i))
 
 export function queued(
   id: string,

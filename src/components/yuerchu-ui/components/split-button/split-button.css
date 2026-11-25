@@ -1,0 +1,97 @@
+@layer components {
+  .ui-split-button {
+    --ui-split-button-radius: var(--radius-control);
+    --ui-split-button-divider: color-mix(in srgb, var(--ink-fg) 20%, transparent);
+
+    display: inline-flex;
+    align-items: stretch;
+    isolation: isolate;
+    max-width: 100%;
+    border-radius: var(--ui-split-button-radius);
+  }
+
+  .ui-split-button[data-size="sm"] {
+    --ui-split-button-radius: calc(var(--radius-control) - 2px);
+  }
+
+  .ui-split-button[data-size="lg"] {
+    --ui-split-button-radius: calc(var(--radius-control) + 2px);
+  }
+
+  .ui-split-button[data-variant="secondary"] {
+    box-shadow: var(--shadow-resting);
+  }
+
+  .ui-split-button[data-variant="secondary"][data-disabled] {
+    box-shadow: none;
+  }
+
+  .ui-split-button > .ui-button {
+    --ui-button-shadow: none;
+
+    position: relative;
+  }
+
+  .ui-split-button > .ui-split-button__action {
+    border-start-start-radius: var(--ui-split-button-radius);
+    border-end-start-radius: var(--ui-split-button-radius);
+    border-start-end-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  .ui-split-button > .ui-split-button__trigger {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+    border-start-end-radius: var(--ui-split-button-radius);
+    border-end-end-radius: var(--ui-split-button-radius);
+  }
+
+  .ui-split-button[data-variant="secondary"] > .ui-split-button__trigger {
+    margin-inline-start: -1px;
+  }
+
+  /* 主变体两半无边框，靠内部 1px 分隔线区分主操作与下拉触发区 */
+  .ui-split-button[data-variant="primary"] > .ui-split-button__trigger::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    width: 1px;
+    background: var(--ui-split-button-divider);
+    pointer-events: none;
+  }
+
+  .ui-split-button[data-variant="primary"] > .ui-split-button__trigger[data-disabled]:not([data-pending])::before {
+    background: var(--border);
+  }
+
+  /* 悬停、聚焦、菜单展开时提到上层，避免边框或焦点环被相邻按钮遮挡 */
+  .ui-split-button > .ui-button[data-hovered]:not([data-disabled]),
+  .ui-split-button > .ui-button[data-focus-visible],
+  .ui-split-button > .ui-split-button__trigger[aria-expanded="true"] {
+    z-index: 1;
+  }
+
+  /* 拼接状态下按下不缩放，避免两半之间露缝 */
+  .ui-split-button > .ui-button[data-pressed]:not([data-disabled]) {
+    transform: none;
+  }
+
+  /* 菜单展开时右侧触发区保持按压深色，与左侧主操作形成清晰区分 */
+  .ui-split-button > .ui-split-button__trigger[aria-expanded="true"]:not([data-disabled]) {
+    background: var(--ui-button-bg-pressed);
+  }
+
+  .ui-split-button__chevron {
+    transition: transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-split-button__trigger[aria-expanded="true"] .ui-split-button__chevron {
+    transform: rotate(180deg);
+  }
+
+  /* 整组禁用时保留次按钮的边界，整条轮廓不断 */
+  .ui-split-button[data-variant="secondary"] > .ui-button[data-disabled]:not([data-pending]) {
+    --ui-button-border: var(--border);
+  }
+}

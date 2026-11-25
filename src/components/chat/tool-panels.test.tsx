@@ -1,6 +1,8 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ToolCallBlock } from './tool-call-block'
 import {
   ChatTool,
@@ -9,7 +11,7 @@ import {
   ChatToolPanelBody,
   ChatToolPresentationProvider,
   ChatToolTrigger,
-} from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { resetEditLocations } from '@/hooks/use-edit-location'
 import i18n from '@/i18n'
 import { api } from '@/api'
@@ -75,9 +77,10 @@ describe('tool panels', () => {
     expect(p.querySelector('[data-slot="command-code"]')).toHaveTextContent('ls -la')
     expect(p.querySelector('[data-slot="command-output"]')).toHaveTextContent('total 0')
     expect(p.querySelector('[data-slot="command-stderr"]')).toHaveTextContent('warning: slow disk')
-    // The trailer is a chip, not a line of the output.
+    // The trailer is a chip on the trigger so collapsed failed commands still stand out.
     expect(p.textContent).not.toContain('[exit code')
-    expect(within(p).getByText('exit 2')).toBeVisible()
+    expect(container.querySelector('[data-slot="chat-tool"]')).toHaveAttribute('data-state', 'output-error')
+    expect(screen.getByText('exit 2')).toBeVisible()
     // What the command is for, at the top, since the command itself is below.
     expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('List the directory')
   })
@@ -106,26 +109,34 @@ describe('tool panels', () => {
   })
 
   it('keeps an ordinary key to one line with the file name intact', async () => {
+    const pathLabelCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/tool-views/tool-views.css'),
+      'utf8',
+    )
+    expect(pathLabelCss).toMatch(
+      /\.ui-path-label:not\(\[data-wrap\]\)\s+\.ui-path-label__dir\s*\{[^}]*text-overflow:\s*ellipsis;\s*white-space:\s*nowrap/s,
+    )
     const path = '/home/me/very/deep/directory/structure/for/this/test/turn.rs'
     const { container } = inBubble(<ToolCallBlock data={call('read_file', { path }, 'completed', { result: 'fn' })} />)
     const arg = container.querySelector<HTMLElement>('[data-slot="tool-arg"]')!
-    expect(arg.querySelector('[data-slot="path-dir"]')!.className).toMatch(/truncate/)
+    expect(arg.querySelector('[data-slot="path-label"]')).not.toHaveAttribute('data-wrap')
+    expect(arg.querySelector('[data-slot="path-dir"]')).toHaveClass('ui-path-label__dir')
     expect(arg.querySelector('[data-slot="path-name"]')).toHaveTextContent('turn.rs')
     // The panel is where the whole path is, since the key could not hold it.
     await userEvent.click(screen.getByRole('button', { name: /Read File/ }))
     expect(panel(container).querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent(path)
   })
 
-  it('numbers a whole-file write from one and puts its stats in the header', () => {
+  it('numbers a whole-file write from one and puts its stats on the trigger', () => {
     const { container } = inBubble(
       <ToolCallBlock
         data={call('write_file', { path: 'notes/todo.md', content: '# Todo\n- one\n- two\n' }, 'pending')}
       />,
     )
     const p = panel(container)
-    // One file, one header: the panel's. No second header naming it again.
+    // One file, one header: the trigger already names it and carries the stats.
     expect(p.querySelector('[data-slot="file-diff-header"]')).toBeNull()
-    expect(p.querySelector('[data-slot="chat-tool-panel-end"]')).toHaveTextContent('+3')
+    expect(container.querySelector('[data-slot="chat-tool-trigger"]')).toHaveTextContent('+3')
     const gutters = Array.from(p.querySelectorAll('[data-slot="file-diff-gutter"]')).map((g) => g.textContent?.trim())
     expect(gutters).toEqual(['1', '2', '3'])
   })
@@ -194,7 +205,7 @@ describe('tool panels', () => {
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /Glob Files/ }))
-    const list = panel(container).querySelector('[data-slot="glob-result"]')!
+    const list = panel(container).querySelector('[data-slot="file-list-result"]')!
     expect(list.querySelectorAll('[data-slot="path-label"]')).toHaveLength(2)
     expect(list).toHaveTextContent('b.ts')
     expect(panel(container).querySelector('[data-slot="tool-footnote"]')).toHaveTextContent('first 1000')
@@ -210,7 +221,7 @@ describe('tool panels', () => {
       />,
     )
     await userEvent.click(screen.getByRole('button', { name: /List Directory/ }))
-    const rows = panel(container).querySelectorAll('[data-slot="directory-result"] > div')
+    const rows = panel(container).querySelectorAll('[data-slot="file-list-entry"]')
     expect(rows).toHaveLength(2)
     expect(rows[1]).toHaveTextContent('main.rs')
     expect(rows[1]).toHaveTextContent('1.2 KB')
@@ -253,9 +264,9 @@ describe('every panel opens the same way', () => {
 
   /// A search used to draw its pattern in the header and then a key/value
   /// table of pattern and path under it — the same values twice, in two
-  /// shapes. The title is the pattern; the path is the meta line; the body
-  /// is the matches, and nothing else.
-  it('names a search by its pattern with the rest of its arguments as a meta line', async () => {
+  /// shapes. The trigger names the pattern and match count; the panel header
+  /// carries only the extra filters; the body is the matches.
+  it('names a search on the trigger with only extra filters in the panel header', async () => {
     const { container } = inBubble(
       <ToolCallBlock
         data={call(
@@ -268,9 +279,13 @@ describe('every panel opens the same way', () => {
         )}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /Search Files/ }))
+    const trigger = screen.getByRole('button', { name: /Search Files/ })
+    expect(trigger).toHaveTextContent('class UserFileBase')
+    expect(trigger).toHaveTextContent('1 matches')
+    await userEvent.click(trigger)
     const p = panel(container)
-    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('class UserFileBase')
+    // Short pattern is already shown in full on the trigger, not repeated in the panel title.
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toBeNull()
     const meta = p.querySelector('[data-slot="tool-args-meta"]')!
     expect(meta).toHaveTextContent('C:/proj/src')
     expect(meta).toHaveTextContent('50')
@@ -280,9 +295,9 @@ describe('every panel opens the same way', () => {
   })
 
   /// A tool with no shape of its own used to open on a bare argument table
-  /// and a wall of text. It opens on a title like every other panel — its
-  /// first short argument — and a skill's text is drawn as the Markdown it is.
-  it('gives a tool with no known shape a title from its first argument and draws a skill as prose', async () => {
+  /// and a wall of text. A skill shows its name on the trigger without
+  /// repeating it in a second header row, and renders its body as Markdown.
+  it('names a skill on the trigger without a redundant header and draws it as prose', async () => {
     const { container } = inBubble(
       <ToolCallBlock
         data={call('load_skill', { skill_name: 'claude-code-plan-review' }, 'completed', {
@@ -290,9 +305,11 @@ describe('every panel opens the same way', () => {
         })}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /Load Skill/ }))
+    const trigger = screen.getByRole('button', { name: /Load Skill/ })
+    expect(trigger).toHaveTextContent('claude-code-plan-review')
+    await userEvent.click(trigger)
     const p = panel(container)
-    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('claude-code-plan-review')
+    expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toBeNull()
     expect(p.querySelector('[data-slot="tool-args-list"]')).toBeNull()
     expect(within(p).getByRole('heading', { name: 'Review procedure' })).toBeVisible()
     expect(p.querySelector('pre')).toBeNull()
@@ -307,23 +324,129 @@ describe('every panel opens the same way', () => {
         data={call('mcp__notes__append', { prompt, tag: 'daily' }, 'completed', { result: '{"ok":true}' })}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /mcp__notes__append/ }))
+    await userEvent.click(screen.getByRole('button', { name: /notes.*append/i }))
     const p = panel(container)
     expect(p.querySelector('[data-slot="chat-tool-panel-title"]')).toHaveTextContent('daily')
     expect(p.querySelector('[data-slot="tool-args-list"]')).toHaveTextContent(prompt)
     expect(p.querySelector('[data-slot="tool-args-meta"]')).toBeNull()
   })
 
+  it('keeps sandbox escalation warning above approval buttons in bubble mode', () => {
+    const { container } = inBubble(
+      <ToolCallBlock
+        data={call('run_command', { command: 'netsh advfirewall show allprofiles' }, 'pending', {
+          retry: { kind: 'sandbox_denied', reason: 'sandbox denied' },
+        })}
+      />,
+    )
+    const p = panel(container)
+    // No redundant `command` meta header above the highlighted command code block.
+    expect(p.querySelector('[data-slot="tool-args-meta"]')).toBeNull()
+    const escalation = p.querySelector('[data-slot="approval-escalation"]')!
+    const actions = p.querySelector('[data-slot="chat-tool-approval-actions"]')!
+    expect(escalation.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  })
+
   /// In a bubble the panel carries no padding of its own; a block that draws
   /// its sections by hand has to inset each one, or the form sits flush
   /// against the block's edge (ask_user, 2026-09).
   it.each([
-    ['ask_user', { questions: [{ id: 'q', question: 'Which one?' }] }],
-    ['enter_plan', { reason: 'a big change' }],
-  ])('insets every section %s draws inside a bubble', (name, args) => {
-    const { container } = inBubble(<ToolCallBlock data={call(name, args, 'pending')} />)
+    ['ask_user', { questions: [{ id: 'q', question: 'Which one?' }] }, 'orphaned' as const],
+    ['enter_plan', { reason: 'a big change' }, 'pending' as const],
+    ['exit_plan', { plan: '## Summary\n\nRefactor auth.' }, 'pending' as const],
+  ])('insets every section %s draws inside a bubble', (name, args, status) => {
+    const toolCallBlockCss = readFileSync(resolve(process.cwd(), 'src/components/chat/tool-call-block.css'), 'utf8')
+    const chatToolCss = readFileSync(
+      resolve(process.cwd(), 'src/components/yuerchu-ui/components/chat-tool/chat-tool.css'),
+      'utf8',
+    )
+    expect(toolCallBlockCss).toMatch(/\.m-tool-call-block__bubble-section\s*\{[^}]*padding:\s*10px var\(--space-3\)/s)
+    expect(chatToolCss).toMatch(/\.ui-chat-tool__panel-footer\s*\{[^}]*padding:\s*var\(--space-2\) var\(--space-3\)/s)
+    const { container } = inBubble(<ToolCallBlock data={call(name, args, status)} />)
     const sections = [...panel(container).children] as HTMLElement[]
     expect(sections.length).toBeGreaterThan(0)
-    for (const section of sections) expect(section.className).toMatch(/(^|\s)px-\d/)
+    for (const section of sections) {
+      expect(
+        section.classList.contains('m-tool-call-block__bubble-section') ||
+          section.classList.contains('ui-chat-tool__panel-footer'),
+      ).toBe(true)
+    }
+  })
+
+  it('applies Shiki light and dark token colours to highlighted diff lines', () => {
+    const meridianCss = readFileSync(resolve(process.cwd(), 'src/styles/meridian.css'), 'utf8')
+    expect(meridianCss).toMatch(
+      /\[data-slot='file-diff-highlighted'\]\s+span\[style\][^}]*color:\s*var\(--shiki-light\)/s,
+    )
+    expect(meridianCss).toMatch(
+      /:root\[data-theme='dark'\]\s+\[data-slot='file-diff-highlighted'\]\s+span\[style\][^}]*color:\s*var\(--shiki-dark\)/s,
+    )
+  })
+
+  it('distinguishes denied and orphaned tool states from errors', () => {
+    const { container: deniedView } = inBubble(
+      <ToolCallBlock data={call('read_file', { path: '.ssh/id_ed25519' }, 'denied')} />,
+    )
+    expect(deniedView.querySelector('[data-slot="chat-tool"]')).toHaveAttribute('data-state', 'output-denied')
+    expect(deniedView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-denied',
+    )
+
+    const { container: orphanedView } = inBubble(
+      <ToolCallBlock data={call('run_command', { command: 'git push --force' }, 'orphaned')} />,
+    )
+    expect(orphanedView.querySelector('[data-slot="chat-tool"]')).toHaveAttribute('data-state', 'output-interrupted')
+    expect(orphanedView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-interrupted',
+    )
+  })
+
+  it('omits default base_path "." on apply_patch while keeping non-default paths', () => {
+    const patch = '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-old\n+new\n*** End Patch'
+    const { container: dotView } = inBubble(
+      <ToolCallBlock data={call('apply_patch', { base_path: '.', patch }, 'pending')} />,
+    )
+    expect(panel(dotView).querySelector('[data-slot="tool-args-meta"]')).toBeNull()
+
+    const { container: subView } = inBubble(
+      <ToolCallBlock data={call('apply_patch', { base_path: 'src-tauri', patch }, 'pending')} />,
+    )
+    expect(panel(subView).querySelector('[data-slot="tool-args-meta"]')).toHaveTextContent('src-tauri')
+  })
+
+  it('offers a copy button on read_file results and uses unified status icons on web_search and ask_user', async () => {
+    const { container: readView } = inBubble(
+      <ToolCallBlock
+        data={call('read_file', { path: 'src/app.ts' }, 'completed', { result: 'export const x = 1\n' })}
+      />,
+    )
+    await userEvent.click(within(readView).getByRole('button', { name: /Read File/ }))
+    expect(within(panel(readView)).getByRole('button', { name: /Copy/i })).toBeVisible()
+
+    const { container: webView } = inBubble(
+      <ToolCallBlock
+        data={call('web_search', { query: 'react aria' }, 'completed', {
+          result: JSON.stringify({ sources: [{ title: 'Docs', url: 'https://example.com' }] }),
+        })}
+      />,
+    )
+    expect(webView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-available',
+    )
+
+    const { container: askView } = inBubble(
+      <ToolCallBlock
+        data={call('ask_user', { questions: [{ id: 'q1', question: 'Env?' }] }, 'completed', {
+          result: JSON.stringify({ q1: 'staging' }),
+        })}
+      />,
+    )
+    expect(askView.querySelector('[data-slot="chat-tool-status-icon"]')).toHaveAttribute(
+      'data-state',
+      'output-available',
+    )
   })
 })

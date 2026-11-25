@@ -8,8 +8,7 @@ use meridian_core::db::entity::provider::ProviderChangeset;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::WriteTx;
 use meridian_core::db::sea::ops::{
-    cached_model as cached_ops, conversation as conversation_ops, plan_review as plan_review_ops,
-    provider as provider_ops,
+    cached_model as cached_ops, conversation as conversation_ops, provider as provider_ops,
 };
 use meridian_core::db::types::SqlBool;
 use meridian_core::decimal::Decimal;
@@ -21,34 +20,23 @@ use meridian_core::secrets::{SecretName, SecretScope};
 use meridian_core::util::now_ms;
 use std::collections::BTreeMap;
 
-const PLAN_REVIEW_PROVIDER_BARRIER: &str = "This provider is frozen into a plan review or its continuation. Finish that review before changing or deleting the provider.";
-
 #[derive(Debug)]
 enum GuardedProviderMutation<T> {
     Applied(T),
-    PlanReviewBarrier,
     ConversationsChanged,
 }
 
 /// What stops a provider mutation before it writes anything: the conversation
-/// set having changed since the caller took its leases, or a plan review
-/// whose blocked continuation is frozen on this provider. Run first in the
-/// mutation's own write, so the answer still holds when the write lands.
+/// set having changed since the caller took its leases.
 async fn provider_barrier<T>(
     tx: &WriteTx,
-    provider_id: &str,
+    _provider_id: &str,
     expected_conversation_ids: &[String],
 ) -> Result<Option<GuardedProviderMutation<T>>, DbErr> {
     let mut current = conversation_ops::all_ids(tx).await?;
     current.sort();
     if current != expected_conversation_ids {
         return Ok(Some(GuardedProviderMutation::ConversationsChanged));
-    }
-    if !plan_review_ops::barrier_conversations_for_provider(tx, provider_id)
-        .await?
-        .is_empty()
-    {
-        return Ok(Some(GuardedProviderMutation::PlanReviewBarrier));
     }
     Ok(None)
 }
@@ -95,7 +83,6 @@ async fn sorted_conversation_ids(db: &meridian_core::db::sea::cap::Db) -> Result
 fn finish_guarded_provider_mutation<T>(result: GuardedProviderMutation<T>) -> Result<T, String> {
     match result {
         GuardedProviderMutation::Applied(value) => Ok(value),
-        GuardedProviderMutation::PlanReviewBarrier => Err(PLAN_REVIEW_PROVIDER_BARRIER.into()),
         GuardedProviderMutation::ConversationsChanged => {
             Err("The conversation set changed while the provider mutation was being prepared. Try again.".into())
         }
@@ -1082,43 +1069,6 @@ pub async fn get_provider_capabilities(
 mod response_contract_tests {
     use super::*;
 
-    async fn seed_provider_with_pending_review(db: &meridian_core::db::sea::cap::Db) {
-        db.write(async |tx| {
-            db::sea::ops::provider::create(
-                tx,
-                db::entity::provider::Model {
-                    id: "provider-1".into(),
-                    name: "Provider".into(),
-                    provider_type: meridian_core::provider::registry::ProviderType::Openai,
-                    base_url: "https://old.invalid".into(),
-                    is_enabled: db::types::SqlBool::TRUE,
-                    sort_order: 0,
-                    created_at: 1,
-                    updated_at: 1,
-                    api_format: meridian_core::provider::registry::ApiFormat::Responses,
-                    catalog_id: None,
-                    credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
-                    transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
-                    icon: None,
-                    codex_request_shape: db::types::SqlBool::FALSE,
-                    local_backend: None,
-                },
-            )
-            .await?;
-            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
-            db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                "conversation-1",
-                &db::sea::ops::plan_review::test_runtime("provider-1", "model-1", None),
-            )
-            .await
-            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
-            Ok::<_, db::sea::DbErr>(())
-        })
-        .await
-        .unwrap();
-    }
-
     #[test]
     fn provider_requests_are_strict_and_require_nullable_keys() {
         let mut create = serde_json::json!({
@@ -1177,90 +1127,36 @@ mod response_contract_tests {
     }
 
     #[tokio::test]
-    async fn hardware_change_uses_the_same_plan_review_barrier() {
+    async fn provider_delete_refuses_when_conversations_changed() {
         let sea = db::sea::sea_test_db().await;
-        seed_provider_with_pending_review(&sea).await;
         sea.write(async |tx| {
-            provider_ops::update(
+            db::sea::ops::provider::create(
                 tx,
-                "provider-1",
-                ProviderChangeset {
-                    provider_type: Some(ProviderType::LitertLm),
-                    api_format: Some(ApiFormat::LitertLm),
-                    credential_kind: Some(CredentialKind::None),
-                    transport_profile: Some(TransportProfile::LocalNative),
-                    local_backend: Some(Some(LocalInferenceBackend::Auto)),
-                    ..Default::default()
+                db::entity::provider::Model {
+                    id: "provider-1".into(),
+                    name: "Provider".into(),
+                    provider_type: meridian_core::provider::registry::ProviderType::Openai,
+                    base_url: "https://old.invalid".into(),
+                    is_enabled: db::types::SqlBool::TRUE,
+                    sort_order: 0,
+                    created_at: 1,
+                    updated_at: 1,
+                    api_format: meridian_core::provider::registry::ApiFormat::Responses,
+                    catalog_id: None,
+                    credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
+                    transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
+                    icon: None,
+                    codex_request_shape: db::types::SqlBool::FALSE,
+                    local_backend: None,
                 },
             )
-            .await
+            .await?;
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
+            Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let conversations = sorted_conversation_ids(&sea).await.unwrap();
-        let result = sea
-            .write(async |tx| {
-                update_provider_unless_plan_barrier(
-                    tx,
-                    "provider-1",
-                    &conversations,
-                    ProviderChangeset {
-                        local_backend: Some(Some(LocalInferenceBackend::Gpu)),
-                        ..Default::default()
-                    },
-                    false,
-                )
-                .await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(result, GuardedProviderMutation::PlanReviewBarrier));
-        assert_eq!(
-            provider_ops::get(&sea, "provider-1")
-                .await
-                .unwrap()
-                .unwrap()
-                .local_backend,
-            Some(LocalInferenceBackend::Auto)
-        );
-    }
 
-    #[tokio::test]
-    async fn provider_update_and_delete_are_blocked_by_its_active_review_runtime() {
-        let sea = db::sea::sea_test_db().await;
-        seed_provider_with_pending_review(&sea).await;
-        let conversations = vec!["conversation-1".to_string()];
-
-        let updated = sea
-            .write(async |tx| {
-                update_provider_unless_plan_barrier(
-                    tx,
-                    "provider-1",
-                    &conversations,
-                    ProviderChangeset {
-                        base_url: Some("https://new.invalid".into()),
-                        updated_at: Some(4),
-                        ..Default::default()
-                    },
-                    true,
-                )
-                .await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(updated, GuardedProviderMutation::PlanReviewBarrier));
-        let stored = provider_ops::get(&sea, "provider-1").await.unwrap().unwrap();
-        assert_eq!(stored.base_url, "https://old.invalid");
-
-        let deleted = sea
-            .write(async |tx| delete_provider_unless_plan_barrier(tx, "provider-1", &conversations).await)
-            .await
-            .unwrap();
-        assert!(matches!(deleted, GuardedProviderMutation::PlanReviewBarrier));
-        assert!(provider_ops::get(&sea, "provider-1").await.unwrap().is_some());
-
-        // A conversation set that moved since the leases were taken stops the
-        // write too, ahead of the review check.
         let stale = sea
             .write(async |tx| delete_provider_unless_plan_barrier(tx, "provider-1", &[]).await)
             .await

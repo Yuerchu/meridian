@@ -1,0 +1,5 @@
+@layer components {
+  .m-feedback__meter {
+    width: 16rem;
+  }
+}

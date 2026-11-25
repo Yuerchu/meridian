@@ -87,15 +87,12 @@ function info(
       updated_at: 1,
     },
     comments: [],
-    delivery: null,
   }
 }
 
 const DECIDED = {
   review_id: 'review-1',
   state: 'approved' as const,
-  delivery_state: 'queued' as const,
-  continuation_turn_id: 't2',
 }
 
 beforeEach(() => {

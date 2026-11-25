@@ -11,42 +11,29 @@ use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, Snapshot, WriteTx};
 use meridian_core::db::sea::ops::{
     conversation as conversation_ops, model_config as config_ops, model_profile as profile_ops,
-    plan_review as plan_review_ops,
 };
 use meridian_core::db::types::SqlBool;
 use meridian_core::util::now_ms;
 
-const PLAN_REVIEW_MODEL_CONFIG_BARRIER: &str = "This model configuration is frozen into a plan review or its continuation. Finish that review before changing or deleting it.";
-
 #[derive(Debug)]
 enum GuardedModelConfigMutation<T> {
     Applied(T),
-    PlanReviewBarrier,
     ConversationsChanged,
     ModelChanged,
 }
 
 /// What stops a model configuration mutation before it writes anything: the
-/// conversation set having changed since the caller took its leases, or a
-/// plan review whose blocked continuation was resolved against this exact
-/// provider and model. Run first in the mutation's own write, so the answer
-/// still holds when the write lands.
+/// conversation set having changed since the caller took its leases.
 async fn model_config_barrier<T>(
     tx: &WriteTx,
-    provider_id: &str,
-    model_id: &str,
+    _provider_id: &str,
+    _model_id: &str,
     expected_conversation_ids: &[String],
 ) -> Result<Option<GuardedModelConfigMutation<T>>, DbErr> {
     let mut current = conversation_ops::all_ids(tx).await?;
     current.sort();
     if current != expected_conversation_ids {
         return Ok(Some(GuardedModelConfigMutation::ConversationsChanged));
-    }
-    if !plan_review_ops::barrier_conversations_for_model(tx, provider_id, model_id)
-        .await?
-        .is_empty()
-    {
-        return Ok(Some(GuardedModelConfigMutation::PlanReviewBarrier));
     }
     Ok(None)
 }
@@ -163,7 +150,6 @@ async fn delete_model_config_unless_plan_barrier(
 fn finish_guarded_model_config_mutation<T>(result: GuardedModelConfigMutation<T>) -> Result<T, String> {
     match result {
         GuardedModelConfigMutation::Applied(value) => Ok(value),
-        GuardedModelConfigMutation::PlanReviewBarrier => Err(PLAN_REVIEW_MODEL_CONFIG_BARRIER.into()),
         GuardedModelConfigMutation::ConversationsChanged => Err(
             "The conversation set changed while the model configuration mutation was being prepared. Try again.".into(),
         ),
@@ -195,7 +181,7 @@ async fn sorted_conversation_ids(db: &Db) -> Result<Vec<String>, String> {
 /// Plain `Option<T>` makes serde treat an omitted key and an explicit `null` as
 /// the same value. Prices use `null` as a real state (unconfigured), so omission
 /// is a malformed DTO rather than another spelling for that state.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct RequiredNullable<T>(pub Option<T>);
 
 impl<'de, T> serde::Deserialize<'de> for RequiredNullable<T>
@@ -608,22 +594,6 @@ mod tests {
         .unwrap();
     }
 
-    async fn seed_pending_model_review(sea: &meridian_core::db::sea::cap::Db) {
-        sea.write(async |tx| {
-            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
-            db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                "conversation-1",
-                &db::sea::ops::plan_review::test_runtime("provider", "model", None),
-            )
-            .await
-            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
-            Ok::<_, db::sea::DbErr>(())
-        })
-        .await
-        .unwrap();
-    }
-
     fn model_row() -> model_config::Model {
         model_config::Model {
             id: "model-config-1".into(),
@@ -762,39 +732,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_review_runtime_blocks_exact_model_config_save_and_delete() {
+    async fn delete_model_config_refuses_when_conversations_changed() {
         let sea = db::sea::sea_test_db().await;
         seed_provider(&sea).await;
-        seed_pending_model_review(&sea).await;
-        let conversations = vec!["conversation-1".to_string()];
-
-        let save = sea
-            .write(async |tx| {
-                upsert_model_config_unless_plan_barrier(tx, &conversations, true, profile_write(), model_row()).await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(save, GuardedModelConfigMutation::PlanReviewBarrier));
-        assert_eq!(
-            profile_ops::get(&sea, "profile-1").await.unwrap(),
-            None,
-            "nothing was written"
-        );
-
-        // Another model on the same provider is not what the review froze.
-        let elsewhere = sea
-            .write(async |tx| {
-                let other = model_config::Model {
-                    model_id: "other-model".into(),
-                    ..model_row()
-                };
-                upsert_model_config_unless_plan_barrier(tx, &conversations, true, profile_write(), other).await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(elsewhere, GuardedModelConfigMutation::Applied(_)));
-
         sea.write(async |tx| {
+            db::sea::ops::conversation::create(tx, "conversation-1", None, None, None, 1).await?;
             profile_ops::insert(tx, profile_write().into_model("profile-2".into())).await?;
             config_ops::upsert(
                 tx,
@@ -808,14 +750,6 @@ mod tests {
         })
         .await
         .unwrap();
-        let delete = sea
-            .write(async |tx| {
-                delete_model_config_unless_plan_barrier(tx, "model-config-2", "provider", "model", &conversations).await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(delete, GuardedModelConfigMutation::PlanReviewBarrier));
-        assert!(config_ops::get(&sea, "model-config-2").await.unwrap().is_some());
 
         let stale = sea
             .write(async |tx| {
@@ -824,6 +758,7 @@ mod tests {
             .await
             .unwrap();
         assert!(matches!(stale, GuardedModelConfigMutation::ConversationsChanged));
+        assert!(config_ops::get(&sea, "model-config-2").await.unwrap().is_some());
     }
 
     #[test]

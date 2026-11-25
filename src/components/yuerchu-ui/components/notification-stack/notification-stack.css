@@ -1,0 +1,165 @@
+@layer components {
+  .ui-notification-dock {
+    --ui-notification-offset: 0px;
+
+    position: fixed;
+    z-index: var(--z-toast);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    /* 用两侧边界约束滚动高度；局部 CSS zoom 会再放大 100dvh，最后几项落到真实视口之外。 */
+    inset-block: var(--ui-notification-top) var(--ui-notification-bottom);
+    inset-inline: max(var(--space-4), var(--ui-safe-left)) max(var(--space-4), var(--ui-safe-right));
+    max-width: 360px;
+    pointer-events: none;
+  }
+
+  .ui-notification-dock[data-with-toast] {
+    --ui-notification-offset: calc(var(--ui-notification-toast-height) + var(--space-2));
+  }
+
+  .ui-notification-dock[data-placement="top"] {
+    inset-block-start: calc(var(--ui-notification-top) + var(--ui-notification-offset));
+    margin-inline: auto;
+  }
+
+  .ui-notification-dock[data-placement="bottom-end"] {
+    inset-block-end: calc(var(--ui-notification-bottom) + var(--ui-notification-offset));
+    margin-inline-start: auto;
+    flex-direction: column-reverse;
+  }
+
+  /* 待处理操作不是 Toast 的模态豁免层：弹窗屏蔽背景时不要遮住它。 */
+  .ui-notification-dock:is([inert], [aria-hidden="true"]),
+  :is([inert], [aria-hidden="true"]) .ui-notification-dock {
+    display: none;
+  }
+
+  /* 仅同角两区共存时，过长的 Toast 留出一半可用高度；它的 portal、焦点和计时仍完全独立。 */
+  :where(:has(> .ui-notification-dock[data-placement="top"]:not(:empty, [inert], [aria-hidden="true"])))
+    > .ui-toast-region[data-placement="top"],
+  :where(:has(> .ui-notification-dock[data-placement="bottom-end"]:not(:empty, [inert], [aria-hidden="true"])))
+    > .ui-toast-region[data-placement="bottom-end"] {
+    --ui-toast-shared-space: calc(var(--ui-toast-top) + var(--ui-toast-bottom) + var(--space-2));
+    max-height: calc((100% - var(--ui-toast-shared-space)) / 2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-notification-stack {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    min-height: 0;
+    pointer-events: auto;
+    view-transition-class: ui-notification-stack;
+  }
+
+  .ui-notification-stack[data-placement="bottom-end"] {
+    flex-direction: column-reverse;
+  }
+
+  .ui-notification-stack[data-scrollable] {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  /* Toast 用原生视图过渡时，栈只画避让后的新位置，不在页面的旧快照中再叠一份。 */
+  ::view-transition-group(*.ui-notification-stack),
+  ::view-transition-new(*.ui-notification-stack) {
+    animation: none;
+  }
+
+  ::view-transition-old(*.ui-notification-stack) {
+    animation: none;
+    opacity: 0;
+  }
+
+  .ui-notification-stack[data-focus-visible] {
+    border-radius: var(--radius-panel);
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-notification-stack__list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-notification-stack[data-placement="bottom-end"] .ui-notification-stack__list {
+    flex-direction: column-reverse;
+  }
+
+  .ui-notification-stack[data-collapsed] .ui-notification-stack__list {
+    padding-block-end: calc(var(--ui-notification-peeks, 1) * var(--space-2));
+  }
+
+  .ui-notification-stack[data-placement="bottom-end"][data-collapsed] .ui-notification-stack__list {
+    padding-block-start: calc(var(--ui-notification-peeks, 1) * var(--space-2));
+    padding-block-end: 0;
+  }
+
+  .ui-notification-stack__item {
+    position: relative;
+    flex: none;
+    min-width: 0;
+    transform-origin: center top;
+  }
+
+  .ui-notification-stack[data-placement="bottom-end"] .ui-notification-stack__item {
+    transform-origin: center bottom;
+  }
+
+  .ui-notification-stack__item[data-exiting] {
+    pointer-events: none;
+  }
+
+  .ui-notification-stack__item[data-stacked] {
+    position: absolute;
+    inset-inline: 0;
+    inset-block-start: 0;
+    height: var(--ui-notification-front-height);
+    pointer-events: none;
+  }
+
+  .ui-notification-stack[data-placement="bottom-end"] .ui-notification-stack__item[data-stacked] {
+    inset-block-start: auto;
+    inset-block-end: 0;
+  }
+
+  /* 每张卡各自悬浮，不在外层容器画阴影（避免卡片间隙被外框连线）；相邻项消失时整张卡会接收焦点，环画在卡片以内。 */
+  .ui-notification-stack .ui-notification-card {
+    box-shadow: var(--shadow-floating);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-notification-stack__item[data-stacked] .ui-notification-card {
+    height: 100%;
+    overflow: hidden;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .ui-notification-stack__bar {
+    display: flex;
+    flex: none;
+    justify-content: center;
+  }
+
+  .ui-notification-stack .ui-notification-stack__toggle {
+    border-radius: var(--radius-pill);
+    box-shadow: var(--shadow-raised);
+  }
+
+  .ui-notification-card .ui-notification-card__description {
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    overflow-wrap: anywhere;
+  }
+}

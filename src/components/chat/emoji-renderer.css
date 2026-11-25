@@ -1,0 +1,78 @@
+@layer components {
+  .m-emoji-renderer__box {
+    flex-shrink: 0;
+  }
+
+  .m-emoji-renderer__sticker {
+    width: 8rem;
+    height: 8rem;
+  }
+
+  .m-emoji-renderer__placeholder {
+    width: 100%;
+    height: 100%;
+  }
+
+  .m-emoji-renderer__error {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    border-radius: var(--radius-item);
+    background-color: color-mix(in oklch, var(--surface-muted) 40%, transparent);
+    color: var(--text-secondary);
+  }
+
+  .m-emoji-renderer__error-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .m-emoji-renderer__fallback-icon {
+    width: 1.5rem;
+    height: 1.5rem;
+    color: var(--text-secondary);
+  }
+
+  .m-emoji-renderer__image {
+    width: 100%;
+    height: 100%;
+  }
+
+  .m-emoji-renderer__inline {
+    display: block;
+    margin-block: var(--space-2);
+    overflow: hidden;
+    border-radius: var(--radius-item);
+  }
+
+  .m-emoji-renderer__inline-default {
+    width: 3rem;
+    height: 3rem;
+  }
+
+  .m-emoji-renderer__inline-error {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    background-color: color-mix(in oklch, var(--surface-muted) 40%, transparent);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-emoji-renderer__retry .ui-button {
+      position: relative;
+      overflow: visible;
+    }
+
+    .m-emoji-renderer__retry .ui-button::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
+}

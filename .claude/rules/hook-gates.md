@@ -39,6 +39,16 @@ here usually needs a commit there too.**
 - **The review is owned by the app, not the request.** `review::run` is spawned and the
   handler awaits a `oneshot`; a client that gives up does not abandon a turn mid-flight
   and strand its row at `running`.
+- **Admission is bounded before spawn.** At most 32 accepted connections per server
+  generation hold permits; excess sockets are dropped immediately, never queued.
+  A permit covers headers, bounded body collection and ordinary idle keepalive.
+  Only after token authentication and full job validation may a review release its
+  arrival permit after acquiring a separate bounded review permit (32, no queue).
+  The detached job owns that permit through disconnects. Its response MUST set
+  `Connection: close` and the socket must never dispatch another request. Tokenless reviews retain admission. Do not free
+  a permit merely after a body: keepalive would bypass the cap. Hyper's 15s header
+  deadline and the separate 15s / 2 MiB body deadline remain. Neither arrival
+  deadline wraps a review or response wait; the review budget is independent.
 - The reviewer gets four read-only tools and no shell. Diffs are computed client-side and
   sent, which is why it needs none.
 - `hooks/mod.rs` writes a handshake file (`{app_data_dir}/plan-gate.json`) carrying port,

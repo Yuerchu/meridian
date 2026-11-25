@@ -1,4 +1,5 @@
 import type {
+  PlanApprovalMode,
   PlanCommentDraftRequest,
   PlanReviewDraftMode,
   PlanReviewDraftSaveRequest,
@@ -8,6 +9,20 @@ import type {
   PlanCommentAnchor,
   JsonValue,
 } from '@/types'
+
+export type PlanApprovalOptionKey = 'default' | 'accept_edits' | 'clear_context_default' | 'clear_context_accept_edits'
+
+export interface PlanApprovalOptions {
+  approvalMode: PlanApprovalMode
+  clearContext: boolean
+}
+
+export const PLAN_APPROVAL_OPTIONS: Record<PlanApprovalOptionKey, PlanApprovalOptions> = {
+  default: { approvalMode: 'default', clearContext: false },
+  accept_edits: { approvalMode: 'accept_edits', clearContext: false },
+  clear_context_default: { approvalMode: 'default', clearContext: true },
+  clear_context_accept_edits: { approvalMode: 'accept_edits', clearContext: true },
+}
 
 /** Thrown when the other decision button is pressed while a lost reply to the
  *  first is still in doubt. A class rather than a message so the page can put
@@ -86,7 +101,7 @@ export function planReviewActionRules(input: {
   return {
     isPristine,
     hasFeedback,
-    canApprove: canDecide && isPristine,
+    canApprove: canDecide,
     canRequestChanges: canDecide && hasFeedback,
   }
 }

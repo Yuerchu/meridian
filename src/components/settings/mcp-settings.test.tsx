@@ -68,7 +68,8 @@ describe('McpSettings pages', () => {
     // The transport is a tag describing the row, not part of its name.
     expect(remote).toHaveAccessibleDescription(/HTTP/)
     const list = container.querySelector<HTMLElement>('[data-slot="mcp-server-list"]')!
-    expect(list.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
+    const card = list.querySelector<HTMLElement>('.ui-settings-group__rows')!
+    expect(card.lastElementChild).toHaveAttribute('data-slot', 'settings-add-row')
     expect(within(list).getByRole('button', { name: i18n.t('settings.mcp.addServer') })).toBeInTheDocument()
   })
 
@@ -95,10 +96,12 @@ describe('McpSettings pages', () => {
     expect(secret).toHaveAttribute('type', 'password')
     expect(secret).toHaveValue('Bearer secret-token')
 
-    await user.click(screen.getByRole('button', { name: i18n.t('settings.mcp.kv.showValues') }))
-    expect(screen.getByLabelText('Value 1')).toHaveAttribute('type', 'text')
-
     await user.click(screen.getByRole('button', { name: i18n.t('settings.mcp.kv.addHeader') }))
+    const firstRow = secret.closest<HTMLElement>('[data-slot="mcp-kv-row"]')!
+    await user.click(within(firstRow).getByRole('button', { name: 'Show password' }))
+    expect(screen.getByLabelText('Value 1')).toHaveAttribute('type', 'text')
+    expect(screen.getByLabelText('Value 2')).toHaveAttribute('type', 'password')
+
     await user.type(screen.getByRole('textbox', { name: 'Name 2' }), 'X-Trace')
     await user.type(screen.getByLabelText('Value 2'), 'on')
     await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))

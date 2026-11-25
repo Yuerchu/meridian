@@ -1,0 +1,104 @@
+@layer components {
+  .ui-thinking-state {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* ---------- 标题行（展开按钮）---------- */
+  .ui-thinking-state__trigger {
+    display: inline-flex;
+    align-self: flex-start;
+    align-items: center;
+    gap: var(--space-1);
+    padding: var(--space-1) var(--space-2);
+    margin-inline-start: calc(-1 * var(--space-2));
+    border: 1px solid transparent;
+    border-radius: var(--radius-item);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+  }
+
+  button.ui-thinking-state__trigger {
+    cursor: pointer;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-thinking-state__trigger[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-thinking-state__chevron {
+    display: inline-flex;
+    transition: rotate var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-thinking-state__chevron svg {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+  }
+
+  .ui-thinking-state[data-expanded] .ui-thinking-state__chevron {
+    rotate: 90deg;
+  }
+
+  /* 思考中：一道比文字深的光从左扫到右（颜色只在 --text-secondary 和 --text 之间，对比度不会低于平时）。
+     减弱动效时 --dur-shimmer 为 0，停在起点（整段是 --text-secondary） */
+  .ui-thinking-state__label[data-shimmer] {
+    background: linear-gradient(
+        90deg,
+        var(--text-secondary) 35%,
+        var(--text) 50%,
+        var(--text-secondary) 65%
+      )
+      0 0 / 300% 100%;
+    background-clip: text;
+    color: transparent;
+    animation: ui-thinking-state-shimmer var(--dur-shimmer) var(--ease-linear) infinite;
+  }
+
+  @keyframes ui-thinking-state-shimmer {
+    from {
+      background-position: 100% 0;
+    }
+
+    to {
+      background-position: 0 0;
+    }
+  }
+
+  /* ---------- 推理过程：左边一条竖线，次要文字 ---------- */
+  .ui-thinking-state__content {
+    padding-inline-start: var(--space-3);
+    border-inline-start: 2px solid var(--border);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    white-space: pre-wrap;
+  }
+
+  /* 自动展开（思考中）时只露出最新的 4 行，旧的在顶部淡出；手动展开时显示全部 */
+  .ui-thinking-state__content[data-clamped] {
+    max-height: 4lh;
+    overflow: hidden;
+  }
+
+  .ui-thinking-state__content[data-overflowing] {
+    mask-image: linear-gradient(to bottom, transparent, currentColor 1lh);
+  }
+
+  @media (forced-colors: active) {
+    /* 高对比度模式下渐变背景被去掉，透明文字会看不见 */
+    .ui-thinking-state__label[data-shimmer] {
+      background: none;
+      color: CanvasText;
+    }
+  }
+}

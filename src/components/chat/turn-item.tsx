@@ -1,6 +1,6 @@
+import './turn-item.css'
 import React, { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { cx } from '@/utils/cx'
 import { ErrorBoundary } from '@/components/error-boundary'
 import { AssistantGroupView, UserMessage } from './message-item'
 import { AcpNoticeList } from './acp-notice-bubble'
@@ -18,25 +18,8 @@ import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { MessageRating } from '@/types'
 
-/** Ways of saying the model is still thinking. Which one a turn gets is decided
- *  by its id rather than at random: the wait can last a minute and re-render
- *  many times over, and a label that reshuffled underneath the user would read
- *  as new activity every time. */
-const WORKING_KEYS = [
-  'chat.turn.working.thinking',
-  'chat.turn.working.pondering',
-  'chat.turn.working.brewing',
-  'chat.turn.working.deliberating',
-  'chat.turn.working.plotting',
-  'chat.turn.working.musing',
-] as const
-
-function workingKey(turnId: string): string {
-  let hash = 0
-  for (let i = 0; i < turnId.length; i++) {
-    hash = (hash * 31 + turnId.charCodeAt(i)) | 0
-  }
-  return WORKING_KEYS[Math.abs(hash) % WORKING_KEYS.length]
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
 }
 
 export interface TurnItemProps {
@@ -104,7 +87,7 @@ export const TurnItem = React.memo(function TurnItem({
   const dateLabel = useDateLabel()
   const assistants = turn.assistantMessages
   const renderError = (
-    <div data-slot="turn-render-error" role="alert" className="text-caption-1-regular text-status-danger py-2">
+    <div data-slot="turn-render-error" role="alert" className="m-turn__render-error">
       {t('chat.renderError')}
     </div>
   )
@@ -194,13 +177,11 @@ export const TurnItem = React.memo(function TurnItem({
   // the tight corner only reads as "the same speaker, continued" when the two
   // nearly touch, and the six-unit rhythm between turns is a paragraph break.
   // Not past a date separator, which is a break of its own. It closes up to
-  // exactly `BUBBLE_RUN_GAP` (2px): the turn's `space-y-6` is 24px, and 22px
-  // taken back leaves the same distance two bubbles of one turn keep.
-  // `-mt-5` left 4px, so a run of questions sat twice as far apart as a run
-  // of answers.
+  // exactly `BUBBLE_RUN_GAP` (2px): the turn's 24px gap (`--space-6`) minus
+  // 22px leaves the same distance two bubbles of one turn keep.
   const continuesRun = (questionPosition === 'middle' || questionPosition === 'last') && !showDate
   const question = turn.userMessage && (
-    <div data-slot="turn-question" className={cx(continuesRun && '-mt-5.5')}>
+    <div data-slot="turn-question" data-continues-run={continuesRun ? 'true' : undefined} className="m-turn__question">
       <ErrorBoundary fallback={renderError}>
         <UserMessage
           message={turn.userMessage}
@@ -218,15 +199,15 @@ export const TurnItem = React.memo(function TurnItem({
   // Outside the group's footer on purpose: that fades in on hover, and a pager
   // carries information rather than an action, so it has to stay legible at
   // rest. Negative margins pull it back against the message it belongs to, out
-  // of the turn's own six-unit rhythm — it reads as part of that message, not
-  // as another block in the exchange.
+  // of the turn's own rhythm — it reads as part of that message, not as
+  // another block in the exchange.
   const questionPager = questionBranch && (
-    <div data-slot="turn-question-pager" className="-mt-5 flex justify-end">
+    <div data-slot="turn-question-pager" className="m-turn__question-pager">
       {pagerFor(questionBranch)}
     </div>
   )
   const answerPager = answerBranch && (
-    <div data-slot="turn-answer-pager" className="-mt-5 flex pl-10">
+    <div data-slot="turn-answer-pager" className="m-turn__answer-pager">
       {pagerFor(answerBranch)}
     </div>
   )
@@ -237,13 +218,9 @@ export const TurnItem = React.memo(function TurnItem({
   // the decision row resolves and the screen goes still, leaving the stop
   // button as the only sign the turn is alive. `buildAssistantGroups` ends the
   // run on a `working` bubble then — the typing indicator, where the answer
-  // will appear — and this is what it says.
+  // will appear — and this notes a retry when one is in flight.
   const awaiting = awaitingModel(turn)
-  const workingLabel = awaiting
-    ? retry
-      ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max })
-      : t(workingKey(turn.id))
-    : null
+  const workingLabel = awaiting && retry ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max }) : null
 
   // How the turn ended, when that is worth a line of its own. A finished turn
   // says nothing — the answer is the statement — and a turn waiting on the
@@ -253,27 +230,27 @@ export const TurnItem = React.memo(function TurnItem({
   // left something half-done that nothing on screen accounts for.
   const statusLine =
     turn.status === 'crashed' || turn.status === 'interrupted' ? (
-      <Marker data-slot="turn-status" data-status={turn.status} role="status" className="pl-10 text-caption-1-regular">
+      <Marker data-slot="turn-status" data-status={turn.status} role="status" className="m-turn__status">
         <MarkerIcon>
           <TurnStatusIcon status={turn.status} />
         </MarkerIcon>
-        <MarkerContent className={cx(turn.status === 'crashed' && 'text-status-warning-soft-foreground')}>
+        <MarkerContent className={turn.status === 'crashed' ? 'm-turn__status-crashed' : undefined}>
           {t(turn.status === 'crashed' ? 'chat.turn.crashed' : 'chat.turn.interrupted')}
         </MarkerContent>
       </Marker>
     ) : null
 
   return (
-    <div ref={heightRef} data-slot="turn" data-status={turn.status} className={cx('space-y-6', className)}>
+    <div ref={heightRef} data-slot="turn" data-status={turn.status} className={joinClasses('m-turn', className)}>
       {showDate && (
-        <Marker variant="separator" data-slot="turn-date" className="text-caption-1-regular">
+        <Marker variant="separator" data-slot="turn-date" className="m-turn__date">
           <MarkerContent>{dateLabel(startedAt)}</MarkerContent>
         </Marker>
       )}
       {question}
       {questionPager}
       {turn.wokenBy && (
-        <Marker data-slot="turn-woken" data-trigger={turn.wokenBy} className="pl-10 text-caption-1-regular">
+        <Marker data-slot="turn-woken" data-trigger={turn.wokenBy} className="m-turn__woken">
           <MarkerContent>
             {t(turn.wokenBy === 'task_completion' ? 'chat.turn.wokenByTask' : 'chat.turn.wokenByAgent')}
           </MarkerContent>
@@ -281,9 +258,9 @@ export const TurnItem = React.memo(function TurnItem({
       )}
       {/* The answer has its own anchor so the scroller can put the reader back
           at the start of it when the stream ends. The runs inside it sit at a
-          message's internal rhythm, closer than the six-unit gap the turn keeps
-          between the question and the answer as a whole. */}
-      <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="space-y-3">
+          message's internal rhythm, closer than the gap the turn keeps between
+          the question and the answer as a whole. */}
+      <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="m-turn__answer">
         {groups.map((group, i) => (
           <ErrorBoundary key={group.id} fallback={renderError}>
             <AssistantGroupView
@@ -318,7 +295,7 @@ export const TurnItem = React.memo(function TurnItem({
             for every failure. An earlier turn has newer ones built on it, so
             the only retry left to it is regeneration. */}
         {turn.failure !== null && (
-          <div data-slot="turn-failure" className="pl-10">
+          <div data-slot="turn-failure" className="m-turn__failure">
             <ErrorAlert
               role="status"
               title={t('chat.turn.failed')}
