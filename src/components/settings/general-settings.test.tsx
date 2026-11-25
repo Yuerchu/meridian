@@ -85,5 +85,6 @@ describe('GeneralSettings', () => {
 
     expect(await screen.findByText(i18n.t('settings.general.fontListError'))).toBeInTheDocument()
     expect((await screen.findAllByText('Bash (Git Bash)')).length).toBeGreaterThan(0)
+    expect(mockApi.tools.testServiceKey).toHaveBeenCalledWith({ service: 'tavily' })
   })
 })

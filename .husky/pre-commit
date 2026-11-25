@@ -56,7 +56,7 @@ fi
 # 以及 SeaORM 实体的归属与列类型（CLAUDE.md「Hard model and protocol standards」）。
 # 任何一侧改动都检查暂存快照，避免靠未暂存文件通过；生成器和它依赖的
 # syntax helper 自己变化也必须触发 freshness check。
-if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crates$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|model-contract-rules(\.test)?|transaction-graph-lib|staged-snapshot)\.mjs$'; then
+if git diff --cached --name-only | grep -qE '^src/.*\.(ts|tsx)$|^src-tauri/crates$|^src-tauri/.*\.(rs|sql|json)$|^src-tauri/(Cargo\.toml|Cargo\.lock)$|^scripts/(check-model-contracts|generate-invoke-response-schema|ipc-wire-parity(\.test)?|model-contract-rules(\.test)?|transaction-graph-lib|staged-snapshot)\.mjs$'; then
   node scripts/check-model-contracts.mjs --staged
 fi
 

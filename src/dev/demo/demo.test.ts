@@ -322,8 +322,8 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   get_secret: { args: { request: { key: 'REMOTE_TOKEN' } } },
   get_preference: { args: { request: { key: 'shell' } } },
   set_preference: { args: { request: { key: 'autoreview.model', value: { provider_id: 'p', model_id: 'm' } } } },
-  test_service_key: { args: { request: { service: 'TAVILY' } } },
-  set_service_key: { args: { request: { service: 'FISH_AUDIO', key: 'k' } } },
+  test_service_key: { args: { request: { service: 'tavily' } } },
+  set_service_key: { args: { request: { service: 'fish_audio', key: 'k' } } },
   read_logs: {
     args: {
       request: {
