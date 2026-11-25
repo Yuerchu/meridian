@@ -1,0 +1,6 @@
+@layer components {
+  /* The phone keyboard is not in the dialog's own sizing: pad for it by hand. */
+  .ui-dialog.m-rename-dialog {
+    padding-block-end: var(--ime-bottom, 0px);
+  }
+}

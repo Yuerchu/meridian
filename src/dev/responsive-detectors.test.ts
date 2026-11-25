@@ -176,9 +176,9 @@ describe('a touch-hitbox control that clips itself', () => {
   /** The half jsdom cannot compile: the rule in the stylesheet itself. */
   it('is what the touch-hitbox utility in index.css declares', () => {
     const css = readFileSync(resolve(__dirname, '../index.css'), 'utf8')
-    const start = css.indexOf('@utility touch-hitbox {')
+    const start = css.indexOf('.touch-hitbox {')
     expect(start).toBeGreaterThan(-1)
-    const block = css.slice(start, css.indexOf('\n}\n', start))
+    const block = css.slice(start, css.indexOf('\n  }\n', start))
     expect(block).toMatch(/@media \(any-pointer: coarse\) \{[^}]*overflow: visible !important;/)
   })
 })

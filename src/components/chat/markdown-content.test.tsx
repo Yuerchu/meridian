@@ -41,12 +41,10 @@ describe('MarkdownContent images', () => {
     expect(image).toHaveAttribute('decoding', 'async')
     expect(image).not.toHaveAttribute('width')
     expect(image).not.toHaveAttribute('height')
-    expect(image.className).toContain('h-auto')
-    expect(image.className).toContain('max-w-full')
+    expect(image).toHaveClass('m-markdown-content__image')
 
     const frame = container.querySelector('[data-slot="markdown-image-frame"]')!
-    expect(frame.className).not.toContain('aspect-video')
-    expect(Array.from(frame.classList)).not.toContain('w-full')
+    expect(frame).toHaveClass('m-markdown-content__image-frame')
     expect(frame).toContainElement(image)
     fireEvent.load(image)
     expect(frame).toHaveAttribute('data-loaded', 'true')
@@ -176,12 +174,9 @@ describe('MarkdownContent file references', () => {
 
     const source = await screen.findByRole('button', { name: 'src/chat.ts:2-3' })
     expect(source).toHaveTextContent('chat.ts')
-    expect(source.querySelector('img')).toBeInTheDocument()
-    // Outside the prose recipe, or `.prose img`'s ~1.7em block margin turns the
-    // glyph into a 59px-tall line; and BoardUI's secondary LinkButton, not the
-    // accent web-link colour.
-    expect(source).toHaveClass('not-prose', 'text-text-secondary')
-    expect(source).not.toHaveClass('text-accent-600')
+    expect(source.querySelector('img')).toHaveClass('m-markdown-content__file-icon')
+    expect(source.closest('.m-markdown-content__file-reference')).not.toBeNull()
+    expect(source).toHaveAttribute('data-variant', 'ghost')
     expect(screen.getByRole('button', { name: 'README.md' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: './config.json:1' })).toBeInTheDocument()
 

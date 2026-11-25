@@ -1,0 +1,58 @@
+@layer components {
+  .m-acp-notice-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-inline-start: var(--space-10);
+  }
+
+  .m-acp-notice {
+    max-width: 85%;
+  }
+
+  .m-acp-notice__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-acp-notice__content[data-severity='warning'] {
+    color: var(--warning-fg);
+  }
+
+  .m-acp-notice__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+  }
+
+  .m-acp-notice__category {
+    font: var(--text-caption);
+    opacity: 0.8;
+  }
+
+  .m-acp-notice__title {
+    font: var(--text-body-medium);
+  }
+
+  .m-acp-notice__details {
+    margin: 0;
+    font: var(--text-caption);
+    white-space: pre-wrap;
+    opacity: 0.9;
+  }
+
+  .m-acp-notice__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block-start: var(--space-1);
+  }
+
+  .m-acp-notice__login-hint {
+    font: var(--text-caption);
+    opacity: 0.8;
+  }
+}

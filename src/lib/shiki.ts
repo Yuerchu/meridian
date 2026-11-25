@@ -54,9 +54,13 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
 /** What a fence label or a file extension goes by above. */
 const ALIASES: Record<string, string> = {
   ts: 'typescript',
+  mts: 'typescript',
+  cts: 'typescript',
   js: 'javascript',
   mjs: 'javascript',
   cjs: 'javascript',
+  jsonc: 'json',
+  mdx: 'markdown',
   py: 'python',
   rb: 'ruby',
   rs: 'rust',

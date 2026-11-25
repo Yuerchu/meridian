@@ -1,6 +1,5 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { Sidebar } from '@/components/base'
 
 import { AppSidebar } from './app-sidebar'
 import { useConversationStore, type ConversationSession } from '@/stores/conversation-store'
@@ -82,6 +81,7 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onToggleArchive: vi.fn().mockResolvedValue(undefined),
     onMoveToProject: vi.fn().mockResolvedValue(null),
     page: 'chat',
+    onOpenBoard: vi.fn(),
     onOpenSettings: vi.fn(),
     onCloseSettings: vi.fn(),
     settingsTab: 'provider',
@@ -95,25 +95,35 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onCreateHostedSession: vi.fn().mockResolvedValue(null),
     ...over,
   }
-  // `collapsible="icon"` matches the app's provider — the icon-rail guard
-  // reads it, so a default-collapsible provider here would never collapse.
-  const ui = (current: typeof props, panelOpen: boolean) => (
-    <Sidebar.Provider open={panelOpen} onOpenChange={() => {}} collapsible="icon">
-      <AppSidebar {...current} />
-    </Sidebar.Provider>
-  )
-  const view = render(ui(props, true))
+  const ui = (current: typeof props, collapsed: boolean) => <AppSidebar {...current} isCollapsed={collapsed} />
+  const view = render(ui(props, false))
   return {
     props,
-    setPanelOpen: (open: boolean) => view.rerender(ui(props, open)),
-    update: (next: Partial<typeof props>) => view.rerender(ui({ ...props, ...next }, true)),
+    setPanelOpen: (open: boolean) => view.rerender(ui(props, !open)),
+    update: (next: Partial<typeof props>) => view.rerender(ui({ ...props, ...next }, false)),
   }
 }
 
-/** A group's conversation list — the panel copy only; the mobile sheet does
- *  not render above 768px, which is jsdom's default. */
+/** A group's expanded conversation list (`ul.ui-nav-group__items`). */
 function group(name: string) {
-  return screen.getByRole('treegrid', { name })
+  return screen.getByRole('list', { name })
+}
+
+/** The NavItem button for a conversation inside `container` (excluding its row actions button). */
+function convItem(container: HTMLElement, title: RegExp): HTMLElement {
+  const match = within(container)
+    .getAllByRole('button', { name: title })
+    .find((el) => el.classList.contains('ui-nav-item'))
+  if (!match) throw new Error(`No NavItem matching ${title}`)
+  return match
+}
+
+function queryConvItem(container: HTMLElement, title: RegExp): HTMLElement | null {
+  return (
+    within(container)
+      .queryAllByRole('button', { name: title })
+      .find((el) => el.classList.contains('ui-nav-item')) ?? null
+  )
 }
 
 describe('AppSidebar project groups', () => {
@@ -132,22 +142,22 @@ describe('AppSidebar project groups', () => {
   it('renders one group per project, and the loose conversations in their own', () => {
     renderSidebar()
 
-    expect(within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ })).toBeInTheDocument()
-    expect(within(group('Meridian')).getByRole('row', { name: /表情包迁移/ })).toBeInTheDocument()
-    expect(within(group('Meridian')).queryByRole('row', { name: /群里在聊什么/ })).not.toBeInTheDocument()
-    expect(within(group('QQ 群')).getByRole('row', { name: /群里在聊什么/ })).toBeInTheDocument()
-    expect(within(group('对话')).getByRole('row', { name: /随便问问/ })).toBeInTheDocument()
+    expect(convItem(group('Meridian'), /侧边栏重构/)).toBeInTheDocument()
+    expect(convItem(group('Meridian'), /表情包迁移/)).toBeInTheDocument()
+    expect(queryConvItem(group('Meridian'), /群里在聊什么/)).not.toBeInTheDocument()
+    expect(convItem(group('QQ 群'), /群里在聊什么/)).toBeInTheDocument()
+    expect(convItem(group('对话'), /随便问问/)).toBeInTheDocument()
 
     // An empty project gets a header and no list — its header is still a drop
     // target, which is all an empty project has to offer.
-    expect(screen.queryByRole('treegrid', { name: '空项目' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '空项目' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: '折叠 空项目' })).toBeInTheDocument()
   })
 
   it('keeps the loose header as the unfile target when everything is filed', () => {
     renderSidebar({ conversations: CONVERSATIONS.filter((c) => c.project_id !== null) })
-    expect(screen.queryByRole('treegrid', { name: '对话' })).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '折叠 对话' })).toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '对话' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '对话' })).toBeInTheDocument()
   })
 
   it('folds a group shut and open again', async () => {
@@ -155,7 +165,7 @@ describe('AppSidebar project groups', () => {
     renderSidebar()
 
     await user.click(screen.getByRole('button', { name: '折叠 Meridian' }))
-    expect(screen.queryByRole('treegrid', { name: 'Meridian' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Meridian' })).not.toBeInTheDocument()
     // The other groups do not move.
     expect(group('QQ 群')).toBeInTheDocument()
 
@@ -171,17 +181,12 @@ describe('AppSidebar project groups', () => {
     const user = userEvent.setup()
     const { update } = renderSidebar()
     await user.click(screen.getByRole('button', { name: '折叠 QQ 群' }))
-    expect(screen.queryByRole('treegrid', { name: 'QQ 群' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'QQ 群' })).not.toBeInTheDocument()
 
     update({ activeId: 'c-3' })
     await waitFor(() => expect(group('QQ 群')).toBeInTheDocument())
   })
 
-  /**
-   * The icon rail. The group labels would be `display: none` there while every
-   * conversation row stayed behind as an anonymous icon, so nothing below the
-   * header renders at all; the header and footer rows are the rail.
-   */
   /**
    * The hook gates open one conversation per plan and per stop, and a project
    * under development collects dozens; they are folded under the group they
@@ -194,23 +199,21 @@ describe('AppSidebar project groups', () => {
       const user = userEvent.setup()
       renderSidebar({ conversations: [...CONVERSATIONS, REVIEW] })
 
-      expect(screen.queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
-      expect(within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ })).toBeInTheDocument()
+      expect(queryConvItem(document.body, /计划审查/)).not.toBeInTheDocument()
+      expect(convItem(group('Meridian'), /侧边栏重构/)).toBeInTheDocument()
       // No fold on a group with nothing to fold.
-      expect(screen.getAllByRole('treegrid', { name: '1 条审查会话' })).toHaveLength(1)
+      expect(screen.getAllByRole('button', { name: '1 条审查会话' })).toHaveLength(1)
 
-      await user.click(screen.getByRole('row', { name: '1 条审查会话' }))
-      expect(within(group('1 条审查会话')).getByRole('row', { name: /计划审查/ })).toBeInTheDocument()
-      // Still out of the group's own list, which is the drop target.
-      expect(within(group('Meridian')).queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
+      await user.click(screen.getByRole('button', { name: '1 条审查会话' }))
+      expect(convItem(group('1 条审查会话'), /计划审查/)).toBeInTheDocument()
     })
 
     it('opens the fold holding whatever is on screen', async () => {
       const { update } = renderSidebar({ conversations: [...CONVERSATIONS, REVIEW] })
-      expect(screen.queryByRole('row', { name: /计划审查/ })).not.toBeInTheDocument()
+      expect(queryConvItem(document.body, /计划审查/)).not.toBeInTheDocument()
 
       update({ activeId: 'c-review' })
-      await waitFor(() => expect(screen.getByRole('row', { name: /计划审查/ })).toBeInTheDocument())
+      await waitFor(() => expect(convItem(group('1 条审查会话'), /计划审查/)).toBeInTheDocument())
     })
   })
 
@@ -221,18 +224,20 @@ describe('AppSidebar project groups', () => {
     await user.click(screen.getByRole('button', { name: '折叠 Meridian' }))
 
     setPanelOpen(false)
-    expect(screen.queryByRole('treegrid', { name: 'QQ 群' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('treegrid', { name: '对话' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'QQ 群' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: '对话' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '折叠 QQ 群' })).not.toBeInTheDocument()
     // The rail keeps its destinations.
-    expect(screen.getByRole('row', { name: /新对话/ })).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /搜索/ })).toBeInTheDocument()
-    expect(screen.getByRole('row', { name: /设置/ })).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('navigation', { name: '新对话' })).getByRole('button', { name: '新对话' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /搜索/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /设置/ })).toBeInTheDocument()
 
     // Reopening restores the groups, with the fold untouched underneath.
     setPanelOpen(true)
     expect(group('QQ 群')).toBeInTheDocument()
-    expect(screen.queryByRole('treegrid', { name: 'Meridian' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('list', { name: 'Meridian' })).not.toBeInTheDocument()
   })
 
   describe('project selection', () => {
@@ -261,15 +266,16 @@ describe('AppSidebar project groups', () => {
     it('leaves the header row to the default project', async () => {
       const user = userEvent.setup()
       const { props } = renderSidebar()
-      await user.click(screen.getByRole('row', { name: /新对话/ }))
+      await user.click(
+        within(screen.getByRole('navigation', { name: '新对话' })).getByRole('button', { name: '新对话' }),
+      )
       expect(props.onCreate).toHaveBeenCalledWith()
     })
 
     it('makes the loose group\u2019s "+" an explicitly loose conversation', async () => {
       const user = userEvent.setup()
       const { props } = renderSidebar()
-      // The loose group's "+" — the header row is a row, this is a button.
-      await user.click(screen.getByRole('button', { name: '新对话' }))
+      await user.click(within(screen.getByRole('navigation', { name: '对话' })).getByRole('button', { name: '新对话' }))
       expect(props.onCreate).toHaveBeenCalledWith(null)
     })
   })
@@ -277,7 +283,7 @@ describe('AppSidebar project groups', () => {
   it('opens the palette from the search row', async () => {
     const user = userEvent.setup()
     const { props } = renderSidebar()
-    await user.click(screen.getByRole('row', { name: /搜索/ }))
+    await user.click(screen.getByRole('button', { name: /搜索/ }))
     expect(props.onOpenSearch).toHaveBeenCalled()
   })
 
@@ -285,14 +291,12 @@ describe('AppSidebar project groups', () => {
     renderSidebar({
       conversations: [{ ...conversation('c-old', '旧对话', 'p-code'), updated_at: Date.now() - 7_200_000 }],
     })
-    expect(within(group('Meridian')).getByRole('row', { name: /旧对话/ })).toHaveTextContent('2小时前')
+    expect(convItem(group('Meridian'), /旧对话/)).toHaveTextContent('2小时前')
   })
 
   /**
    * A conversation row and a project's group header live under one right-click
-   * trigger, so the row itself says what was clicked — through
-   * `data-row-kind`. Read wrong, a project would be offered "pin" and the
-   * wrong confirmation, or a conversation a project's delete.
+   * handler, so the row itself says what was clicked — through `data-row-kind`.
    */
   describe('right-click', () => {
     it('offers a project its own actions', async () => {
@@ -310,7 +314,7 @@ describe('AppSidebar project groups', () => {
       renderSidebar()
       await user.pointer({
         keys: '[MouseRight]',
-        target: within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ }),
+        target: convItem(group('Meridian'), /侧边栏重构/),
       })
 
       const menu = await screen.findByRole('menu')
@@ -320,7 +324,7 @@ describe('AppSidebar project groups', () => {
     async function openRowMenu(user: ReturnType<typeof userEvent.setup>) {
       await user.pointer({
         keys: '[MouseRight]',
-        target: within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ }),
+        target: convItem(group('Meridian'), /侧边栏重构/),
       })
       return screen.findByRole('menu')
     }
@@ -359,7 +363,6 @@ describe('AppSidebar project groups', () => {
     it('asks rather than offering undo while a ! command holds the conversation', async () => {
       const user = userEvent.setup()
       useConversationStore.setState((state) => ({
-        // Only `streaming` and `activeShellTurnId` are read on this path.
         sessions: {
           ...state.sessions,
           'c-1': { streaming: false, activeShellTurnId: 'shell-1' } as ConversationSession,
@@ -403,21 +406,20 @@ describe('AppSidebar project groups', () => {
 
     it('keeps a deleted archived conversation gone once its delete is done', async () => {
       const user = userEvent.setup()
-      // The archived list is the sidebar's own copy, and it still has the row:
-      // nothing refreshes it in this test, as nothing did after a delete.
       apiMocks.listConversations.mockResolvedValue([
         { ...conversation('c-old', '旧对话', 'p-code'), is_archived: true },
       ])
       try {
         renderSidebar()
-        await user.click((await screen.findAllByText(i18n.t('sidebar.archivedCount', { count: 1 })))[0])
-        await user.pointer({ keys: '[MouseRight]', target: (await screen.findAllByRole('row', { name: /旧对话/ }))[0] })
+        await user.click(await screen.findByRole('button', { name: i18n.t('sidebar.archivedCount', { count: 1 }) }))
+        const archivedRow = await waitFor(() => convItem(group('1 条已归档对话'), /旧对话/))
+        await user.pointer({ keys: '[MouseRight]', target: archivedRow })
         await user.click(within(await screen.findByRole('menu')).getByText(i18n.t('chat.delete')))
-        expect(screen.queryAllByRole('row', { name: /旧对话/ })).toHaveLength(0)
+        expect(queryConvItem(document.body, /旧对话/)).toBeNull()
 
         act(() => useUndoStore.getState().commit())
         await vi.waitFor(() => expect(useUndoStore.getState().hidden.has('c-old')).toBe(false))
-        expect(screen.queryAllByRole('row', { name: /旧对话/ })).toHaveLength(0)
+        expect(queryConvItem(document.body, /旧对话/)).toBeNull()
       } finally {
         apiMocks.listConversations.mockResolvedValue([])
       }
@@ -427,7 +429,6 @@ describe('AppSidebar project groups', () => {
       const user = userEvent.setup()
       const onDelete = vi.fn().mockResolvedValue(undefined)
       useConversationStore.setState((state) => ({
-        // Only `streaming` is read on this path.
         sessions: { ...state.sessions, 'c-1': { streaming: true, activeShellTurnId: null } as ConversationSession },
       }))
       try {
@@ -467,7 +468,7 @@ describe('AppSidebar project groups', () => {
       renderSidebar()
       await user.pointer({
         keys: '[MouseRight]',
-        target: within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ }),
+        target: convItem(group('Meridian'), /侧边栏重构/),
       })
 
       const menu = await screen.findByRole('menu')
@@ -483,7 +484,7 @@ describe('AppSidebar project groups', () => {
     dialogMocks.open.mockResolvedValue('C:\\code\\new-project')
     renderSidebar({ onCreateProject })
 
-    await user.click(screen.getByRole('row', { name: /新建项目/ }))
+    await user.click(screen.getByRole('button', { name: /新建项目/ }))
     await user.type(screen.getByRole('textbox', { name: '项目名称' }), 'New project')
     await user.click(screen.getByRole('button', { name: '选择目录…' }))
     await user.click(screen.getByRole('button', { name: '保存' }))
@@ -492,22 +493,15 @@ describe('AppSidebar project groups', () => {
     expect(screen.getByRole('textbox', { name: '项目名称' })).toHaveValue('New project')
   })
 
-  /**
-   * Moving goes through a dialog rather than a submenu, so the same surface
-   * serves the right-click menu and the touch menu. The current location is
-   * disabled — the list also answers "where is this filed" — and choosing a
-   * destination reports the bare project id, `null` for none.
-   */
   describe('move to project', () => {
     it('moves a loose conversation into a chosen project', async () => {
       const user = userEvent.setup()
       const { props } = renderSidebar()
-      await user.pointer({ keys: '[MouseRight]', target: within(group('对话')).getByRole('row', { name: /随便问问/ }) })
+      await user.pointer({ keys: '[MouseRight]', target: convItem(group('对话'), /随便问问/) })
 
       await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
 
       const dialog = await screen.findByRole('dialog')
-      // Loose already: "no project" is where it is, not somewhere to go.
       expect(within(dialog).getByRole('option', { name: /不归属项目/ })).toHaveAttribute('aria-disabled', 'true')
       await user.click(within(dialog).getByRole('option', { name: /Meridian/ }))
 
@@ -520,7 +514,7 @@ describe('AppSidebar project groups', () => {
       const { props } = renderSidebar()
       await user.pointer({
         keys: '[MouseRight]',
-        target: within(group('Meridian')).getByRole('row', { name: /侧边栏重构/ }),
+        target: convItem(group('Meridian'), /侧边栏重构/),
       })
 
       await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
@@ -535,7 +529,7 @@ describe('AppSidebar project groups', () => {
     it('keeps the dialog open and shows why a move was refused', async () => {
       const user = userEvent.setup()
       renderSidebar({ onMoveToProject: vi.fn().mockResolvedValue('conversation is busy') })
-      await user.pointer({ keys: '[MouseRight]', target: within(group('对话')).getByRole('row', { name: /随便问问/ }) })
+      await user.pointer({ keys: '[MouseRight]', target: convItem(group('对话'), /随便问问/) })
 
       await user.click(within(await screen.findByRole('menu')).getByText('移动到项目…'))
       const dialog = await screen.findByRole('dialog')
@@ -548,11 +542,10 @@ describe('AppSidebar project groups', () => {
 })
 
 /**
- * The age and the actions button share one slot. The swap used to be a native
- * `:hover` rule, which a WebView leaves on whatever was last tapped — on
- * Android, choosing a conversation hid its time. It is keyed on React Aria's
- * `data-hovered` now, which touch never sets, and the long-press menu carries
- * the full time a finger otherwise has no way to reach.
+ * The age and the actions button share one row in Yuerchu UI's `NavItem`:
+ * `[data-has-trailing]` swaps `trailing` for `actions` on React Aria's
+ * `data-hovered` / `data-focus-within` rather than CSS `:hover`, so a touch
+ * tap never leaves the timestamp hidden.
  */
 describe('AppSidebar conversation time', () => {
   beforeAll(async () => {
@@ -560,8 +553,8 @@ describe('AppSidebar conversation time', () => {
   })
 
   function timeOf(title: RegExp): HTMLElement {
-    const row = within(group('Meridian')).getByRole('row', { name: title })
-    const el = row.querySelector<HTMLElement>('[data-slot="conversation-time"]')
+    const item = convItem(group('Meridian'), title)
+    const el = item.querySelector<HTMLElement>('[data-slot="conversation-time"]')
     if (!el) throw new Error('no time')
     return el
   }
@@ -571,23 +564,21 @@ describe('AppSidebar conversation time', () => {
     renderSidebar({
       conversations: [{ ...conversation('c-old', '旧对话', 'p-code'), updated_at: Date.now() - 7_200_000 }],
     })
-    const row = within(group('Meridian')).getByRole('row', { name: /旧对话/ })
-    await user.pointer([{ keys: '[TouchA]', target: row }])
+    const item = convItem(group('Meridian'), /旧对话/)
+    const row = item.closest<HTMLElement>('.ui-nav-list__row')
+    expect(row).not.toBeNull()
+    await user.pointer([{ keys: '[TouchA]', target: item }])
     expect(row).not.toHaveAttribute('data-hovered')
+    expect(row).toHaveAttribute('data-has-trailing', '')
     const time = timeOf(/旧对话/)
     expect(time).toHaveTextContent('2小时前')
-    // Hidden only by the row's React Aria hover, a keyboard focus in the slot,
-    // or the open menu — never by a `:hover` a tap leaves behind.
-    expect(time.className).toContain('group-data-[hovered]/tree-item:opacity-0')
-    expect(time.className).not.toMatch(/(^|\s|:)hover:/)
-    expect(time.className).not.toMatch(/group-hover/)
   })
 
-  it('puts the actions button in the same slot as the time', () => {
+  it('puts the actions button in the same row as the time', () => {
     renderSidebar()
-    const slot = timeOf(/侧边栏重构/).closest('[data-slot="conversation-time-slot"]')
-    expect(slot).not.toBeNull()
-    expect(within(slot as HTMLElement).getByRole('button', { name: /侧边栏重构/ })).toBeInTheDocument()
+    const row = timeOf(/侧边栏重构/).closest<HTMLElement>('.ui-nav-list__row')
+    expect(row).not.toBeNull()
+    expect(within(row as HTMLElement).getByRole('button', { name: '侧边栏重构 的操作' })).toBeInTheDocument()
   })
 
   it('heads the right-click / long-press menu with the full time, as text rather than an item', async () => {
@@ -596,7 +587,7 @@ describe('AppSidebar conversation time', () => {
     renderSidebar({ conversations: [{ ...conversation('c-t', '有时间的', 'p-code'), updated_at: at }] })
     await user.pointer({
       keys: '[MouseRight]',
-      target: within(group('Meridian')).getByRole('row', { name: /有时间的/ }),
+      target: convItem(group('Meridian'), /有时间的/),
     })
     const menu = await screen.findByRole('menu')
     const exact = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'short' }).format(at)

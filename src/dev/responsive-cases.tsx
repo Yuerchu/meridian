@@ -4,6 +4,7 @@
    renders. Fast refresh is what the rule protects, and this page is opened to
    run a sweep against a fixed set of widths — a full reload is the honest
    response to editing it anyway. */
+import './responsive-cases.css'
 import { useState } from 'react'
 
 import { Composer } from '@/components/chat/composer'
@@ -14,8 +15,7 @@ import { MarkdownContent } from '@/components/chat/markdown-content'
 import { VoiceOverlay } from '@/components/chat/voice-overlay'
 import { MasterDetail } from '@/components/settings/master-detail'
 import { useMasterDetail } from '@/components/settings/use-master-detail'
-import { Label } from '@/components/base'
-import { ListView } from '@/components/base'
+import { ListBox, ListBoxItem } from '@/components/yuerchu-ui/components/listbox/listbox'
 
 /**
  * The things worth putting in front of the detectors, and nothing else.
@@ -57,7 +57,7 @@ function noop() {}
 function ComposerCase() {
   const [value, setValue] = useState('')
   return (
-    <div data-slot="responsive-case-composer" className="p-4">
+    <div data-slot="responsive-case-composer" className="m-dev-responsive-case__pad">
       <Composer
         value={value}
         onChange={setValue}
@@ -86,7 +86,7 @@ function ComposerCase() {
           />
         }
       />
-      <p data-slot="responsive-case-note" className="mt-2 text-caption-1-regular text-text-secondary">
+      <p data-slot="responsive-case-note" className="m-dev-responsive-case__note">
         Open the <code data-slot="responsive-case-note-code">+</code> menu, the mode menu and the model panel before
         sweeping: all three are portalled, and a panel opening past the edge is what the escape detector is here to
         catch.
@@ -97,8 +97,8 @@ function ComposerCase() {
 
 function TranscriptCase() {
   return (
-    <div data-slot="responsive-case-transcript" className="p-4">
-      <div data-slot="responsive-case-bubble" className="rounded-2xl bg-background-primary-default p-3 shadow-card">
+    <div data-slot="responsive-case-transcript" className="m-dev-responsive-case__pad">
+      <div data-slot="responsive-case-bubble" className="m-dev-responsive-case__bubble">
         <MarkdownContent content={TABLE_MD} />
       </div>
     </div>
@@ -111,19 +111,17 @@ function SettingsCase() {
     // No `SettingsPane` around it, matching `ProviderSettings`: the pane caps at
     // `max-w-lg`, which would hold this below the two-column threshold at every
     // width and quietly make the case prove nothing.
-    <div data-slot="responsive-case-settings" className="p-4">
+    <div data-slot="responsive-case-settings" className="m-dev-responsive-case__pad">
       <MasterDetail
         nav={nav}
         title="Providers"
         list={
-          <ListView
+          <ListBox
             aria-label="Providers"
-            className="flex flex-col gap-1"
             selectedKeys={nav.selectedId ? new Set([nav.selectedId]) : new Set<string>()}
             selectionBehavior="replace"
             selectionMode="single"
             shouldSelectOnPressUp
-            variant="secondary"
             onSelectionChange={(keys) => {
               if (keys === 'all') return
               const id = keys.values().next().value
@@ -134,18 +132,11 @@ function SettingsCase() {
               ['openai', 'OpenAI'],
               ['anthropic', 'Anthropic'],
             ].map(([id, label]) => (
-              <ListView.Item
-                key={id}
-                id={id}
-                textValue={label}
-                className="min-h-11 rounded-lg border-b-0 px-3 py-2 data-[selected=true]:bg-background-tertiary-default data-[selected=true]:text-text-primary"
-              >
-                <ListView.ItemContent>
-                  <ListView.Title className="text-body-regular">{label}</ListView.Title>
-                </ListView.ItemContent>
-              </ListView.Item>
+              <ListBoxItem key={id} id={id} textValue={label}>
+                {label}
+              </ListBoxItem>
             ))}
-          </ListView>
+          </ListBox>
         }
         detailTitle="Anthropic"
         emptyDetail="Pick a provider"
@@ -155,21 +146,15 @@ function SettingsCase() {
             // than being it: the real panel fetches on mount. Keep the two in
             // step by hand — this exists to show what that grid does at a width,
             // and it is worth nothing if it stops looking like it.
-            <div
-              data-slot="responsive-case-price-block"
-              className="space-y-2 rounded-lg bg-background-secondary-default/30 px-3 py-3"
-            >
-              <div data-slot="responsive-case-price-grid" className="grid grid-cols-1 gap-2 @sm/pane:grid-cols-2">
+            <div data-slot="responsive-case-price-block" className="m-dev-responsive-case__price-block">
+              <div data-slot="responsive-case-price-grid" className="m-dev-responsive-case__price-grid">
                 {['Input price', 'Output price', 'Cache read', 'Cache write'].map((label) => (
-                  <Label key={label} className="block text-caption-1-regular">
-                    <span data-slot="responsive-case-price-label" className="text-text-secondary">
+                  <div key={label} className="m-dev-responsive-case__price-field">
+                    <span data-slot="responsive-case-price-label" className="m-dev-responsive-case__price-label">
                       {label}
                     </span>
-                    <span
-                      data-slot="responsive-case-price-input"
-                      className="mt-1 block h-7 rounded-md border border-border-button-default bg-field-background pointer-coarse:h-10"
-                    />
-                  </Label>
+                    <span data-slot="responsive-case-price-input" className="m-dev-responsive-case__price-input" />
+                  </div>
                 ))}
               </div>
             </div>
@@ -182,8 +167,8 @@ function SettingsCase() {
 
 function VoiceCase() {
   return (
-    <div data-slot="responsive-case-voice" className="relative h-full p-4">
-      <p data-slot="responsive-case-note" className="text-caption-1-regular text-text-secondary">
+    <div data-slot="responsive-case-voice" className="m-dev-responsive-case__voice">
+      <p data-slot="responsive-case-note" className="m-dev-responsive-case__note-flush">
         Set an IME inset in the panel: this overlay is `fixed` and outside the shell that `app-shell` pads.
       </p>
       <VoiceOverlay state="recording-hold" elapsed={12} peak={0.6} />

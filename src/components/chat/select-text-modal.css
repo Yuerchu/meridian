@@ -1,0 +1,29 @@
+@layer components {
+  /* Portalled to the body, so no ancestor's inset reaches it: add the native
+     safe-area insets directly to the full-screen modal box. */
+  .ui-dialog.m-select-text-modal {
+    padding-block-start: var(--safe-top);
+    padding-block-end: var(--safe-bottom);
+    padding-inline-start: var(--safe-left);
+    padding-inline-end: var(--safe-right);
+  }
+
+  /* user-select explicitly: the dialog is portalled out of the message, but the
+     transcript is not the only ancestor that turns selection off, and this is
+     the one place that must have it. */
+  .m-select-text-modal__text {
+    margin: 0;
+    font: var(--text-body);
+    line-height: 1.625;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    user-select: text;
+  }
+
+  .m-select-text-modal__error {
+    margin: var(--space-3) 0 0;
+    font: var(--text-body);
+    color: var(--danger-fg);
+    overflow-wrap: anywhere;
+  }
+}

@@ -1,0 +1,51 @@
+@layer components {
+  .m-voice-corpus__notice,
+  .m-voice-corpus__empty,
+  .m-voice-corpus__loading,
+  .m-voice-corpus__summary {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-voice-corpus__empty,
+  .m-voice-corpus__loading {
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-voice-corpus__loading,
+  .m-voice-corpus__forget {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-voice-corpus__forget {
+    width: 100%;
+  }
+
+  .m-voice-corpus__export {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-voice-corpus__title {
+    display: block;
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-voice-corpus__summary {
+    white-space: normal;
+  }
+
+  .m-voice-corpus__sender {
+    min-width: 0;
+    flex: 1;
+  }
+}

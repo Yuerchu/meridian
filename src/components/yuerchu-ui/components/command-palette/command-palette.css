@@ -1,0 +1,146 @@
+@layer components {
+  .ui-command-palette__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    box-sizing: border-box;
+    padding: 15dvh var(--space-4) var(--space-4);
+    background: var(--overlay);
+  }
+
+  .ui-command-palette__overlay[data-entering] {
+    animation: ui-command-palette-fade var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-command-palette__overlay[data-exiting] {
+    animation: ui-command-palette-fade var(--dur-fast) var(--ease-exit) reverse forwards;
+  }
+
+  .ui-command-palette {
+    --ui-popover-padding: var(--space-2); /* 菜单项圆角按它算同心 */
+
+    box-sizing: border-box;
+    width: min(560px, 100%);
+    max-height: 100%;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-surface);
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-floating);
+    outline: 1px solid transparent;
+    overflow: hidden;
+  }
+
+  .ui-command-palette[data-entering] {
+    animation: ui-command-palette-in var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-command-palette[data-exiting] {
+    animation: ui-command-palette-fade var(--dur-fast) var(--ease-exit) reverse forwards;
+  }
+
+  .ui-command-palette__dialog {
+    display: flex;
+    flex-direction: column;
+    max-height: min(70dvh, 520px);
+    outline: 1px solid transparent;
+  }
+
+  /* ---------- 搜索框 ---------- */
+  .ui-command-palette__search {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-5);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .ui-command-palette__search-icon {
+    flex: none;
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    color: var(--text-secondary);
+  }
+
+  .ui-command-palette__spinner {
+    flex: none;
+  }
+
+  .ui-command-palette__input {
+    flex: 1;
+    min-width: 0;
+    height: calc(var(--control-lg) + var(--space-4));
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text);
+    font: var(--text-body-lg);
+  }
+
+  .ui-command-palette__input::placeholder {
+    color: var(--text-secondary);
+    opacity: 1;
+  }
+
+  /* 浏览器自带的搜索框清除按钮：Esc 已经能清空 */
+  .ui-command-palette__input::-webkit-search-cancel-button {
+    display: none;
+  }
+
+  /* ---------- 结果 ---------- */
+  .ui-command-palette__list {
+    flex: 1;
+    min-height: 0;
+    padding: var(--ui-popover-padding);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-command-palette__empty {
+    padding: var(--space-8) var(--space-4);
+    color: var(--text-secondary);
+    font: var(--text-body);
+    text-align: center;
+  }
+
+  .ui-command-palette__footer {
+    display: flex;
+    flex: none;
+    gap: var(--space-4);
+    padding: var(--space-2) var(--space-5);
+    border-block-start: 1px solid var(--border);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-command-palette__footer > span {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  @keyframes ui-command-palette-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ui-command-palette-in {
+    from {
+      opacity: 0;
+      scale: var(--enter-scale);
+    }
+  }
+
+  /* 窄屏：键盘提示没用，去掉 */
+  @media (pointer: coarse) {
+    .ui-command-palette__footer {
+      display: none;
+    }
+  }
+}

@@ -1,7 +1,10 @@
+import './mermaid-fence.css'
+import './view-switch.css'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Segment, Skeleton } from '@/components/base'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
 import { CopyButton } from '@/components/ui/copy-button'
 import { errorMessage } from '@/lib/error-message'
 import { renderMermaid, type MermaidImage } from '@/lib/mermaid'
@@ -41,52 +44,57 @@ export function MermaidFence({ code, icon }: { code: string; icon: string | unde
   const showSource = view === 'source' || drawing.status === 'failed'
 
   return (
-    <div data-slot="markdown-code-block" className="code-block not-prose my-3 rounded-xl">
+    <div data-slot="markdown-code-block" className="code-block m-mermaid__block">
       <div data-slot="markdown-code-header" className="code-block__header">
-        {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
-        <span data-slot="markdown-code-language" className="text-caption-1-regular text-text-secondary">
+        {icon && <img data-slot="markdown-code-icon" src={icon} alt="" aria-hidden className="m-mermaid__icon" />}
+        <span data-slot="markdown-code-language" className="m-mermaid__language">
           mermaid
         </span>
         {drawing.status !== 'failed' && (
-          <Segment
-            aria-label={t('chat.mermaid.view')}
-            size="sm"
-            selectedKey={view}
-            onSelectionChange={(next) => {
-              if (next === 'diagram' || next === 'source') setView(next)
-            }}
-            className="ms-auto"
-          >
-            <Segment.Item id="diagram">{t('chat.mermaid.diagram')}</Segment.Item>
-            <Segment.Item id="source">{t('chat.mermaid.source')}</Segment.Item>
-          </Segment>
+          <div className="m-mermaid__view">
+            <SegmentedControl
+              aria-label={t('chat.mermaid.view')}
+              size="sm"
+              selectedKey={view}
+              onSelectionChange={(next) => {
+                if (next === 'diagram' || next === 'source') setView(next)
+              }}
+            >
+              <Segment id="diagram">{t('chat.mermaid.diagram')}</Segment>
+              <Segment id="source">{t('chat.mermaid.source')}</Segment>
+            </SegmentedControl>
+          </div>
         )}
-        <CopyButton text={code} className={drawing.status === 'failed' ? 'touch-hitbox ms-auto' : 'touch-hitbox'} />
+        <span className="m-mermaid__copy" data-auto={drawing.status === 'failed' || undefined}>
+          <CopyButton text={code} />
+        </span>
       </div>
       {drawing.status === 'failed' && (
-        <p
-          data-slot="mermaid-error"
-          role="alert"
-          className="px-3 pt-2 text-caption-1-regular text-status-danger wrap-break-word"
-        >
+        <p data-slot="mermaid-error" role="alert" className="m-mermaid__error">
           {t('chat.mermaid.failed', { error: drawing.reason })}
         </p>
       )}
       {showSource ? (
         <ShikiCode code={code} language="mermaid" />
       ) : drawing.status === 'drawn' ? (
-        <div data-slot="mermaid-diagram" className="overflow-x-auto p-3">
+        <div data-slot="mermaid-diagram" className="m-mermaid__diagram">
           <img
             src={drawing.image.src}
             width={drawing.image.width}
             height={drawing.image.height}
             alt={t('chat.mermaid.alt')}
-            className="mx-auto h-auto max-w-full"
+            className="m-mermaid__image"
           />
         </div>
       ) : (
-        <div data-slot="mermaid-drawing" role="status" aria-busy aria-label={t('chat.mermaid.drawing')} className="p-3">
-          <Skeleton className="h-32 w-full rounded-lg" />
+        <div
+          data-slot="mermaid-drawing"
+          role="status"
+          aria-busy
+          aria-label={t('chat.mermaid.drawing')}
+          className="m-mermaid__drawing"
+        >
+          <Skeleton shape="rect" width="100%" height="8rem" />
         </div>
       )}
     </div>

@@ -1,175 +1,84 @@
-/* Meridian's own semantic layer on top of boardui's theme.
+/* Meridian's own layer on Yuerchu UI's tokens.
  *
- * boardui (`theme.css`) has no generic status colours — it has chip and
- * notification tints — and no notion of a chat bubble. What this app needs
- * beyond the registry lives here, defined against boardui's primitives so a
- * rebrand through `data-accent` or a palette change reaches it. Nothing in
- * this file restates a token boardui already has.
+ * What the app needs that a component library has no business knowing: who is
+ * speaking in the transcript, the insets a native shell reports, the one width
+ * every settings page has, the mark a jump leaves behind. Everything here is
+ * defined against the library's semantic tokens (src/components/yuerchu-ui/
+ * styles/tokens.css), so the dark theme and the reduced-motion mode reach it
+ * without an override of its own unless one is written below. Nothing here
+ * restates a token the library already has: a status colour is --success-bg /
+ * --danger-fg, not a second spelling of it.
  */
 
-/* Markdown bubbles and the plan editor use `prose`. globals.css is the
-   registry's file and does not load this plugin, so it is loaded here. */
-@plugin "@tailwindcss/typography";
+@layer theme {
+  :root {
+    /* Insets the native shell reports (`use-android-insets.ts`), with the CSS
+       environment as the fallback for a plain WebView. Zero on a desktop. */
+    --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
+    --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
+    --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 
-@theme {
-  /* Fonts are not set here: theme.css reads --font-inter and
-     --font-mono-source, which src/styles/fonts.css defines. */
-
-  /* A sheet's slide and its spring back after a drag share one curve, so the
-     panel returning to rest reads as the same object that slid in. */
-  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
-
-  /* The one width every settings page has. The registry's settings-modal
-     content pane: an 871px panel less its 274px nav rail, the rail's 1px rule
-     and the pane's 32px padding each side — 532px. Every section of that modal
-     shares it, tables included (settings-storage's file list), so a page that
-     changes width as you move between sections is a layout nobody drew. */
-  --container-settings: 33.25rem;
-}
-
-:root {
-  /* Status. `*-soft` is the tinted fill behind a status message or chip and
-     `*-soft-foreground` the text that sits on a light panel: the base colours
-     are tuned as fills and green/amber at that weight do not clear AA as text. */
-  --status-success: var(--color-green-600);
-  --status-success-foreground: var(--color-white);
-  --status-success-soft: color-mix(in srgb, var(--color-green-500) 14%, transparent);
-  --status-success-soft-hover: color-mix(in srgb, var(--color-green-500) 22%, transparent);
-  --status-success-soft-foreground: var(--color-green-700);
-
-  --status-warning: var(--color-amber-500);
-  --status-warning-foreground: var(--color-neutral-950);
-  --status-warning-soft: color-mix(in srgb, var(--color-amber-500) 16%, transparent);
-  --status-warning-soft-hover: color-mix(in srgb, var(--color-amber-500) 24%, transparent);
-  --status-warning-soft-foreground: var(--color-amber-700);
-
-  --status-danger: var(--color-red-600);
-  --status-danger-foreground: var(--color-white);
-  --status-danger-soft: color-mix(in srgb, var(--color-red-500) 12%, transparent);
-  --status-danger-soft-hover: color-mix(in srgb, var(--color-red-500) 20%, transparent);
-  --status-danger-soft-foreground: var(--color-red-700);
-
-  --status-info: var(--color-blue-500);
-  --status-info-foreground: var(--color-white);
-  --status-info-soft: color-mix(in srgb, var(--color-blue-500) 12%, transparent);
-  --status-info-soft-hover: color-mix(in srgb, var(--color-blue-500) 20%, transparent);
-  --status-info-soft-foreground: var(--color-blue-700);
-}
-
-.dark {
-  --status-success: var(--color-green-500);
-  --status-success-foreground: var(--color-neutral-950);
-  --status-success-soft: color-mix(in srgb, var(--color-green-500) 16%, transparent);
-  --status-success-soft-hover: color-mix(in srgb, var(--color-green-500) 24%, transparent);
-  --status-success-soft-foreground: var(--color-green-400);
-
-  --status-warning: var(--color-amber-400);
-  --status-warning-foreground: var(--color-neutral-950);
-  --status-warning-soft: color-mix(in srgb, var(--color-amber-400) 16%, transparent);
-  --status-warning-soft-hover: color-mix(in srgb, var(--color-amber-400) 24%, transparent);
-  --status-warning-soft-foreground: var(--color-amber-300);
-
-  --status-danger: var(--color-red-500);
-  --status-danger-foreground: var(--color-white);
-  --status-danger-soft: color-mix(in srgb, var(--color-red-500) 16%, transparent);
-  --status-danger-soft-hover: color-mix(in srgb, var(--color-red-500) 24%, transparent);
-  --status-danger-soft-foreground: var(--color-red-400);
-
-  --status-info: var(--color-blue-400);
-  --status-info-foreground: var(--color-neutral-950);
-  --status-info-soft: color-mix(in srgb, var(--color-blue-400) 16%, transparent);
-  --status-info-soft-hover: color-mix(in srgb, var(--color-blue-400) 24%, transparent);
-  --status-info-soft-foreground: var(--color-blue-300);
-}
-
-@theme inline {
-  --color-status-success: var(--status-success);
-  --color-status-success-foreground: var(--status-success-foreground);
-  --color-status-success-soft: var(--status-success-soft);
-  --color-status-success-soft-hover: var(--status-success-soft-hover);
-  --color-status-success-soft-foreground: var(--status-success-soft-foreground);
-
-  --color-status-warning: var(--status-warning);
-  --color-status-warning-foreground: var(--status-warning-foreground);
-  --color-status-warning-soft: var(--status-warning-soft);
-  --color-status-warning-soft-hover: var(--status-warning-soft-hover);
-  --color-status-warning-soft-foreground: var(--status-warning-soft-foreground);
-
-  --color-status-danger: var(--status-danger);
-  --color-status-danger-foreground: var(--status-danger-foreground);
-  --color-status-danger-soft: var(--status-danger-soft);
-  --color-status-danger-soft-hover: var(--status-danger-soft-hover);
-  --color-status-danger-soft-foreground: var(--status-danger-soft-foreground);
-
-  --color-status-info: var(--status-info);
-  --color-status-info-foreground: var(--status-info-foreground);
-  --color-status-info-soft: var(--status-info-soft);
-  --color-status-info-soft-hover: var(--status-info-soft-hover);
-  --color-status-info-soft-foreground: var(--status-info-soft-foreground);
-}
-
-/* Motion boardui does not ship: a sheet's slide (a translate cannot be a
-   transition from `data-entering` alone). */
-@keyframes meridian-sheet-in-right {
-  from {
-    transform: translateX(100%);
+    /* The one width every settings page has: moving between sections must not
+       move the column under the reader. */
+    --content-settings: 33.25rem;
   }
 }
-@keyframes meridian-sheet-out-right {
-  to {
-    transform: translateX(100%);
+
+@layer base {
+  /* Minimal preflight replacing Tailwind's reset: Yuerchu UI's base.css sets
+     typography, focus and scrollbars, but leaves native browser button chrome
+     and default heading/paragraph margins untouched. Living in `@layer base`
+     ensures every `@layer components` rule (both Yuerchu UI and `.m-*`) wins. */
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+
+  button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  p,
+  blockquote,
+  figure,
+  dl,
+  dd,
+  pre {
+    margin: 0;
   }
 }
-@keyframes meridian-sheet-in-left {
-  from {
-    transform: translateX(-100%);
-  }
-}
-@keyframes meridian-sheet-out-left {
-  to {
-    transform: translateX(-100%);
-  }
-}
-@keyframes meridian-sheet-in-top {
-  from {
-    transform: translateY(-100%);
-  }
-}
-@keyframes meridian-sheet-out-top {
-  to {
-    transform: translateY(-100%);
-  }
-}
-@keyframes meridian-sheet-in-bottom {
-  from {
-    transform: translateY(100%);
-  }
-}
-@keyframes meridian-sheet-out-bottom {
-  to {
-    transform: translateY(100%);
-  }
-}
-@keyframes meridian-rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px) scale(0.97);
-    filter: blur(3px);
-  }
-}
+
 /* The question of a turn a jump landed on (`lib/arrival-flash.ts`): held,
    then faded back to the bubble's own fill. A wash of the bubble's ink over
    its fill, as anything drawn on a bubble is — never the accent, which is not
-   a highlight. Reduced motion takes the animation away, as every keyframe's
-   guard does (motion.md), and keeps the mark as a plain fill for as long as
-   the attribute is there: the reader still needs to see where they landed. */
+   a highlight. With motion reduced the fade goes and the mark stays as a plain
+   fill for as long as the attribute is there: the reader still needs to see
+   where they landed. */
 [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
   --arrival-wash: color-mix(
-    in oklch,
-    var(--bubble-fill, var(--bubble-assistant)),
-    var(--bubble-ink, var(--bubble-assistant-foreground)) 14%
+    in srgb,
+    var(--ui-bubble-fill, var(--surface-muted)),
+    var(--ui-bubble-ink, var(--text)) 14%
   );
-  animation: meridian-arrival 1400ms ease-out;
+  animation: meridian-arrival var(--dur-linger) var(--ease-standard);
 }
 @keyframes meridian-arrival {
   0%,
@@ -177,164 +86,71 @@
     background-color: var(--arrival-wash);
   }
 }
+:root[data-motion='reduced'] [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+  animation: none;
+  background-color: var(--arrival-wash);
+}
 @media (prefers-reduced-motion: reduce) {
-  [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
+  :root:not([data-motion='standard']) [data-arrival] [data-slot='message-group'][data-align='end'] [data-bubble-block] {
     animation: none;
     background-color: var(--arrival-wash);
-  }
-  /* BoardUI's label swap (globals.css) ships without a guard of its own, and
-     that file is vendored. The outgoing label goes at once, the new one is
-     simply there. */
-  .animate-label-out {
-    animation: none;
-    opacity: 0;
-  }
-  .animate-label-in {
-    animation: none;
-  }
-}
-
-/* ---------------------------------------------------------------- app-level */
-
-:root {
-  /* The two bubble fills of the transcript. Who is speaking is the one colour
-     on screen that carries meaning, so it is a token of its own rather than the
-     action colour or the hover wash written at the call site — and it stays
-     neutral while `accent` is boardui blue. */
-  /* The person's bubble is the registry's user message
-     (`agent-chat-message.tsx`): a white card, `text-text-primary`,
-     `shadow-card`, on the chat's `background-secondary` surface. Semantic
-     tokens, so the dark theme needs no override of its own. */
-  --bubble-user: var(--color-background-primary-default);
-  --bubble-user-foreground: var(--color-text-primary);
-  --bubble-user-shadow: var(--shadow-card);
-  /* The registry draws no bubble for the model; ours stays, and has to read
-     against the chat surface (`background-secondary-default`, neutral-100 in
-     light) *and* against the white user card. One step darker than the
-     surface does both. */
-  --bubble-assistant: var(--color-neutral-200);
-  --bubble-assistant-foreground: var(--color-neutral-950);
-
-  --scrollbar-thumb: var(--color-neutral-200);
-  --scrollbar-track: transparent;
-
-  /* Insets the native shell reports (`use-android-insets.ts`), with the CSS
-     environment as the fallback for a plain WebView. Zero on a desktop. */
-  --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
-  --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
-  --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
-  --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
-}
-
-.dark {
-  /* Two steps lighter than the chat surface (boardui's dark
-     `background-secondary-default` is neutral-900) and one past the user card
-     (`background-primary-default`, neutral-800) — a bubble the colour of its
-     background, or of the other speaker's, is no bubble. */
-  --bubble-assistant: var(--color-neutral-700);
-  --bubble-assistant-foreground: var(--color-neutral-50);
-
-  --scrollbar-thumb: color-mix(in srgb, var(--color-white) 12%, transparent);
-}
-
-@theme inline {
-  --color-bubble-user: var(--bubble-user);
-  --color-bubble-user-foreground: var(--bubble-user-foreground);
-  --color-bubble-assistant: var(--bubble-assistant);
-  --color-bubble-assistant-foreground: var(--bubble-assistant-foreground);
-
-  --animate-spin-fast: spin 0.75s linear infinite;
-  --animate-skeleton: skeleton 2s linear infinite;
-  --animate-caret-blink: caret-blink 1.2s ease-out infinite;
-
-  @keyframes skeleton {
-    100% {
-      transform: translateX(200%);
-    }
-  }
-  @keyframes caret-blink {
-    0%,
-    70%,
-    100% {
-      opacity: 1;
-    }
-    20%,
-    50% {
-      opacity: 0;
-    }
-  }
-}
-
-@layer base {
-  /* Every box's default edge colour, so a bare `border` draws the hairline. */
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-border-button-default, currentColor);
   }
 }
 
 /* The fenced code block. `markdown-content.tsx` draws the shell and the header;
    `shiki-code.tsx`, `numbered-code.tsx` and `file-preview.tsx` share
    `code-block__code` so a file read in a tool panel matches a fence in the
-   answer. The class names were HeroUI's and the rules left with its stylesheet:
-   the header lost its row, the block its well, and every token its colour —
-   Shiki writes both themes onto each span (`--shiki-light` / `--shiki-dark`,
-   `lib/shiki.ts`) and only a rule can pick the side. The well is boardui's own
-   code token. `components` rather than unlayered so a utility on the same
-   element still wins: `numbered-code` overrides the padding and the overflow. */
+   answer. Shiki writes both themes onto each span (`--shiki-light` /
+   `--shiki-dark`, `lib/shiki.ts`) and only a rule can pick the side. */
 @layer components {
   .code-block {
     overflow: clip;
-    border: 1px solid var(--color-border-button-default);
-    background-color: var(--color-docs-code-background);
+    border: 1px solid var(--border);
+    background-color: var(--surface-sunken);
   }
   .code-block__header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.25rem 0.25rem 0.25rem 0.75rem;
-    border-bottom: 1px solid var(--color-separator-border);
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--border);
   }
   .code-block__code {
     overflow-x: auto;
-    padding: 0.75rem;
-    font-family: var(--font-mono);
-    font-size: var(--text-caption-1-regular);
-    line-height: 1.25rem;
+    padding: var(--space-3);
+    font: var(--text-code);
   }
-  .code-block__code span[style] {
+  .code-block__code span[style],
+  [data-slot='file-diff-highlighted'] span[style] {
     color: var(--shiki-light);
     font-style: var(--shiki-light-font-style, inherit);
   }
-  .dark .code-block__code span[style] {
+  :root[data-theme='dark'] .code-block__code span[style],
+  :root[data-theme='dark'] [data-slot='file-diff-highlighted'] span[style] {
     color: var(--shiki-dark);
     font-style: var(--shiki-dark-font-style, inherit);
   }
 }
 
-/* Scrollbars. Chromium ignores `scrollbar-width` once ::-webkit-scrollbar is
-   sized, so these are the answer everywhere; `scrollbar-none` still hides. */
-@utility scrollbar-none {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
+@layer base {
+  html {
+    height: 100%;
+    overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
+    /* Kills double-tap-to-zoom, which the viewport meta alone does not always
+       reach, and with it the 300ms wait a WebView spends deciding whether a tap
+       was the first of two. Panning and pinching inside a scroller still work —
+       this only declines the browser's own zoom gestures. */
+    touch-action: manipulation;
   }
-}
-@utility scrollbar-gutter-stable {
-  scrollbar-gutter: stable;
-}
-@utility scrollbar-thumb-transparent {
-  scrollbar-color: transparent transparent;
-  &::-webkit-scrollbar-thumb {
-    background-color: transparent;
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
   }
-}
-@utility scrollbar-track-transparent {
-  scrollbar-color: transparent transparent;
-  &::-webkit-scrollbar-track {
-    background: transparent;
+  body {
+    -webkit-font-smoothing: antialiased;
   }
 }

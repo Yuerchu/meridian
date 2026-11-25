@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { LocalModelSettings } from './local-model-settings'
-import { SettingsCard } from '../primitives'
+import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { api } from '@/api'
 import i18n from '@/i18n'
 import { demoLocalModel } from '@/dev/demo/local-model'
@@ -20,7 +20,7 @@ const path = 'C:/Models/custom-12b-gpu.litertlm'
 
 function panel(modelPath = path, backend: LocalInferenceBackend = 'gpu', onChange = vi.fn()) {
   return (
-    <SettingsCard>
+    <SettingsGroup>
       <LocalModelSettings
         key={`${modelPath}:${backend}`}
         providerId="p1"
@@ -28,7 +28,7 @@ function panel(modelPath = path, backend: LocalInferenceBackend = 'gpu', onChang
         backend={backend}
         onBackendChange={onChange}
       />
-    </SettingsCard>
+    </SettingsGroup>
   )
 }
 

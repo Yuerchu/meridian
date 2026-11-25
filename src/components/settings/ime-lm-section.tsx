@@ -1,17 +1,13 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import './ime-lm-section.css'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import {
-  Alert,
-  Button,
-  Chip,
-  ItemCard,
-  ItemCardGroup,
-  Separator,
-  Spinner,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Bin } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
@@ -65,8 +61,8 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
     const name = bundle.id ?? bundle.dir_name
     if (
       !(await confirm({
-        body: t('settings.ime.lm.removeConfirm', { name }),
-        status: 'danger',
+        description: t('settings.ime.lm.removeConfirm', { name }),
+        tone: 'danger',
         confirmLabel: t('common.delete'),
       }))
     )
@@ -89,110 +85,99 @@ export function ImeLmSection({ canImport }: { canImport: boolean }) {
   }
 
   return (
-    <div data-slot="ime-lm" className="space-y-1.5">
-      <div data-slot="ime-lm-head" className="flex items-center justify-between gap-3">
-        <p data-slot="ime-lm-label" className="text-caption-1-medium text-text-secondary">
+    <div data-slot="ime-lm" className="m-ime-lm">
+      <div data-slot="ime-lm-head" className="m-ime-lm__head">
+        <p data-slot="ime-lm-label" className="m-ime-lm__label">
           {t('settings.ime.lm.title')}
         </p>
         {can.importFromDisk && canImport && (
-          <Button size="small" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
+          <Button size="sm" variant="secondary" onPress={handleImport} isDisabled={busy} isPending={busy}>
             {t('settings.ime.lm.import')}
           </Button>
         )}
       </div>
 
       {status === null && !error && (
-        <p data-slot="ime-lm-loading" role="status" className="flex items-center gap-2">
-          <Spinner size="sm" />
-        </p>
+        <div data-slot="ime-lm-loading">
+          <Spinner size="sm" aria-label={t('common.loading')} />
+        </div>
       )}
 
       {status && !status.runtime_found && status.bundles.length > 0 && (
-        <Alert status="warning">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description>{t('settings.ime.lm.noRuntime')}</Alert.Description>
-          </Alert.Content>
-        </Alert>
+        <Alert tone="warning">{t('settings.ime.lm.noRuntime')}</Alert>
       )}
 
       {status &&
         (status.bundles.length === 0 ? (
-          <p data-slot="ime-lm-empty" className="text-caption-1-regular text-text-secondary">
+          <p data-slot="ime-lm-empty" className="m-ime-lm__hint">
             {t('settings.ime.lm.empty')}
           </p>
         ) : (
-          <ItemCardGroup variant="outline">
-            {status.bundles.map((bundle, index) => {
+          <SettingsGroup>
+            {status.bundles.map((bundle) => {
               const name = bundle.id ?? bundle.dir_name
               return (
-                <Fragment key={bundle.dir_name}>
-                  {index > 0 && <Separator />}
-                  <ItemCard>
-                    <ItemCard.Content className="min-w-0">
-                      <ItemCard.Title className="flex w-full items-center gap-2">
-                        <span data-slot="ime-lm-name" onPointerEnter={titleIfTruncated} className="truncate">
-                          {name}
-                        </span>
-                        {status.active === bundle.dir_name && (
-                          <Chip size="sm" color="success" variant="soft">
-                            {t('settings.ime.lm.active')}
-                          </Chip>
-                        )}
-                        {bundle.personal && (
-                          <Chip size="sm" variant="soft">
-                            {t('settings.ime.lm.personal')}
-                          </Chip>
-                        )}
-                      </ItemCard.Title>
-                      <ItemCard.Description className="w-full whitespace-normal break-all">
-                        {bundle.error
-                          ? t('settings.ime.lm.broken', { error: bundle.error })
-                          : t('settings.ime.lm.detail', { version: bundle.version, license: bundle.license })}
-                      </ItemCard.Description>
-                    </ItemCard.Content>
-                    <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
-                        <Button
-                          iconOnly
-                          leadingIcon={Bin}
-                          size="small"
-                          variant="neutral"
-                          aria-label={t('settings.ime.lm.remove', { name })}
-                          onPress={() => handleRemove(bundle)}
-                        />
-                        <Tooltip>{t('settings.ime.lm.remove', { name })}</Tooltip>
-                      </TooltipTrigger>
-                    </ItemCard.Action>
-                  </ItemCard>
-                </Fragment>
+                <SettingsRow
+                  key={bundle.dir_name}
+                  label={
+                    <span className="m-ime-lm__title">
+                      <span data-slot="ime-lm-name" onPointerEnter={titleIfTruncated} className="m-ime-lm__name">
+                        {name}
+                      </span>
+                      {status.active === bundle.dir_name && (
+                        <Badge size="sm" tone="success">
+                          {t('settings.ime.lm.active')}
+                        </Badge>
+                      )}
+                      {bundle.personal && <Badge size="sm">{t('settings.ime.lm.personal')}</Badge>}
+                    </span>
+                  }
+                  description={
+                    <span className="m-ime-lm__detail">
+                      {bundle.error
+                        ? t('settings.ime.lm.broken', { error: bundle.error })
+                        : t('settings.ime.lm.detail', { version: bundle.version, license: bundle.license })}
+                    </span>
+                  }
+                >
+                  <TooltipTrigger>
+                    <Button
+                      icon={<Bin />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('settings.ime.lm.remove', { name })}
+                      onPress={() => handleRemove(bundle)}
+                    />
+                    <Tooltip>{t('settings.ime.lm.remove', { name })}</Tooltip>
+                  </TooltipTrigger>
+                </SettingsRow>
               )
             })}
-          </ItemCardGroup>
+          </SettingsGroup>
         ))}
 
-      <p data-slot="ime-lm-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="ime-lm-hint" className="m-ime-lm__hint">
         {t('settings.ime.lm.hint')}
       </p>
 
-      <div data-slot="ime-hints" className="flex items-center gap-3 pt-1">
-        <Button size="small" variant="secondary" onPress={handleRefreshHints}>
+      <div data-slot="ime-hints" className="m-ime-lm__hints">
+        <Button size="sm" variant="secondary" onPress={handleRefreshHints}>
           {t('settings.ime.hints.refresh')}
         </Button>
         {hints !== null && (
-          <span data-slot="ime-hints-done" role="status" className="text-caption-1-regular text-text-secondary">
+          <span data-slot="ime-hints-done" role="status" className="m-ime-lm__hint">
             {t('settings.ime.hints.done', { count: hints })}
           </span>
         )}
       </div>
-      <p data-slot="ime-hints-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="ime-hints-hint" className="m-ime-lm__hint">
         {t('settings.ime.hints.hint')}
       </p>
 
       {error && (
-        <p data-slot="ime-lm-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="ime-lm-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
       {confirmDialog}
     </div>

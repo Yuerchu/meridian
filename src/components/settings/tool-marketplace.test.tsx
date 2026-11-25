@@ -33,7 +33,7 @@ beforeEach(async () => {
 
 it('preserves disabled multiline legacy source, cwd, schema, and nullable timeout on save', async () => {
   const user = userEvent.setup()
-  render(<CustomToolEditor tool={legacy} onSaved={vi.fn()} onCancel={vi.fn()} />)
+  render(<CustomToolEditor tool={legacy} onSave={vi.fn()} />)
   expect(screen.getByLabelText(/Preserved legacy command/).tagName).toBe('TEXTAREA')
   expect(screen.getByLabelText(/Preserved legacy arguments/)).toHaveValue(legacy.args_template)
   await user.click(screen.getByRole('button', { name: /Save/ }))
@@ -54,7 +54,7 @@ it('preserves disabled multiline legacy source, cwd, schema, and nullable timeou
 
 it('explicitly converts a legacy tool and enables its typed definition', async () => {
   const user = userEvent.setup()
-  render(<CustomToolEditor tool={legacy} onSaved={vi.fn()} onCancel={vi.fn()} />)
+  render(<CustomToolEditor tool={legacy} onSave={vi.fn()} />)
   const execution = { kind: 'script', script: 'printf "%s" "$1"', args: [{ kind: 'parameter', name: 'input' }] }
   fireEvent.change(screen.getByLabelText(/Execution definition/), { target: { value: JSON.stringify(execution) } })
   await user.click(screen.getByRole('button', { name: /Save/ }))
@@ -68,8 +68,7 @@ it('does not enable an already-safe disabled tool when editing it', async () => 
   render(
     <CustomToolEditor
       tool={{ ...legacy, execution: { kind: 'executable', program: 'echo', args: [] } }}
-      onSaved={vi.fn()}
-      onCancel={vi.fn()}
+      onSave={vi.fn()}
     />,
   )
   await user.click(screen.getByRole('button', { name: /Save/ }))

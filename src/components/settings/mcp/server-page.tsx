@@ -1,22 +1,26 @@
+import './server-page.css'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bin, Cable, Plug } from '@keyline-icons/react/two-tone'
-import { Alert, Button, Input, Switch, TextArea } from '@/components/base'
-import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { parseStringArrayText } from '@/lib/strict-json'
 import { api } from '@/api'
 import type { McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
-import { SavedHint, SettingsCard, SettingsRow, SettingsSection, SettingsSkeleton } from '../primitives'
+import { SavedHint, SettingsSkeleton } from '../primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { formatDefinitionTokens } from './format'
 import { SettingsPage } from '../settings-page'
 import { useSettingsDraft, type SettingsStack } from '../settings-stack'
 import { KeyValueEditor } from './key-value-editor'
 import { KeyValueError, pairsFromRecord, pairsSignature, recordFromPairs, type KeyValuePair } from './key-value'
 import { titleIfTruncated } from '@/lib/truncation'
-
 type ConfirmFn = SettingsStack<unknown>['confirm']
-
 /**
  * One MCP server, fetched by id.
  *
@@ -37,7 +41,6 @@ export function McpServerPage({
   const [server, setServer] = useState<McpServerInfoResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
-
   const refresh = useCallback(async () => {
     try {
       const list = await api.listMcpServers()
@@ -47,27 +50,23 @@ export function McpServerPage({
       setLoadError(String(reason))
     }
   }, [serverId])
-
   useEffect(() => {
     void refresh().finally(() => setLoading(false))
   }, [refresh])
-
   if (loading) return <SettingsSkeleton />
-
   if (!server) {
     return (
       <SettingsPage title={t('settings.mcp.title')}>
-        <Alert status={loadError ? 'danger' : 'warning'} role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{loadError ? t('settings.mcp.loadError') : t('settings.mcp.serverGone')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
-          </Alert.Content>
+        <Alert
+          tone={loadError ? 'danger' : 'warning'}
+          shouldAnnounce
+          heading={<>{loadError ? t('settings.mcp.loadError') : t('settings.mcp.serverGone')}</>}
+        >
+          {loadError}
         </Alert>
       </SettingsPage>
     )
   }
-
   return (
     <McpServerEditor
       key={server.id}
@@ -78,7 +77,6 @@ export function McpServerPage({
     />
   )
 }
-
 function McpServerEditor({
   server,
   confirm,
@@ -108,7 +106,6 @@ function McpServerEditor({
   const [error, setError] = useState<string | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
-
   const signature = (draft: {
     name: string
     transportType: string
@@ -141,7 +138,6 @@ function McpServerEditor({
   const currentSignature = signature({ name, transportType, command, args, env, url, headers })
   const dirty = currentSignature !== savedSignature
   useSettingsDraft('mcp', 'mcp-server-editor', dirty)
-
   useEffect(() => {
     let cancelled = false
     setError(null)
@@ -165,7 +161,6 @@ function McpServerEditor({
       cancelled = true
     }
   }, [server.id])
-
   const describeKeyValueError = useCallback(
     (reason: unknown, field: string) => {
       if (!(reason instanceof KeyValueError)) return String(reason)
@@ -175,7 +170,6 @@ function McpServerEditor({
     },
     [t],
   )
-
   const handleSave = useCallback(async () => {
     const request: Parameters<typeof api.updateMcpServer>[0] = { id: server.id, name, transportType }
     try {
@@ -225,7 +219,6 @@ function McpServerEditor({
     onSaved,
     t,
   ])
-
   const handleConnect = useCallback(async () => {
     setConnecting(true)
     setError(null)
@@ -239,7 +232,6 @@ function McpServerEditor({
       setConnecting(false)
     }
   }, [server.id])
-
   const handleDisconnect = useCallback(async () => {
     try {
       await api.disconnectMcpServer(server.id)
@@ -249,7 +241,6 @@ function McpServerEditor({
       setError(String(reason))
     }
   }, [server.id])
-
   const handleToggleAutoConnect = useCallback(
     async (next: boolean) => {
       const previous = autoConnect
@@ -266,7 +257,6 @@ function McpServerEditor({
     },
     [server.id, autoConnect],
   )
-
   const handleToggleTool = useCallback(
     async (toolName: string, next: boolean) => {
       const previous = tools
@@ -281,9 +271,15 @@ function McpServerEditor({
     },
     [server.id, tools],
   )
-
   const handleDelete = useCallback(async () => {
-    if (!(await confirm({ body: t('settings.confirmDelete.mcpServer'), confirmLabel: t('common.delete') }))) return
+    if (
+      !(await confirm({
+        description: t('settings.confirmDelete.mcpServer'),
+        confirmLabel: t('common.delete'),
+        tone: 'danger',
+      }))
+    )
+      return
     setDeleting(true)
     try {
       await api.deleteMcpServer(server.id)
@@ -294,17 +290,15 @@ function McpServerEditor({
     }
     onDeleted()
   }, [confirm, t, server.id, onDeleted])
-
   const isHttp = transportType === 'streamablehttp'
   const transportLabel = isHttp ? t('settings.mcp.transportHttp') : t('settings.mcp.transportStdio')
-
   return (
     <SettingsPage
       title={server.name}
       subtitle={transportLabel}
       footer={
         <>
-          <Button size="small" onPress={() => void handleSave()} isDisabled={!dirty} isPending={saving}>
+          <Button size="sm" onPress={() => void handleSave()} isDisabled={!dirty} isPending={saving}>
             {t('common.save')}
           </Button>
           {saved && <SavedHint />}
@@ -312,58 +306,40 @@ function McpServerEditor({
       }
     >
       {/* What the server is: a name and how it is reached. */}
-      <SettingsCard data-slot="mcp-server-identity">
-        <SettingsRow label={t('settings.mcp.name')} stacked>
-          {({ labelId }) => (
-            <Input
-              aria-labelledby={labelId}
-              name={`mcpName-${server.id}`}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              fieldClassName="w-full @sm/pane:w-64"
-            />
-          )}
+      <SettingsGroup>
+        <SettingsRow label={t('settings.mcp.name')}>
+          <TextField name={`mcpName-${server.id}`} value={name} onChange={(event) => setName(event)} />
         </SettingsRow>
         <SettingsRow label={t('settings.mcp.transport')}>
-          {({ labelId }) => (
-            // The registry's segmented control. Two Buttons toggling a fill were
-            // a lookalike of it.
-            <SegmentedControl
-              data-slot="mcp-transport-options"
-              aria-labelledby={labelId}
-              selectedKeys={[isHttp ? 'streamablehttp' : 'stdio']}
-              onSelectionChange={(keys) => {
-                const next = [...(keys as Set<string>)][0]
-                if (next === 'stdio' || next === 'streamablehttp') setTransportType(next)
-              }}
-            >
-              <SegmentedControlItem id="stdio">stdio</SegmentedControlItem>
-              <SegmentedControlItem id="streamablehttp">HTTP</SegmentedControlItem>
-            </SegmentedControl>
-          )}
+          {/* The registry's segmented control. Two Buttons toggling a fill were
+              a lookalike of it. */}
+          <SegmentedControl
+            data-slot="mcp-transport-options"
+            selectedKey={isHttp ? 'streamablehttp' : 'stdio'}
+            onSelectionChange={(next) => {
+              if (next === 'stdio' || next === 'streamablehttp') setTransportType(next)
+            }}
+          >
+            <Segment id="stdio">stdio</Segment>
+            <Segment id="streamablehttp">HTTP</Segment>
+          </SegmentedControl>
         </SettingsRow>
-      </SettingsCard>
-
+      </SettingsGroup>
       {isHttp ? (
         <>
-          <SettingsSection label={t('settings.mcp.endpoint')}>
-            <SettingsRow label={t('settings.mcp.url')} stacked className="@sm/pane:flex-col @sm/pane:items-stretch">
-              {({ labelId }) => (
-                <Input
-                  aria-labelledby={labelId}
-                  name={`mcpUrl-${server.id}`}
-                  type="url"
-                  inputMode="url"
-                  spellCheck={false}
-                  value={url}
-                  onChange={(event) => setUrl(event.target.value)}
-                  placeholder="https://example.com/mcp"
-                  fieldClassName="w-full"
-                  className="font-mono"
-                />
-              )}
+          <SettingsGroup headingLevel={3} heading={t('settings.mcp.endpoint')}>
+            <SettingsRow label={t('settings.mcp.url')}>
+              <TextField
+                name={`mcpUrl-${server.id}`}
+                type="url"
+                inputMode="url"
+                spellCheck="false"
+                value={url}
+                onChange={(event) => setUrl(event)}
+                placeholder="https://example.com/mcp"
+              />
             </SettingsRow>
-          </SettingsSection>
+          </SettingsGroup>
           <KeyValueEditor
             label={t('settings.mcp.headers')}
             description={t('settings.mcp.headersHint')}
@@ -375,43 +351,27 @@ function McpServerEditor({
         </>
       ) : (
         <>
-          <SettingsSection label={t('settings.mcp.launch')}>
-            <SettingsRow label={t('settings.mcp.command')} stacked>
-              {({ labelId }) => (
-                <Input
-                  aria-labelledby={labelId}
-                  name={`mcpCommand-${server.id}`}
-                  spellCheck={false}
-                  value={command}
-                  onChange={(event) => setCommand(event.target.value)}
-                  placeholder="npx"
-                  fieldClassName="w-full @sm/pane:w-80"
-                  className="font-mono"
-                />
-              )}
+          <SettingsGroup headingLevel={3} heading={t('settings.mcp.launch')}>
+            <SettingsRow label={t('settings.mcp.command')}>
+              <TextField
+                name={`mcpCommand-${server.id}`}
+                spellCheck="false"
+                value={command}
+                onChange={(event) => setCommand(event)}
+                placeholder="npx"
+              />
             </SettingsRow>
-            <SettingsRow
-              label={t('settings.mcp.args')}
-              description={t('settings.mcp.argsHint')}
-              stacked
-              className="@sm/pane:flex-col @sm/pane:items-stretch"
-            >
-              {({ labelId, descriptionId }) => (
-                <TextArea
-                  aria-labelledby={labelId}
-                  aria-describedby={descriptionId}
-                  name={`mcpArgs-${server.id}`}
-                  spellCheck={false}
-                  rows={2}
-                  value={args}
-                  onChange={(event) => setArgs(event.target.value)}
-                  placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
-                  fieldClassName="w-full"
-                  className="font-mono"
-                />
-              )}
+            <SettingsRow label={t('settings.mcp.args')} description={t('settings.mcp.argsHint')}>
+              <TextArea
+                name={`mcpArgs-${server.id}`}
+                spellCheck="false"
+                rows={2}
+                value={args}
+                onChange={(event) => setArgs(event)}
+                placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
+              />
             </SettingsRow>
-          </SettingsSection>
+          </SettingsGroup>
           <KeyValueEditor
             label={t('settings.mcp.env')}
             description={t('settings.mcp.envHint')}
@@ -422,11 +382,10 @@ function McpServerEditor({
           />
         </>
       )}
-
       {/* Two different things, deliberately side by side: connecting is
           something you do now, auto-connect is something you mean for next
           time. Disconnecting does not turn the switch off. */}
-      <SettingsSection label={t('settings.mcp.connection')}>
+      <SettingsGroup headingLevel={3} heading={t('settings.mcp.connection')}>
         <SettingsRow
           label={t('settings.mcp.status')}
           description={
@@ -438,14 +397,14 @@ function McpServerEditor({
           }
         >
           {connected ? (
-            <Button size="small" variant="secondary" leadingIcon={Plug} onPress={() => void handleDisconnect()}>
+            <Button size="sm" variant="secondary" icon={<Plug />} onPress={() => void handleDisconnect()}>
               {t('settings.mcp.disconnect')}
             </Button>
           ) : (
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              leadingIcon={Cable}
+              icon={<Cable />}
               onPress={() => void handleConnect()}
               isDisabled={statusLoading}
               isPending={connecting}
@@ -455,39 +414,27 @@ function McpServerEditor({
           )}
         </SettingsRow>
         <SettingsRow label={t('settings.mcp.autoConnect')} description={t('settings.mcp.autoConnectHint')}>
-          {({ labelId, descriptionId }) => (
-            <Switch
-              aria-labelledby={labelId}
-              aria-describedby={descriptionId}
-              isSelected={autoConnect}
-              onChange={(next) => void handleToggleAutoConnect(next)}
-            />
-          )}
+          <Switch isSelected={autoConnect} onChange={(next) => void handleToggleAutoConnect(next)} />
         </SettingsRow>
-      </SettingsSection>
-
+      </SettingsGroup>
       {error && (
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Description className="break-all">{error}</Alert.Description>
-          </Alert.Content>
+        <Alert tone="danger" shouldAnnounce>
+          {error}
         </Alert>
       )}
-
       {/* settings-tools.tsx lists a server's tools as its own rows: the name
           you would call it by, what it does underneath. The switch is the
           catalogue filter — off means the definition never enters the prefix. */}
       {tools.length > 0 && (
-        <SettingsSection
-          label={t('settings.mcp.toolsSection', {
+        <SettingsGroup
+          headingLevel={3}
+          heading={t('settings.mcp.toolsSection', {
             on: tools.filter((tool) => tool.enabled).length,
             total: tools.length,
             tokens: formatDefinitionTokens(
               tools.filter((tool) => tool.enabled).reduce((sum, tool) => sum + tool.definition_tokens, 0),
             ),
           })}
-          data-slot="mcp-tools"
         >
           {tools.map((tool) => {
             const description = [
@@ -499,51 +446,41 @@ function McpServerEditor({
             return (
               <SettingsRow
                 key={tool.qualified_name}
-                data-slot="mcp-tool-row"
                 label={
                   <span
                     data-slot="mcp-tool-name"
                     onPointerEnter={titleIfTruncated}
-                    className="block truncate font-mono"
+                    className="m-mcp-server-page__tool-name"
                   >
                     {tool.name}
                   </span>
                 }
                 description={description}
               >
-                {({ labelId, descriptionId }) => (
-                  <Switch
-                    aria-labelledby={labelId}
-                    aria-describedby={descriptionId}
-                    isSelected={tool.enabled}
-                    onChange={(next) => void handleToggleTool(tool.name, next)}
-                  />
-                )}
+                <Switch isSelected={tool.enabled} onChange={(next) => void handleToggleTool(tool.name, next)} />
               </SettingsRow>
             )
           })}
-        </SettingsSection>
+        </SettingsGroup>
       )}
-
       {/* The profile page's closing card: a row saying what the action does,
           its button on the right — not a lone full-width red slab. */}
-      <SettingsCard data-slot="mcp-danger-zone">
+      <SettingsGroup>
         <SettingsRow label={t('settings.mcp.deleteServer')} description={t('settings.mcp.deleteServerHint')}>
           <Button
-            size="small"
-            variant="danger"
-            leadingIcon={Bin}
+            size="sm"
+            variant="destructive"
+            icon={<Bin />}
             isPending={deleting}
             onPress={() => void handleDelete()}
           >
             {t('settings.mcp.delete')}
           </Button>
         </SettingsRow>
-      </SettingsCard>
+      </SettingsGroup>
     </SettingsPage>
   )
 }
-
 /** An argument list as one readable line of JSON: `["-y", "pkg", "/path"]`. */
 function formatArgs(args: string[] | null): string {
   return `[${(args ?? []).map((arg) => JSON.stringify(arg)).join(', ')}]`

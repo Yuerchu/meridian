@@ -1,7 +1,7 @@
+import './numbered-code.css'
 import { useMemo } from 'react'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
-import { cx } from '@/utils/cx'
 
 /**
  * Source with a line-number gutter, one row per line.
@@ -41,28 +41,16 @@ export function NumberedCode({
   return (
     <div
       data-slot="numbered-code"
-      className={cx(
-        'code-block__code w-max min-w-full overflow-visible py-1.5 font-mono text-caption-1-regular leading-5',
-        className,
-      )}
+      className={className ? `code-block__code m-numbered-code ${className}` : 'code-block__code m-numbered-code'}
     >
       {lines.map((line, index) => {
         const number = startLine + index
         return (
-          <div
-            key={number}
-            data-slot="numbered-code-line"
-            data-code-line={number}
-            className="flex text-text-primary/85"
-          >
-            <span
-              data-slot="numbered-code-line-number"
-              aria-hidden
-              className="sticky left-0 w-10 shrink-0 bg-background-primary-default pr-2 text-right text-text-secondary/70 select-none tabular-nums"
-            >
+          <div key={number} data-slot="numbered-code-line" data-code-line={number} className="m-numbered-code__line">
+            <span data-slot="numbered-code-line-number" aria-hidden className="m-numbered-code__number">
               {number}
             </span>
-            <span data-slot="numbered-code-line-source" className="shiki min-w-0 pr-4 pl-2 whitespace-pre">
+            <span data-slot="numbered-code-line-source" className="shiki m-numbered-code__source">
               {highlighted && line ? (
                 // Shiki escapes the source and returns only token spans here.
                 <span data-slot="numbered-code-line-tokens" dangerouslySetInnerHTML={{ __html: highlighted[index] }} />

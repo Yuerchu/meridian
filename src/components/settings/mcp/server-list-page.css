@@ -1,0 +1,42 @@
+@layer components {
+  .m-mcp-server-list__tile {
+    position: relative;
+    display: flex;
+    width: var(--space-8);
+    height: var(--space-8);
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .m-mcp-server-list__tile-face {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-item);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+  }
+
+  .m-mcp-server-list__tile-dot {
+    position: absolute;
+    inset-block-end: calc(-1 * var(--space-1));
+    inset-inline-start: calc(-1 * var(--space-1));
+    box-sizing: border-box;
+    width: var(--space-3);
+    height: var(--space-3);
+    border: 2px solid var(--surface);
+    border-radius: var(--radius-pill);
+    background: var(--text-muted);
+  }
+
+  .m-mcp-server-list__tile-dot[data-state='connected'] {
+    background: var(--success-fg);
+  }
+
+  .m-mcp-server-list__tile-dot[data-state='connecting'] {
+    background: var(--warning-fg);
+  }
+}

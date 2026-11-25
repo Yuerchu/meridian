@@ -247,9 +247,8 @@ describe('EmptyState welcome composer', () => {
     await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
-    // The picker's items are buttons named by their `textValue` (emoji name,
-    // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
+    await user.click(await screen.findByRole('button', { name: 'Wave' }))
 
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Send' }))
@@ -277,9 +276,8 @@ describe('EmptyState welcome composer', () => {
     await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), 'Typed remainder')
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
     await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
-    // The picker's items are buttons named by their `textValue` (emoji name,
-    // tags, pack) since it stopped being a Select with a hidden native one.
-    await user.click(await screen.findByRole('option', { name: /^Wave\b/ }))
+    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
+    await user.click(await screen.findByRole('button', { name: 'Wave' }))
     expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
 
     act(() => mocks.voiceOnSend?.('  Dictated opening  '))

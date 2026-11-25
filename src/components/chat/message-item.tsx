@@ -1,11 +1,15 @@
+import './message-item.css'
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Bin,
+  BookOpen,
+  Brain,
   Check,
   Copy,
   CursorText,
   File,
+  Info,
   Mic,
   Pen,
   RefreshCw,
@@ -17,30 +21,37 @@ import {
 } from '@keyline-icons/react/two-tone'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { HostedAgentGlyph } from '@/components/ui/agent-icon'
-import { cx } from '@/utils/cx'
 import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationRefChips } from './conversation-ref-chips'
 import { MarkdownContent } from './markdown-content'
 import { useRevealedText } from '@/hooks/use-revealed-text'
 import { CopyButton } from '@/components/ui/copy-button'
-import { Avatar, Label, TextArea } from '@/components/base'
-import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
-import { ContextMenu } from '@/components/base'
+import { Avatar } from '@/components/yuerchu-ui/components/avatar/avatar'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { ThinkingState } from '@/components/yuerchu-ui/components/thinking-state/thinking-state'
+import { Menu, MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import {
+  AttachmentList,
+  AttachmentPreview,
+} from '@/components/yuerchu-ui/components/attachment-preview/attachment-preview'
+import {
+  Bubble,
+  BubbleContent,
+  BubbleFoldBadge,
+  BubbleTime,
+  BUBBLE_RUN_GAP,
   MessageGroupAssistant,
   MessageGroupAvatar,
   MessageGroupBubbles,
   MessageGroupFooter,
   MessageGroupHeader,
   MessageGroupUser,
-} from '@/components/ui/message-group'
-import { Bubble, BubbleContent, BubbleTime, BUBBLE_RUN_GAP } from '@/components/ui/bubble'
-import { BubbleFoldBadge } from '@/components/ui/bubble-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+} from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { useConversationStore } from '@/stores/conversation-store'
 import { useTranscriptConversationId } from '@/hooks/use-transcript-conversation'
-import { ChatAttachment, ChatAttachmentGroup } from '@/components/base'
 import { ErrorBoundary } from '@/components/error-boundary'
 
 import { assetSrc } from '@/lib/asset-src'
@@ -63,6 +74,10 @@ import type { EmojiMap } from './emoji-renderer'
 import { TurnInfo } from './turn-info'
 import { ShellCommandBubble } from './shell-command-bubble'
 import { titleIfTruncated } from '@/lib/truncation'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 /**
  * Who is speaking: the assistant's own picture when it has one, otherwise the
@@ -88,13 +103,14 @@ export function AssistantAvatar({
   hosted?: boolean
 }) {
   return (
-    <MessageGroupAvatar className="size-8">
-      {/* The glyph is always given: it is what `Avatar` shows when the photo
-          fails to load, so a stale URL costs a model icon rather than a
-          broken image on every message. */}
-      <Avatar src={!hosted && src ? src : undefined} className="size-full">
-        {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
-      </Avatar>
+    <MessageGroupAvatar className="m-message-item__avatar">
+      {!hosted && src ? (
+        <Avatar src={src} name={modelId || 'Assistant'} size="md" isDecorative />
+      ) : hosted ? (
+        <HostedAgentGlyph />
+      ) : (
+        <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
+      )}
     </MessageGroupAvatar>
   )
 }
@@ -146,20 +162,14 @@ function speakerLabel(
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div
-      data-slot="quoted-message"
-      // Washes of the bubble's own ink over its fill, not a fixed colour: the
-      // person's bubble was black once and is the white card now, and
-      // `text-white/70` is invisible on the second.
-      className="mb-2 border-l-2 border-[color-mix(in_oklch,var(--bubble-fill),var(--bubble-ink)_30%)] pl-3 text-caption-1-regular text-[color-mix(in_oklch,var(--bubble-fill),var(--bubble-ink)_70%)]"
-    >
-      <span data-slot="quoted-message-sender" className="text-caption-1-medium">
+    <div data-slot="quoted-message" className="m-message-item__quoted">
+      <span data-slot="quoted-message-sender" className="m-message-item__quoted-sender">
         {sender}
       </span>
       <p
         data-slot="quoted-message-content"
         onPointerEnter={titleIfTruncated}
-        className="mt-0.5 line-clamp-3 whitespace-pre-wrap"
+        className="m-message-item__quoted-content"
       >
         {content}
       </p>
@@ -260,13 +270,17 @@ export const UserMessage = React.memo(function UserMessage({
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.(message.id)
+    if (await confirm({ description: t('confirm.deleteMessage'), confirmLabel: t('common.delete'), tone: 'danger' }))
+      onDelete?.(message.id)
   }, [confirm, t, onDelete, message.id])
 
-  const handleContextMenuOpenChange = useCallback((open: boolean) => {
-    if (open) {
-      setSelectedText(window.getSelection()?.toString()?.trim() ?? '')
-    }
+  const userMenuAnchorRef = useRef<HTMLSpanElement>(null)
+  const [userMenuAnchor, setUserMenuAnchor] = useState<{ x: number; y: number } | null>(null)
+  const handleUserContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented) return
+    event.preventDefault()
+    setSelectedText(window.getSelection()?.toString()?.trim() ?? '')
+    setUserMenuAnchor({ x: event.clientX, y: event.clientY })
   }, [])
 
   useEffect(() => {
@@ -304,7 +318,7 @@ export const UserMessage = React.memo(function UserMessage({
   const handleCancelEdit = useCallback(async () => {
     if (
       editText.trim() !== message.content.trim() &&
-      !(await confirm({ body: t('chat.discardEdit'), confirmLabel: t('common.discardChanges'), status: 'warning' }))
+      !(await confirm({ description: t('chat.discardEdit'), confirmLabel: t('common.discardChanges') }))
     ) {
       return
     }
@@ -341,13 +355,13 @@ export const UserMessage = React.memo(function UserMessage({
       <>
         <MessageGroupUser>
           <ShellCommandBubble message={message} position={position} />
-          <MessageGroupFooter className="gap-1">
+          <MessageGroupFooter className="m-message-item__footer-actions">
             <CopyButton text={copyText} />
             {onDelete && (
               <ActionButton
                 label={t('chat.delete')}
                 onClick={requestDelete}
-                className="data-[hovered]:text-status-danger"
+                className="m-message-item__delete-btn"
                 icon={Bin}
               />
             )}
@@ -359,175 +373,183 @@ export const UserMessage = React.memo(function UserMessage({
   }
 
   const userContent = (
-    <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      {/* The group *is* the trigger: `render` passes DOM props through to the
-          group, whose own `flex` display is preserved. */}
-      <ContextMenu.Trigger className="pointer-coarse:select-none" render={(props) => <MessageGroupUser {...props} />}>
-        <>
-          {editing ? (
-            // Full width while editing. A bubble is sized to what it says, but
-            // an edit box is sized to what you are about to say — and the
-            // 80% cap turned a message being rewritten into a narrow column
-            // with the text reflowing under the caret.
-            <Bubble align="end" variant="outline" className="w-full max-w-full">
-              <BubbleContent>
+    <>
+      <MessageGroupUser className="m-message-item__user-group" onContextMenu={handleUserContextMenu}>
+        {editing ? (
+          // Full width while editing. A bubble is sized to what it says, but
+          // an edit box is sized to what you are about to say — and the
+          // 80% cap turned a message being rewritten into a narrow column
+          // with the text reflowing under the caret.
+          <Bubble align="end" variant="outline" className="m-message-item__edit-bubble">
+            <BubbleContent>
+              <div className="m-message-item__edit-field">
                 <TextArea
                   ref={editRef}
                   aria-label={t('chat.editMessage')}
                   value={editText}
-                  onChange={(e) => {
-                    setEditText(e.target.value)
-                    e.target.style.height = 'auto'
-                    e.target.style.height = e.target.scrollHeight + 'px'
-                  }}
+                  onChange={setEditText}
                   onKeyDown={handleEditKeyDown}
-                  className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-body-regular leading-relaxed resize-none outline-none focus-visible:ring-0"
                   rows={1}
                 />
-                <div data-slot="message-edit-actions" className="flex justify-end gap-1 mt-1.5">
-                  <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} icon={X} />
-                  <ActionButton label={t('chat.saveEdit')} onClick={handleSaveEdit} icon={Check} />
-                </div>
-              </BubbleContent>
-            </Bubble>
-          ) : (
-            <>
-              {hasBubble && (
-                <Bubble align="end" variant="user" position={position}>
-                  <BubbleContent>
-                    {speaker && (
-                      <MessageGroupHeader className="text-[var(--bubble-user-foreground)]/80">
-                        {speaker}
-                      </MessageGroupHeader>
-                    )}
-                    {quotedMessage && (
-                      <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
-                    )}
-                    {hasRefs && <ConversationRefChips items={message.context_items} className="mb-1.5" />}
-                    {hasAttachments && (
-                      <ChatAttachmentGroup className="mb-1.5">
+              </div>
+              <div data-slot="message-edit-actions" className="m-message-item__edit-actions">
+                <ActionButton label={t('chat.cancelEdit')} onClick={handleCancelEdit} icon={X} />
+                <ActionButton label={t('chat.saveEdit')} onClick={handleSaveEdit} icon={Check} />
+              </div>
+            </BubbleContent>
+          </Bubble>
+        ) : (
+          <>
+            {hasBubble && (
+              <Bubble align="end" variant="user" position={position}>
+                <BubbleContent>
+                  {speaker && (
+                    <MessageGroupHeader className="m-message-item__user-speaker">{speaker}</MessageGroupHeader>
+                  )}
+                  {quotedMessage && (
+                    <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
+                  )}
+                  {hasRefs && <ConversationRefChips items={message.context_items} className="m-message-item__refs" />}
+                  {hasAttachments && (
+                    <div data-slot="user-message-attachments" className="m-message-item__attachments">
+                      <AttachmentList>
                         {contentParts!
                           .filter((p) => p.type === 'image_url')
                           .map((p, i) => (
-                            <ChatAttachment
+                            <AttachmentPreview
                               key={`img-${i}`}
-                              mediaType="image"
                               name={t('chat.attachedImage')}
-                              src={assetSrc(p.image_url?.url)}
+                              imageUrl={assetSrc(p.image_url?.url)}
                             />
                           ))}
                         {contentParts!
                           .filter((p) => p.type === 'file')
                           .map((p, i) => (
-                            <ChatAttachment key={`file-${i}`} name={p.file?.name || t('chat.attachedFile')} />
+                            <AttachmentPreview key={`file-${i}`} name={p.file?.name || t('chat.attachedFile')} />
                           ))}
-                      </ChatAttachmentGroup>
-                    )}
-                    {hasBody ? (
-                      // `flow-root` contains the floated time, so the bubble's
-                      // own padding wraps it instead of clipping it.
-                      <div data-slot="user-message-body" className="flow-root whitespace-pre-wrap">
-                        {message.source === 'voice' && (
-                          <Mic
-                            className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
-                            aria-label={t('chat.voice.badge')}
-                          />
-                        )}
-                        {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
-                        <span data-slot="user-message-time" className="float-right ml-2 mt-1.5 opacity-70">
-                          <SentAt at={message.created_at} />
-                        </span>
-                      </div>
-                    ) : (
-                      // Nothing said, only carried: the time takes a foot line
-                      // of its own, where a bubble with badges puts it.
-                      <div data-slot="user-message-foot" className="flex justify-end opacity-70">
+                      </AttachmentList>
+                    </div>
+                  )}
+                  {hasBody ? (
+                    // `flow-root` contains the floated time, so the bubble's
+                    // own padding wraps it instead of clipping it.
+                    <div data-slot="user-message-body" className="m-message-item__user-body">
+                      {message.source === 'voice' && (
+                        <Mic className="m-message-item__voice-icon" aria-label={t('chat.voice.badge')} />
+                      )}
+                      {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                      <span data-slot="user-message-time" className="m-message-item__user-time">
                         <SentAt at={message.created_at} />
-                      </div>
-                    )}
-                  </BubbleContent>
-                </Bubble>
+                      </span>
+                    </div>
+                  ) : (
+                    // Nothing said, only carried: the time takes a foot line
+                    // of its own, where a bubble with badges puts it.
+                    <div data-slot="user-message-foot" className="m-message-item__user-foot">
+                      <SentAt at={message.created_at} />
+                    </div>
+                  )}
+                </BubbleContent>
+              </Bubble>
+            )}
+            {contentParts
+              ?.filter((part) => part.type === 'sticker' && part.sticker_id)
+              .map((part, index) => (
+                <div
+                  key={`sticker-${index}`}
+                  data-align="end"
+                  className="m-message-item__sticker"
+                  data-slot="user-sticker"
+                >
+                  <StickerImage stickerId={part.sticker_id!} name={part.name} />
+                </div>
+              ))}
+            <MessageGroupFooter className="m-message-item__footer-actions">
+              {canEdit && (
+                <ActionButton ref={editButtonRef} label={t('chat.edit')} onClick={handleStartEdit} icon={Pen} />
               )}
-              {contentParts
-                ?.filter((part) => part.type === 'sticker' && part.sticker_id)
-                .map((part, index) => (
-                  <div key={`sticker-${index}`} className="flex justify-end py-1" data-slot="user-sticker">
-                    <StickerImage stickerId={part.sticker_id!} name={part.name} />
-                  </div>
-                ))}
-              <MessageGroupFooter className="gap-1">
-                {canEdit && (
-                  <ActionButton ref={editButtonRef} label={t('chat.edit')} onClick={handleStartEdit} icon={Pen} />
-                )}
-                <CopyButton text={copyText} />
-                {onDelete && (
-                  <ActionButton
-                    label={t('chat.delete')}
-                    onClick={requestDelete}
-                    className="data-[hovered]:text-status-danger"
-                    icon={Bin}
-                  />
-                )}
-              </MessageGroupFooter>
-            </>
-          )}
-        </>
-      </ContextMenu.Trigger>
-      <ContextMenu.Popover>
-        <ContextMenu.Menu aria-label={t('contextMenu.messageActions')}>
+              <CopyButton text={copyText} />
+              {onDelete && (
+                <ActionButton
+                  label={t('chat.delete')}
+                  onClick={requestDelete}
+                  className="m-message-item__delete-btn"
+                  icon={Bin}
+                />
+              )}
+            </MessageGroupFooter>
+          </>
+        )}
+      </MessageGroupUser>
+      <span
+        ref={userMenuAnchorRef}
+        aria-hidden
+        style={{
+          position: 'fixed',
+          width: 0,
+          height: 0,
+          pointerEvents: 'none',
+          left: userMenuAnchor?.x ?? 0,
+          top: userMenuAnchor?.y ?? 0,
+        }}
+      />
+      <Popover
+        triggerRef={userMenuAnchorRef}
+        isOpen={userMenuAnchor !== null}
+        onOpenChange={(open) => {
+          if (!open) setUserMenuAnchor(null)
+        }}
+        placement="bottom start"
+        offset={0}
+      >
+        <Menu variant="inline" aria-label={t('contextMenu.messageActions')} onAction={() => setUserMenuAnchor(null)}>
           {selectedText && (
-            <>
-              <ContextMenu.Item
-                id="copy-selection"
-                textValue={t('contextMenu.copySelection')}
-                onAction={() => menuCopy(selectedText)}
-              >
-                <Copy className="size-4 text-text-secondary" />
-                <Label>{t('contextMenu.copySelection')}</Label>
-              </ContextMenu.Item>
-              <ContextMenu.Separator />
-            </>
+            <MenuItem
+              id="copy-selection"
+              textValue={t('contextMenu.copySelection')}
+              icon={<Copy />}
+              onAction={() => menuCopy(selectedText)}
+            >
+              {t('contextMenu.copySelection')}
+            </MenuItem>
           )}
+          {selectedText && <MenuSeparator />}
           {canEdit && (
-            <ContextMenu.Item id="edit" textValue={t('chat.edit')} onAction={handleStartEdit}>
-              <Pen className="size-4 text-text-secondary" />
-              <Label>{t('chat.edit')}</Label>
-            </ContextMenu.Item>
+            <MenuItem id="edit" textValue={t('chat.edit')} icon={<Pen />} onAction={handleStartEdit}>
+              {t('chat.edit')}
+            </MenuItem>
           )}
-          <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={() => menuCopy(copyText)}>
-            <Copy className="size-4 text-text-secondary" />
-            <Label>{t('chat.copy')}</Label>
-          </ContextMenu.Item>
+          <MenuItem id="copy" textValue={t('chat.copy')} icon={<Copy />} onAction={() => menuCopy(copyText)}>
+            {t('chat.copy')}
+          </MenuItem>
           {coarse && (
-            <ContextMenu.Item
+            <MenuItem
               id="select-text"
               textValue={t('contextMenu.selectText')}
+              icon={<CursorText />}
               onAction={() => setShowSelectText(true)}
             >
-              <CursorText className="size-4 text-text-secondary" />
-              <Label>{t('contextMenu.selectText')}</Label>
-            </ContextMenu.Item>
+              {t('contextMenu.selectText')}
+            </MenuItem>
           )}
+          {onDelete && <MenuSeparator />}
           {onDelete && (
-            <>
-              <ContextMenu.Separator />
-              {/* Deleting the question takes its whole subtree — every answer
-                  and every later exchange hangs off it — so the menu says so
-                  beside "copy", which only ever means this bubble. */}
-              <ContextMenu.Item
-                id="delete"
-                textValue={t('chat.turnAction.delete')}
-                variant="danger"
-                onAction={() => void requestDelete()}
-              >
-                <Bin className="size-4" />
-                <Label>{t('chat.turnAction.delete')}</Label>
-              </ContextMenu.Item>
-            </>
+            // Deleting the question takes its whole subtree — every answer
+            // and every later exchange hangs off it — so the menu says so
+            // beside "copy", which only ever means this bubble.
+            <MenuItem
+              id="delete"
+              textValue={t('chat.turnAction.delete')}
+              tone="danger"
+              icon={<Bin />}
+              onAction={() => void requestDelete()}
+            >
+              {t('chat.turnAction.delete')}
+            </MenuItem>
           )}
-        </ContextMenu.Menu>
-      </ContextMenu.Popover>
-    </ContextMenu>
+        </Menu>
+      </Popover>
+    </>
   )
 
   return (
@@ -543,6 +565,21 @@ const FOLD_ICONS: Record<FoldKind, React.ComponentType<{ className?: string; 'ar
   commands: SquareTerminal,
   files: File,
   searches: Search,
+  skills: BookOpen,
+  memory: Brain,
+  context: Info,
+}
+
+function singleSkillName(fold: FoldedCalls): string | null {
+  if (fold.kind !== 'skills' || fold.count !== 1) return null
+  try {
+    const args = JSON.parse(fold.tools[0].arguments) as { skill_name?: unknown; skill?: unknown }
+    const name =
+      typeof args.skill_name === 'string' ? args.skill_name : typeof args.skill === 'string' ? args.skill : ''
+    return name.trim() || null
+  } catch {
+    return null
+  }
 }
 
 /**
@@ -603,13 +640,17 @@ function FoldBadges({
 }) {
   const { t } = useTranslation()
   return (
-    <div data-slot="bubble-fold-badges" className="flex min-w-0 flex-wrap items-center gap-1">
+    <div data-slot="bubble-fold-badges" className="m-message-item__fold-badges">
       {folded.map((fold) => {
         const Icon = FOLD_ICONS[fold.kind]
+        const skillName = singleSkillName(fold)
+        const text = skillName
+          ? t('chat.tool.fold.skillSingle', { name: skillName })
+          : t(`chat.tool.fold.${fold.kind}`, { count: fold.count })
         return (
-          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onClick={() => toggle(fold.key)}>
-            <Icon aria-hidden className="size-3" />
-            {t(`chat.tool.fold.${fold.kind}`, { count: fold.count })}
+          <BubbleFoldBadge key={fold.key} expanded={isOpen(fold.key)} onPress={() => toggle(fold.key)}>
+            <Icon aria-hidden className="m-message-item__fold-icon" />
+            {text}
           </BubbleFoldBadge>
         )
       })}
@@ -671,7 +712,7 @@ function FoldRow({
   isStreaming: boolean
 }) {
   return (
-    <div data-slot="bubble-fold-row" className="mt-1.5 flex min-w-0 items-center justify-between gap-3">
+    <div data-slot="bubble-fold-row" className="m-message-item__fold-row">
       <FoldBadges folded={folded} isOpen={isOpen} toggle={toggle} />
       {!isStreaming && <SentAt at={at} />}
     </div>
@@ -724,13 +765,12 @@ function AssistantBubble({
   bubble: BubbleModel
   /** Who is speaking, on the first bubble of the run only. */
   header: string | null
-  /** What the `working` bubble says beside its spinner. */
+  /** Optional retry status shown beside the thinking indicator. */
   workingLabel: string | null
   isOneBot?: boolean
   emojiMap?: EmojiMap
   renderError: React.ReactNode
 }) {
-  const { t } = useTranslation()
   const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
   const { isOpen, toggle } = useFoldExpansion(folded)
   // Paced only for prose: reasoning and tool calls appear as they arrive, so a
@@ -743,21 +783,28 @@ function AssistantBubble({
 
   if (bubble.kind === 'sticker') {
     return (
-      <div className="my-1 flex justify-start" data-slot="assistant-sticker" data-bubble-key={bubble.key}>
+      <div
+        data-align="start"
+        className="m-message-item__sticker"
+        data-slot="assistant-sticker"
+        data-bubble-key={bubble.key}
+      >
         <StickerImage stickerId={bubble.stickerId} name={bubble.name ?? undefined} />
       </div>
     )
   }
   if (bubble.kind === 'working') {
     return (
-      // The typing indicator: the next bubble of the run, with boardui's
-      // `agent-thinking` where the words will be. That component is the
-      // `role="status"` (so it is announced once, not twice), and
-      // `data-working` is how the tests find the sign of life without
-      // knowing its wording.
+      // The typing indicator: the next bubble of the run, with `ThinkingState`
+      // inside a `role="status"` wrapper (so it is announced once, not on the
+      // bubble itself), and `data-working` is how the tests find the sign of
+      // life without knowing its wording.
       <Bubble variant="assistant" position={bubble.position} data-working="true" data-bubble-key={bubble.key}>
         <BubbleContent>
-          <AgentThinking variant="infinity" label={workingLabel ?? t('chat.turn.working.thinking')} />
+          <div role="status" className="m-message-item__working">
+            <ThinkingState status="thinking" />
+            {workingLabel && <span className="m-message-item__working-note">{workingLabel}</span>}
+          </div>
         </BubbleContent>
       </Bubble>
     )
@@ -765,8 +812,13 @@ function AssistantBubble({
   const panels = <FoldPanels folded={folded} isOpen={isOpen} renderError={renderError} />
   if (bubble.kind === 'summary') {
     return (
-      <Bubble variant="assistant" position={bubble.position} data-bubble-key={bubble.key} className="w-full">
-        <BubbleContent className="w-full">
+      <Bubble
+        variant="assistant"
+        position={bubble.position}
+        data-bubble-key={bubble.key}
+        className="m-message-item__full-bubble"
+      >
+        <BubbleContent className="m-message-item__full-bubble">
           <FoldRow folded={folded} isOpen={isOpen} toggle={toggle} at={bubble.createdAt} isStreaming={false} />
         </BubbleContent>
         {panels}
@@ -787,8 +839,13 @@ function AssistantBubble({
       // being written, and the only sign of life until the answer starts.
       const live = bubble.isStreaming && bubble.tools.length === 0 && !hasFolds
       return (
-        <Bubble variant="assistant" position={bubble.position} data-bubble-key={bubble.key} className="w-full">
-          <BubbleContent className="w-full">
+        <Bubble
+          variant="assistant"
+          position={bubble.position}
+          data-bubble-key={bubble.key}
+          className="m-message-item__full-bubble"
+        >
+          <BubbleContent className="m-message-item__full-bubble">
             {hasThinking && (
               <ThinkingRow text={bubble.thinking.join('\n\n')} panelKey={`${bubble.key}:thinking`} isStreaming={live} />
             )}
@@ -813,7 +870,7 @@ function AssistantBubble({
         data-position={bubble.position}
         data-variant="tools-only"
         data-bubble-key={bubble.key}
-        className={cx('flex w-full max-w-[85%] flex-col', BUBBLE_RUN_GAP)}
+        className={joinClasses('m-message-item__tools-only', BUBBLE_RUN_GAP)}
       >
         {panels}
         {keys}
@@ -822,6 +879,7 @@ function AssistantBubble({
   }
   const hasKeys = bubble.thinking.length > 0 || bubble.tools.length > 0
   const hasFolds = folded.length > 0
+  const fullWidth = hasKeys || hasFolds
   return (
     // A bubble with a keyboard takes the column's width, so its keys have
     // room to sit two to a row; one with badges takes it so the time sits at
@@ -830,9 +888,9 @@ function AssistantBubble({
       variant="assistant"
       position={bubble.position}
       data-bubble-key={bubble.key}
-      className={cx((hasKeys || hasFolds) && 'w-full')}
+      className={fullWidth ? 'm-message-item__full-bubble' : undefined}
     >
-      <BubbleContent className={cx((hasKeys || hasFolds) && 'w-full')}>
+      <BubbleContent className={fullWidth ? 'm-message-item__full-bubble' : undefined}>
         {header && <MessageGroupHeader>{header}</MessageGroupHeader>}
         {bubble.thinking.length > 0 && (
           // Finished by definition: there is prose under it.
@@ -874,7 +932,7 @@ export interface AssistantGroupViewProps {
   turnCopyText: string
   /** The run that carries the turn's footer — the last one. */
   showFooter: boolean
-  /** What the `working` bubble says, when the run ends on one. */
+  /** What the `working` bubble notes beside its thinking indicator, when retrying. */
   workingLabel?: string | null
   onDelete?: () => void
   onRegenerate?: () => void
@@ -932,17 +990,20 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   // What the open menu is aimed at: the prose of the bubble it was opened on,
   // or null when that bubble has none (a keyboard, a summary, the avatar).
   const [targetText, setTargetText] = useState<string | null>(null)
+  const menuAnchorRef = useRef<HTMLSpanElement>(null)
+  const [menuAnchor, setMenuAnchor] = useState<{ x: number; y: number } | null>(null)
   const [showSelectText, setShowSelectText] = useState(false)
   const coarse = isCoarsePointer()
   const renderError = (
-    <div data-slot="render-error" className="text-caption-1-regular text-status-danger py-2">
+    <div data-slot="render-error" className="m-message-item__render-error">
       {t('chat.renderError')}
     </div>
   )
 
   const { confirm, confirmDialog } = useConfirm()
   const requestDelete = useCallback(async () => {
-    if (await confirm({ body: t('confirm.deleteMessage'), confirmLabel: t('common.delete') })) onDelete?.()
+    if (await confirm({ description: t('confirm.deleteMessage'), confirmLabel: t('common.delete'), tone: 'danger' }))
+      onDelete?.()
   }, [confirm, t, onDelete])
 
   const isStreaming = turn.status === 'streaming'
@@ -954,6 +1015,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
 
   const handleContextMenu = useCallback(
     (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) return
       const selection = window.getSelection()?.toString()?.trim() ?? ''
       const bubble = bubbleAt(event.target, group.bubbles)
       const text = bubble ? bubbleCopyText(bubble) : null
@@ -962,11 +1024,14 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
         event.preventDefault()
         return
       }
+      event.preventDefault()
       setSelectedText(selection)
       setTargetText(text)
+      setMenuAnchor({ x: event.clientX, y: event.clientY })
     },
     [group.bubbles, hasTurnActions],
   )
+
   const hasBubbleActions = !!selectedText || targetText !== null
   // A hosted session is named by its agent; the model id it reports is not a
   // name anyone would recognise. The name goes in the first bubble that has
@@ -980,110 +1045,122 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
     // it sits at the bottom of the row, so a footer inside the row — even an
     // invisible one, which it is until hovered — pushed the avatar down to sit
     // beside the footer rather than beside the last bubble.
-    <div data-slot="assistant-group" className="group/message flex min-w-0 flex-col">
-      <ContextMenu>
-        {/* Same shape as the user group above: the group is the trigger, and
-            the bubble under the pointer is what the menu is aimed at. */}
-        <ContextMenu.Trigger
-          className="pointer-coarse:select-none"
-          onContextMenu={handleContextMenu}
-          render={(props) => <MessageGroupAssistant {...props} />}
-        >
-          <AssistantAvatar src={assistantAvatar} modelId={group.modelId} hosted={isHosted} />
-          <MessageGroupBubbles>
-            {group.bubbles.map((bubble, i) => (
-              <ErrorBoundary key={bubble.key} fallback={renderError}>
-                <AssistantBubble
-                  bubble={bubble}
-                  header={i === headerIndex ? header : null}
-                  workingLabel={workingLabel}
-                  isOneBot={isOneBot}
-                  emojiMap={emojiMap}
-                  renderError={renderError}
-                />
-              </ErrorBoundary>
-            ))}
-          </MessageGroupBubbles>
-        </ContextMenu.Trigger>
-        <ContextMenu.Popover>
-          <ContextMenu.Menu aria-label={t('contextMenu.messageActions')}>
-            {selectedText && (
-              <ContextMenu.Item
-                id="copy-selection"
-                textValue={t('contextMenu.copySelection')}
-                onAction={() => menuCopy(selectedText)}
-              >
-                <Copy className="size-4 text-text-secondary" />
-                <Label>{t('contextMenu.copySelection')}</Label>
-              </ContextMenu.Item>
-            )}
-            {targetText !== null && (
-              <ContextMenu.Item id="copy" textValue={t('chat.copy')} onAction={() => menuCopy(targetText)}>
-                <Copy className="size-4 text-text-secondary" />
-                <Label>{t('chat.copy')}</Label>
-              </ContextMenu.Item>
-            )}
-            {coarse && targetText !== null && (
-              <ContextMenu.Item
-                id="select-text"
-                textValue={t('contextMenu.selectText')}
-                onAction={() => setShowSelectText(true)}
-              >
-                <CursorText className="size-4 text-text-secondary" />
-                <Label>{t('contextMenu.selectText')}</Label>
-              </ContextMenu.Item>
-            )}
-            {hasBubbleActions && hasTurnActions && <ContextMenu.Separator />}
-            {canRate && (
-              <>
-                <ContextMenu.Item id="thumbs-up" textValue={t('chat.turnAction.thumbsUp')} onAction={() => rate(1)}>
-                  <ThumbsUp
-                    className={cx(
-                      'size-4',
-                      rating === 1 ? 'text-status-success-soft-foreground' : 'text-text-secondary',
-                    )}
-                  />
-                  <Label>{t('chat.turnAction.thumbsUp')}</Label>
-                </ContextMenu.Item>
-                <ContextMenu.Item
-                  id="thumbs-down"
-                  textValue={t('chat.turnAction.thumbsDown')}
-                  onAction={() => rate(-1)}
-                >
-                  <ThumbsDown className={cx('size-4', rating === -1 ? 'text-status-danger' : 'text-text-secondary')} />
-                  <Label>{t('chat.turnAction.thumbsDown')}</Label>
-                </ContextMenu.Item>
-              </>
-            )}
-            {canRegenerate && (
-              <ContextMenu.Item id="regenerate" textValue={t('chat.turnAction.regenerate')} onAction={onRegenerate}>
-                <RefreshCw className="size-4 text-text-secondary" />
-                <Label>{t('chat.turnAction.regenerate')}</Label>
-              </ContextMenu.Item>
-            )}
-            {onDelete && (
-              <>
-                {(canRate || canRegenerate) && <ContextMenu.Separator />}
-                <ContextMenu.Item
-                  id="delete"
-                  textValue={t('chat.turnAction.delete')}
-                  variant="danger"
-                  onAction={() => void requestDelete()}
-                >
-                  <Bin className="size-4" />
-                  <Label>{t('chat.turnAction.delete')}</Label>
-                </ContextMenu.Item>
-              </>
-            )}
-          </ContextMenu.Menu>
-        </ContextMenu.Popover>
-      </ContextMenu>
+    <div data-slot="assistant-group" className="m-message-item__assistant-wrap">
+      <MessageGroupAssistant className="m-message-item__assistant-group" onContextMenu={handleContextMenu}>
+        <AssistantAvatar src={assistantAvatar} modelId={group.modelId} hosted={isHosted} />
+        <MessageGroupBubbles>
+          {group.bubbles.map((bubble, i) => (
+            <ErrorBoundary key={bubble.key} fallback={renderError}>
+              <AssistantBubble
+                bubble={bubble}
+                header={i === headerIndex ? header : null}
+                workingLabel={workingLabel}
+                isOneBot={isOneBot}
+                emojiMap={emojiMap}
+                renderError={renderError}
+              />
+            </ErrorBoundary>
+          ))}
+        </MessageGroupBubbles>
+      </MessageGroupAssistant>
+      <span
+        ref={menuAnchorRef}
+        aria-hidden
+        style={{
+          position: 'fixed',
+          width: 0,
+          height: 0,
+          pointerEvents: 'none',
+          left: menuAnchor?.x ?? 0,
+          top: menuAnchor?.y ?? 0,
+        }}
+      />
+      <Popover
+        triggerRef={menuAnchorRef}
+        isOpen={menuAnchor !== null}
+        onOpenChange={(open) => {
+          if (!open) setMenuAnchor(null)
+        }}
+        placement="bottom start"
+        offset={0}
+      >
+        <Menu variant="inline" aria-label={t('contextMenu.messageActions')} onAction={() => setMenuAnchor(null)}>
+          {selectedText && (
+            <MenuItem
+              id="copy-selection"
+              textValue={t('contextMenu.copySelection')}
+              icon={<Copy />}
+              onAction={() => menuCopy(selectedText)}
+            >
+              {t('contextMenu.copySelection')}
+            </MenuItem>
+          )}
+          {targetText !== null && (
+            <MenuItem id="copy" textValue={t('chat.copy')} icon={<Copy />} onAction={() => menuCopy(targetText)}>
+              {t('chat.copy')}
+            </MenuItem>
+          )}
+          {coarse && targetText !== null && (
+            <MenuItem
+              id="select-text"
+              textValue={t('contextMenu.selectText')}
+              icon={<CursorText />}
+              onAction={() => setShowSelectText(true)}
+            >
+              {t('contextMenu.selectText')}
+            </MenuItem>
+          )}
+          {hasBubbleActions && hasTurnActions && <MenuSeparator />}
+          {canRate && (
+            <MenuItem
+              id="thumbs-up"
+              textValue={t('chat.turnAction.thumbsUp')}
+              icon={<ThumbsUp className={rating === 1 ? 'm-message-item__rated-up' : undefined} />}
+              onAction={() => rate(1)}
+            >
+              {t('chat.turnAction.thumbsUp')}
+            </MenuItem>
+          )}
+          {canRate && (
+            <MenuItem
+              id="thumbs-down"
+              textValue={t('chat.turnAction.thumbsDown')}
+              icon={<ThumbsDown className={rating === -1 ? 'm-message-item__rated-down' : undefined} />}
+              onAction={() => rate(-1)}
+            >
+              {t('chat.turnAction.thumbsDown')}
+            </MenuItem>
+          )}
+          {canRegenerate && (
+            <MenuItem
+              id="regenerate"
+              textValue={t('chat.turnAction.regenerate')}
+              icon={<RefreshCw />}
+              onAction={onRegenerate}
+            >
+              {t('chat.turnAction.regenerate')}
+            </MenuItem>
+          )}
+          {onDelete && (canRate || canRegenerate) && <MenuSeparator />}
+          {onDelete && (
+            <MenuItem
+              id="delete"
+              textValue={t('chat.turnAction.delete')}
+              tone="danger"
+              icon={<Bin />}
+              onAction={() => void requestDelete()}
+            >
+              {t('chat.turnAction.delete')}
+            </MenuItem>
+          )}
+        </Menu>
+      </Popover>
       {showFooter && (
         // Under the bubbles, indented past the avatar column: the actions
         // alone. Duration, tokens and cost are one press away behind the info
         // action, which is where a new metric goes too.
-        <MessageGroupFooter className="pl-10 has-[[aria-expanded=true]]:opacity-100">
-          <div data-slot="assistant-actions" className="flex gap-1">
+        <MessageGroupFooter className="m-message-item__assistant-footer">
+          <div data-slot="assistant-actions" className="m-message-item__assistant-actions">
             <CopyButton text={turnCopyText} />
             {canRate && (
               <>
@@ -1091,14 +1168,14 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                   label={t('chat.thumbsUp')}
                   aria-pressed={rating === 1}
                   onClick={() => rate(1)}
-                  className={cx(rating === 1 && 'text-status-success-soft-foreground')}
+                  className={rating === 1 ? 'm-message-item__rated-up' : undefined}
                   icon={ThumbsUp}
                 />
                 <ActionButton
                   label={t('chat.thumbsDown')}
                   aria-pressed={rating === -1}
                   onClick={() => rate(-1)}
-                  className={cx(rating === -1 && 'text-status-danger-soft-foreground')}
+                  className={rating === -1 ? 'm-message-item__rated-down' : undefined}
                   icon={ThumbsDown}
                 />
               </>
@@ -1117,7 +1194,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
               <ActionButton
                 label={t('chat.delete')}
                 onClick={requestDelete}
-                className="data-[hovered]:text-status-danger"
+                className="m-message-item__delete-btn"
                 icon={Bin}
               />
             )}

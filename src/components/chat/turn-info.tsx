@@ -1,12 +1,14 @@
+import './turn-info.css'
+import { DialogTrigger, Dialog as PopoverDialog } from 'react-aria-components'
+import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
+import { Separator } from '@/components/yuerchu-ui/components/separator/separator'
 import { useTranslation } from 'react-i18next'
 import { Info } from '@keyline-icons/react/two-tone'
 
-import { Popover, Separator } from '@/components/base'
 import { ActionButton } from '@/components/ui/action-button'
 import { costQualifier, formatCostAmount, type CostQualifier } from '@/lib/cost-format'
 import { formatDuration, formatTps, tokensPerSecond } from '@/lib/turns'
 import type { DecimalString, TurnUsageInfoResponse } from '@/types'
-import { cx } from '@/utils/cx'
 
 type T = ReturnType<typeof useTranslation>['t']
 type TokenTotals = { input: number | null; output: number | null }
@@ -245,55 +247,51 @@ export function TurnInfo(props: TurnInfoInput) {
   const label = t('chat.turnInfo.open')
 
   return (
-    <Popover>
+    <DialogTrigger>
       <ActionButton label={label} icon={Info} />
-      <Popover.Content placement="top" className="w-72">
-        <Popover.Dialog aria-label={label} data-slot="turn-info" className="space-y-3 p-0.5">
-          {sections.map((section, index) => (
-            <section
-              key={section.id}
-              data-slot="turn-info-section"
-              data-section={section.id}
-              aria-labelledby={`turn-info-${section.id}`}
-              className="space-y-1.5"
-            >
-              {index > 0 && <Separator className="mb-3" />}
-              <h3
-                id={`turn-info-${section.id}`}
-                data-slot="turn-info-section-title"
-                className="text-caption-1-medium text-text-secondary"
+      <Popover offset={8} placement="top" className="m-turn-info__panel-1">
+        <PopoverDialog aria-label={label} data-slot="turn-info">
+          <div className="m-turn-info__panel-1-body m-turn-info__details">
+            {sections.map((section, index) => (
+              <section
+                key={section.id}
+                data-slot="turn-info-section"
+                data-section={section.id}
+                aria-labelledby={`turn-info-${section.id}`}
+                className="m-turn-info__section"
               >
-                {section.title}
-              </h3>
-              <dl data-slot="turn-info-rows" className="space-y-1">
-                {section.rows.map((row) => (
-                  <div
-                    key={row.id}
-                    data-slot="turn-info-row"
-                    data-row={row.id}
-                    className={cx(
-                      'flex items-center justify-between gap-4',
-                      row.total ? 'text-body-2-medium text-text-primary' : 'text-caption-1-regular',
-                    )}
-                  >
-                    <dt data-slot="turn-info-row-label" className={cx(!row.total && 'text-text-secondary')}>
-                      {row.label}
-                    </dt>
-                    <dd data-slot="turn-info-row-value" className="text-text-primary tabular-nums">
-                      {row.value}
-                    </dd>
-                  </div>
+                {index > 0 && <Separator className="m-turn-info__separator" />}
+                <h3 id={`turn-info-${section.id}`} data-slot="turn-info-section-title" className="m-turn-info__heading">
+                  {section.title}
+                </h3>
+                <dl data-slot="turn-info-rows" className="m-turn-info__rows">
+                  {section.rows.map((row) => (
+                    <div
+                      key={row.id}
+                      data-slot="turn-info-row"
+                      data-row={row.id}
+                      data-total={row.total || null}
+                      className="m-turn-info__row"
+                    >
+                      <dt data-slot="turn-info-row-label" className="m-turn-info__label">
+                        {row.label}
+                      </dt>
+                      <dd data-slot="turn-info-row-value" className="m-turn-info__value">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+                {section.notes.map((note) => (
+                  <p key={note} data-slot="turn-info-note" className="m-turn-info__note">
+                    {note}
+                  </p>
                 ))}
-              </dl>
-              {section.notes.map((note) => (
-                <p key={note} data-slot="turn-info-note" className="text-caption-1-regular text-text-secondary">
-                  {note}
-                </p>
-              ))}
-            </section>
-          ))}
-        </Popover.Dialog>
-      </Popover.Content>
-    </Popover>
+              </section>
+            ))}
+          </div>
+        </PopoverDialog>
+      </Popover>
+    </DialogTrigger>
   )
 }

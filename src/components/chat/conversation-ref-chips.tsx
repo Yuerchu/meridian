@@ -1,8 +1,8 @@
+import './conversation-ref-chips.css'
 import { useTranslation } from 'react-i18next'
-import { Chip } from '@/components/base'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { Messages } from '@keyline-icons/react/two-tone'
 
-import { cx } from '@/utils/cx'
 import type { MessageContextInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -24,14 +24,21 @@ export function ConversationRefChips({
   const refs = items.filter((item) => item.kind === 'conversation')
   if (refs.length === 0) return null
   return (
-    <div data-slot="conversation-ref-chips" className={cx('flex min-w-0 flex-wrap gap-1', className)}>
+    <div
+      data-slot="conversation-ref-chips"
+      className={['m-conversation-ref-chips', className].filter(Boolean).join(' ')}
+    >
       {refs.map((ref) => (
-        <Chip key={ref.id} size="sm" variant="soft" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
-          <Messages className="size-3" aria-hidden />
-          <span data-slot="conversation-ref-chip-label" onPointerEnter={titleIfTruncated} className="max-w-48 truncate">
+        <Badge key={ref.id} size="sm" aria-label={t('chat.convRef.chip', { name: ref.display_path })}>
+          <Messages className="m-conversation-ref-chips__icon" aria-hidden />
+          <span
+            data-slot="conversation-ref-chip-label"
+            onPointerEnter={titleIfTruncated}
+            className="m-conversation-ref-chips__label"
+          >
             {ref.display_path}
           </span>
-        </Chip>
+        </Badge>
       ))}
     </div>
   )

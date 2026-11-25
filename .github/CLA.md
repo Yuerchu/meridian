@@ -22,6 +22,12 @@ following:
    Contribution and any derivative works thereof, under any license —
    including the AGPL-3.0-or-later and the project's commercial license.
 
+   This includes Contributions to files that are not under the
+   AGPL-3.0-or-later, such as the Yuerchu UI components under
+   `src/components/yuerchu-ui/`: the maintainer may also include those
+   Contributions in the @yuerchu/ui component library and distribute them
+   under its terms.
+
 3. **You retain copyright** over your Contribution. This agreement does
    not transfer ownership.
 

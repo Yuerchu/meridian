@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import type { PlanReviewDeliveryState, PlanReviewStatus, PlanReviewSummaryInfoResponse } from '@/types'
+import type { PlanReviewStatus, PlanReviewSummaryInfoResponse } from '@/types'
 
 export interface PlanReviewEventInfo {
   review_id: string
@@ -9,14 +9,13 @@ export interface PlanReviewEventInfo {
   revision_id: string
   turn_id: string
   status: PlanReviewStatus
-  delivery_state: PlanReviewDeliveryState | null
   lock_version: number
 }
 
-type ReviewProjection = Pick<PlanReviewEventInfo, 'status' | 'delivery_state' | 'lock_version'>
+type ReviewProjection = Pick<PlanReviewEventInfo, 'status' | 'lock_version'>
 
 function sameProjection(left: ReviewProjection, right: ReviewProjection): boolean {
-  return left.status === right.status && left.delivery_state === right.delivery_state
+  return left.status === right.status
 }
 
 function acceptsProjection(previous: ReviewProjection | undefined, next: ReviewProjection): boolean {

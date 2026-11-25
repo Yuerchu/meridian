@@ -7,6 +7,7 @@ import { Message } from '@keyline-icons/react/two-tone'
 // `Color` reach `react` and a sibling style module and nothing else.
 import ClaudeCodeMono from '@lobehub/icons/es/ClaudeCode/components/Mono'
 import ClaudeCodeColor from '@lobehub/icons/es/ClaudeCode/components/Color'
+import './agent-icon.css'
 
 /**
  * Whose conversation this is, in one glyph.
@@ -24,7 +25,7 @@ export function ConversationIcon({ agentKind }: { agentKind?: string | null }) {
   // Everything else, including the hook gates' review transcripts and a
   // delegated run: those appear where what they are is already said, so a
   // second mark would be decoration.
-  return <Message className="size-4" />
+  return <Message className="m-agent-icon" />
 }
 
 /**

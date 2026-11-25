@@ -62,6 +62,46 @@ beforeEach(() => {
 })
 
 describe('ModelPanel', () => {
+  it('closes only the nested effort first and restores grid and outer trigger focus', async () => {
+    const user = userEvent.setup()
+    render(<ModelPanel {...props()} />)
+    const trigger = screen.getByRole('button', { name: /^Model and thinking/ })
+    await user.tab()
+    expect(trigger).toHaveFocus()
+    await user.keyboard('{Enter}')
+    const dialog = await screen.findByRole('dialog', { name: 'Model and thinking' })
+    const row = await within(dialog).findByRole('row', { name: 'Alpha' })
+    const chip = within(row).getByRole('button', { name: 'Thinking: Default' })
+    await user.click(chip)
+    expect(await screen.findByRole('dialog', { name: 'Thinking' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Thinking' })).not.toBeInTheDocument())
+    expect(dialog).toBeInTheDocument()
+    // GridList restores its selected row (also true with the former base Popover).
+    await waitFor(() => expect(row).toHaveFocus())
+    // Escape on a selected grid row belongs to selection; the empty search dismisses the overlay.
+    await user.click(within(dialog).getByRole('searchbox', { name: 'Search models' }))
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it('clears a search before Escape dismisses and resets it on outside dismissal', async () => {
+    const user = userEvent.setup()
+    render(<ModelPanel {...props()} />)
+    const dialog = await openPanel(user)
+    const search = within(dialog).getByRole('searchbox', { name: 'Search models' })
+    await user.type(search, 'gam')
+    await user.keyboard('{Escape}')
+    expect(search).toHaveValue('')
+    expect(dialog).toBeInTheDocument()
+    await user.type(search, 'gam')
+    await user.click(document.body)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const reopened = await openPanel(user)
+    expect(within(reopened).getByRole('searchbox', { name: 'Search models' })).toHaveValue('')
+  })
+
   it('names the model on its trigger, and the effort only off its default', () => {
     const { unmount } = render(<ModelPanel {...props()} />)
     expect(screen.getByRole('button', { name: 'Model and thinking: alpha' })).toBeInTheDocument()
@@ -137,9 +177,10 @@ describe('ModelPanel', () => {
     // Two stops — low and high; no off, which this model refuses.
     expect(slider).toHaveAttribute('max', '1')
     expect(slider).toHaveValue('1')
+    expect(within(effort).getByRole('group', { name: 'Thinking' })).toContainElement(slider)
     slider.focus()
     await user.keyboard('{ArrowLeft}')
-    expect(onSelectThinkingLevel).toHaveBeenCalledWith('low')
+    expect(onSelectThinkingLevel).toHaveBeenCalledExactlyOnceWith('low')
   })
 
   it('makes following the assistant a switch, with the slider waiting under it', async () => {

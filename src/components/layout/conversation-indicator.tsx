@@ -1,3 +1,4 @@
+import './conversation-indicator.css'
 import { useTranslation } from 'react-i18next'
 import { useConversationStore } from '@/stores/conversation-store'
 
@@ -35,14 +36,14 @@ export function ConversationIndicator({
 
   if (waiting) {
     return (
-      <span data-slot="conversation-indicator" className="shrink-0">
+      <span data-slot="conversation-indicator" className="m-conv-indicator">
         <span
           data-slot="conversation-indicator-dot"
           aria-hidden
-          // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-          className="block size-2 rounded-full bg-status-warning animate-pulse motion-reduce:animate-none"
+          className="m-conv-indicator__dot"
+          data-tone="waiting"
         />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.waiting')}
         </span>
       </span>
@@ -50,34 +51,24 @@ export function ConversationIndicator({
   }
   if (session?.streaming) {
     return (
-      <span data-slot="conversation-indicator" className="shrink-0">
+      <span data-slot="conversation-indicator" className="m-conv-indicator">
         <span
           data-slot="conversation-indicator-dot"
           aria-hidden
-          // eslint-disable-next-line no-restricted-syntax -- a live status dot pulses; it is not a placeholder
-          className="block size-2 rounded-full bg-status-info animate-pulse motion-reduce:animate-none"
+          className="m-conv-indicator__dot"
+          data-tone="streaming"
         />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.streaming')}
         </span>
       </span>
     )
   }
-  // Weaker than a turn running, and drawn so: a ring rather than a filled
-  // dot, and still. A command left running in the background is not the
-  // conversation doing anything a person need watch — it is the conversation
-  // that will, when it finishes, wake a turn of its own. Checked before
-  // `session`, because the conversations this matters for are mostly ones
-  // nobody has opened since.
   if (running > 0) {
     return (
-      <span data-slot="conversation-indicator" className="shrink-0">
-        <span
-          data-slot="conversation-indicator-ring"
-          aria-hidden
-          className="block size-2 rounded-full border-[1.5px] border-status-info"
-        />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+      <span data-slot="conversation-indicator" className="m-conv-indicator">
+        <span data-slot="conversation-indicator-ring" aria-hidden className="m-conv-indicator__ring" />
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.background', { count: running })}
         </span>
       </span>
@@ -85,13 +76,9 @@ export function ConversationIndicator({
   }
   if (session?.fulfilledUnseen) {
     return (
-      <span data-slot="conversation-indicator" className="shrink-0">
-        <span
-          data-slot="conversation-indicator-dot"
-          aria-hidden
-          className="block size-2 rounded-full bg-status-success"
-        />
-        <span data-slot="conversation-indicator-label" className="sr-only">
+      <span data-slot="conversation-indicator" className="m-conv-indicator">
+        <span data-slot="conversation-indicator-dot" aria-hidden className="m-conv-indicator__dot" data-tone="unseen" />
+        <span data-slot="conversation-indicator-label" className="m-conv-indicator__label">
           {t('sidebar.status.unseen')}
         </span>
       </span>

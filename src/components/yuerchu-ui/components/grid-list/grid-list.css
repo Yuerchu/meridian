@@ -1,0 +1,391 @@
+@layer components {
+  /* ---------- 列表：一个带边框的面板，行之间有分隔线 ---------- */
+  .ui-grid-list {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    outline: 1px solid transparent; /* 高对比度模式下显示列表边界 */
+  }
+
+  /* 列表有固定高度时行不压缩、整体滚动；虚拟滚动时撑出总高度的那层（React Aria 写死了高度）也不能被压扁，否则滚不到后面的行 */
+  .ui-grid-list[data-layout="stack"] > * {
+    flex-shrink: 0;
+  }
+
+  .ui-grid-list[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-grid-list-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    min-height: calc(var(--control-md) + var(--space-4));
+    padding: var(--space-2) var(--space-4);
+    color: var(--text);
+    font: var(--text-body);
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-grid-list[data-layout="stack"] .ui-grid-list-item + .ui-grid-list-item {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* 第一行和最后一行跟着面板的圆角 */
+  .ui-grid-list[data-layout="stack"] .ui-grid-list-item:first-child {
+    border-start-start-radius: inherit;
+    border-start-end-radius: inherit;
+  }
+
+  .ui-grid-list[data-layout="stack"] .ui-grid-list-item:last-child {
+    border-end-start-radius: inherit;
+    border-end-end-radius: inherit;
+  }
+
+  /* 可以点的行（选择或打开）：悬停有底色、手形光标 */
+  .ui-grid-list-item:is([data-selection-mode], [data-href], [data-allows-dragging])[data-hovered]:not([data-disabled]),
+  .ui-grid-list-item[data-pressed]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .ui-grid-list-item[data-href] {
+    cursor: pointer;
+  }
+
+  .ui-grid-list-item[data-selected] {
+    background: var(--surface-muted);
+  }
+
+  /* 键盘焦点：内嵌的焦点环，不会被相邻行盖住 */
+  .ui-grid-list-item[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-grid-list-item[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-grid-list-item__content {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .ui-grid-list-item__label {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .ui-grid-list-item__description {
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .ui-grid-list-item__actions {
+    flex: none;
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  .ui-grid-list-item__check {
+    flex: none;
+    display: inline-flex;
+    color: var(--text);
+  }
+
+  .ui-grid-list-item__check svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-grid-list__empty {
+    padding: var(--space-6) var(--space-4);
+    color: var(--text-secondary);
+    font: var(--text-small);
+    text-align: center;
+  }
+
+  /* ---------- 网格：每项是一张小卡片 ---------- */
+  .ui-grid-list[data-layout="grid"] {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+    gap: var(--space-3);
+    padding: var(--space-3);
+  }
+
+  .ui-grid-list[data-layout="grid"] .ui-grid-list-item {
+    align-items: flex-start;
+    border: 1px solid var(--border);
+    border-radius: max(var(--radius-item), calc(var(--radius-panel) - var(--space-3)));
+  }
+
+  .ui-grid-list[data-layout="grid"] .ui-grid-list-item[data-selected] {
+    border-color: var(--control-on);
+  }
+
+  .ui-grid-list[data-layout="grid"] .ui-grid-list__empty,
+  .ui-grid-list[data-layout="grid"] .ui-grid-list__skeleton {
+    grid-column: 1 / -1;
+  }
+
+  /* 加载中的占位项（还没有项目时）。和真实的行一样高，等待阶段占住位置但看不见 */
+  .ui-grid-list__skeleton {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ui-grid-list__skeleton[data-waiting] {
+    visibility: hidden;
+  }
+
+  .ui-grid-list__skeleton-item {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: calc(var(--control-md) + var(--space-4));
+    padding: var(--space-2) var(--space-4);
+  }
+
+  /* 说明那一行用说明文字的字号，占位的高度跟着它 */
+  .ui-grid-list__skeleton-meta {
+    font: var(--text-small);
+  }
+
+  .ui-grid-list__skeleton-item + .ui-grid-list__skeleton-item {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .ui-grid-list[data-layout="grid"] .ui-grid-list__skeleton {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr));
+    gap: var(--space-3);
+  }
+
+  @media (forced-colors: active) {
+    .ui-grid-list-item[data-selected] {
+      outline: 2px solid Highlight;
+      outline-offset: calc(-1 * var(--focus-ring-width));
+    }
+  }
+
+  /* ---------- 拖动排序 ---------- */
+  .ui-grid-list-item__drag {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    box-sizing: border-box;
+    width: var(--control-sm);
+    height: var(--control-sm);
+    margin-inline-start: calc(-1 * var(--space-2));
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: grab;
+  }
+
+  .ui-grid-list-item__drag svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-grid-list-item__drag[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-grid-list-item__drag[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  /* 正在拖的那一行：原位留一个空槽（内容隐藏，虚线框） */
+  .ui-grid-list-item[data-dragging] {
+    background: var(--surface-muted);
+  }
+
+  .ui-grid-list-item[data-dragging] > * {
+    visibility: hidden;
+  }
+
+  .ui-grid-list-item[data-dragging]::after {
+    position: absolute;
+    inset: var(--space-1);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-item);
+    content: "";
+  }
+
+  /* 跟着指针的卡片（React Aria 截图后当作拖动图像） */
+  .ui-grid-list__drag-preview {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    max-width: 280px;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .ui-grid-list__drag-preview svg {
+    flex: none;
+    width: var(--icon-md);
+    height: var(--icon-md);
+    color: var(--text-secondary);
+  }
+
+  .ui-grid-list__drag-preview-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-grid-list__drag-preview-count {
+    flex: none;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--ink);
+    color: var(--ink-fg);
+    font: var(--text-small-medium);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 放下的位置：行之间让出一道缝，中间一条文字色的线，起点一个小圆点 */
+  .ui-grid-list__drop-indicator {
+    position: relative;
+    height: 0;
+    transition: height var(--dur-spring) var(--ease-spring);
+  }
+
+  .ui-grid-list__drop-indicator[data-drop-target] {
+    height: var(--space-3);
+  }
+
+  .ui-grid-list__drop-indicator[data-drop-target]::before,
+  .ui-grid-list__drop-indicator[data-drop-target]::after {
+    position: absolute;
+    top: 50%;
+    translate: 0 -50%;
+    content: "";
+  }
+
+  .ui-grid-list__drop-indicator[data-drop-target]::before {
+    inset-inline: var(--space-3);
+    height: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--text);
+  }
+
+  .ui-grid-list__drop-indicator[data-drop-target]::after {
+    inset-inline-start: var(--space-3);
+    box-sizing: border-box;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--text);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+  }
+
+/* ---------- 滑动操作（swipeActions） ----------
+     行的内容放在可以横向滑动的一层（__slide）里，盖在操作按钮上面。这一层要有不透明的底色，
+     并跟着行的悬停、选中底色走。不加 z-index：行的内嵌焦点环（outline）要画在它上面 */
+  .ui-grid-list-item[data-swipe] {
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .ui-grid-list-item__slide {
+    position: relative;
+    display: flex;
+    flex: 1;
+    align-items: center;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: inherit;
+    padding: var(--space-2) var(--space-4);
+    background: var(--surface);
+    /* 竖着滑照常滚动页面，横着滑交给这一层 */
+    touch-action: pan-y;
+  }
+
+  /* 和行自己的悬停、选中底色同样的条件（见上面） */
+  .ui-grid-list-item[data-swipe]:is([data-selection-mode], [data-href], [data-allows-dragging])[data-hovered]:not([data-disabled]) .ui-grid-list-item__slide,
+  .ui-grid-list-item[data-swipe][data-selected] .ui-grid-list-item__slide {
+    background: var(--surface-muted);
+  }
+
+  .ui-grid-list-swipe {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .ui-grid-list-swipe[data-side="trailing"] {
+    justify-content: flex-end;
+  }
+
+  .ui-grid-list-swipe__action {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-1);
+    width: 72px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid transparent; /* 高对比度模式下显示按钮边界 */
+    background: var(--surface-muted);
+    color: var(--text);
+    font: var(--text-caption);
+    cursor: pointer;
+    --icon-size: var(--icon-md);
+  }
+
+  .ui-grid-list-swipe__action svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .ui-grid-list-swipe__action[data-tone="accent"] {
+    background: var(--accent-subtle);
+    color: var(--accent-strong);
+  }
+
+  .ui-grid-list-swipe__action[data-tone="danger"] {
+    background: var(--danger-bg);
+    color: var(--danger-fg);
+  }
+
+  @media (forced-colors: active) {
+    .ui-grid-list__drop-indicator[data-drop-target]::before {
+      background: Highlight;
+    }
+
+    .ui-grid-list__drop-indicator[data-drop-target]::after {
+      border-color: Highlight;
+    }
+  }
+}

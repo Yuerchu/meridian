@@ -266,7 +266,6 @@ const conversations: Record<string, DemoHandler> = {
       turns: [],
       pending: [],
       planReviews: [],
-      planBarrier: false,
       subRuns: [],
       shellResults: {},
       contextContents: {},
@@ -646,7 +645,6 @@ const plan: Record<string, DemoHandler> = {
     return state.planReview
   },
   list_plan_revisions: (_args, { state }) => [state.planReview.submitted_revision],
-  get_plan_review_delivery: (_args, { state }) => state.planReview.delivery,
   save_plan_review_draft: (args, { state }) => {
     const req = request<{ expectedGeneration: number; normalizedMarkdown: string; globalNote: string | null }>(args)
     const draft = state.planReview.draft
@@ -681,7 +679,6 @@ const plan: Record<string, DemoHandler> = {
         if (summary.review_id !== PLAN_REVIEW_ID) continue
         summary.status = status
         summary.lock_version = planReview.review.lock_version
-        thread.planBarrier = false
         const record = thread.turns.find((t) => t.id === summary.turn_id)
         if (record) record.status = 'done'
         backend.later(0, () =>
@@ -692,13 +689,12 @@ const plan: Record<string, DemoHandler> = {
             revision_id: summary.revision_id,
             turn_id: summary.turn_id,
             status,
-            delivery_state: null,
             lock_version: summary.lock_version,
           }),
         )
       }
     }
-    return { review_id: PLAN_REVIEW_ID, state: status, delivery_state: null, continuation_turn_id: null }
+    return { review_id: PLAN_REVIEW_ID, state: status }
   },
 }
 

@@ -1,0 +1,144 @@
+@layer components {
+  .m-emoji__field {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-emoji__thumb {
+    display: flex;
+    flex-shrink: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+  }
+
+  .m-emoji__row-actions,
+  .m-emoji__cell,
+  .m-emoji__name-row,
+  .m-emoji__actions,
+  .m-emoji__create,
+  .m-emoji__trigger {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-emoji__row-actions {
+    justify-content: flex-end;
+  }
+
+  .m-emoji__cell,
+  .m-emoji__fields,
+  .m-emoji__name,
+  .m-emoji__name-row {
+    min-width: 0;
+  }
+
+  .m-emoji__fields,
+  .m-emoji__grid,
+  .m-emoji__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-emoji__list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-emoji__fields,
+  .m-emoji__name {
+    flex: 1;
+  }
+
+  .m-emoji__name,
+  .m-emoji__count {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-emoji__grid {
+    gap: var(--space-3);
+  }
+
+  .m-emoji__seen {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .m-emoji__fold,
+  .m-emoji__create {
+    overflow: hidden;
+  }
+
+  .m-emoji__fold {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-emoji__fold + .m-emoji__fold {
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-emoji__trigger {
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font: var(--text-body);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .m-emoji__trigger[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .m-emoji__glyph,
+  .m-emoji__chevron {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .m-emoji__chevron {
+    transition: transform var(--dur-standard) var(--ease-standard);
+  }
+
+  .m-emoji__fold[data-expanded] .m-emoji__chevron {
+    transform: rotate(90deg);
+  }
+
+  .m-emoji__count,
+  .m-emoji__desc,
+  .m-emoji__note {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-emoji__panel {
+    width: 100%;
+    min-height: 0;
+  }
+
+  .m-emoji__body {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-emoji__aside {
+    margin-inline-start: auto;
+  }
+
+  .m-emoji__create {
+    align-items: center;
+    width: 100%;
+  }
+}

@@ -2117,6 +2117,9 @@ requireRustFields('src-tauri/crates/core/src/provider/balance.rs', 'BalanceAccou
 })
 
 for (const typesFile of filesUnder('src', ['.ts', '.tsx'])) {
+  // Vendored upstream design-system mirror (guarded by `pnpm ui:check`, also
+  // excluded in eslint.config.js and .prettierignore) — not Meridian DTO code.
+  if (typesFile.startsWith('src/components/yuerchu-ui/')) continue
   const types = readAt(typesFile)
   if (types == null) continue
   for (const match of types.matchAll(

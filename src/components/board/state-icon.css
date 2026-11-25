@@ -1,0 +1,37 @@
+@layer components {
+  .m-board-state-icon {
+    flex-shrink: 0;
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .m-board-state-icon[data-tone='warning'] {
+    color: var(--warning-fg);
+  }
+
+  .m-board-state-icon[data-tone='danger'] {
+    color: var(--danger-fg);
+  }
+
+  .m-board-state-icon[data-tone='success'] {
+    color: var(--success-fg);
+  }
+
+  .m-board-state-icon[data-tone='muted'] {
+    color: var(--text-secondary);
+  }
+
+  .m-board-state-icon__idle {
+    flex-shrink: 0;
+    box-sizing: border-box;
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-pill);
+  }
+
+  .m-board-state-icon__working {
+    display: inline-flex;
+    flex-shrink: 0;
+  }
+}

@@ -29,8 +29,8 @@ describe('ComposerSuggestions layout', () => {
     const modelRow = screen.getByText('/model').closest('[data-slot="composer-suggestion-row"]') as HTMLElement
     const thinkingRow = screen.getByText('/thinking').closest('[data-slot="composer-suggestion-row"]') as HTMLElement
 
-    expect(modelRow).toHaveClass('grid', 'w-full', 'text-left')
-    expect(thinkingRow).toHaveClass('grid', 'w-full', 'text-left')
+    expect(modelRow).toHaveAttribute('data-kind', 'command')
+    expect(thinkingRow).toHaveAttribute('data-kind', 'command')
     expect(modelRow.style.gridTemplateColumns).toBe('1rem 9ch minmax(0, 1fr)')
     expect(thinkingRow.style.gridTemplateColumns).toBe(modelRow.style.gridTemplateColumns)
 
@@ -54,8 +54,7 @@ describe('ComposerSuggestions layout', () => {
     ])
 
     const row = screen.getByText('index.ts').closest('[data-slot="composer-suggestion-row"]') as HTMLElement
-    expect(row).toHaveClass('flex', 'w-full', 'text-left')
-    expect(row).not.toHaveClass('grid')
+    expect(row).toHaveAttribute('data-kind', 'file')
     expect(row.style.gridTemplateColumns).toBe('')
   })
 })

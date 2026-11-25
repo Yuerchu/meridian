@@ -1,0 +1,38 @@
+@layer components {
+  .ui-animated-number {
+    position: relative;
+    display: inline-flex;
+    align-items: baseline;
+    font-variant-numeric: tabular-nums; /* 每一位等宽：滚动时旁边的数字不左右挪 */
+  }
+
+  .ui-animated-number__flow {
+    /* NumberFlow 默认 line-height 1、上下各留 .25em 的遮罩区：整组沿用外面的字体和行高，不把行撑高 */
+    --number-flow-mask-height: 0.15em;
+
+    font: inherit;
+  }
+
+  /* 差值提示：在数字右边、和数字垂直居中；不占位置，不推开旁边的内容。
+     不放成右上角的上标：在 Stat 这类"标签在上、数字在下"的布局里会伸进标签那一行 */
+  .ui-animated-number__change {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 100%;
+    display: flex;
+    align-items: center;
+    margin-inline-start: var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+
+  .ui-animated-number__change[data-tone="good"] {
+    color: var(--success-fg);
+  }
+
+  .ui-animated-number__change[data-tone="bad"] {
+    color: var(--danger-fg);
+  }
+}

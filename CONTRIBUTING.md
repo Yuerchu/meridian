@@ -10,6 +10,14 @@ By submitting a pull request you agree to the
 the right to distribute your contribution under both the AGPL and commercial
 licenses. You retain copyright over your work.
 
+**`src/components/yuerchu-ui/` is not AGPL.** Those files are synced from
+the @yuerchu/ui component library and are under the Yuerchu UI License
+(source-available, Meridian only; see [LICENSING.md](LICENSING.md)). A
+change there is covered by the same CLA, and may also be merged into
+@yuerchu/ui and distributed under its terms. Fixes there are welcome; a
+change that only Meridian needs belongs in Meridian's own components,
+outside that directory.
+
 ## 编码规范
 
 规范尽量做成机器可验证的:能被工具管住的都在工具配置里,这份文档只说工具本身

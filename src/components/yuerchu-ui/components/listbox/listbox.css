@@ -1,0 +1,127 @@
+@layer components {
+  .ui-listbox {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    outline: 1px solid transparent;
+  }
+
+  /* ---------- 选项 ---------- */
+  .ui-listbox-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-height: var(--control-md);
+    padding: var(--space-1) var(--space-3);
+    box-sizing: border-box;
+    /* 同心圆角：外层弹层圆角 − 弹层内边距 */
+    border-radius: max(var(--radius-item), calc(var(--radius-panel) - var(--ui-popover-padding, var(--space-1))));
+    color: var(--text);
+    font: var(--text-body);
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .ui-listbox-item[data-hovered]:not([data-disabled]),
+  .ui-listbox-item[data-focused]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  /* 键盘焦点：除了底色，再画一圈内嵌的焦点环 */
+  .ui-listbox-item[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-listbox-item[data-selected] .ui-listbox-item__label {
+    font: var(--text-body-medium);
+  }
+
+  .ui-listbox-item[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-listbox-item__icon,
+  .ui-listbox-item__check {
+    flex: none;
+    display: inline-flex;
+    color: var(--text-secondary);
+  }
+
+  .ui-listbox-item__icon svg,
+  .ui-listbox-item__check svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-listbox-item__check {
+    width: var(--icon-md);
+    margin-inline-start: auto;
+    color: var(--text);
+  }
+
+  .ui-listbox-item__text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ui-listbox-item__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .ui-listbox-item__description {
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-listbox-item[data-disabled] .ui-listbox-item__description,
+  .ui-listbox-item[data-disabled] .ui-listbox-item__icon {
+    color: var(--text-muted);
+  }
+
+  /* ---------- 分组 ---------- */
+  .ui-listbox-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .ui-listbox-section + .ui-listbox-section {
+    margin-block-start: var(--space-1);
+    padding-block-start: var(--space-1);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .ui-listbox-section__header {
+    padding: var(--space-1) var(--space-3);
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .ui-listbox__empty {
+    padding: var(--space-2) var(--space-3);
+    font: var(--text-body);
+    color: var(--text-secondary);
+  }
+
+  /* 高对比度模式：当前项用系统高亮色 */
+  @media (forced-colors: active) {
+    .ui-listbox-item[data-focused]:not([data-disabled]),
+    .ui-listbox-item[data-hovered]:not([data-disabled]) {
+      background: Highlight;
+      color: HighlightText;
+    }
+
+    .ui-listbox-item[data-focused] .ui-listbox-item__check,
+    .ui-listbox-item[data-focused] .ui-listbox-item__description {
+      color: HighlightText;
+    }
+
+    .ui-listbox-item[data-disabled] {
+      color: GrayText;
+    }
+  }
+}

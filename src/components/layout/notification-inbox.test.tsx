@@ -49,9 +49,9 @@ function seed(items: AttentionItem[], activeId: string | null = null) {
   })
 }
 
-/** The number drawn on the glyph: the registry bell's badge, beside the button. */
+/** The number drawn on the glyph: the badge beside the bell's button. */
 function badge(): string {
-  return bell().parentElement?.querySelector('span.pointer-events-none')?.textContent ?? ''
+  return bell().parentElement?.querySelector('[data-slot="notification-inbox-badge"]')?.textContent ?? ''
 }
 
 function bell(): HTMLElement {
@@ -63,10 +63,13 @@ async function open() {
   return screen.findByRole('dialog', { name: i18n.t('notifications.inbox.title') })
 }
 
-/** The inbox's rows, by the title the center gives each (the conversation). */
+/** The inbox's rows: one card each. */
 function rows(dialog: HTMLElement): HTMLElement[] {
   return [...dialog.querySelectorAll<HTMLElement>('article')]
 }
+
+/** What a card is headed with: the conversation, for a question. */
+const heading = (row: Element) => row.querySelector('h3')?.textContent
 
 beforeEach(async () => {
   await i18n.changeLanguage('en')
@@ -139,19 +142,14 @@ describe('the inbox', () => {
     seed(Array.from({ length: 12 }, (_, i) => call(`q${i}`, `c${i}`)))
     render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
-    const center = within(dialog).getByRole('region', { name: i18n.t('notifications.inbox.title') })
 
     // React Aria writes the room left in the viewport onto the popover inline;
-    // the dialog takes it, and the center scrolls inside that.
+    // the dialog takes it (`max-height: inherit`, in the stylesheet), and the
+    // list is the one scroller inside it.
     expect(dialog.parentElement?.style.maxHeight).toMatch(/px$/)
-    expect(dialog).toHaveClass('flex', 'max-h-[inherit]', 'flex-col')
-    expect(center).toHaveClass('max-w-none', 'min-h-0', 'overflow-y-auto')
-    expect(center).not.toHaveClass('max-w-[430px]')
-    // One scroller: the registry's fixed 516px list inside it is lifted, which
-    // is what left the last rows out of reach in a short window.
-    const scrollers = [...center.querySelectorAll('*')].filter((el) => el.classList.contains('overflow-y-auto'))
-    expect(scrollers.every((el) => el.classList.contains('overflow-visible'))).toBe(true)
-    expect([...center.querySelectorAll('*')].some((el) => el.classList.contains('max-h-[516px]'))).toBe(false)
+    expect(dialog).toHaveClass('m-inbox__dialog')
+    expect(dialog.querySelectorAll('.m-inbox__list')).toHaveLength(1)
+    expect(within(dialog).getByRole('region', { name: i18n.t('notifications.inbox.title') })).toBeInTheDocument()
   })
 
   it('lists the whole queue, past the three the stack shows', async () => {
@@ -167,7 +165,7 @@ describe('the inbox', () => {
     seed([call('a', 'being-read'), call('b', 'being-read'), call('c', 'c2')], 'being-read')
     render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
-    expect(rows(dialog).map((r) => r.querySelector('p')?.textContent)).toEqual(['Title c2'])
+    expect(rows(dialog).map((r) => heading(r))).toEqual(['Title c2'])
     expect(within(dialog).getByText(i18n.t('notifications.inbox.here', { count: 2 }))).toBeInTheDocument()
   })
 
@@ -196,20 +194,13 @@ describe('the inbox', () => {
     seed([call('a', 'c1'), call('b', 'c2'), call('c', 'c1'), call('d', 'c3'), call('e', 'c2')])
     render(<NotificationInbox onSelect={async () => true} transcriptInert={false} />)
     const dialog = await open()
-    const list = rows(dialog)[0].parentElement!
-    const sequence = [...list.children].map((el) =>
-      el.tagName === 'ARTICLE' ? `row ${el.querySelector('p')?.textContent}` : `group ${el.textContent}`,
-    )
-    expect(sequence).toEqual([
-      'group Title c1',
-      'row Title c1',
-      'row Title c1',
-      'group Title c2',
-      'row Title c2',
-      'row Title c2',
-      'group Title c3',
-      'row Title c3',
-    ])
+    const sequence = within(dialog)
+      .getAllByRole('group')
+      .map(
+        (group) =>
+          `${group.getAttribute('aria-label')}: ${[...group.querySelectorAll('article')].map(heading).join(', ')}`,
+      )
+    expect(sequence).toEqual(['Title c1: Title c1, Title c1', 'Title c2: Title c2, Title c2', 'Title c3: Title c3'])
     // Within the c1 group, a before c; the Allow on the first row answers a.
     await userEvent.click(within(rows(dialog)[0]).getByRole('button', { name: i18n.t('chat.tool.allow') }))
     expect(mocks.approve).toHaveBeenCalledWith('a')
@@ -241,7 +232,7 @@ describe('the inbox', () => {
       `${i18n.t('notifications.inbox.tabQuestions')}2`,
     ])
     await userEvent.click(tabs[2])
-    expect(rows(dialog).map((r) => r.querySelector('p')?.textContent)).toEqual(['Title c3', 'Title c4'])
+    expect(rows(dialog).map((r) => heading(r))).toEqual(['Title c3', 'Title c4'])
   })
 
   it('drops a row once it is answered', async () => {
@@ -250,7 +241,7 @@ describe('the inbox', () => {
     const dialog = await open()
     await userEvent.click(within(rows(dialog)[0]).getByRole('button', { name: i18n.t('chat.tool.allow') }))
     expect(mocks.approve).toHaveBeenCalledWith('a')
-    await waitFor(() => expect(rows(dialog).map((r) => r.querySelector('p')?.textContent)).toEqual(['Title c2']))
+    await waitFor(() => expect(rows(dialog).map((r) => heading(r))).toEqual(['Title c2']))
   })
 
   it('dispatches deny, defer and view to the same actions the notification uses', async () => {

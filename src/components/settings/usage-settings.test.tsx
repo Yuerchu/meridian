@@ -73,6 +73,28 @@ beforeEach(async () => {
   await i18n.changeLanguage('en')
 })
 
+it('names filters and associates the selected breakdown tab with its panel', async () => {
+  serve({ total: [bucket()], conversation: [bucket()] })
+  const user = userEvent.setup()
+  render(<UsageSettings onOpenConversation={onOpenConversation} />)
+  const range = screen.getByRole('radio', { name: 'Last 30 days' })
+  expect(range).toHaveAttribute('aria-checked', 'true')
+  expect(screen.getAllByRole('radiogroup')).toHaveLength(2)
+  for (const group of screen.getAllByRole('radiogroup')) expect(group).toHaveAccessibleName()
+  await user.click(range)
+  expect(range).toHaveAttribute('aria-checked', 'true')
+  const tab = await screen.findByRole('tab', { name: i18n.t('settings.usage.by.conversation') })
+  expect(tab).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tab.id)
+  const source = screen.getByRole('tab', { name: i18n.t('settings.usage.by.source') })
+  await user.click(source)
+  expect(source).toHaveAttribute('aria-selected', 'true')
+  expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', source.id)
+  await waitFor(() =>
+    expect(mockApi.usageReport).toHaveBeenCalledWith(expect.objectContaining({ dimension: 'source' })),
+  )
+})
+
 it('shows a recoverable error when the initial report fails', async () => {
   mockApi.usageReport.mockRejectedValue(new Error('offline'))
   const user = userEvent.setup()
@@ -461,12 +483,17 @@ it('shows the token composition of the whole range', async () => {
 
   const card = await chartCard('Where the tokens went')
   expect(within(card).getByText('1.5K')).toBeInTheDocument()
-  const rows = within(card).getAllByRole('listitem')
-  // 750 uncached, 250 read from cache, 500 out, of 1500.
-  expect(rows.map((row) => row.textContent)).toEqual([
+  expect(within(card).getByRole('button', { name: 'Input · uncached' })).toBeInTheDocument()
+  expect(within(card).getByRole('button', { name: 'Input · cache hit' })).toBeInTheDocument()
+  expect(within(card).getByRole('button', { name: 'Output' })).toBeInTheDocument()
+
+  await userEvent.click(within(card).getByRole('radio', { name: 'Table' }))
+  const rows = within(card).getAllByRole('row')
+  // Header + 750 uncached, 250 read from cache, 500 out, of 1500.
+  expect(rows.slice(1).map((row) => row.textContent)).toEqual([
     'Input · uncached75050%',
-    'Input · cache hit25017%',
-    'Output50033%',
+    'Input · cache hit25016.7%',
+    'Output50033.3%',
   ])
 })
 
@@ -549,12 +576,11 @@ it('marks incomplete token counts as lower bounds in the ranking and the composi
   ).toEqual(['whole-model3K', 'partial-model≥ 1K'])
 
   const composition = await chartCard('Where the tokens went')
-  expect(within(composition).getByText('≥ 1.5K')).toBeInTheDocument()
-  expect(
-    within(composition)
-      .getAllByRole('listitem')
-      .map((row) => row.textContent),
-  ).toEqual(['Input · uncached≥ 750', 'Input · cache hit≥ 250', 'Output≥ 500'])
+  expect(within(composition).getByText('≥ tokens')).toBeInTheDocument()
+  expect(within(composition).getByText('1.5K')).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Input · uncached' })).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Input · cache hit' })).toBeInTheDocument()
+  expect(within(composition).getByRole('button', { name: 'Output' })).toBeInTheDocument()
 })
 
 it('holds a place for every chart card while the first report loads', async () => {

@@ -1,0 +1,42 @@
+@layer components {
+  /* The welcome page: one question above the composer, centred in whatever
+     height the window leaves, scrolling when a phone keyboard leaves little. */
+  .m-welcome {
+    display: flex;
+    height: 100%;
+    overflow-y: auto;
+    padding-inline: var(--space-4);
+  }
+
+  .m-welcome__body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-6);
+    width: 100%;
+    max-width: var(--content-prose);
+    margin: auto;
+    padding-block: var(--space-8);
+  }
+
+  .m-welcome__heading {
+    margin: 0;
+    font: var(--text-title-2);
+    color: var(--text);
+    text-align: center;
+  }
+
+  .m-welcome__composer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+  }
+
+  .m-welcome__suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+  }
+}

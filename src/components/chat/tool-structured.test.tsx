@@ -1,7 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
-import { ChatToolPresentationProvider } from '@/components/ui/chat-tool'
+import { ChatToolPresentationProvider } from '@/components/yuerchu-ui/components/chat-tool/chat-tool'
 import { resetEditLocations } from '@/hooks/use-edit-location'
 import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -59,7 +59,7 @@ describe('structured tool display', () => {
       ],
     })
     const { container } = open(<ToolCallBlock data={call('mcp__notes__search', { query: 'x' }, { result })} />)
-    await userEvent.click(screen.getByRole('button', { name: /mcp__notes__search/ }))
+    await userEvent.click(screen.getByRole('button', { name: /notes\s*search/ }))
     expect(container.querySelector('[data-slot="tool-structured-result"]')).not.toBeNull()
     expect(container.querySelector('[data-slot="tool-value-table"]')).not.toBeNull()
     expect(screen.getByText('beta')).toBeInTheDocument()
@@ -72,7 +72,7 @@ describe('structured tool display', () => {
         data={call('mcp__db__query', { filter: { owner: 'me', tags: ['a', 'b'] }, limit: 5 }, { result: 'done' })}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /mcp__db__query/ }))
+    await userEvent.click(screen.getByRole('button', { name: /db\s*query/ }))
     expect(container.querySelector('[data-slot="tool-fields"]')).not.toBeNull()
     expect(screen.getByText('owner')).toBeInTheDocument()
     expect(container.textContent).not.toMatch(JSON_SOURCE)
@@ -84,7 +84,7 @@ describe('structured tool display', () => {
       { type: 'image', data: 'AAAA', mimeType: 'image/png' },
     ])
     const { container } = open(<ToolCallBlock data={call('mcp__x__y', {}, { result })} />)
-    await userEvent.click(screen.getByRole('button', { name: /mcp__x__y/ }))
+    await userEvent.click(screen.getByRole('button', { name: /x\s*y/ }))
     expect(screen.getByText('first part')).toBeInTheDocument()
     expect(container.querySelector('[data-slot="tool-value-image"]')).toHaveAttribute(
       'src',
@@ -106,7 +106,7 @@ describe('structured tool display', () => {
     await userEvent.click(screen.getByRole('button', { name: /Ask|Question/ }))
     expect(container.querySelector('[data-slot="ask-user-answers"]')).not.toBeNull()
     expect(screen.getAllByText('Which colour?').length).toBeGreaterThan(0)
-    expect(screen.getByText('Blue')).toBeInTheDocument()
+    expect(screen.getAllByText('Blue').length).toBeGreaterThan(0)
     expect(container.textContent).not.toMatch(JSON_SOURCE)
   })
 

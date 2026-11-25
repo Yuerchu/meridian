@@ -1,16 +1,19 @@
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
+import { ArrowDown } from '@keyline-icons/react/two-tone'
 import {
   MessageScroller as MessageScrollerPrimitive,
   useMessageScroller,
   useMessageScrollerScrollable,
   useMessageScrollerVisibility,
 } from '@/lib/message-scroller'
-
-import { cx } from '@/utils/cx'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@/components/base'
-import { ArrowDown } from '@keyline-icons/react/two-tone'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import './message-scroller.css'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 function MessageScrollerProvider(props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>) {
   return <MessageScrollerPrimitive.Provider {...props} />
@@ -20,7 +23,7 @@ function MessageScroller({ className, ...props }: React.ComponentProps<typeof Me
   return (
     <MessageScrollerPrimitive.Root
       data-slot="message-scroller"
-      className={cx('group/message-scroller relative flex size-full min-h-0 flex-col overflow-hidden', className)}
+      className={joinClasses('m-message-scroller', className)}
       {...props}
     />
   )
@@ -36,20 +39,7 @@ function MessageScrollerViewport({
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
       aria-label={ariaLabel ?? t('chat.messages')}
-      // scroll-fade-b（滚动驱动 mask 动画）与 contain-content 在 WebView2
-      // 滚动时产生内容错位残影，与 content-visibility 崩溃同源，一并移除
-      //
-      // `overflow-anchor: none`: the scroller owns the scroll position, and
-      // the browser's own anchoring fights it. With fractional row heights the
-      // browser nudges `scrollTop` by a device pixel while the spacer is being
-      // re-solved, and a nudge upward that lands in the same event as the
-      // answer row appearing reads to `syncAfterScroll` as the reader leaving
-      // the live edge — `follow` became `idle` on the first chunk. Growth above
-      // an idle reader is compensated by `useHeightCompensation` instead.
-      className={cx(
-        'size-full min-h-0 min-w-0 scrollbar-gutter-stable overflow-y-auto overscroll-contain [overflow-anchor:none] data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent',
-        className,
-      )}
+      className={joinClasses('m-message-scroller__viewport', className)}
       {...props}
     />
   )
@@ -62,7 +52,7 @@ function MessageScrollerContent({
   return (
     <MessageScrollerPrimitive.Content
       data-slot="message-scroller-content"
-      className={cx('flex h-max min-h-full flex-col gap-6', className)}
+      className={joinClasses('m-message-scroller__content', className)}
       {...props}
     />
   )
@@ -77,14 +67,9 @@ function MessageScrollerItem({
   return (
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
+      data-android={platform === 'android' || undefined}
       scrollAnchor={scrollAnchor}
-      // content-visibility:auto crashes WebView2 (STATUS_ACCESS_VIOLATION).
-      // Android WebView is unaffected — restore the optimization there only.
-      className={cx(
-        'min-w-0 shrink-0',
-        platform === 'android' && '[content-visibility:auto] [contain-intrinsic-size:auto_120px]',
-        className,
-      )}
+      className={joinClasses('m-message-scroller__item', className)}
       {...props}
     />
   )
@@ -96,7 +81,7 @@ function MessageScrollerAnchor({ className, ...props }: React.ComponentProps<typ
   return (
     <MessageScrollerPrimitive.Anchor
       data-slot="message-scroller-anchor"
-      className={cx('min-w-0', className)}
+      className={joinClasses('m-message-scroller__anchor', className)}
       {...props}
     />
   )
@@ -108,7 +93,7 @@ function MessageScrollerButton({
   children,
   render,
   variant = 'secondary',
-  size = 'small',
+  size = 'sm',
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Button> &
   Pick<React.ComponentProps<typeof Button>, 'variant' | 'size'>) {
@@ -120,25 +105,28 @@ function MessageScrollerButton({
       data-variant={variant}
       data-size={size}
       direction={direction}
-      className={cx(
-        'absolute inset-s-1/2 -translate-x-1/2 shadow-dropdown transition-[translate,scale,opacity] duration-200 motion-reduce:transition-none data-[active=false]:pointer-events-none data-[active=false]:scale-95 data-[active=false]:opacity-0 data-[active=false]:duration-400 data-[active=false]:ease-[cubic-bezier(0.7,0,0.84,0)] data-[active=true]:translate-y-0 data-[active=true]:scale-100 data-[active=true]:opacity-100 data-[active=true]:ease-[cubic-bezier(0.23,1,0.32,1)] data-[direction=end]:bottom-4 data-[direction=end]:data-[active=false]:translate-y-full data-[direction=start]:top-4 data-[direction=start]:data-[active=false]:-translate-y-full rtl:translate-x-1/2 data-[direction=start]:[&_svg]:rotate-180',
-        className,
-      )}
+      className={render ? className : undefined}
       render={
         render ??
-        // `dom` hands back intrinsic `<button>` props; `Button` types its own
-        // handlers against React Aria's synthetic events, which are the same
-        // objects with a wider element type.
-        ((buttonProps) => (
-          // eslint-disable-next-line meridian-ui/icon-only-needs-name -- wrapper: the caller's aria-label arrives through {...props}
-          <Button
-            iconOnly
-            leadingIcon={ArrowDown}
-            variant={variant}
-            size={size}
-            {...(buttonProps as React.ComponentProps<typeof Button>)}
-          />
-        ))
+        ((buttonProps) => {
+          const { onClick, className: _ignored, ...rest } = buttonProps
+          const active = (buttonProps as Record<string, unknown>)['data-active'] as string | undefined
+          return (
+            <div
+              className={joinClasses('m-message-scroller__button-slot', className)}
+              data-active={active}
+              data-direction={direction}
+            >
+              <Button
+                icon={<ArrowDown />}
+                variant={variant}
+                size={size}
+                onPress={() => onClick?.({ defaultPrevented: false } as React.MouseEvent<HTMLButtonElement>)}
+                {...(rest as React.ComponentProps<typeof Button>)}
+              />
+            </div>
+          )
+        })
       }
       aria-label={t(direction === 'end' ? 'chat.scrollToBottom' : 'chat.scrollToTop')}
       {...props}

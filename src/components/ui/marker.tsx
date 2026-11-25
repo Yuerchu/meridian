@@ -1,64 +1,40 @@
 import * as React from 'react'
-import { dom, tv, type VariantProps } from '@/components/base'
 
-import { cx } from '@/utils/cx'
+import './marker.css'
 
-const markerVariants = tv({
-  base: "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-body-regular text-text-secondary [&_svg:not([class*='size-'])]:size-4 [a]:underline [a]:underline-offset-3 [a]:hover:text-text-primary",
-  variants: {
-    variant: {
-      default: '',
-      separator:
-        'before:mr-1 before:h-px before:min-w-0 before:flex-1 before:bg-border-button-default after:ml-1 after:h-px after:min-w-0 after:flex-1 after:bg-border-button-default',
-      border: 'border-b border-border-button-default pb-2',
-    },
-  },
-})
+export type MarkerVariant = 'default' | 'separator' | 'border'
+
+function joinClasses(...parts: (string | false | null | undefined)[]): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 function Marker({
   className,
   variant = 'default',
   render,
   ...props
-}: React.ComponentProps<typeof dom.div> & VariantProps<typeof markerVariants>) {
-  return (
-    <dom.div
-      data-slot="marker"
-      data-variant={variant}
-      className={cx(markerVariants({ variant, className }))}
-      render={render}
-      {...props}
-    />
-  )
+}: React.ComponentProps<'div'> & {
+  variant?: MarkerVariant
+  render?: (props: React.ComponentProps<'div'>) => React.ReactElement
+}) {
+  const domProps: React.ComponentProps<'div'> & { 'data-slot': string; 'data-variant': MarkerVariant } = {
+    'data-slot': 'marker',
+    'data-variant': variant,
+    className: joinClasses('m-marker', className),
+    ...props,
+  }
+  if (render) return render(domProps)
+  return <div {...domProps} />
 }
 
 function MarkerIcon({ className, ...props }: React.ComponentProps<'span'>) {
   return (
-    <span
-      data-slot="marker-icon"
-      aria-hidden="true"
-      // A direct child only. The descendant form reached inside
-      // Spinner, whose markup is a sized span wrapping an unsized svg: the svg
-      // matched, shrank to 16px, and parked in the corner of its 24px parent —
-      // which is the element carrying the spin. The mark appeared to orbit
-      // rather than turn. Anything nested deeper brings its own size.
-      className={cx("size-4 shrink-0 [&>svg:not([class*='size-'])]:size-4", className)}
-      {...props}
-    />
+    <span data-slot="marker-icon" aria-hidden="true" className={joinClasses('m-marker__icon', className)} {...props} />
   )
 }
 
 function MarkerContent({ className, ...props }: React.ComponentProps<'span'>) {
-  return (
-    <span
-      data-slot="marker-content"
-      className={cx(
-        'min-w-0 wrap-break-word group-data-[variant=separator]/marker:flex-none group-data-[variant=separator]/marker:text-center *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-text-primary',
-        className,
-      )}
-      {...props}
-    />
-  )
+  return <span data-slot="marker-content" className={joinClasses('m-marker__content', className)} {...props} />
 }
 
 export { Marker, MarkerIcon, MarkerContent }

@@ -1,0 +1,21 @@
+@layer components {
+  /* 触发元素外面包一层行内的 span：监听悬停和聚焦，也是卡片定位的参照；不影响行内文字的排版 */
+  .ui-hover-card__trigger {
+    display: inline;
+  }
+
+  /* 卡片：外观、进退场沿用 Popover；宽度固定一档，内容自己排 */
+  .ui-hover-card {
+    --ui-popover-min-width: 0;
+    --ui-popover-padding: var(--space-4);
+
+    width: min(320px, calc(100vw - 2 * var(--space-4)));
+  }
+
+  .ui-hover-card__content {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    font: var(--text-small);
+  }
+}

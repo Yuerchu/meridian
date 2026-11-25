@@ -1,27 +1,21 @@
+import './skill-settings.css'
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bin, BookOpen, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Chip,
-  Description,
-  Disclosure,
-  DisclosureGroup,
-  Input,
-  Label,
-  TextArea,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { EmptyState } from '@/components/base'
+import { Bin, BookOpen, ChevronRight, Plus, RefreshCw } from '@keyline-icons/react/two-tone'
+import { Button as AriaButton, Disclosure, DisclosureGroup, DisclosurePanel, Heading } from 'react-aria-components'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { TextArea } from '@/components/yuerchu-ui/components/text-area/text-area'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import type { SkillInfoResponse } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -122,101 +116,97 @@ function SkillEditor({
   // No chrome of its own: the caller decides whether this is a card floating on
   // the page or the body of an already-bounded disclosure row.
   return (
-    <div data-slot="skill-editor" className="space-y-3">
-      {!skill && (
-        <TextField>
-          <Label>{t('settings.skills.dirName')}</Label>
-          <Input
-            value={dirName}
-            onChange={(e) => setDirName(e.target.value)}
-            placeholder="my-skill"
-            className="font-mono text-caption-1-regular"
-          />
-          <Description>{t('settings.skills.dirNameHint')}</Description>
-          {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
-              {t('settings.skills.dirNameInvalid')}
-            </p>
-          )}
-        </TextField>
-      )}
-
-      <TextField>
-        <Label>{t('settings.skills.displayName')}</Label>
-        <Input
-          value={displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-          placeholder={skill?.llm_name ?? dirName}
-        />
-      </TextField>
-
-      <TextField>
-        <Label>{t('settings.skills.description')}</Label>
-        <TextArea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          disabled={skill != null && !contentsEditable}
-          rows={2}
-          className="resize-none text-caption-1-regular"
-        />
-        <Description>{t('settings.skills.descriptionHint')}</Description>
-      </TextField>
-
-      <TextField>
-        <Label>{t('settings.skills.body')}</Label>
-        {bodyState === 'loading' ? (
-          <p data-slot="skill-editor-hint" className="text-caption-1-regular text-text-secondary">
-            {t('common.loading')}
-          </p>
-        ) : bodyState === 'error' ? (
-          <Alert data-slot="skill-editor-body-error" status="danger" role="alert">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>{t('settings.skills.bodyLoadError')}</Alert.Title>
-              {bodyError && <Alert.Description className="break-all">{bodyError}</Alert.Description>}
-              <Button size="small" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
-                {t('common.retry')}
-              </Button>
-            </Alert.Content>
-          </Alert>
-        ) : (
-          <TextArea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            disabled={isBuiltin}
-            rows={10}
-            className="resize-none font-mono text-caption-1-regular"
-          />
+    <div data-slot="skill-editor" className="m-skill__editor">
+      <SettingsGroup>
+        {!skill && (
+          <SettingsRow
+            label={t('settings.skills.dirName')}
+            description={t('settings.skills.dirNameHint')}
+            layout="stacked"
+          >
+            <TextField
+              value={dirName}
+              onChange={setDirName}
+              placeholder="my-skill"
+              isInvalid={dirName.trim().length > 0 && !dirNameValid}
+              errorMessage={t('settings.skills.dirNameInvalid')}
+            />
+          </SettingsRow>
         )}
-        <Description>{t('settings.skills.bodyHint')}</Description>
-      </TextField>
+
+        <SettingsRow label={t('settings.skills.displayName')} layout="stacked">
+          <TextField value={displayName} onChange={setDisplayName} placeholder={skill?.llm_name ?? dirName} />
+        </SettingsRow>
+
+        <SettingsRow
+          label={t('settings.skills.description')}
+          description={t('settings.skills.descriptionHint')}
+          layout="stacked"
+        >
+          <TextArea
+            value={description}
+            onChange={setDescription}
+            isDisabled={skill != null && !contentsEditable}
+            rows={2}
+          />
+        </SettingsRow>
+
+        {/* Loading, failed and loaded are three different things on screen, not
+            three fillings of one field. */}
+        {bodyState === 'loading' ? (
+          <div className="m-skill__body-state">
+            <p data-slot="skill-editor-hint" className="m-skill__hint">
+              {t('common.loading')}
+            </p>
+          </div>
+        ) : bodyState === 'error' ? (
+          <div className="m-skill__body-state">
+            <Alert
+              data-slot="skill-editor-body-error"
+              tone="danger"
+              shouldAnnounce
+              heading={t('settings.skills.bodyLoadError')}
+              actions={
+                <Button size="sm" variant="secondary" onPress={() => setBodyAttempt((n) => n + 1)}>
+                  {t('common.retry')}
+                </Button>
+              }
+            >
+              {bodyError}
+            </Alert>
+          </div>
+        ) : (
+          <SettingsRow label={t('settings.skills.body')} description={t('settings.skills.bodyHint')} layout="stacked">
+            <TextArea value={body} onChange={setBody} isDisabled={isBuiltin} rows={10} />
+          </SettingsRow>
+        )}
+      </SettingsGroup>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-caption-1-regular text-status-info-soft-foreground">
+        <p data-slot="skill-editor-builtin-notice" className="m-skill__notice">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="skill-editor-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="skill-editor-actions" className="flex items-center gap-2">
+      <div data-slot="skill-editor-actions" className="m-skill__actions">
         <Button onPress={handleSave} isDisabled={!canSave} isPending={saving}>
           {t('common.save')}
         </Button>
         {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
-          <TooltipTrigger delay={0}>
+          <TooltipTrigger>
             <Button
-              iconOnly
-              leadingIcon={Bin}
-              size="small"
-              variant="neutral"
+              icon={<Bin />}
+              size="sm"
+              variant="ghost"
               aria-label={t('settings.skills.delete')}
-              className="ml-auto hover:text-status-danger"
+              className="m-skill__aside"
               onPress={onDelete}
             />
             <Tooltip>{t('settings.skills.delete')}</Tooltip>
@@ -302,10 +292,10 @@ export function SkillSettings() {
         subtitle={t('settings.skills.subtitle')}
         actions={
           <>
-            <Button leadingIcon={RefreshCw} variant="secondary" onPress={handleRescan} isPending={rescanning}>
+            <Button icon={<RefreshCw />} variant="secondary" onPress={handleRescan} isPending={rescanning}>
               {t('settings.skills.rescan')}
             </Button>
-            <Button leadingIcon={Plus} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
+            <Button icon={<Plus />} variant="secondary" onPress={() => setShowCreate(!showCreate)}>
               {t('settings.skills.new')}
             </Button>
           </>
@@ -313,164 +303,127 @@ export function SkillSettings() {
       />
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-caption-1-regular text-status-danger">
+        <Alert data-slot="skill-settings-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
       {showCreate && (
-        <Card variant="secondary">
+        <div className="m-skill__create">
           <SkillEditor
             onSave={async () => {
               setShowCreate(false)
               await refresh()
             }}
           />
-        </Card>
+        </div>
       )}
 
       {/* One open at a time is the group's own default (`allowsMultipleExpanded`
           is off), so the single-open rule lives in the primitive rather than in
           the click handler. */}
-      <DisclosureGroup
-        data-slot="skill-settings-list"
-        className="flex flex-col gap-1"
-        expandedKeys={expandedDir ? [expandedDir] : []}
-        onExpandedChange={(keys) => setExpandedDir(([...keys][0] as string | undefined) ?? null)}
-      >
-        {skills.map((skill) => {
-          const isExpanded = expandedDir === skill.dir_name
-          const isBuiltin = skill.is_builtin
-          return (
-            <Disclosure
-              key={skill.dir_name}
-              id={skill.dir_name}
-              data-slot="skill-item"
-              className="flex w-full flex-col overflow-hidden rounded-lg border border-border-button-default"
-            >
-              {/* A container query, not a viewport one. The row wraps when the
-                  two labelled checkboxes (about 130px between them) would leave
-                  the skill name a couple of characters wide — and that depends
-                  on how wide this row is, not on how wide the screen is. Keyed
-                  to the viewport it wrapped a 770px-wide card in a window that
-                  had merely fallen under the breakpoint. */}
-              <div
-                data-slot="skill-item-header"
-                className="@container/skill-row flex flex-wrap items-center gap-2 pr-3"
-              >
-                {/* The checkboxes stay outside the trigger: it is a `<button>`,
-                    and a nested one would be invalid markup and swallow the
-                    click. */}
-                {/* `basis-0`, not `basis-auto`: wrapping is decided from the
-                    hypothetical size, and shrinking only happens once a line is
-                    settled. At `auto` a long skill name counted at full length
-                    and pushed the last checkbox onto a line of its own, while a
-                    shorter one beside it fit. From 0 the row grows into whatever
-                    is left and truncates instead. */}
-                <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
-                  {/* `flex` is not optional: Disclosure.Indicator carries
-                      `shrink-0`, which only means something inside a
-                      flex container. `text-start` undoes the button element's
-                      centred UA default. */}
-                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-caption-1-regular transition-colors outline-none hover:bg-background-primary-hover/30 focus-visible:bg-background-secondary-default/30">
-                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-text-secondary" />
-                    {/* The label row absorbs the slack, so the badge and the
-                        chevron sit at the right edge without a separate
-                        spacer pushing them there. */}
-                    <div data-slot="skill-item-label-row" className="flex min-w-0 flex-1 items-center gap-2">
-                      <span data-slot="skill-item-name" onPointerEnter={titleIfTruncated} className="truncate">
-                        {skill.display_name}
+      <SettingsGroup>
+        <DisclosureGroup
+          data-slot="skill-settings-list"
+          className="m-skill__list"
+          expandedKeys={expandedDir ? [expandedDir] : []}
+          onExpandedChange={(keys) => setExpandedDir(([...keys][0] as string | undefined) ?? null)}
+        >
+          {skills.map((skill) => {
+            const isExpanded = expandedDir === skill.dir_name
+            const isBuiltin = skill.is_builtin
+            return (
+              <Disclosure key={skill.dir_name} id={skill.dir_name} data-slot="skill-item" className="m-skill__item">
+                {/* A container query, not a viewport one. The row wraps when the
+                    two labelled checkboxes (about 130px between them) would leave
+                    the skill name a couple of characters wide — and that depends
+                    on how wide this row is, not on how wide the screen is. Keyed
+                    to the viewport it wrapped a 770px-wide card in a window that
+                    had merely fallen under the breakpoint. */}
+                <div data-slot="skill-item-header" className="m-skill__header">
+                  <Heading className="m-skill__heading">
+                    <AriaButton slot="trigger" className="m-skill__trigger">
+                      <BookOpen size={14} aria-hidden />
+                      <span data-slot="skill-item-label-row" className="m-skill__label-row">
+                        <span data-slot="skill-item-name" onPointerEnter={titleIfTruncated} className="m-skill__name">
+                          {skill.display_name}
+                        </span>
+                        <span data-slot="skill-item-slug" onPointerEnter={titleIfTruncated} className="m-skill__slug">
+                          {skill.llm_name}
+                        </span>
                       </span>
-                      <span
-                        data-slot="skill-item-slug"
-                        onPointerEnter={titleIfTruncated}
-                        className="font-mono text-text-secondary truncate"
-                      >
-                        {skill.llm_name}
-                      </span>
-                    </div>
-                    <Chip data-slot="skill-item-source" className="shrink-0 text-text-secondary">
-                      {t(`settings.skills.source.${skill.source}`)}
-                    </Chip>
-                    <Disclosure.Indicator className="size-3.5 shrink-0 text-text-secondary" />
-                  </Disclosure.Trigger>
-                </Disclosure.Heading>
-                <Checkbox
-                  data-slot="skill-item-enabled"
-                  className="shrink-0 text-caption-1-regular"
-                  isSelected={skill.is_enabled}
-                  onChange={(selected) => toggleEnabled(skill, selected)}
-                >
-                  {t('settings.skills.enabled')}
-                </Checkbox>
-                <Checkbox
-                  data-slot="skill-item-global"
-                  className="shrink-0 text-caption-1-regular"
-                  isSelected={globalBound.has(skill.dir_name)}
-                  onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
-                >
-                  {t('settings.skills.globalBinding')}
-                </Checkbox>
-              </div>
-              {/* `min-h-0` is load-bearing: the card is a flex column, and a
-                  flex item's default `min-height: auto` floors it at its
-                  content height. */}
-              <Disclosure.Content className="min-h-0 w-full">
-                {/* Body, not a plain wrapper: it is what keeps the panel
-                    measurable, so without it the editor never collapses. The
-                    padding is the editor's own former `p-3`, moved out here now
-                    that the row is the only box around it. */}
-                <Disclosure.Body data-slot="skill-item-body" className="space-y-2 p-3">
-                  {/* A collapsed panel is only hidden, not unmounted, so the
-                      editor still has to be gated: mounting one per row would
-                      read every skill's file on every visit to this page. */}
-                  {isExpanded && (
-                    <>
-                      <p data-slot="skill-item-description" className="text-caption-1-regular text-text-secondary">
-                        {skill.llm_description}
-                      </p>
-                      <SkillEditor
-                        skill={skill}
-                        onSave={refresh}
-                        onDelete={
-                          isBuiltin
-                            ? undefined
-                            : async () => {
-                                if (
-                                  !(await confirm({
-                                    body: t('settings.confirmDelete.skill'),
-                                    confirmLabel: t('common.delete'),
-                                  }))
-                                )
-                                  return
-                                setError(null)
-                                try {
-                                  await api.deleteSkill(skill.dir_name)
-                                  setExpandedDir(null)
-                                  await refresh()
-                                } catch (e) {
-                                  setError(String(e))
+                      <Badge data-slot="skill-item-source">{t(`settings.skills.source.${skill.source}`)}</Badge>
+                      <ChevronRight size={14} aria-hidden className="m-skill__chevron" />
+                    </AriaButton>
+                  </Heading>
+                  <Checkbox
+                    data-slot="skill-item-enabled"
+                    isSelected={skill.is_enabled}
+                    onChange={(selected) => toggleEnabled(skill, selected)}
+                  >
+                    {t('settings.skills.enabled')}
+                  </Checkbox>
+                  <Checkbox
+                    data-slot="skill-item-global"
+                    isSelected={globalBound.has(skill.dir_name)}
+                    onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
+                  >
+                    {t('settings.skills.globalBinding')}
+                  </Checkbox>
+                </div>
+                {/* `min-h-0` is load-bearing: the card is a flex column, and a
+                    flex item's default `min-height: auto` floors it at its
+                    content height. */}
+                <DisclosurePanel className="m-skill__panel">
+                  <div data-slot="skill-item-body" className="m-skill__body">
+                    {/* A collapsed panel is only hidden, not unmounted, so the
+                        editor still has to be gated: mounting one per row would
+                        read every skill's file on every visit to this page. */}
+                    {isExpanded && (
+                      <>
+                        <p data-slot="skill-item-description" className="m-skill__hint">
+                          {skill.llm_description}
+                        </p>
+                        <SkillEditor
+                          skill={skill}
+                          onSave={refresh}
+                          onDelete={
+                            isBuiltin
+                              ? undefined
+                              : async () => {
+                                  if (
+                                    !(await confirm({
+                                      description: t('settings.confirmDelete.skill'),
+                                      confirmLabel: t('common.delete'),
+                                      tone: 'danger',
+                                    }))
+                                  )
+                                    return
+                                  setError(null)
+                                  try {
+                                    await api.deleteSkill(skill.dir_name)
+                                    setExpandedDir(null)
+                                    await refresh()
+                                  } catch (e) {
+                                    setError(String(e))
+                                  }
                                 }
-                              }
-                        }
-                      />
-                    </>
-                  )}
-                </Disclosure.Body>
-              </Disclosure.Content>
-            </Disclosure>
-          )
-        })}
-        {skills.length === 0 && !showCreate && (
-          <EmptyState data-slot="skill-settings-empty" size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>{t('settings.skills.noSkills')}</EmptyState.Title>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
-      </DisclosureGroup>
+                          }
+                        />
+                      </>
+                    )}
+                  </div>
+                </DisclosurePanel>
+              </Disclosure>
+            )
+          })}
+          {skills.length === 0 && !showCreate && (
+            <EmptyState heading={t('settings.skills.noSkills')} headingLevel={3} size="sm" />
+          )}
+        </DisclosureGroup>
+      </SettingsGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-caption-1-regular text-text-secondary">
+      <p data-slot="skill-settings-global-hint" className="m-skill__hint">
         {t('settings.skills.globalBindingHint')}
       </p>
       {confirmDialog}

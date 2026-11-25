@@ -1,0 +1,205 @@
+@layer components {
+  .ui-button {
+    /* 组件层变量：想单独定制某个按钮，覆盖这些变量即可 */
+    --ui-button-bg: var(--surface);
+    --ui-button-bg-hovered: var(--surface-muted);
+    --ui-button-bg-pressed: var(--surface-muted);
+    --ui-button-fg: var(--text);
+    --ui-button-border: var(--border-strong);
+    --ui-button-shadow: var(--shadow-resting);
+    --ui-button-height: var(--control-md);
+    --ui-button-padding: var(--space-3);
+    --ui-button-gap: var(--space-2);
+    --ui-button-radius: var(--radius-control);
+    --icon-size: var(--icon-md);
+
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--ui-button-gap);
+    height: var(--ui-button-height);
+    padding: 0 var(--ui-button-padding);
+    margin: 0;
+    border: 1px solid var(--ui-button-border);
+    border-radius: var(--ui-button-radius);
+    background: var(--ui-button-bg);
+    box-shadow: var(--ui-button-shadow);
+    color: var(--ui-button-fg);
+    font: var(--text-body-medium);
+    white-space: nowrap;
+    /* 写了 href 时根元素是链接：去掉链接的下划线 */
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      border-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard),
+      transform var(--dur-spring) var(--ease-spring);
+  }
+
+  /* ---------- 变体 ---------- */
+  .ui-button[data-variant="primary"] {
+    --ui-button-bg: var(--ink);
+    --ui-button-bg-hovered: var(--ink-hover);
+    --ui-button-bg-pressed: var(--ink-active);
+    --ui-button-fg: var(--ink-fg);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+  }
+
+  .ui-button[data-variant="ghost"] {
+    --ui-button-bg: transparent;
+    --ui-button-fg: var(--text-secondary);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+  }
+
+  .ui-button[data-variant="destructive"] {
+    --ui-button-fg: var(--danger-fg);
+    --ui-button-bg-hovered: var(--danger-bg);
+    --ui-button-bg-pressed: var(--danger-bg);
+  }
+
+  /* ---------- 尺寸 ---------- */
+  .ui-button[data-size="sm"] {
+    --ui-button-height: var(--control-sm);
+    --ui-button-padding: var(--space-2);
+    --ui-button-gap: var(--space-1);
+    --ui-button-radius: calc(var(--radius-control) - 2px);
+    --icon-size: var(--icon-sm);
+
+    font: var(--text-small-medium);
+  }
+
+  .ui-button[data-size="lg"] {
+    --ui-button-height: var(--control-lg);
+    --ui-button-padding: var(--space-4);
+    --ui-button-radius: calc(var(--radius-control) + 2px);
+    --icon-size: var(--icon-lg);
+  }
+
+  .ui-button[data-icon-only] {
+    width: var(--ui-button-height);
+    padding: 0;
+  }
+
+  /* ---------- 状态 ---------- */
+  .ui-button[data-hovered]:not([data-disabled]) {
+    background: var(--ui-button-bg-hovered);
+  }
+
+  .ui-button[data-variant="ghost"][data-hovered]:not([data-disabled]) {
+    color: var(--text);
+  }
+
+  .ui-button[data-variant="destructive"][data-hovered]:not([data-disabled]) {
+    border-color: transparent;
+  }
+
+  /* 按下：颜色变化 + 缩放。减弱动效模式下 --press-scale 为 1，只剩颜色变化。
+     弹层的触发按钮不缩放，否则弹层会按缩小后的尺寸定位。 */
+  .ui-button[data-pressed]:not([data-disabled]) {
+    background: var(--ui-button-bg-pressed);
+  }
+
+  .ui-button[data-pressed]:not([data-disabled], [aria-haspopup], [aria-expanded]) {
+    transform: scale(var(--press-scale));
+    transition-duration: var(--dur-fast), var(--dur-fast), var(--dur-fast), var(--dur-fast), var(--dur-instant);
+  }
+
+  /* 禁用：保留按钮形状，只淡化内容，看起来仍是"一个关着的按钮" */
+  .ui-button[data-disabled]:not([data-pending]) {
+    --ui-button-bg: var(--surface-muted);
+    --ui-button-fg: var(--text-muted);
+    --ui-button-border: transparent;
+    --ui-button-shadow: none;
+
+    cursor: not-allowed;
+  }
+
+  .ui-button[data-variant="ghost"][data-disabled]:not([data-pending]) {
+    --ui-button-bg: transparent;
+  }
+
+  .ui-button[data-pending] {
+    cursor: progress;
+  }
+
+  /* ---------- 内部部件 ---------- */
+  .ui-button__icon {
+    display: inline-flex;
+    flex: none;
+  }
+
+  .ui-button__icon svg,
+  .ui-button__pending svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  /* 图标换成加载图标时，旧图标脱离文档流（Motion 的 popLayout），叠在原位置上淡出 */
+  .ui-button__icon,
+  .ui-button__label {
+    position: relative;
+  }
+
+  .ui-button__icon-swap {
+    display: inline-flex;
+  }
+
+  /* 标签：文字替换时宽度由 JS 从旧宽度弹到新宽度 */
+  .ui-button__label {
+    display: flex;
+    min-width: 0;
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  /* 没有左侧图标时等待：加载图标盖在文字上，文字淡出但保留宽度和可读名称 */
+  .ui-button__label[data-faded] {
+    opacity: 0;
+  }
+
+  /* 宽度弹的过程中：文字按完整宽度排，不被压缩出省略号（否则变宽时先显示"保存…"）。
+     伸出标签的部分可以画在按钮内边距里，再往外裁掉。只在弹的时候裁：平时标签里可能有伸到按钮外的角标（通知中心的未读数） */
+  .ui-button__label[data-morphing] {
+    overflow: clip;
+    overflow-clip-margin: var(--ui-button-padding);
+  }
+
+  /* 也不裁自己：变窄时正在淡出的字（链、接）在新文字宽度之外，裁掉就看不到淡出了 */
+  .ui-button__label[data-morphing] .ui-button__text {
+    flex: none;
+    overflow: visible;
+  }
+
+  .ui-button__text {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* 没有左侧图标时，加载图标盖在文字上；文字淡出但保留宽度和无障碍名称 */
+  .ui-button__pending {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .ui-button__spinner {
+    animation: ui-button-spin var(--dur-spin) var(--ease-linear) infinite;
+  }
+
+  @keyframes ui-button-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+}

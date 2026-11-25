@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,7 +15,6 @@ const mocks = vi.hoisted(() => ({
   getPlanReview: vi.fn(),
   listPlanRevisions: vi.fn(),
   savePlanReviewDraft: vi.fn(),
-  continuePlanReviewDelivery: vi.fn(),
   decidePlanReview: vi.fn(),
   discardPlanReviewDraft: vi.fn(),
   editorOnChange: null as null | ((document: JSONContent, anchors: Map<string, PlanProseMirrorRange | null>) => void),
@@ -37,7 +38,6 @@ vi.mock('@/api', () => ({
     getPlanReview: mocks.getPlanReview,
     listPlanRevisions: mocks.listPlanRevisions,
     savePlanReviewDraft: mocks.savePlanReviewDraft,
-    continuePlanReviewDelivery: mocks.continuePlanReviewDelivery,
     decidePlanReview: mocks.decidePlanReview,
     discardPlanReviewDraft: mocks.discardPlanReviewDraft,
   },
@@ -53,150 +53,16 @@ vi.mock('./plan-review-editor', () => ({
 
 vi.mock('@keyline-icons/react/two-tone', () => ({
   Bin: () => null,
+  Check: () => null,
   ChevronDown: () => null,
+  ChevronsRight: () => null,
   Clock: () => null,
   Message: () => null,
+  RefreshCw: () => null,
   TriangleAlert: () => null,
   X: () => null,
+  Zap: () => null,
 }))
-
-vi.mock('@/components/base', async () => {
-  const { createContext, useContext, useId } = await import('react')
-  const pass = ({ children }: { children?: React.ReactNode }) => <>{children}</>
-  // The real TextField wires its Label to its TextArea through context; the
-  // mock does the same so `getByLabelText` reaches the control.
-  const FieldId = createContext<string | undefined>(undefined)
-  const TextField = ({ children }: { children?: React.ReactNode }) => (
-    <FieldId.Provider value={useId()}>
-      <div>{children}</div>
-    </FieldId.Provider>
-  )
-  const Label = ({ children }: { children?: React.ReactNode }) => (
-    <label htmlFor={useContext(FieldId)}>{children}</label>
-  )
-  const TextArea = (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) => (
-    <textarea id={useContext(FieldId)} {...props} />
-  )
-  const Button = ({
-    children,
-    onPress,
-    isDisabled,
-    isPending: _isPending,
-    iconOnly: _iconOnly,
-    ...props
-  }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-    onPress?: () => void
-    isDisabled?: boolean
-    isPending?: boolean
-    iconOnly?: boolean
-  }) => (
-    <button {...props} disabled={isDisabled} onClick={onPress}>
-      {children}
-    </button>
-  )
-  // One factory, not three: `vi.mock` keys on the module path, so a later call
-  // for the same path replaces the earlier one entirely rather than merging.
-  const Dropdown = Object.assign(pass, {
-    Popover: pass,
-    Menu: pass,
-    Item: ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
-      <button onClick={onAction}>{children}</button>
-    ),
-  })
-  const DropdownPopover = pass
-  const DropdownItem = ({ children, onAction }: { children?: React.ReactNode; onAction?: () => void }) => (
-    <button onClick={onAction}>{children}</button>
-  )
-  const Tooltip = Object.assign(pass, {
-    Content: pass,
-    Trigger: ({ children, render }: { children?: React.ReactNode; render?: (props: object) => React.ReactNode }) =>
-      render ? render({ children }) : <>{children}</>,
-  })
-  const TooltipTrigger = ({ children }: { children?: React.ReactNode }) => <>{children}</>
-  const Link = ({
-    children,
-    onPress,
-    ...props
-  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { onPress?: () => void }) => (
-    <a {...props} onClick={onPress}>
-      {children}
-    </a>
-  )
-  const Segment = Object.assign(({ children }: { children?: React.ReactNode }) => <div>{children}</div>, {
-    Item: ({ children }: { children?: React.ReactNode }) => <span>{children}</span>,
-  })
-  const Sheet = Object.assign(
-    ({ children, isOpen }: { children?: React.ReactNode; isOpen?: boolean }) => (isOpen ? <>{children}</> : null),
-    {
-      Backdrop: pass,
-      Content: pass,
-      Dialog: pass,
-      Header: pass,
-      Heading: pass,
-      CloseTrigger: () => null,
-      Body: ({ children, className }: { children?: React.ReactNode; className?: string }) => (
-        <div data-testid="sheet-body" className={className}>
-          {children}
-        </div>
-      ),
-    },
-  )
-  const Alert = ({
-    children,
-    status,
-    icon: _icon,
-    ...props
-  }: React.HTMLAttributes<HTMLDivElement> & { status?: string; icon?: React.ReactNode }) => (
-    <div role="alert" data-status={status} {...props}>
-      {children}
-    </div>
-  )
-  // What `ConfirmDialog` draws, reduced to the two answers. The real Cancel is
-  // a `slot="close"` button that only a React Aria dialog can wire up.
-  const AlertDialog = {
-    Backdrop: ({
-      children,
-      isOpen,
-      onOpenChange,
-    }: {
-      children?: React.ReactNode
-      isOpen?: boolean
-      onOpenChange?: (open: boolean) => void
-    }) =>
-      isOpen ? (
-        <div role="alertdialog">
-          {children}
-          <button onClick={() => onOpenChange?.(false)}>dismiss</button>
-        </div>
-      ) : null,
-    Container: pass,
-    Dialog: pass,
-    Header: pass,
-    Icon: () => null,
-    Heading: pass,
-    Body: pass,
-    Footer: pass,
-  }
-  return {
-    Alert,
-    AlertDialog,
-    Button,
-    Chip: pass,
-    Description: pass,
-    Dropdown,
-    DropdownItem,
-    DropdownPopover,
-    Label,
-    Link,
-    Segment,
-    Sheet,
-    Skeleton: () => <div />,
-    TextArea,
-    TextField,
-    Tooltip,
-    TooltipTrigger,
-  }
-})
 
 function saveState() {
   return document.querySelector('[data-slot="plan-review-save-state"]')
@@ -287,7 +153,6 @@ function review(
           },
         ]
       : [],
-    delivery: null,
   }
 }
 
@@ -317,7 +182,6 @@ describe('PlanReviewPage history feedback', () => {
           provider_call_id: 'call-1',
           turn_id: 'turn-1',
           status: 'changes_requested',
-          delivery_state: 'acknowledged',
           lock_version: 0,
         },
         'review-2': {
@@ -329,114 +193,45 @@ describe('PlanReviewPage history feedback', () => {
           provider_call_id: 'call-2',
           turn_id: 'turn-2',
           status: 'pending',
-          delivery_state: null,
           lock_version: 0,
         },
       },
     })
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.revision:1')
-    await userEvent.click(screen.getByRole('button', { name: 'planReview.revision:1' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'planReview.history.current' }))
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'planReview.revision:1' }))
 
     await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledWith({ reviewId: 'review-1' }))
     expect(await screen.findByText('Keep the original scope')).toBeInTheDocument()
     expect(screen.getByText('Old overall note')).toBeInTheDocument()
   })
 
-  it('refreshes when only delivery state changes and exposes held-delivery recovery', async () => {
+  it('allows approving with feedback and supports all four approval modes', async () => {
     const currentRevision = revision('revision-2', 2, '# Plan\n')
-    let current = review('review-2', currentRevision, 'pending')
-    mocks.getPlanReview.mockImplementation(() => Promise.resolve(current))
-    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
-    usePlanReviewStore.setState({
-      summaries: {
-        'review-2': {
-          review_id: 'review-2',
-          conversation_id: 'conversation-1',
-          document_id: 'document-1',
-          revision_id: 'revision-2',
-          assistant_message_id: 'message-2',
-          provider_call_id: 'call-2',
-          turn_id: 'turn-2',
-          status: 'pending',
-          delivery_state: null,
-          lock_version: 0,
-        },
-      },
+    const current = review('review-2', currentRevision, 'pending')
+    mocks.getPlanReview.mockResolvedValue({
+      ...current,
+      draft: { ...current.draft, global_note: 'Skip refactor for now' },
     })
+    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
+    mocks.decidePlanReview.mockResolvedValue({ review_id: 'review-2', state: 'approved' })
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.title')
-    current = {
-      ...current,
-      review: { ...current.review, state: 'approved' },
-      delivery: {
-        id: 'delivery-1',
-        review_id: 'review-2',
-        target: 'native',
-        state: 'held',
-        payload: {},
-        error: 'agent unavailable',
-        created_at: 1,
-        updated_at: 2,
-      },
-    }
-    act(() => {
-      usePlanReviewStore.setState({
-        summaries: {
-          'review-2': {
-            review_id: 'review-2',
-            conversation_id: 'conversation-1',
-            document_id: 'document-1',
-            revision_id: 'revision-2',
-            assistant_message_id: 'message-2',
-            provider_call_id: 'call-2',
-            turn_id: 'turn-2',
-            status: 'approved',
-            delivery_state: 'held',
-            lock_version: 1,
-          },
-        },
-      })
-    })
-
-    await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledTimes(2))
-    expect(await screen.findByRole('button', { name: 'planReview.continueDelivery' })).toBeInTheDocument()
-  })
-
-  it('lets a queued delivery resume after restart but does not retry an in-flight delivery', async () => {
-    const currentRevision = revision('revision-2', 2, '# Plan\n')
-    const queued = {
-      ...review('review-2', currentRevision, 'pending'),
-      review: { ...review('review-2', currentRevision, 'pending').review, state: 'approved' as const },
-      delivery: {
-        id: 'delivery-queued',
-        review_id: 'review-2',
-        target: 'native' as const,
-        state: 'queued' as const,
-        payload: {},
-        error: null,
-        created_at: 1,
-        updated_at: 1,
-      },
-    }
-    mocks.getPlanReview.mockResolvedValue(queued)
-    mocks.listPlanRevisions.mockResolvedValue([currentRevision])
-    mocks.continuePlanReviewDelivery.mockResolvedValue({ ...queued.delivery, state: 'dispatched' })
-
-    const { rerender } = render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    const resume = await screen.findByRole('button', { name: 'planReview.continueDelivery' })
-    expect(screen.getByText('planReview.deliveryQueued')).toBeInTheDocument()
-    await userEvent.click(resume)
+    expect(await screen.findByText('planReview.approveIncludesFeedback')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'chat.plan.moreModes' }))
+    await userEvent.click(await screen.findByRole('menuitem', { name: 'planReview.mode.clearContextAcceptEdits' }))
 
     await waitFor(() =>
-      expect(mocks.continuePlanReviewDelivery).toHaveBeenCalledWith({ deliveryId: 'delivery-queued' }),
+      expect(mocks.decidePlanReview).toHaveBeenCalledWith(
+        expect.objectContaining({
+          reviewId: 'review-2',
+          action: 'approve',
+          approvalMode: 'accept_edits',
+          clearContext: true,
+        }),
+      ),
     )
-    expect(await screen.findByText('planReview.deliveryDispatched')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'planReview.continueDelivery' })).not.toBeInTheDocument()
-
-    rerender(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
   })
 })
 
@@ -588,8 +383,9 @@ describe('PlanReviewPage save lifecycle', () => {
     mocks.listPlanRevisions.mockResolvedValue([older, currentRevision])
 
     render(<PlanReviewPage reviewId="review-2" onClose={vi.fn()} />)
-    await screen.findByText('planReview.revision:1')
-    expect(screen.queryByRole('button', { name: 'planReview.revision:2' })).not.toBeInTheDocument()
+    await userEvent.click(await screen.findByRole('button', { name: 'planReview.history.current' }))
+    expect(await screen.findByRole('menuitemradio', { name: 'planReview.revision:1' })).toBeInTheDocument()
+    expect(screen.queryByRole('menuitemradio', { name: 'planReview.revision:2' })).not.toBeInTheDocument()
   })
 
   it('says which decision is still in doubt, in its own words, and offers a reload', async () => {
@@ -608,7 +404,7 @@ describe('PlanReviewPage save lifecycle', () => {
 
     // Withdraw the note so the other decision becomes available, then press it:
     // not a raw English string, and a way out beside it.
-    mocks.decidePlanReview.mockResolvedValue({ state: 'approved', delivery_state: null })
+    mocks.decidePlanReview.mockResolvedValue({ review_id: 'review-1', state: 'approved' })
     fireEvent.change(screen.getByLabelText('planReview.comments.globalNote'), { target: { value: '' } })
     const approve = screen.getByRole('button', { name: 'planReview.approve' })
     await waitFor(() => expect(approve).toBeEnabled())
@@ -639,7 +435,7 @@ describe('PlanReviewPage unsaved work', () => {
   it('announces a failed save as a danger alert and retries the same draft', async () => {
     await openWithFailedSave()
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveAttribute('data-status', 'danger')
+    expect(alert).toHaveAttribute('data-tone', 'danger')
     expect(alert).toHaveTextContent('planReview.save.error:Error: disk full')
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
@@ -655,14 +451,15 @@ describe('PlanReviewPage unsaved work', () => {
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('planReview.unsaved.parts:planReview.unsaved.part.note')
 
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(mocks.getPlanReview).toHaveBeenCalledTimes(1)
     expect(screen.getByLabelText('planReview.comments.globalNote')).toHaveValue('Ship it')
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.reload' }))
-    await screen.findByRole('alertdialog')
-    // The dialog's confirming button carries the same label as the banner's.
-    const [, confirmReload] = screen.getAllByRole('button', { name: 'planReview.reload' })
+    // The dialog's confirming button carries the same label as the banner's,
+    // which the open modal has taken out of reach.
+    const reloadDialog = await screen.findByRole('alertdialog')
+    const confirmReload = within(reloadDialog).getByRole('button', { name: 'planReview.reload' })
     await userEvent.click(confirmReload)
     await waitFor(() => expect(mocks.getPlanReview).toHaveBeenCalledTimes(2))
   })
@@ -675,7 +472,7 @@ describe('PlanReviewPage unsaved work', () => {
     })
     const dialog = await screen.findByRole('alertdialog')
     expect(dialog).toHaveTextContent('planReview.leave.title')
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await waitFor(() => expect(answer).toBe(false))
 
     await userEvent.click(screen.getByRole('button', { name: 'planReview.save.retry' }))
@@ -709,12 +506,12 @@ describe('PlanReviewPage unsaved work', () => {
 
     await userEvent.click(discard)
     expect(await screen.findByRole('alertdialog')).toHaveTextContent('planReview.discardConfirm.body')
-    await userEvent.click(screen.getByRole('button', { name: 'dismiss' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(mocks.discardPlanReviewDraft).not.toHaveBeenCalled()
 
     await userEvent.click(discard)
-    await screen.findByRole('alertdialog')
-    const [, confirmDiscard] = screen.getAllByRole('button', { name: 'planReview.discard' })
+    const discardDialog = await screen.findByRole('alertdialog')
+    const confirmDiscard = within(discardDialog).getByRole('button', { name: 'planReview.discard' })
     await userEvent.click(confirmDiscard)
     await waitFor(() => expect(mocks.discardPlanReviewDraft).toHaveBeenCalledTimes(1))
   })
@@ -738,15 +535,24 @@ describe('PlanReviewPage focus and announcements', () => {
     expect(screen.queryAllByRole('status')).toHaveLength(0)
   })
 
-  it('pads the comment sheet by the keyboard and safe-area insets', async () => {
+  it('opens the comments as a drawer named by its title, with the pane inside', async () => {
     const currentRevision = revision('revision-1', 1, '# Plan\n')
     mocks.getPlanReview.mockResolvedValue(review('review-1', currentRevision, 'pending'))
     mocks.listPlanRevisions.mockResolvedValue([currentRevision])
     render(<PlanReviewPage reviewId="review-1" onClose={vi.fn()} />)
     await userEvent.click(await screen.findByRole('button', { name: 'planReview.comments.title' }))
 
-    expect(screen.getByTestId('sheet-body').className).toContain(
-      'pb-[calc(0px+var(--ime-bottom,0px)+var(--safe-bottom,0px))]',
-    )
+    const drawer = await screen.findByRole('dialog', { name: 'planReview.comments.title' })
+    expect(within(drawer).getByLabelText('planReview.comments.globalNote')).toBeInTheDocument()
+  })
+
+  /** jsdom computes no styles, so the one place the insets can be pinned is the
+   *  rule itself: the keyboard and safe-area insets are added to the drawer's
+   *  bottom padding, where the overall note sits. */
+  it('pads the comment drawer by the keyboard and safe-area insets', () => {
+    const css = readFileSync(join(process.cwd(), 'src/components/plan-review/plan-review-page.css'), 'utf8')
+    const rule = css.match(/\.ui-drawer\.m-plan-review__drawer\s*\{[^}]*\}/)?.[0] ?? ''
+    expect(rule).toContain('var(--ime-bottom, 0px)')
+    expect(rule).toContain('var(--safe-bottom, 0px)')
   })
 })

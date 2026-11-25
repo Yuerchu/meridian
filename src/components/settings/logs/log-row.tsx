@@ -1,10 +1,11 @@
+import './log-viewer.css'
 import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useCopy } from '@/hooks/use-copy'
 import { CopyAnnouncement } from '@/components/ui/copy-button'
-import { cx } from '@/utils/cx'
 import type { LogEntryInfoResponse } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -62,38 +63,25 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
   const time = formatLocalTime(entry.tsMs, i18n.resolvedLanguage ?? i18n.language)
 
   return (
-    <div
-      data-slot="log-row"
-      className={cx(
-        'group grid grid-cols-[auto_1fr_auto] items-start gap-x-3 gap-y-1 border-b border-border-button-default px-3 py-2 last:border-b-0',
-        isError && 'bg-status-danger-soft',
-      )}
-    >
-      <span data-slot="log-row-time" className="font-mono text-caption-1-regular tabular-nums text-text-secondary">
+    <div data-slot="log-row" className="m-log-row" data-error={isError || undefined}>
+      <span data-slot="log-row-time" className="m-log-row__time">
         {time}
       </span>
 
-      <div data-slot="log-row-body" className="min-w-0 space-y-1">
-        <div data-slot="log-row-meta" className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <div data-slot="log-row-body" className="m-log-row__body">
+        <div data-slot="log-row-meta" className="m-log-row__meta">
           <LogLevelBadge level={entry.level} />
-          <span
-            data-slot="log-row-target"
-            onPointerEnter={titleIfTruncated}
-            className="truncate font-mono text-caption-1-regular text-text-secondary"
-          >
+          <span data-slot="log-row-target" onPointerEnter={titleIfTruncated} className="m-log-row__target">
             {entry.target}
           </span>
         </div>
-        <p data-slot="log-row-message" className="text-body-regular break-words text-text-primary">
+        <p data-slot="log-row-message" className="m-log-row__message">
           {entry.msg}
         </p>
         {fields.length > 0 && (
-          <div
-            data-slot="log-row-fields"
-            className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-caption-1-regular text-text-secondary"
-          >
+          <div data-slot="log-row-fields" className="m-log-row__fields">
             {fields.map(([key, value]) => (
-              <span key={key} data-slot="log-row-field" className="break-all">
+              <span key={key} data-slot="log-row-field" className="m-log-row__field">
                 {key}={renderValue(value)}
               </span>
             ))}
@@ -101,24 +89,14 @@ function LogRowImpl({ entry }: { entry: LogEntryInfoResponse }) {
         )}
       </div>
 
-      <TooltipTrigger delay={0}>
+      <TooltipTrigger>
         <Button
-          iconOnly
-          leadingIcon={failure !== null ? TriangleAlert : copied ? Check : Copy}
+          icon={failure !== null ? <TriangleAlert /> : copied ? <Check /> : <Copy />}
           data-slot="log-row-copy"
-          variant="neutral"
-          size="small"
+          variant="ghost"
+          size="sm"
           aria-label={t('settings.about.logs.copyRecord')}
           onPress={onCopy}
-          // Focus-visible alone does not rescue this on a touch screen, where a
-          // tap grants no focus ring — the only action on the row would be
-          // permanently invisible.
-          // A refused copy stays in view: its warning is the only place the
-          // reason is.
-          className={cx(
-            'opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100',
-            failure !== null && 'opacity-100',
-          )}
         />
         <Tooltip>
           {failure !== null ? t('common.copyFailed', { error: failure }) : t('settings.about.logs.copyRecord')}

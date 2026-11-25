@@ -392,13 +392,32 @@ describe('buildAssistantGroups — folding the low-risk calls into badges', () =
     expect(foldsOf(groups[0].bubbles[0])).toEqual(['files:2'])
   })
 
-  it('opens a run of reads with no prose before it as a summary bubble', () => {
+  it('merges a leading summary of folded calls forward into the reply bubble that follows', () => {
     const { groups } = groupsOf([
       msg('assistant', { _blocks: [read('a.rs'), read('b.rs')] }),
       msg('assistant', { _blocks: [text('found it')] }),
     ])
-    expect(groups[0].bubbles.map((b) => b.kind)).toEqual(['summary', 'text'])
-    expect(groups[0].bubbles.map((b) => b.position)).toEqual(['first', 'last'])
+    expect(groups[0].bubbles.map((b) => b.kind)).toEqual(['text'])
+    expect(foldsOf(groups[0].bubbles[0])).toEqual(['files:2'])
+  })
+
+  it('folds skills, memory, and context lookups into the message bubble rather than standalone bubbles', () => {
+    const { groups } = groupsOf([
+      msg('assistant', { _blocks: [tool('load_skill'), tool('save_memory'), tool('read_plan')] }),
+      msg('assistant', { _blocks: [text('ready to proceed')] }),
+    ])
+    expect(groups[0].bubbles).toHaveLength(1)
+    expect(groups[0].bubbles[0].kind).toBe('text')
+    expect(foldsOf(groups[0].bubbles[0])).toEqual(['skills:1', 'memory:1', 'context:1'])
+  })
+
+  it('keeps a pending ask_user prompt outside the prose bubble as a standalone entry', () => {
+    const { groups } = groupsOf([
+      msg('assistant', { _blocks: [text('Before I deploy:'), tool('ask_user', 'pending')] }),
+    ])
+    expect(groups[0].bubbles.map((b) => b.kind)).toEqual(['text', 'tools-only'])
+    const askBubble = groups[0].bubbles[1]
+    expect(askBubble.kind === 'tools-only' && askBubble.tools[0].tool_name).toBe('ask_user')
   })
 
   /// A keyboard that keeps a key — reasoning, a write — keeps its badges too,

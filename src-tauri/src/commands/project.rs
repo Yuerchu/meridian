@@ -5,9 +5,7 @@ use meridian_core::db::entity::project;
 use meridian_core::db::entity::project::{ProjectChangeset, ProjectSource};
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::WriteTx;
-use meridian_core::db::sea::ops::{
-    conversation as conversation_ops, plan_review as plan_review_ops, project as project_ops,
-};
+use meridian_core::db::sea::ops::{conversation as conversation_ops, project as project_ops};
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
@@ -31,12 +29,9 @@ pub struct ProjectUpdateRequest {
     description: Option<String>,
 }
 
-const PLAN_REVIEW_PROJECT_MUTATION_BARRIER: &str = "A conversation in this project is waiting for plan review or its continuation. Finish it before changing or deleting the project workspace.";
-
 #[derive(Debug)]
 enum GuardedProjectMutation<T> {
     Applied(T),
-    PlanReviewBarrier,
     ReferencesChanged,
     /// Board cards of the project still have worktrees on disk; deleting the
     /// project would delete the cards and leave the worktrees with nothing
@@ -45,10 +40,7 @@ enum GuardedProjectMutation<T> {
 }
 
 /// What stops a project workspace mutation before it writes anything: the
-/// project's conversations having changed since the caller took their
-/// leases, or one of them waiting on a plan review or its continuation. Run
-/// first in the mutation's own write, so the answer still holds when the
-/// write lands.
+/// project's conversations having changed since the caller took their leases.
 async fn project_barrier<T>(
     tx: &WriteTx,
     project_id: &str,
@@ -57,11 +49,6 @@ async fn project_barrier<T>(
     let current = conversation_ops::ids_by_project(tx, project_id).await?;
     if current != expected_conversation_ids {
         return Ok(Some(GuardedProjectMutation::ReferencesChanged));
-    }
-    for conversation_id in &current {
-        if plan_review_ops::has_conversation_barrier(tx, conversation_id).await? {
-            return Ok(Some(GuardedProjectMutation::PlanReviewBarrier));
-        }
     }
     Ok(None)
 }
@@ -123,7 +110,6 @@ async fn delete_project_unless_plan_barrier(
 fn finish_guarded_project_mutation<T>(result: GuardedProjectMutation<T>) -> Result<T, String> {
     match result {
         GuardedProjectMutation::Applied(value) => Ok(value),
-        GuardedProjectMutation::PlanReviewBarrier => Err(PLAN_REVIEW_PROJECT_MUTATION_BARRIER.into()),
         GuardedProjectMutation::LiveWorktrees(count) => Err(format!(
             "{count} board card(s) of this project still have a worktree. Remove them from the board before deleting the project."
         )),
@@ -328,38 +314,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn project_path_update_and_delete_are_blocked_by_a_referenced_plan_review() {
+    async fn project_delete_refuses_when_references_changed() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             project_ops::create_project(tx, project_row()).await?;
             db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, Some("project-1"), 1)
                 .await?;
-            db::sea::ops::plan_review::seed_pending_native_review(
-                tx,
-                "conversation-1",
-                &db::sea::ops::plan_review::test_runtime("provider-test", "model-test", Some(("project-1", "A"))),
-            )
-            .await
-            .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let expected = vec!["conversation-1".to_string()];
-
-        let updated = sea
-            .write(async |tx| update_project_unless_plan_barrier(tx, "project-1", true, &expected, move_to("B")).await)
-            .await
-            .unwrap();
-        assert!(matches!(updated, GuardedProjectMutation::PlanReviewBarrier));
-        assert_eq!(stored_path(&sea).await.as_deref(), Some("A"));
-
-        let deleted = sea
-            .write(async |tx| delete_project_unless_plan_barrier(tx, "project-1", &expected).await)
-            .await
-            .unwrap();
-        assert!(matches!(deleted, GuardedProjectMutation::PlanReviewBarrier));
-        assert!(project_ops::get_project(&sea, "project-1").await.unwrap().is_some());
 
         let stale = sea
             .write(async |tx| delete_project_unless_plan_barrier(tx, "project-1", &[]).await)
@@ -367,7 +331,7 @@ mod tests {
             .unwrap();
         assert!(matches!(stale, GuardedProjectMutation::ReferencesChanged));
 
-        // A rename moves no working directory, so the review does not stop it.
+        // A rename moves no working directory, so it applies without leases.
         let renamed = sea
             .write(async |tx| {
                 let rename = ProjectChangeset {

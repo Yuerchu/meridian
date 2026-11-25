@@ -1,0 +1,361 @@
+@layer components {
+  .m-plan-review-page__skeleton {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: var(--surface);
+  }
+
+  .m-plan-review-page__skeleton-header,
+  .m-plan-review-page__skeleton-views,
+  .m-plan-review-page__skeleton-decision {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .m-plan-review-page__skeleton-header,
+  .m-plan-review-page__skeleton-views {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .m-plan-review-page__skeleton-header {
+    min-height: calc(var(--space-8) + var(--space-6));
+    gap: var(--space-3);
+  }
+
+  .m-plan-review-page__skeleton-heading,
+  .m-plan-review-page__skeleton-document {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-plan-review-page__skeleton-heading {
+    gap: var(--space-1);
+  }
+
+  .m-plan-review-page__skeleton-document {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 54rem;
+    margin-inline: auto;
+    padding: var(--space-8) var(--space-6);
+    gap: var(--space-3);
+  }
+
+  .m-plan-review-page__section-placeholder {
+    margin-block-start: var(--space-6);
+  }
+
+  .m-plan-review-page__skeleton-decision {
+    justify-content: end;
+    padding-block: var(--space-3);
+    border-top: 1px solid var(--border);
+  }
+
+  /* The page is a container: the comment rail is selected by the page's own
+     width, not the window's, so a narrow split panel gets the drawer a phone
+     does and a wide tablet can show both panes. 60rem is `COMMENT_RAIL_MIN` in
+     the component; the two have to agree. `4cqi` in the editor's padding reads
+     this same container. */
+  .m-plan-review {
+    container-type: inline-size;
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+    background: var(--surface);
+  }
+
+  .m-plan-review__header,
+  .m-plan-review__problems,
+  .m-plan-review__progress {
+    flex-shrink: 0;
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-plan-review__header-row,
+  .m-plan-review__problem-list,
+  .m-plan-review__progress-row,
+  .m-plan-review__footer-row,
+  .m-plan-review__body {
+    width: 100%;
+    max-width: 96rem;
+    margin-inline: auto;
+  }
+
+  .m-plan-review__header-row {
+    box-sizing: border-box;
+    display: flex;
+    min-height: calc(var(--space-8) + var(--space-6));
+    align-items: center;
+    gap: var(--space-2);
+    padding-inline: var(--space-3);
+  }
+
+  .m-plan-review__heading {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-plan-review__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review__title {
+    overflow: hidden;
+    border-radius: var(--radius-control);
+    font: var(--text-body-medium);
+    outline: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-plan-review__title:focus-visible {
+    outline: var(--focus-ring);
+  }
+
+  .m-plan-review__subtitle {
+    display: flex;
+    min-width: 0;
+    align-items: baseline;
+    gap: var(--space-1);
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-plan-review__revision {
+    flex-shrink: 0;
+  }
+
+  .m-plan-review__path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .m-plan-review__problems {
+    padding: var(--space-2) var(--space-3);
+  }
+
+  .m-plan-review__problem-list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review__body {
+    box-sizing: border-box;
+    display: flex;
+    min-height: 0;
+    flex: 1;
+    flex-direction: column;
+  }
+
+  .m-plan-review__toolbar {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-plan-review__save-state,
+  .m-plan-review__hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-plan-review__save-state {
+    margin-inline-start: auto;
+  }
+
+  .m-plan-review__workspace {
+    display: grid;
+    min-height: 0;
+    flex: 1;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .m-plan-review__document {
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .m-plan-review__aside {
+    display: none;
+    min-height: 0;
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .m-plan-review__scroll {
+    height: 100%;
+    overflow-y: auto;
+  }
+
+  .m-plan-review__diff {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
+  .m-plan-review__diff-empty,
+  .m-plan-review__no-feedback {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-body);
+    text-align: center;
+  }
+
+  .m-plan-review__diff-empty {
+    padding: var(--space-12) var(--space-5);
+  }
+
+  .m-plan-review__no-feedback {
+    padding: var(--space-6);
+  }
+
+  .m-plan-review__source,
+  .m-plan-review__source-editor {
+    display: flex;
+    height: 100%;
+    min-height: 0;
+    flex-direction: column;
+  }
+
+  .m-plan-review__source-fallback {
+    flex-shrink: 0;
+    margin: 0;
+    padding: var(--space-2) var(--space-4);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  /* The source textarea fills its pane rather than growing like a form field. */
+  .m-plan-review__source-input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    flex: 1 1 auto;
+    padding: var(--space-6) clamp(1rem, 4cqi, 3rem) 6rem;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--text);
+    font: var(--text-code);
+    line-height: 1.6;
+    resize: none;
+  }
+
+  .m-plan-review__source-footer {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-plan-review__footer {
+    flex-shrink: 0;
+    padding: var(--space-3);
+    border-block-start: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .m-plan-review__footer-row {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .m-plan-review__footer-status {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .m-plan-review__decision-actions,
+  .m-plan-review__actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-plan-review__decision-actions {
+    justify-content: flex-end;
+  }
+
+  .m-plan-review__load-error {
+    display: flex;
+    height: 100%;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    padding: var(--space-6);
+    text-align: center;
+  }
+
+  .m-plan-review__load-error-message {
+    max-width: 36rem;
+    margin: 0;
+    color: var(--danger-fg);
+    font: var(--text-body);
+  }
+
+  /* The keyboard and safe-area insets are exclusive, so the sum is one of them;
+     they go on the drawer's own box, where its padding is known, and the
+     shared drawer padding is tightened because the pane inside draws its own. */
+  .ui-drawer.m-plan-review__drawer {
+    --ui-drawer-padding: var(--space-4);
+
+    padding-block-end: calc(var(--ime-bottom, 0px) + var(--safe-bottom, 0px));
+  }
+
+  @container (width >= 24rem) {
+    .m-plan-review__header-row,
+    .m-plan-review__problems,
+    .m-plan-review__footer,
+    .m-plan-review__body {
+      padding-inline: var(--space-5);
+    }
+
+    .m-plan-review__toolbar {
+      padding-inline: 0;
+    }
+
+    .m-plan-review__footer-row {
+      flex-direction: row;
+      align-items: center;
+    }
+  }
+
+  @container (width >= 60rem) {
+    .m-plan-review__workspace {
+      grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
+    }
+
+    .m-plan-review__aside {
+      display: block;
+    }
+
+    .m-plan-review__comments-trigger {
+      display: none;
+    }
+  }
+}

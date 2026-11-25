@@ -1,27 +1,23 @@
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import './remote-access-settings.css'
+import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import {
-  Alert,
-  Button,
-  Description,
-  Input,
-  Label,
-  Separator,
-  TextField,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { CellSwitch } from '@/components/base'
-import { ItemCard } from '@/components/base'
-import { ItemCardGroup } from '@/components/base'
-import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
+
+import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
+import { NumberField } from '@/components/yuerchu-ui/components/number-field/number-field'
+import { draftToNumber, numberToDraft, PLAIN_INTEGER } from '@/lib/number-draft'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+
+import { Check, Copy } from '@keyline-icons/react/two-tone'
 
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
-import { cx } from '@/utils/cx'
 import { writeClipboard } from '@/lib/clipboard'
 import type { ListenConfigInfoResponse, ListenStatusResponse } from '@/types'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 
 /** What `copiedAddress` holds after the token was copied; no address looks like it. */
@@ -60,7 +56,6 @@ export function RemoteAccessSettings() {
   const [addresses, setAddresses] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
-  const [revealToken, setRevealToken] = useState(false)
   const [copied, markCopied] = useTemporaryFlag()
   const [copiedAddress, setCopiedAddress] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -176,8 +171,7 @@ export function RemoteAccessSettings() {
   const handleRegenerate = async () => {
     if (
       !(await confirm({
-        body: t('settings.remote.regenerateConfirm'),
-        status: 'warning',
+        description: t('settings.remote.regenerateConfirm'),
         confirmLabel: t('settings.remote.regenerate'),
       }))
     )
@@ -226,15 +220,15 @@ export function RemoteAccessSettings() {
     return (
       <SettingsPane>
         <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
-        <Alert status="danger" role="alert">
-          <Alert.Indicator />
-          <Alert.Content>
-            <Alert.Title>{t('settings.remote.loadError')}</Alert.Title>
-            {loadError && <Alert.Description className="break-all">{loadError}</Alert.Description>}
+        <Alert
+          tone="danger"
+          shouldAnnounce
+          heading={t('settings.remote.loadError')}
+          actions={
             <Button
-              size="small"
+              size="sm"
               variant="secondary"
-              className="mt-2"
+
               onPress={() => {
                 setLoading(true)
                 void loadData()
@@ -242,7 +236,9 @@ export function RemoteAccessSettings() {
             >
               {t('settings.remote.retry')}
             </Button>
-          </Alert.Content>
+          }
+        >
+          {loadError}
         </Alert>
       </SettingsPane>
     )
@@ -252,112 +248,96 @@ export function RemoteAccessSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.remote.title')} subtitle={t('settings.remote.subtitle')} />
 
-      <div data-slot="remote-enable" className="space-y-1.5">
-        <CellSwitch
-          aria-label={t('settings.remote.enable')}
-          aria-describedby="remote-enabled-hint"
-          isSelected={config.enabled}
-          onChange={(selected) => setConfig({ ...config, enabled: selected })}
-        >
-          <CellSwitch.Trigger className="pointer-coarse:h-11">
-            <CellSwitch.Label>{t('settings.remote.enable')}</CellSwitch.Label>
-            <CellSwitch.Control />
-          </CellSwitch.Trigger>
-        </CellSwitch>
-        <p
-          id="remote-enabled-hint"
-          data-slot="remote-enable-hint"
-          className="text-caption-1-regular text-text-secondary"
-        >
-          {t('settings.remote.enableHint')}
-        </p>
-      </div>
-
-      <div data-slot="remote-trust-warning" className="flex items-start gap-2 rounded-lg border p-3">
-        <TriangleAlert className="mt-0.5 size-4 shrink-0 text-status-warning-soft-foreground" aria-hidden />
-        <p data-slot="remote-trust-warning-text" className="text-caption-1-regular text-status-warning-soft-foreground">
-          {t('settings.remote.trustWarning')}
-        </p>
-      </div>
-
-      <div data-slot="remote-endpoint" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
-        <TextField>
-          <Label>{t('settings.remote.host')}</Label>
-          <Input
-            name="remoteAccessHost"
-            value={config.host}
-            onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="0.0.0.0"
-          />
-          <Description>{t('settings.remote.hostHint')}</Description>
-        </TextField>
-        <TextField type="number">
-          <Label>{t('settings.remote.port')}</Label>
-          <Input
-            name="remoteAccessPort"
-            inputMode="numeric"
-            min={1}
-            max={65535}
-            value={portInput}
-            onChange={(e) => setPortInput(e.target.value)}
-            placeholder="8787"
-          />
-        </TextField>
-      </div>
-
-      <div data-slot="remote-token" className="space-y-1.5">
-        <p data-slot="remote-token-label" className="text-caption-1-medium text-text-secondary">
-          {t('settings.remote.token')}
-        </p>
-        <div data-slot="remote-token-row" className="flex flex-wrap items-center gap-2">
-          <Input
-            aria-label={t('settings.remote.token')}
-            name="remoteAccessToken"
-            autoComplete="off"
-            readOnly
-            type={revealToken ? 'text' : 'password'}
-            value={config.token ?? ''}
-            placeholder={t('settings.remote.tokenPending')}
-          />
-          <Button variant="secondary" onPress={() => setRevealToken(!revealToken)}>
-            {revealToken ? t('settings.remote.hide') : t('settings.remote.reveal')}
-          </Button>
-          {/* Copied rather than revealed and retyped: the other device needs it
-              character for character, and it is long on purpose. */}
-          <Button
-            variant="secondary"
-            leadingIcon={copied && copiedAddress === TOKEN_COPY_KEY ? Check : Copy}
-            isDisabled={!config.token}
-            onPress={() => config.token && void copyText(config.token, TOKEN_COPY_KEY)}
+      <div data-slot="remote-enable">
+        <SettingsGroup>
+          <SettingsRow
+            label={t('settings.remote.enable')}
+            description={<span data-slot="remote-enable-hint">{t('settings.remote.enableHint')}</span>}
           >
-            {t('settings.remote.copyToken')}
-          </Button>
-          <Button variant="secondary" onPress={handleRegenerate}>
-            {t('settings.remote.regenerate')}
-          </Button>
-        </div>
-        <p data-slot="remote-token-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.remote.tokenHint')}
-        </p>
+            <Switch isSelected={config.enabled} onChange={(selected) => setConfig({ ...config, enabled: selected })} />
+          </SettingsRow>
+        </SettingsGroup>
       </div>
+
+      <Alert data-slot="remote-trust-warning" tone="warning">
+        <span data-slot="remote-trust-warning-text">{t('settings.remote.trustWarning')}</span>
+      </Alert>
+
+      <SettingsGroup>
+        <div data-slot="remote-endpoint" className="m-remote__group-rows">
+          <SettingsRow layout="stacked" label={t('settings.remote.host')} description={t('settings.remote.hostHint')}>
+            <TextField
+              name="remoteAccessHost"
+              value={config.host}
+              onChange={(e) => setConfig({ ...config, host: e })}
+              placeholder="0.0.0.0"
+            />
+          </SettingsRow>
+          <SettingsRow label={t('settings.remote.port')}>
+            <NumberField
+              value={draftToNumber(portInput)}
+              onChange={(value) => setPortInput(numberToDraft(value))}
+              name="remoteAccessPort"
+              minValue={1}
+              maxValue={65535}
+              placeholder="8787"
+              formatOptions={PLAIN_INTEGER}
+            />
+          </SettingsRow>
+        </div>
+
+        {/* A generated key shown read-only, with copy: the library's rule is not to
+            mask a key nobody types, so there is no reveal toggle. */}
+        <div data-slot="remote-token" className="m-remote__group-rows">
+          <SettingsRow
+            layout="stacked"
+            label={t('settings.remote.token')}
+            description={<span data-slot="remote-token-hint">{t('settings.remote.tokenHint')}</span>}
+          >
+            <div data-slot="remote-token-row" className="m-remote__token-row">
+              <TextField
+                name="remoteAccessToken"
+                isReadOnly
+                spellCheck="false"
+                value={config.token ?? ''}
+                placeholder={t('settings.remote.tokenPending')}
+                className="m-remote__token-field"
+              />
+              {/* Copied rather than revealed and retyped: the other device needs it
+                  character for character, and it is long on purpose. */}
+              <Button
+                variant="secondary"
+                icon={copied && copiedAddress === TOKEN_COPY_KEY ? <Check /> : <Copy />}
+                isDisabled={!config.token}
+                onPress={() => config.token && void copyText(config.token, TOKEN_COPY_KEY)}
+              >
+                {t('settings.remote.copyToken')}
+              </Button>
+              <Button variant="secondary" onPress={handleRegenerate}>
+                {t('settings.remote.regenerate')}
+              </Button>
+            </div>
+          </SettingsRow>
+        </div>
+      </SettingsGroup>
 
       {error && (
-        <p data-slot="remote-error" role="alert" className="text-caption-1-regular text-status-danger break-all">
+        <Alert data-slot="remote-error" tone="danger" shouldAnnounce>
           {error}
-        </p>
+        </Alert>
       )}
 
-      <div data-slot="remote-actions" className="flex items-center gap-3 pt-2">
+      <div data-slot="remote-actions" className="m-remote__actions">
         <Button variant="secondary" onPress={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="remote-saved" role="status" className="sr-only">
+          <span data-slot="remote-saved" role="status" className="m-remote__saved">
             {t('common.saved')}
           </span>
         )}
         {running ? (
-          <Button variant="danger" onPress={handleStop}>
+          <Button variant="destructive" onPress={handleStop}>
             {t('settings.remote.stop')}
           </Button>
         ) : (
@@ -366,73 +346,59 @@ export function RemoteAccessSettings() {
       </div>
 
       {status && (
-        <ItemCard variant="outline">
-          <ItemCard.Content className="min-w-0">
-            <ItemCard.Title className="flex w-full items-center gap-2">
-              {/* Decoration: the state it stands for is spelled out beside it,
-                so announcing the dot too would only say it twice. */}
-              <span
-                data-slot="remote-status-dot"
-                aria-hidden
-                className={cx(
-                  'inline-block size-2 shrink-0 rounded-full',
-                  running ? 'bg-status-success' : 'bg-background-secondary-default',
-                )}
-              />
-              {running ? t('settings.remote.statusRunning') : t('settings.remote.statusStopped')}
-            </ItemCard.Title>
-            {running && (
-              <ItemCard.Description className="w-full whitespace-normal">
-                {t('settings.remote.connections', { count: status.connections })}
-                {' · '}
-                {status.host}:{status.port}
-              </ItemCard.Description>
-            )}
-          </ItemCard.Content>
-        </ItemCard>
+        <div className="m-remote__status">
+          <p className="m-remote__status-title">
+            {/* Decoration: the state it stands for is spelled out beside it. */}
+            <span
+              data-slot="remote-status-dot"
+              data-running={running || undefined}
+              aria-hidden
+              className="m-remote__dot"
+            />
+            {running ? t('settings.remote.statusRunning') : t('settings.remote.statusStopped')}
+          </p>
+          {running && (
+            <p className="m-remote__hint">
+              {t('settings.remote.connections', { count: status.connections })}
+              {' · '}
+              {status.host}:{status.port}
+            </p>
+          )}
+        </div>
       )}
 
-      <div data-slot="remote-addresses" className="space-y-1.5">
-        <p data-slot="remote-addresses-label" className="text-caption-1-medium text-text-secondary">
-          {t('settings.remote.addresses')}
-        </p>
-        {addresses.length === 0 ? (
-          <p data-slot="remote-addresses-empty" className="text-caption-1-regular text-text-secondary">
-            {t('settings.remote.addressesEmpty')}
-          </p>
-        ) : (
-          <ItemCardGroup variant="outline">
-            {addresses.map((address, index) => {
+      <div data-slot="remote-addresses">
+        <SettingsGroup
+          heading={<span data-slot="remote-addresses-label">{t('settings.remote.addresses')}</span>}
+          description={<span data-slot="remote-addresses-hint">{t('settings.remote.addressesHint')}</span>}
+          headingLevel={3}
+        >
+          {addresses.length === 0 ? (
+            <div className="m-remote__empty-row">
+              <p data-slot="remote-addresses-empty" className="m-remote__hint">
+                {t('settings.remote.addressesEmpty')}
+              </p>
+            </div>
+          ) : (
+            addresses.map((address) => {
               const dialable = `${address}:${dialPort}`
               return (
-                <Fragment key={address}>
-                  {index > 0 && <Separator />}
-                  <ItemCard>
-                    <ItemCard.Content className="min-w-0">
-                      <ItemCard.Title className="w-full break-all font-mono">{dialable}</ItemCard.Title>
-                    </ItemCard.Content>
-                    <ItemCard.Action>
-                      <TooltipTrigger delay={0}>
-                        <Button
-                          iconOnly
-                          leadingIcon={copied && copiedAddress === dialable ? Check : Copy}
-                          size="small"
-                          variant="neutral"
-                          aria-label={t('settings.remote.copyAddress')}
-                          onPress={() => void copyText(dialable, dialable)}
-                        />
-                        <Tooltip>{t('settings.remote.copyAddress')}</Tooltip>
-                      </TooltipTrigger>
-                    </ItemCard.Action>
-                  </ItemCard>
-                </Fragment>
+                <SettingsRow key={address} label={<span className="m-remote__address-text">{dialable}</span>}>
+                  <TooltipTrigger>
+                    <Button
+                      icon={copied && copiedAddress === dialable ? <Check /> : <Copy />}
+                      size="sm"
+                      variant="ghost"
+                      aria-label={t('settings.remote.copyAddress')}
+                      onPress={() => void copyText(dialable, dialable)}
+                    />
+                    <Tooltip>{t('settings.remote.copyAddress')}</Tooltip>
+                  </TooltipTrigger>
+                </SettingsRow>
               )
-            })}
-          </ItemCardGroup>
-        )}
-        <p data-slot="remote-addresses-hint" className="text-caption-1-regular text-text-secondary">
-          {t('settings.remote.addressesHint')}
-        </p>
+            })
+          )}
+        </SettingsGroup>
       </div>
 
       {confirmDialog}

@@ -3,6 +3,7 @@ import { Check, Copy, TriangleAlert } from '@keyline-icons/react/two-tone'
 
 import { useCopy } from '@/hooks/use-copy'
 import { ActionButton } from './action-button'
+import './copy-button.css'
 
 /**
  * What a copy came to, for a screen reader: a status region beside the button.
@@ -15,7 +16,7 @@ import { ActionButton } from './action-button'
 export function CopyAnnouncement({ copied, failure }: { copied: boolean; failure: string | null }) {
   const { t } = useTranslation()
   return (
-    <span role="status" className="sr-only">
+    <span role="status" className="m-copy-announcement">
       {failure !== null ? t('common.copyFailed', { error: failure }) : copied ? t('common.copied') : ''}
     </span>
   )

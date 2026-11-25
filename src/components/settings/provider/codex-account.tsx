@@ -1,6 +1,9 @@
+import './codex-account.css'
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Skeleton } from '@/components/base'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { RefreshCw } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import type { CodexAuthStatusResponse } from '@/types'
@@ -42,12 +45,12 @@ export function CodexAccount() {
   }, [check])
 
   return (
-    <div data-slot="codex-account" className="border-t border-border-button-default pt-4 space-y-3">
-      <div data-slot="codex-account-header" className="flex items-center justify-between">
-        <p data-slot="codex-account-label" className="text-caption-1-regular text-text-secondary">
+    <div data-slot="codex-account" className="m-codex-account">
+      <div data-slot="codex-account-header" className="m-codex-account__header">
+        <p data-slot="codex-account-label" className="m-codex-account__label">
           {t('settings.provider.codexAccount')}
         </p>
-        <Button leadingIcon={RefreshCw} variant="secondary" onPress={() => void check()} isPending={checking}>
+        <Button icon={<RefreshCw />} variant="secondary" onPress={() => void check()} isPending={checking}>
           {t('settings.provider.codexRecheck')}
         </Button>
       </div>
@@ -59,40 +62,37 @@ export function CodexAccount() {
           aria-busy="true"
           aria-label={t('settings.provider.codexAccount')}
         >
-          <Skeleton className="h-16 w-full rounded-lg" />
+          <Skeleton shape="rect" width="100%" height="4rem" />
         </div>
       ) : (
         status && (
-          <div
-            data-slot="codex-account-card"
-            className="rounded-lg border border-border-button-default p-3 space-y-1.5"
-          >
+          <div data-slot="codex-account-card" className="m-codex-account__card">
             {status.logged_in ? (
               <>
-                <p data-slot="codex-account-email" className="text-body-regular">
+                <p data-slot="codex-account-email" className="m-codex-account__email">
                   {status.email ?? t('settings.provider.codexSignedIn')}
                 </p>
                 {status.plan && (
-                  <p data-slot="codex-account-plan" className="text-caption-1-regular text-text-secondary">
+                  <p data-slot="codex-account-plan" className="m-codex-account__meta">
                     {status.plan}
                   </p>
                 )}
               </>
             ) : (
-              <p data-slot="codex-account-signed-out" className="text-body-regular text-status-warning-soft-foreground">
+              <p data-slot="codex-account-signed-out" className="m-codex-account__signed-out">
                 {t('settings.provider.codexSignedOut')}
               </p>
             )}
             {status.problem && (
-              <p data-slot="codex-account-problem" className="text-caption-1-regular text-status-danger break-words">
+              <Alert data-slot="codex-account-problem" tone="danger" shouldAnnounce>
                 {status.problem}
-              </p>
+              </Alert>
             )}
             {/* Where we looked. A GUI process need not inherit a terminal's
                 environment, so "logged in over there, not here" is otherwise
                 impossible for anyone to diagnose. */}
             {status.codex_home && (
-              <p data-slot="codex-account-home" className="text-caption-1-regular text-text-secondary break-all">
+              <p data-slot="codex-account-home" className="m-codex-account__meta" data-wrap="anywhere">
                 {status.codex_home}
                 {status.storage === 'keyring' && ` · ${t('settings.provider.codexInKeyring')}`}
               </p>

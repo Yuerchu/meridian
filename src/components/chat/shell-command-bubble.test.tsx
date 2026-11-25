@@ -1,3 +1,4 @@
+import i18n from '@/i18n'
 import { act, render, screen, waitFor } from '@testing-library/react'
 
 import { useConversationStore } from '@/stores/conversation-store'
@@ -43,6 +44,19 @@ beforeEach(() => {
   useConversationStore.getState().ensureSession('conversation-1')
 })
 
+it('names the native loading indicator and removes it after the result arrives', async () => {
+  let resolve!: (value: UserCommandResultResponse) => void
+  getUserCommandResult.mockReturnValue(
+    new Promise<UserCommandResultResponse>((done) => {
+      resolve = done
+    }),
+  )
+  render(<ShellCommandBubble message={message} />)
+  expect(screen.getByRole('progressbar', { name: i18n.t('chat.shell.loading') })).toBeInTheDocument()
+  await act(async () => resolve(result))
+  expect(screen.queryByRole('progressbar', { hidden: true })).toBeNull()
+})
+
 it('rehydrates a structured command result without reading raw transcript context', async () => {
   getUserCommandResult.mockResolvedValue(result)
   render(<ShellCommandBubble message={message} />)
@@ -78,5 +92,5 @@ it('renders a completed command with a non-zero exit as a failure', async () => 
   await waitFor(() => expect(getUserCommandResult).toHaveBeenCalled())
   const outcome = document.querySelector('[data-command-outcome]')
   expect(outcome).toHaveAttribute('data-command-outcome', 'failure')
-  expect(outcome?.querySelector('svg')).toHaveClass('text-status-danger')
+  expect(outcome?.querySelector('svg')).toHaveAttribute('data-tone', 'danger')
 })

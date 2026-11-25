@@ -1,0 +1,67 @@
+@layer components {
+  .m-context-meter {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-context-meter__line {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-context-meter__number {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-context-meter__separator {
+    margin-inline: var(--space-1);
+  }
+
+  .m-context-meter__track {
+    display: flex;
+    width: 100%;
+    height: var(--space-2);
+    overflow: hidden;
+    border-radius: var(--radius-pill);
+    background: var(--control-track);
+  }
+
+  .m-context-meter__segment {
+    height: 100%;
+    min-width: 0;
+    /* More than four servers use neutral overflow rather than cycling back to
+       a colour already assigned to another server. */
+    background: var(--control-off);
+    transition: opacity var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-context-meter__segment[data-series='1'] {
+    background: var(--series-1);
+  }
+
+  .m-context-meter__segment[data-series='2'] {
+    background: var(--series-2);
+  }
+
+  .m-context-meter__segment[data-series='3'] {
+    background: var(--series-3);
+  }
+
+  .m-context-meter__segment[data-series='4'] {
+    background: var(--series-4);
+  }
+
+  .m-context-meter__segment[data-dimmed] {
+    opacity: 0.4;
+  }
+
+  @media (forced-colors: active) {
+    .m-context-meter__segment {
+      background: Highlight;
+    }
+  }
+}

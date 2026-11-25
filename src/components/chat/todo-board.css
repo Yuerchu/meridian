@@ -1,0 +1,49 @@
+@layer components {
+  .m-todo-board {
+    min-width: 0;
+  }
+
+  .m-todo-board .ui-kanban__columns {
+    gap: var(--space-2);
+  }
+
+  /* 200px rather than the 17rem library default: three columns fit inside the
+     composer's width without scrolling horizontally on desktop. */
+  .m-todo-board .ui-kanban-column {
+    flex: 1 0 min(200px, 100%);
+  }
+
+  /* Read-only cards carry no drag handle or move menu, so collapse the
+     reserved handle track into a single content column. */
+  .m-todo-board .ui-kanban-column__list .ui-grid-list-item {
+    grid-template-columns: minmax(0, 1fr);
+    padding: var(--space-2);
+  }
+
+  .m-todo-board .ui-kanban-column__list .ui-grid-list-item__actions {
+    display: none;
+  }
+
+  .m-todo-board__empty {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-todo-board__card-body {
+    font: var(--text-caption);
+  }
+
+  .m-todo-board__card-text[data-status='completed'] {
+    color: var(--text-secondary);
+    text-decoration: line-through;
+  }
+
+  .m-todo-board__card-text[data-status='in_progress'] {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .m-todo-board__card-text[data-status='pending'] {
+    color: var(--text-secondary);
+  }
+}

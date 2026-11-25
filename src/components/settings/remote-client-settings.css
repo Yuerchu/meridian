@@ -1,0 +1,153 @@
+@layer components {
+  .m-remote-client {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .m-remote-client__summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: 48px;
+    padding: var(--space-3) var(--space-4);
+    border-radius: calc(var(--radius-panel) - 1px);
+    color: var(--text);
+    text-align: start;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-remote-client__summary[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+  }
+
+  .m-remote-client__summary[data-pressed]:not([data-disabled]) {
+    background: var(--surface-inset);
+  }
+
+  .m-remote-client__summary-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .m-remote-client__summary-title {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-remote-client__summary-sub {
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-remote-client__summary-end {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-remote-client__chevron {
+    color: var(--text-secondary);
+    transition: rotate var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-remote-client__chevron[data-expanded] {
+    rotate: 180deg;
+  }
+
+  .m-remote-client__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-block-start: 1px solid var(--border);
+  }
+
+  .m-remote-client__hint,
+  .m-remote-client__ok,
+  .m-remote-client__state,
+  .m-remote-client__host {
+    margin: 0;
+  }
+
+  .m-remote-client__hint,
+  .m-remote-client__host {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-remote-client__connected-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .m-remote-client__connected-info {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .m-remote-client__state {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-remote-client__dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--warning-fg);
+  }
+
+  .m-remote-client__dot[data-state='connected'] {
+    background: var(--success-fg);
+  }
+
+  .m-remote-client__dot[data-state='offline'] {
+    background: var(--danger-fg);
+  }
+
+  .m-remote-client__host {
+    overflow: hidden;
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Inline form: keep host and port side by side even on phones (port is at most 5 digits). */
+  .m-remote-client__endpoint {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7.5rem;
+    gap: var(--space-2);
+    align-items: start;
+  }
+
+  .m-remote-client__actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-remote-client__ok {
+    color: var(--success-fg);
+    font: var(--text-caption);
+  }
+}

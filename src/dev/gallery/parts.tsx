@@ -1,26 +1,25 @@
 import { useState } from 'react'
-import { Bin, Bot, FaceSmile, Search } from '@keyline-icons/react/two-tone'
+import { Bin } from '@keyline-icons/react/two-tone'
 import {
-  ActionBar,
-  Button,
-  Command,
-  EmojiPicker,
-  FloatingToc,
   Kanban,
-  Link,
-  Resizable,
-  TreeView,
-  TreeViewItem,
-} from '@/components/base'
-import { SegmentedControl, SegmentedControlItem } from '@/components/base/segmented-control/segmented-control'
-import { NotificationBell } from '@/components/application/app-shell/notification-bell'
-import type { NotificationCenterItem } from '@/components/application/notification-center/notification-center'
+  KanbanCard,
+  KanbanColumn,
+  type KanbanColumnData,
+  type KanbanItem,
+} from '@/components/yuerchu-ui/components/kanban/kanban'
+import { CommandPalette } from '@/components/yuerchu-ui/components/command-palette/command-palette'
+import { MenuItem, MenuSection } from '@/components/yuerchu-ui/components/menu/menu'
+import { ResizablePanels } from '@/components/yuerchu-ui/components/resizable-panels/resizable-panels'
+import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
+import { Tree, TreeItem } from '@/components/yuerchu-ui/components/tree/tree'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { ConversationIcon, HostedAgentGlyph } from '@/components/ui/agent-icon'
-import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { useConfirm } from '@/hooks/use-confirm'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { Hint } from '@/components/ui/hint'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { PathLabel } from '@/components/ui/path-label'
+import { PathLabel } from '@/components/yuerchu-ui/components/tool-views/tool-views'
 import { ProviderMark } from '@/components/ui/provider-icon'
 import { Section } from './shell'
 import { DraggableKanban } from './kanban-demo'
@@ -56,7 +55,9 @@ export function CoreParts() {
           <p className="text-body-2-regular text-text-secondary">
             悬停看说明：<Hint label="run_command 在受限令牌沙箱里运行">沙箱</Hint>
           </p>
-          <Link onPress={noop}>已压缩 12 条消息</Link>
+          <Button variant="ghost" size="sm" onPress={noop}>
+            已压缩 12 条消息
+          </Button>
         </div>
       </Section>
       <Section title="ErrorAlert / 带原因的错误">
@@ -69,68 +70,70 @@ export function CoreParts() {
   )
 }
 
+const READONLY_KANBAN: KanbanColumnData<KanbanItem>[] = [
+  { id: 'todo', heading: '待做', cards: [{ id: 'k1', textValue: '补过期 token 的测试' }] },
+  { id: 'doing', heading: '进行中', cards: [{ id: 'k2', textValue: '抽出 verify_token' }] },
+  {
+    id: 'done',
+    heading: '已完成',
+    cards: [
+      { id: 'k3', textValue: '确认走 middleware' },
+      { id: 'k4', textValue: '列出三个路由' },
+    ],
+  },
+]
+
 /** A file tree and a board, the two collections the product builds on. */
 export function DataParts() {
   return (
     <>
-      <Section title="TreeView / 文件树">
+      <Section title="Tree / 文件树（库）">
         <div className="max-w-sm rounded-2xl bg-background-secondary-default p-2">
-          <TreeView aria-label="改动" size="sm" selectionMode="none" defaultExpandedKeys={['src', 'chat']}>
-            <TreeViewItem id="src" label="src">
-              <TreeViewItem id="chat" label="components/chat">
-                <TreeViewItem id="entry" label="plan-review-entry.tsx" trailingContent="A" />
-                <TreeViewItem id="tab" label="composer-status-tab.tsx" trailingContent="M" />
-              </TreeViewItem>
-              <TreeViewItem id="hook" label="hooks/use-project-branch.ts" trailingContent="A" />
-            </TreeViewItem>
-          </TreeView>
+          <Tree aria-label="改动" size="sm" selectionMode="none" defaultExpandedKeys={['src', 'chat']}>
+            <TreeItem id="src" label="src">
+              <TreeItem id="chat" label="components/chat">
+                <TreeItem id="entry" label="plan-review-entry.tsx" actions={<span aria-hidden>A</span>} />
+                <TreeItem id="tab" label="composer-status-tab.tsx" actions={<span aria-hidden>M</span>} />
+              </TreeItem>
+              <TreeItem id="hook" label="hooks/use-project-branch.ts" actions={<span aria-hidden>A</span>} />
+            </TreeItem>
+          </Tree>
         </div>
       </Section>
-      <Section title="Kanban / 看板">
-        <Kanban size="sm" aria-label="待办" className="max-w-2xl [--kanban-column-height:auto]">
-          {[
-            ['待做', ['补过期 token 的测试']],
-            ['进行中', ['抽出 verify_token']],
-            ['已完成', ['确认走 middleware', '列出三个路由']],
-          ].map(([title, cards]) => (
-            <Kanban.Column key={title as string}>
-              <Kanban.ColumnHeader>
-                <Kanban.ColumnTitle>{title}</Kanban.ColumnTitle>
-                <Kanban.ColumnCount>{(cards as string[]).length}</Kanban.ColumnCount>
-              </Kanban.ColumnHeader>
-              <Kanban.ColumnBody>
-                <Kanban.CardList aria-label={title as string}>
-                  {(cards as string[]).map((card) => (
-                    <Kanban.Card key={card} id={card} textValue={card}>
-                      <div className="p-2.5 text-caption-1-regular">{card}</div>
-                    </Kanban.Card>
-                  ))}
-                </Kanban.CardList>
-              </Kanban.ColumnBody>
-            </Kanban.Column>
-          ))}
-        </Kanban>
+      <Section title="Kanban / 看板（库）">
+        <div className="max-w-2xl">
+          <Kanban columns={READONLY_KANBAN} isReadOnly aria-label="待办">
+            {(column) => (
+              <KanbanColumn key={column.id} column={column}>
+                {(card) => <KanbanCard key={card.id} card={card} />}
+              </KanbanColumn>
+            )}
+          </Kanban>
+        </div>
       </Section>
       <Section title="Kanban / 拖拽">
         {/* Pointer: drag a card. Keyboard: Tab to a card's grip, Enter to pick
             it up, Tab to a drop position, Enter to drop. */}
         <DraggableKanban />
       </Section>
-      <Section title="Resizable / 可拖拽分栏">
+      <Section title="ResizablePanels / 可拖拽分栏">
         <div className="h-40 max-w-2xl overflow-hidden rounded-2xl ring-1 ring-border-button-default ring-inset">
-          <Resizable orientation="horizontal" className="h-full">
-            <Resizable.Panel id="left" defaultSize="60%" minSize="20%">
-              <div className="flex h-full items-center justify-center text-body-2-regular text-text-secondary">
+          <ResizablePanels orientation="horizontal" defaultSize={60} minSize={20} maxSize={80} className="h-full">
+            {[
+              <div
+                key="left"
+                className="flex h-full items-center justify-center text-body-2-regular text-text-secondary"
+              >
                 对话
-              </div>
-            </Resizable.Panel>
-            <Resizable.Handle />
-            <Resizable.Panel id="right" defaultSize="40%" minSize="20%">
-              <div className="flex h-full items-center justify-center text-body-2-regular text-text-secondary">
+              </div>,
+              <div
+                key="right"
+                className="flex h-full items-center justify-center text-body-2-regular text-text-secondary"
+              >
                 改动
-              </div>
-            </Resizable.Panel>
-          </Resizable>
+              </div>,
+            ]}
+          </ResizablePanels>
         </div>
       </Section>
     </>
@@ -143,141 +146,58 @@ export function NavigationParts() {
   return (
     <>
       <Section title="SegmentedControl">
-        <SegmentedControl aria-label="传输" defaultSelectedKeys={['stdio']}>
-          <SegmentedControlItem id="stdio">stdio</SegmentedControlItem>
-          <SegmentedControlItem id="streamablehttp">HTTP</SegmentedControlItem>
+        <SegmentedControl aria-label="传输" defaultSelectedKey="stdio">
+          <Segment id="stdio">stdio</Segment>
+          <Segment id="streamablehttp">HTTP</Segment>
         </SegmentedControl>
       </Section>
-      <Section title="FloatingToc / 对话小地图">
-        <div className="relative flex h-40 max-w-md items-center justify-end rounded-2xl bg-background-secondary-default pe-2">
-          <FloatingToc placement="right">
-            <FloatingToc.Trigger aria-label="对话目录">
-              {[0, 1, 2, 3, 4].map((i) => (
-                <FloatingToc.Bar key={i} active={i === 2} />
-              ))}
-            </FloatingToc.Trigger>
-            <FloatingToc.Content>
-              {['鉴权改走 middleware', '先别动 handler', '补测试', '跑一遍 clippy', '提交'].map((q, i) => (
-                <FloatingToc.Item key={q} active={i === 2} onPress={noop}>
-                  {q}
-                </FloatingToc.Item>
-              ))}
-            </FloatingToc.Content>
-          </FloatingToc>
-        </div>
-      </Section>
-      <Section title="Command / 命令面板底座">
+      <Section title="CommandPalette（库）">
         <Button variant="secondary" onPress={() => setPaletteOpen(true)}>
-          打开 Command
+          打开命令面板
         </Button>
-        <Command>
-          <Command.Backdrop isOpen={paletteOpen} onOpenChange={setPaletteOpen}>
-            <Command.Container size="md">
-              <Command.Dialog aria-label="命令">
-                <Command.Header>
-                  <Command.InputGroup aria-label="命令">
-                    <Command.InputGroup.Prefix>
-                      <Search className="size-4" />
-                    </Command.InputGroup.Prefix>
-                    <Command.InputGroup.Input placeholder="搜索对话和命令…" />
-                    <Command.InputGroup.ClearButton aria-label="清除" />
-                  </Command.InputGroup>
-                </Command.Header>
-                <Command.List aria-label="命令" renderEmptyState={() => '没有结果'}>
-                  <Command.Group heading="操作">
-                    <Command.Item id="new" textValue="新对话" onAction={() => setPaletteOpen(false)}>
-                      新对话
-                    </Command.Item>
-                  </Command.Group>
-                  <Command.Group heading="最近">
-                    <Command.Item id="c1" textValue="鉴权改走 middleware">
-                      鉴权改走 middleware
-                    </Command.Item>
-                  </Command.Group>
-                </Command.List>
-              </Command.Dialog>
-            </Command.Container>
-          </Command.Backdrop>
-        </Command>
+        <CommandPalette isOpen={paletteOpen} onOpenChange={setPaletteOpen} shortcut={false} aria-label="命令">
+          <MenuSection header="操作">
+            <MenuItem id="new">新对话</MenuItem>
+          </MenuSection>
+          <MenuSection header="最近">
+            <MenuItem id="c1" description="middleware 之后不再读环境变量">
+              鉴权改走 middleware
+            </MenuItem>
+          </MenuSection>
+        </CommandPalette>
       </Section>
     </>
   )
 }
 
-const INBOX: NotificationCenterItem[] = [
-  {
-    id: 'n1',
-    category: 'system',
-    group: '鉴权改走 middleware',
-    title: 'run_command 等待批准',
-    description: 'cargo test --workspace',
-    timestamp: '刚刚',
-    unread: true,
-    status: 'information',
-  },
-  {
-    id: 'n2',
-    category: 'system',
-    group: '导出功能计划',
-    title: '计划等待审阅',
-    description: '第 3 版',
-    timestamp: '5 分钟前',
-    icon: Bot,
-  },
-]
-
-/** The overlays the product opens on its own terms: bulk bar, inbox, confirm, emoji. */
+/** The overlays the product opens on its own terms: bulk bar, confirm. */
 export function OverlayParts() {
   const [bar, setBar] = useState(false)
-  const [confirm, setConfirm] = useState(false)
-  const [emoji, setEmoji] = useState(false)
+  const { confirm, confirmDialog } = useConfirm()
   return (
     <>
-      <Section title="ActionBar / 批量操作条（固定在视口底部）">
+      <Section title="SelectionBar / 批量选择（库）">
         <Button variant="secondary" onPress={() => setBar((v) => !v)}>
-          {bar ? '收起' : '选中 3 项'}
+          {bar ? '清空选择' : '选中 3 项'}
         </Button>
-        <ActionBar isOpen={bar}>
-          <ActionBar.Prefix>
-            <span className="text-body-regular text-text-secondary">已选 3 项</span>
-          </ActionBar.Prefix>
-          <ActionBar.Content>
-            <Button leadingIcon={Bin} variant="danger" onPress={() => setBar(false)}>
+        {bar && (
+          <SelectionBar selectedCount={3} onClear={() => setBar(false)}>
+            <Button icon={<Bin />} size="sm" variant="destructive" onPress={() => setBar(false)}>
               删除所选
             </Button>
-          </ActionBar.Content>
-        </ActionBar>
+          </SelectionBar>
+        )}
       </Section>
-      <Section title="NotificationBell / 待处理收件箱">
-        <NotificationBell notifications={INBOX} triggerLabel="待处理 2 项" dialogLabel="待处理" />
-      </Section>
-      <Section title="ConfirmDialog / 确认">
-        <Button variant="danger" onPress={() => setConfirm(true)}>
+      <Section title="useConfirm / 确认">
+        <Button
+          variant="destructive"
+          onPress={() =>
+            void confirm({ description: '从这条消息往后的整段都会删除。', confirmLabel: '删除', tone: 'danger' })
+          }
+        >
           删除这段对话
         </Button>
-        <ConfirmDialog
-          isOpen={confirm}
-          onOpenChange={setConfirm}
-          onConfirm={() => setConfirm(false)}
-          body="从这条消息往后的整段都会删除。"
-          confirmLabel="删除"
-        />
-      </Section>
-      <Section title="EmojiPicker">
-        <EmojiPicker isOpen={emoji} onOpenChange={setEmoji} aria-label="表情">
-          <EmojiPicker.Trigger aria-label="表情" leadingIcon={FaceSmile} />
-          <EmojiPicker.Popover>
-            <EmojiPicker.Content>
-              <EmojiPicker.Grid items={['😀', '🎉', '👍', '🤔', '🔥', '✅', '🚀', '👀']}>
-                {(item: string) => (
-                  <EmojiPicker.Item id={item} textValue={item}>
-                    {item}
-                  </EmojiPicker.Item>
-                )}
-              </EmojiPicker.Grid>
-            </EmojiPicker.Content>
-          </EmojiPicker.Popover>
-        </EmojiPicker>
+        {confirmDialog}
       </Section>
     </>
   )

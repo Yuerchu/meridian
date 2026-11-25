@@ -1,7 +1,8 @@
+import './transcript-status.css'
 import { useTranslation } from 'react-i18next'
-import { AgentThinking } from '@/components/application/agent-thinking/agent-thinking'
+import { ThinkingState } from '@/components/yuerchu-ui/components/thinking-state/thinking-state'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { AcpNoticeBubble } from './acp-notice-bubble'
 import type { AcpSessionNoticeInfoResponse } from '@/types'
@@ -56,7 +57,7 @@ export function TranscriptStatus({
     <>
       {notices.map((notice) => (
         <MessageScrollerItem key={notice.id} messageId={`__acp_notice:${notice.id}`}>
-          <div data-slot="acp-notice-row" className="pl-10">
+          <div data-slot="acp-notice-row" className="m-transcript-status__notice-row">
             <AcpNoticeBubble notice={notice} retryText={retryText} />
           </div>
         </MessageScrollerItem>
@@ -64,7 +65,7 @@ export function TranscriptStatus({
       {redactionNotice && (
         <MessageScrollerItem messageId="__redaction_notice">
           <Bubble variant="muted">
-            <BubbleContent className="text-caption-1-regular text-text-secondary">
+            <BubbleContent className="m-transcript-status__redaction">
               {t('chat.redaction.notice', { count: redactionNotice.redactedCount })}
             </BubbleContent>
           </Bubble>
@@ -72,10 +73,13 @@ export function TranscriptStatus({
       )}
       {compacting && (
         <MessageScrollerItem messageId="__compacting">
-          {/* boardui's agent-thinking is the whole row, and the status: its
-              own `role="status"` announces it, so nothing around it is one. */}
-          <div data-slot="compacting-status" className="flex justify-center py-3">
-            <AgentThinking variant="spin" label={t('chat.compact.inProgress')} />
+          <div
+            data-slot="compacting-status"
+            role="status"
+            aria-label={t('chat.compact.inProgress')}
+            className="m-transcript-status__compacting"
+          >
+            <ThinkingState status="thinking" />
           </div>
         </MessageScrollerItem>
       )}

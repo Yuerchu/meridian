@@ -244,7 +244,7 @@ describe('EmojiSettings', () => {
       // Nothing about the settings page asks for every file up front any more.
       expect(mockApi.getEmojiFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE)
 
-      await user.click(screen.getByRole('button', { name: 'Go to page 2' }))
+      await user.click(screen.getByRole('button', { name: 'Page 2' }))
       expect(shownNames()[0]).toBe(`sticker ${STICKERS_PER_PAGE}`)
       const secondPage = Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${STICKERS_PER_PAGE + i}`)
       await waitFor(() => expect(requested()).toEqual(new Set([...firstPage, ...secondPage])))
@@ -269,8 +269,26 @@ describe('EmojiSettings', () => {
       await openPack(user)
 
       await user.click(screen.getByRole('checkbox', { name: /select all/i }))
-      expect(await screen.findByText(`${STICKERS_PER_PAGE} selected`)).toBeInTheDocument()
+      // Scoped to the visible count: SelectionBar also announces it into the
+      // screen reader's live region, so the text exists twice on purpose.
+      expect(
+        await screen.findByText(`${STICKERS_PER_PAGE} selected`, { selector: '.ui-selection-bar__count' }),
+      ).toBeInTheDocument()
     })
+  })
+
+  it('clears the selection from the bulk bar', async () => {
+    const user = userEvent.setup()
+    mockApi.listEmojis.mockResolvedValue([makeEmoji({ id: 'e1', semantic_status: 'confirmed' })])
+    render(<EmojiSettings />)
+    await openPack(user)
+
+    await user.click(screen.getByRole('checkbox', { name: /select all/i }))
+    const count = { selector: '.ui-selection-bar__count' }
+    expect(await screen.findByText('1 selected', count)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear selection' }))
+    await waitFor(() => expect(screen.queryByText('1 selected', count)).not.toBeInTheDocument())
   })
 
   it('generates suggestions for unconfirmed selected stickers that have a file', async () => {

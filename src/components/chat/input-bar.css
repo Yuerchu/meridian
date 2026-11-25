@@ -1,0 +1,89 @@
+@layer components {
+  .m-input-bar {
+    padding-inline: max(var(--space-4), var(--safe-left)) max(var(--space-4), var(--safe-right));
+    padding-top: var(--space-2);
+    padding-bottom: max(var(--space-4), var(--safe-bottom));
+  }
+
+  .m-input-bar[data-embedded] {
+    width: 100%;
+    padding: 0;
+  }
+
+  .m-input-bar__inner {
+    max-width: 42rem;
+    margin-inline: auto;
+  }
+
+  .m-input-bar__menu-target {
+    display: block;
+    width: 100%;
+  }
+
+  .m-input-bar__notice {
+    margin: 0;
+    padding-inline: var(--space-2);
+    padding-bottom: calc(var(--space-1) * 1.5);
+    font: var(--text-caption);
+    color: var(--text-secondary);
+  }
+
+  .m-input-bar__notice[data-tone='danger'] {
+    color: var(--danger-fg);
+  }
+
+  .m-input-bar__alert {
+    margin-inline: var(--space-1);
+    margin-bottom: calc(var(--space-1) * 1.5);
+  }
+
+  .m-input-bar__attachments {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: flex-end;
+    gap: var(--space-2);
+    padding-inline: var(--space-1);
+    padding-bottom: var(--space-1);
+  }
+
+  .m-input-bar__sticker {
+    position: relative;
+    flex-shrink: 0;
+    border-radius: var(--radius-item);
+    background: color-mix(in srgb, var(--surface-muted) 40%, transparent);
+    padding: var(--space-1);
+  }
+
+  .m-input-bar__sticker-image {
+    display: block;
+    width: var(--space-12);
+    height: var(--space-12);
+    object-fit: contain;
+  }
+
+  .m-input-bar__sticker-remove {
+    position: absolute;
+    inset-block-start: calc(-1 * var(--space-2));
+    inset-inline-end: calc(-1 * var(--space-2));
+    display: flex;
+  }
+
+  .m-input-bar__sticker-remove .ui-button {
+    --ui-button-height: 24px;
+    --ui-button-radius: var(--radius-pill);
+    --ui-button-shadow: var(--shadow-raised);
+  }
+
+  @media (any-pointer: coarse) {
+    .m-input-bar__sticker-remove .ui-button {
+      overflow: visible;
+    }
+
+    .m-input-bar__sticker-remove .ui-button::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 44px) / 2));
+    }
+  }
+}

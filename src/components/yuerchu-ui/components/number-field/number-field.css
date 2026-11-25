@@ -1,0 +1,95 @@
+@layer components {
+  /* 尺寸、输入框样式沿用 .ui-text-field / .ui-input（text-field.css），这里只加右侧的 −、+ 按钮 */
+  .ui-number-field {
+    --ui-number-step-inset: var(--space-1);
+    --ui-number-step-size: calc(var(--ui-input-height) - 2 * var(--ui-number-step-inset));
+  }
+
+  .ui-number-field .ui-input {
+    padding-inline-end: calc(2 * var(--ui-number-step-size) + 1px + var(--ui-number-step-inset) + var(--space-2));
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-number-field__steppers {
+    position: absolute;
+    inset-inline-end: var(--ui-number-step-inset);
+    display: flex;
+    gap: 1px;
+  }
+
+  .ui-number-field__step {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-number-step-size);
+    height: var(--ui-number-step-size);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    /* 同心圆角：输入框圆角 − 内缩 */
+    border-radius: calc(var(--ui-input-radius) - var(--ui-number-step-inset));
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard),
+      transform var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-number-field__step svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+  }
+
+  .ui-number-field__step[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-number-field__step[data-pressed]:not([data-disabled]) {
+    transform: scale(var(--press-scale));
+  }
+
+  .ui-number-field__step[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  @media (forced-colors: active) {
+    .ui-number-field__step[data-disabled] {
+      color: GrayText;
+    }
+  }
+
+  /* 有前后缀时（边框在外层，见 text-field.css）：−、+ 按钮排在后缀后面，不再叠在输入框上 */
+  .ui-text-field__control[data-has-affix] .ui-number-field__steppers {
+    position: static;
+    flex: none;
+    margin-inline-end: var(--ui-number-step-inset);
+  }
+
+  .ui-number-field .ui-text-field__control[data-has-affix] .ui-input {
+    padding-inline-end: var(--space-2);
+  }
+
+  .ui-number-field .ui-text-field__control[data-has-affix] .ui-input:has(+ .ui-text-field__affix) {
+    padding-inline-end: var(--space-1);
+  }
+
+  .ui-number-field .ui-text-field__affix[data-side="end"] {
+    padding-inline-end: var(--space-2);
+  }
+
+  /* 可以拖的标签：左右箭头光标；触屏上横向拖不触发页面滚动 */
+  .ui-number-field__scrub {
+    cursor: ew-resize;
+    touch-action: pan-y;
+    user-select: none;
+  }
+
+  .ui-number-field__scrub[data-scrubbing] {
+    color: var(--text);
+  }
+}

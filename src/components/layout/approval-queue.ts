@@ -322,7 +322,7 @@ export function attentionActionLabel(t: TFunction, item: AttentionItem, action: 
 }
 
 /** How each button is painted, the same on both surfaces. */
-export const ACTION_VARIANT = { defer: 'secondary', view: 'secondary', deny: 'danger', allow: 'primary' } as const
+export const ACTION_VARIANT = { defer: 'secondary', view: 'secondary', deny: 'destructive', allow: 'primary' } as const
 
 /**
  * What each action does, shared by both surfaces. `onSelect` is the shell's

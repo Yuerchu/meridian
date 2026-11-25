@@ -213,42 +213,23 @@ describe('global user-command events', () => {
     focus.mockRestore()
   })
 
-  it('notifies once when a settled plan continuation first needs attention', async () => {
+  it('tracks settled plan review updates without firing delivery attention alerts', async () => {
     vi.mocked(isPermissionGranted).mockResolvedValue(true)
     const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(false)
     renderHook(() => useGlobalEventListener())
     const listener = mocks.listeners.get('plan-review-updated')
-    const queued = {
+    const approved = {
       review_id: 'review-1',
       conversation_id: 'conversation-1',
       document_id: 'document-1',
       revision_id: 'revision-1',
       turn_id: 'turn-1',
       status: 'approved',
-      delivery_state: 'queued',
       lock_version: 1,
     } as const
 
-    act(() => listener?.({ payload: queued }))
+    act(() => listener?.({ payload: approved }))
     expect(sendNotification).not.toHaveBeenCalled()
-
-    const held = { ...queued, delivery_state: 'held', lock_version: 2 } as const
-    act(() => listener?.({ payload: held }))
-    await waitFor(() =>
-      expect(sendNotification).toHaveBeenCalledWith({
-        title: 'Plan conversation',
-        body: i18n.t('chat.plan.continuationNeedsAttention'),
-      }),
-    )
-
-    // Replayed equal-version events are accepted as idempotent projections,
-    // but they must not repeat an OS notification the user already received.
-    act(() => listener?.({ payload: held }))
-    await Promise.resolve()
-    expect(sendNotification).toHaveBeenCalledTimes(1)
-
-    act(() => listener?.({ payload: { ...held, delivery_state: 'acknowledged', lock_version: 3 } }))
-    expect(sendNotification).toHaveBeenCalledTimes(1)
     focus.mockRestore()
   })
 })

@@ -1,0 +1,294 @@
+@layer components {
+  .m-webview-lab__popover-trigger {
+    display: inline-flex;
+    align-items: center;
+    border: 0;
+    background: transparent;
+    padding: 0;
+    border-radius: var(--radius-pill);
+  }
+
+  .m-webview-lab__popover-trigger[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-dev-webview-lab {
+    height: 100%;
+    overflow-y: auto;
+    background: var(--background);
+    color: var(--text);
+  }
+
+  .m-dev-webview-lab__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    max-width: 48rem;
+    margin-inline: auto;
+    padding: var(--space-8) var(--space-6);
+  }
+
+  .m-dev-webview-lab__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-dev-webview-lab__title {
+    margin: 0;
+    font: var(--text-title-3);
+  }
+
+  .m-dev-webview-lab__intro {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-dev-webview-lab__section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-dev-webview-lab__section-title {
+    margin: 0;
+    font: var(--text-body-medium);
+    font-weight: 600;
+  }
+
+  .m-dev-webview-lab__section-hint {
+    margin-inline-start: var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-body);
+  }
+
+  .m-dev-webview-lab__report-actions {
+    display: flex;
+    gap: var(--space-2);
+  }
+
+  .m-dev-webview-lab__report {
+    margin: 0;
+    max-height: 24rem;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    background: color-mix(in srgb, var(--surface-muted) 30%, transparent);
+    padding: var(--space-3);
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    white-space: pre-wrap;
+    user-select: all;
+  }
+
+  .m-dev-webview-lab__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    padding: var(--space-4);
+  }
+
+  .m-dev-webview-lab__row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .m-dev-webview-lab__toggles {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-6);
+  }
+
+  .m-dev-webview-lab__inputs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    max-width: 24rem;
+  }
+
+  .m-dev-webview-lab__button-compact {
+    display: inline-flex;
+    --ui-button-height: 24px;
+    --ui-button-padding: var(--space-2);
+    --ui-button-radius: calc(var(--radius-control) - 4px);
+  }
+
+  .m-dev-webview-lab__button-pill {
+    display: inline-flex;
+    --ui-button-radius: var(--radius-pill);
+  }
+
+  .m-dev-webview-lab__prompt-probe {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-dev-webview-lab__note {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-dev-webview-lab__code-blocks {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .m-dev-webview-lab__code-block {
+    border-radius: var(--radius-item);
+  }
+
+  .m-dev-webview-lab__code-block-icon {
+    width: var(--space-4);
+    height: var(--space-4);
+  }
+
+  .m-dev-webview-lab__code-block-lang {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-dev-webview-lab__frame {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    padding: var(--space-3);
+  }
+
+  .m-dev-webview-lab__markdown-compare {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .m-dev-webview-lab__markdown-col {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .m-dev-webview-lab__markdown-heading {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-weight: 500;
+  }
+
+  .m-dev-webview-lab__composer-box {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+  }
+
+  .m-dev-webview-lab__composer-padding {
+    padding: var(--space-2) var(--space-4) var(--space-4);
+  }
+
+  .m-dev-webview-lab__composer-width {
+    max-width: 42rem;
+    margin-inline: auto;
+  }
+
+  .m-dev-webview-lab__composer-target {
+    display: block;
+    width: 100%;
+  }
+
+  .m-dev-webview-lab__composer-shell {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    border-radius: var(--radius-panel);
+    padding-block: var(--space-2);
+  }
+
+  .m-dev-webview-lab__composer-textarea-wrap {
+    position: relative;
+    width: 100%;
+  }
+
+  .m-dev-webview-lab__composer-textarea {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 1.5rem;
+    max-height: 200px;
+    resize: none;
+    border: 0;
+    background: transparent;
+    padding: 0 var(--space-3);
+    color: var(--text);
+    font: var(--text-body);
+    outline: none;
+  }
+
+  .m-dev-webview-lab__composer-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    width: 100%;
+    border: 0;
+    padding: 0 var(--space-3);
+  }
+
+  .m-dev-webview-lab__composer-spacer {
+    flex: 1;
+  }
+
+  .m-dev-webview-lab__send-wrap {
+    display: inline-flex;
+    --ui-button-radius: var(--radius-pill);
+  }
+
+  .m-dev-webview-lab__context-anchor {
+    position: fixed;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  .m-dev-webview-lab__composites {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    padding: var(--space-4);
+  }
+
+  .m-dev-webview-lab__perf {
+    max-height: 8rem;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-item);
+    padding: var(--space-2);
+  }
+
+  .m-dev-webview-lab__perf .probe-host {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+  }
+
+  .m-dev-webview-lab__perf .probe-item {
+    border-radius: calc(var(--radius-item) / 2);
+    background: var(--surface-muted);
+    padding-inline: var(--space-1);
+    font: var(--text-caption);
+  }
+
+  .m-dev-webview-lab__perf .probe-host:has(.probe-item:hover) .probe-item {
+    opacity: 0.9;
+  }
+
+  .m-dev-webview-lab__perf .probe-host.probe-flip .probe-item:has(+ .probe-item) {
+    outline: 1px solid transparent;
+  }
+}

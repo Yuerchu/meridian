@@ -1,0 +1,152 @@
+@layer components {
+  .m-ime__stack,
+  .m-ime__status,
+  .m-ime__staged {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-ime__staged {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-ime__status {
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .m-ime__group-rows {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-ime__group-rows + .ui-settings-row,
+  .ui-settings-row + .m-ime__group-rows,
+  .m-ime__group-rows + .m-ime__group-rows,
+  .m-ime__group-rows > .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* Compact inline select inside SettingsRow */
+  .m-ime__select {
+    min-width: 9.5rem;
+    max-width: 100%;
+  }
+
+  .m-ime__status-title,
+  .m-ime__actions,
+  .m-ime__busy,
+  .m-ime__dict-head,
+  .m-ime__dict-actions,
+  .m-ime__save {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .m-ime__actions,
+  .m-ime__dict-actions {
+    flex-wrap: wrap;
+  }
+
+  .m-ime__actions,
+  .m-ime__save {
+    gap: var(--space-3);
+  }
+
+  .m-ime__save {
+    padding-block-start: var(--space-2);
+  }
+
+  .m-ime__status-title,
+  .m-ime__label,
+  .m-ime__hint,
+  .m-ime__path,
+  .m-ime__danger {
+    margin: 0;
+  }
+
+  .m-ime__status-title {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .m-ime__label {
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .m-ime__hint,
+  .m-ime__busy {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-ime__path,
+  .m-ime__root,
+  .m-ime__danger {
+    overflow-wrap: anywhere;
+  }
+
+  .m-ime__path {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-family: var(--font-mono);
+    font-variant-ligatures: none;
+  }
+
+  .m-ime__root-path {
+    color: var(--text-secondary);
+  }
+
+  .m-ime__dot {
+    width: var(--space-2);
+    height: var(--space-2);
+    flex-shrink: 0;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+  }
+
+  .m-ime__dot[data-on] {
+    background: var(--success-fg);
+  }
+
+  .m-ime__danger {
+    color: var(--danger-fg);
+    font: var(--text-caption);
+  }
+
+  .m-ime__saved {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  .m-ime__dict-head {
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-ime__dict-meta {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-ime__dict-name {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}

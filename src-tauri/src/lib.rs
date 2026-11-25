@@ -224,11 +224,6 @@ pub fn run() {
                 .turn_starter
                 .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
 
-            {
-                let services = services.clone();
-                tauri::async_runtime::spawn(bootstrap::resume_completed_plan_review_queues(services));
-            }
-
             #[cfg(target_os = "android")]
             {
                 std::thread::spawn(|| meridian_core::android_bridge::clean_camera_cache());

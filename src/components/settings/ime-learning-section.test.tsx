@@ -145,7 +145,7 @@ describe('ImeLearningSection', () => {
     const user = userEvent.setup()
     render(<ImeLearningSection />)
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.ime.learned.import') }))
-    const dialog = await screen.findByRole('alertdialog')
+    const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(i18n.t('settings.ime.learned.importTitle'))).toBeInTheDocument()
     expect(
       within(dialog).getByRole('button', { name: i18n.t('settings.ime.learned.importReplace') }),
@@ -166,7 +166,7 @@ describe('ImeLearningSection', () => {
     const user = userEvent.setup()
     render(<ImeLearningSection />)
     await user.click(await screen.findByRole('button', { name: i18n.t('settings.ime.learned.import') }))
-    const dialog = await screen.findByRole('alertdialog')
+    const dialog = await screen.findByRole('dialog')
     await user.click(within(dialog).getByRole('button', { name: i18n.t('settings.ime.learned.importReplace') }))
     await waitFor(() =>
       expect(mockApi.importImeLearning).toHaveBeenCalledWith({ path: 'C:\\in\\learn.zip', mode: 'replace' }),

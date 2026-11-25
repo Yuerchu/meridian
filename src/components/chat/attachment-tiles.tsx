@@ -1,15 +1,15 @@
+import './attachment-tiles.css'
 import { useEffect, useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { motion } from 'motion/react'
 import { Button as AriaButton, GridList, GridListItem, useDragAndDrop, type Key } from 'react-aria-components'
-import { File as FileGlyph } from '@keyline-icons/react/two-tone'
+import { File as FileGlyph, X } from '@keyline-icons/react/two-tone'
 
-import { CloseButton } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { useAttachmentPreview } from '@/hooks/use-attachment-preview'
 import { fileIconUrl } from '@/lib/file-icon'
 import { objectKey } from '@/lib/object-key'
 import type { Attachment } from '@/lib/upload'
-import { cx } from '@/utils/cx'
 
 /**
  * The drag type a tile carries. Its own, and never `text/plain`: a tile let go
@@ -77,8 +77,8 @@ export function AttachmentTiles({
       onReorder?.(reorderAttachments(files, event.keys, event.target.key, event.target.dropPosition))
     },
     renderDropIndicator: (target) => (
-      <div data-slot="attachment-drop-indicator" className="w-0.5 self-stretch rounded-full bg-accent-500">
-        <span className="sr-only">{target.type === 'item' ? target.dropPosition : ''}</span>
+      <div data-slot="attachment-drop-indicator" className="m-attachment-tiles__drop-indicator">
+        <span className="m-attachment-tiles__sr-only">{target.type === 'item' ? target.dropPosition : ''}</span>
       </div>
     ),
   })
@@ -91,7 +91,7 @@ export function AttachmentTiles({
       layout="grid"
       selectionMode="none"
       dragAndDropHooks={dragAndDropHooks}
-      className="flex min-w-0 flex-nowrap items-start gap-2 overflow-x-auto p-1 outline-none scrollbar-none [&>*]:shrink-0"
+      className="m-attachment-tiles"
     >
       {files.map((file, index) => (
         <AttachmentTile
@@ -134,7 +134,7 @@ function AttachmentTile({
       id={objectKey(file)}
       textValue={position}
       data-slot="attachment-tile"
-      className="group/tile rounded-xl outline-none data-[dragging]:opacity-50 data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring"
+      className="m-attachment-tiles__tile"
     >
       {/* `layout="position"`: a tile slides into the gap another left, or to
           where a reorder put it, and never stretches. The global MotionConfig
@@ -146,34 +146,30 @@ function AttachmentTile({
         animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
         transition={{ ...ENTER, layout: SETTLE }}
         title={file.missing ? `${file.name} — ${t('chat.draft.fileMissing')}` : file.name}
-        className={cx(
-          'relative size-14 overflow-hidden rounded-xl border bg-background-primary-default',
-          file.missing ? 'border-status-danger' : 'border-composer-panel-tile-border',
-        )}
+        data-missing={file.missing || undefined}
+        className="m-attachment-tiles__card"
       >
         {src !== null ? (
           <img
             data-slot="attachment-tile-preview"
             src={src}
             alt=""
-            className="size-full object-cover"
+            className="m-attachment-tiles__preview"
             onError={() => setBroken(true)}
           />
         ) : (
           <>
-            <span data-slot="attachment-tile-icon" className="absolute inset-x-0 top-2 flex justify-center">
+            <span data-slot="attachment-tile-icon" className="m-attachment-tiles__icon">
               {icon ? (
-                <img src={icon} alt="" aria-hidden className="size-6" />
+                <img src={icon} alt="" aria-hidden className="m-attachment-tiles__glyph" />
               ) : (
-                <FileGlyph aria-hidden className="size-6 text-foreground-icon-secondary" />
+                <FileGlyph aria-hidden className="m-attachment-tiles__glyph" />
               )}
             </span>
             <span
               data-slot="attachment-tile-name"
-              className={cx(
-                'absolute inset-x-1.5 bottom-1 truncate text-center text-caption-2-medium',
-                file.missing ? 'text-status-danger' : 'text-text-secondary',
-              )}
+              data-missing={file.missing || undefined}
+              className="m-attachment-tiles__name"
             >
               {file.name}
             </span>
@@ -185,28 +181,23 @@ function AttachmentTile({
               slot="drag"
               aria-label={t('chat.attachments.reorder', { name: file.name })}
               data-slot="attachment-tile-order"
-              className={cx(
-                ORDER,
-                'cursor-grab outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-border-focus-ring',
-              )}
+              className="m-attachment-tiles__order"
             >
               {index + 1}
             </AriaButton>
           ) : (
-            <span aria-hidden data-slot="attachment-tile-order" className={ORDER}>
+            <span aria-hidden data-slot="attachment-tile-order" className="m-attachment-tiles__order">
               {index + 1}
             </span>
           ))}
         {onRemove && (
-          <span data-slot="attachment-tile-remove" className="absolute right-[3px] top-[3px] flex">
-            <CloseButton
-              size="2xs"
+          <span data-slot="attachment-tile-remove" className="m-attachment-tiles__remove">
+            <Button
+              icon={<X />}
+              variant="secondary"
+              size="sm"
               aria-label={t('chat.removeAttachment', { name: file.name })}
               onPress={onRemove}
-              className={cx(
-                'touch-hitbox rounded-full',
-                src !== null && 'bg-background-primary-default/70 backdrop-blur-[2px]',
-              )}
             />
           </span>
         )}
@@ -214,7 +205,3 @@ function AttachmentTile({
     </GridListItem>
   )
 }
-
-/** The tile's number: top-left, over a picture as readably as over a document. */
-const ORDER =
-  'absolute left-[3px] top-[3px] flex h-4 min-w-4 items-center justify-center rounded-sm bg-background-primary-default/80 px-1 text-caption-2-medium tabular-nums text-text-secondary'

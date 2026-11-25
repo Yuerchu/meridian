@@ -1,0 +1,348 @@
+@layer components {
+  .ui-tabs {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .ui-tabs[data-orientation="vertical"] {
+    flex-direction: row;
+  }
+
+  /* ---------- 标签列表 ----------
+     外层 __scroller 是滚动容器，也是指示条的定位参照（标签的 offsetLeft 相对于它）。
+     React Aria 的 TabList 在里面，只负责排列标签 */
+  .ui-tab-list__scroller {
+    position: relative;
+    display: flex;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* 放不下时两端渐隐，提示还有标签（data-overflow-* 由 lib/scroll-edges 写）。
+     宽度和 tabs.tsx 的 FADE 一致：选中的标签滚进来时会留出这段距离 */
+  .ui-tab-list__scroller {
+    --ui-tab-fade: var(--space-8);
+  }
+
+  .ui-tab-list__scroller[data-overflow-end] {
+    mask-image: linear-gradient(to right, black calc(100% - var(--ui-tab-fade)), transparent);
+  }
+
+  .ui-tab-list__scroller[data-overflow-start] {
+    mask-image: linear-gradient(to right, transparent, black var(--ui-tab-fade));
+  }
+
+  .ui-tab-list__scroller[data-overflow-start][data-overflow-end] {
+    mask-image: linear-gradient(to right, transparent, black var(--ui-tab-fade), black calc(100% - var(--ui-tab-fade)), transparent);
+  }
+
+  .ui-tab-list__scroller[data-overflow-end]:dir(rtl) {
+    mask-image: linear-gradient(to left, black calc(100% - var(--ui-tab-fade)), transparent);
+  }
+
+  .ui-tab-list__scroller[data-overflow-start]:dir(rtl) {
+    mask-image: linear-gradient(to left, transparent, black var(--ui-tab-fade));
+  }
+
+  .ui-tab-list__scroller[data-overflow-start][data-overflow-end]:dir(rtl) {
+    mask-image: linear-gradient(to left, transparent, black var(--ui-tab-fade), black calc(100% - var(--ui-tab-fade)), transparent);
+  }
+
+  /* ---------- 放不下时的左右箭头：叠在两端的渐隐上，只在那一边还有标签时出现 ---------- */
+  .ui-tab-list__frame {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* 收起时标签栏只用来量自然宽度，不占位、不进 Tab 顺序（inert） */
+  .ui-tab-list__frame[data-collapsed] {
+    display: block;
+  }
+
+  .ui-tab-list__frame[data-collapsed] .ui-tab-list__measure {
+    position: absolute;
+    width: max-content;
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .ui-tab-list__frame[data-collapsed] .ui-tab-list__arrow {
+    display: none;
+  }
+
+  .ui-tab-list__menu {
+    width: 100%;
+  }
+
+  .ui-tab-list__arrow {
+    display: none;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-sm);
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--radius-control);
+    background: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .ui-tab-list__arrow:dir(rtl) svg {
+    scale: -1 1;
+  }
+
+  .ui-tab-list__arrow[data-hovered]:not([data-disabled]) {
+    color: var(--text);
+  }
+
+  .ui-tab-list__arrow svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  /* 在两侧占位，不叠在标签上（不会挡住半露出的标签） */
+  /* 触屏上直接滑，不要箭头 */
+  @media (pointer: fine) {
+    .ui-tab-list__frame:has(> .ui-tab-list__scroller[data-overflow-start]) > .ui-tab-list__arrow[data-side="start"],
+    .ui-tab-list__frame:has(> .ui-tab-list__scroller[data-overflow-end]) > .ui-tab-list__arrow[data-side="end"] {
+      display: flex;
+    }
+  }
+
+  .ui-tabs[data-orientation="vertical"] .ui-tab-list__frame {
+    flex: none;
+  }
+
+  .ui-tabs[data-orientation="vertical"] .ui-tab-list__arrow {
+    display: none;
+  }
+
+  .ui-tabs[data-orientation="vertical"] .ui-tab-list__scroller {
+    flex-direction: column;
+    flex: none;
+    overflow: visible;
+  }
+
+  .ui-tab-list {
+    display: flex;
+    flex: none;
+    gap: var(--space-1);
+  }
+
+  .ui-tab-list[data-orientation="vertical"] {
+    flex-direction: column;
+  }
+
+  .ui-tabs[data-variant="underline"] .ui-tab-list[data-orientation="horizontal"] {
+    gap: var(--space-4);
+  }
+
+  /* 底线属于面板的上边缘，和 Tabs 一样宽：画在 __frame 上（两端的箭头下面也有），不是只画到最后一个标签。
+     用内阴影不用边框：指示条在滚动容器里盖在它上面，不多占 1px 高度。
+     __frame 纵向拉伸，滚动容器贴到底线上，指示条才压在线上；箭头仍然居中。收起成下拉时没有这条线 */
+  .ui-tabs[data-variant="underline"][data-orientation="horizontal"] .ui-tab-list__frame:not([data-collapsed]) {
+    align-items: stretch;
+    box-shadow: inset 0 -1px var(--border);
+  }
+
+  .ui-tabs[data-variant="underline"][data-orientation="horizontal"] .ui-tab-list__arrow {
+    align-self: center;
+  }
+
+  /* 竖向同理：左边线画在 __frame 上，贯穿 Tabs 的高度 */
+  .ui-tabs[data-variant="underline"][data-orientation="vertical"] .ui-tab-list__frame {
+    border-inline-start: 1px solid var(--border);
+  }
+
+  .ui-tabs[data-variant="pill"] .ui-tab-list__scroller {
+    align-self: flex-start;
+    padding: var(--space-1);
+    border-radius: var(--radius-control);
+    background: var(--surface-muted);
+  }
+
+  /* ---------- 标签 ---------- */
+  .ui-tab {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    min-height: var(--control-md);
+    padding: 0 var(--space-1);
+    color: var(--text-secondary);
+    font: var(--text-body-medium);
+    text-decoration: none; /* 写了 href 时是 <a> */
+    white-space: nowrap;
+    cursor: default;
+    -webkit-tap-highlight-color: transparent;
+    transition: color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tab[data-hovered]:not([data-disabled]),
+  .ui-tab[data-selected] {
+    color: var(--text);
+  }
+
+  .ui-tab[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-tabs[data-variant="pill"] .ui-tab {
+    min-height: calc(var(--control-md) - 2 * var(--space-1));
+    padding: 0 var(--space-3);
+    /* 同心圆角：列表圆角 − 列表内边距 */
+    border-radius: calc(var(--radius-control) - var(--space-1));
+  }
+
+  /* 标签本身是定位元素（position: relative），DOM 里又排在指示条后面，所以文字画在 pill 的白色块上面 */
+
+  .ui-tab__icon {
+    display: inline-flex;
+  }
+
+  .ui-tab__icon svg {
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  /* 数量角标：没选中时浅灰底，选中时 Ink 实底（不用 accent，一个视图里的强调色留给更重要的地方） */
+  .ui-tab__count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-width: 1.5em;
+    padding: 0 var(--space-1);
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    transition:
+      background-color var(--dur-fast) var(--ease-standard),
+      color var(--dur-fast) var(--ease-standard);
+  }
+
+  /* pill 的底已经是浅灰：没选中的角标换成白底，不然看不出来 */
+  .ui-tabs[data-variant="pill"] .ui-tab:not([data-selected]) .ui-tab__count {
+    background: var(--surface);
+  }
+
+  .ui-tab[data-selected] .ui-tab__count {
+    background: var(--ink);
+    color: var(--ink-fg);
+  }
+
+  /* ---------- 选中指示：位置和尺寸由 useSlidingIndicator 写进 --ui-indicator-x/y/w/h，切换时用过渡滑过去 ---------- */
+  .ui-tab-list__indicator {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-start: 0;
+    pointer-events: none;
+  }
+
+  .ui-tab-list__scroller[data-indicator-ready] .ui-tab-list__indicator {
+    transition:
+      translate var(--dur-considered) var(--ease-spring),
+      width var(--dur-considered) var(--ease-spring),
+      height var(--dur-considered) var(--ease-spring);
+  }
+
+  .ui-tabs[data-variant="underline"][data-orientation="horizontal"] .ui-tab-list__indicator {
+    width: var(--ui-indicator-w);
+    height: 2px;
+    translate: var(--ui-indicator-x) calc(var(--ui-indicator-y) + var(--ui-indicator-h) - 2px);
+    border-radius: var(--radius-pill);
+    background: var(--control-on);
+  }
+
+  .ui-tabs[data-variant="underline"][data-orientation="vertical"] .ui-tab-list__indicator {
+    width: 2px;
+    height: var(--ui-indicator-h);
+    translate: -1px var(--ui-indicator-y);
+    border-radius: var(--radius-pill);
+    background: var(--control-on);
+  }
+
+  .ui-tabs[data-variant="underline"][data-orientation="vertical"] .ui-tab {
+    justify-content: flex-start;
+    padding: 0 var(--space-3);
+  }
+
+  .ui-tabs[data-variant="pill"] .ui-tab-list__indicator {
+    box-sizing: border-box;
+    width: var(--ui-indicator-w);
+    height: var(--ui-indicator-h);
+    translate: var(--ui-indicator-x) var(--ui-indicator-y);
+    border: 1px solid transparent; /* 高对比度模式下显示选中块的边界 */
+    border-radius: calc(var(--radius-control) - var(--space-1));
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+  }
+
+  /* 指示条要等页面脚本运行后才定位（服务端渲染的 HTML、水合之前它是 hidden），这段时间里选中的标签自己画 */
+  .ui-tabs[data-variant="underline"][data-orientation="horizontal"] .ui-tab-list__scroller:has(> .ui-tab-list__indicator[hidden]) .ui-tab[data-selected] {
+    box-shadow: inset 0 -2px 0 var(--control-on);
+  }
+
+  .ui-tabs[data-variant="pill"] .ui-tab-list__scroller:has(> .ui-tab-list__indicator[hidden]) .ui-tab[data-selected] {
+    background: var(--surface);
+  }
+
+  /* 键盘焦点：焦点环画在标签内侧，避免被列表的滚动容器裁掉 */
+  .ui-tab[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+    border-radius: calc(var(--radius-control) - var(--space-1));
+  }
+
+  /* ---------- 面板 ---------- */
+  .ui-tab-panel {
+    min-width: 0;
+    flex: 1;
+    border-radius: var(--radius-item);
+  }
+
+  .ui-tab-panel[data-entering] {
+    animation: ui-tab-panel-in var(--dur-fast) var(--ease-standard);
+  }
+
+  @keyframes ui-tab-panel-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-tab__count {
+      outline: 1px solid CanvasText;
+    }
+
+    /* 高对比度模式下阴影不显示：底线改回边框 */
+    .ui-tabs[data-variant="underline"][data-orientation="horizontal"] .ui-tab-list__frame:not([data-collapsed]) {
+      border-block-end: 1px solid CanvasText;
+    }
+
+    .ui-tabs[data-variant="underline"] .ui-tab-list__indicator {
+      background: Highlight;
+    }
+
+    .ui-tab[data-selected] {
+      color: Highlight;
+    }
+
+    .ui-tab[data-disabled] {
+      color: GrayText;
+    }
+  }
+}

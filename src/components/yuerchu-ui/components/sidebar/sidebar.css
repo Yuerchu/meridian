@@ -1,0 +1,368 @@
+@layer components {
+  /* ---------- 布局 ---------- */
+  .ui-sidebar-layout {
+    --ui-sidebar-width: 248px;
+
+    display: grid;
+    grid-template-columns: var(--ui-sidebar-width) minmax(0, 1fr);
+    min-height: 100dvh;
+    transition: grid-template-columns var(--dur-standard) var(--ease-standard);
+  }
+
+  .ui-sidebar-layout__main {
+    min-width: 0;
+  }
+
+  /* inset：宽屏时画布下沉，主区收成一张圆角卡片，侧栏贴在同一块下沉底上、不再画分隔线。
+     窄屏仍是顶栏加抽屉，这些样式只写在断点之上。embedded 填外层高度，不成页时不锁 100dvh。 */
+  @media (width >= 768px) {
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) {
+      box-sizing: border-box;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      background: var(--surface-sunken);
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]):not([data-embedded]) {
+      height: 100dvh;
+      min-height: 0;
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) > .ui-sidebar > .ui-sidebar__panel {
+      height: 100%;
+      border-inline-end: none;
+      background: transparent;
+    }
+
+    .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) > .ui-sidebar-layout__main {
+      min-height: 0;
+      overflow: auto;
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: var(--shadow-resting);
+    }
+  }
+
+  @media (width >= 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] {
+      box-sizing: border-box;
+      gap: var(--space-2);
+      padding: var(--space-2);
+      background: var(--surface-sunken);
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"]:not([data-embedded]) {
+      height: 100dvh;
+      min-height: 0;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] > .ui-sidebar > .ui-sidebar__panel {
+      height: 100%;
+      border-inline-end: none;
+      background: transparent;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] > .ui-sidebar-layout__main {
+      min-height: 0;
+      overflow: auto;
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: var(--shadow-resting);
+    }
+  }
+
+  /* embedded：填满外层容器，主体在里面滚动（不是整页） */
+  .ui-sidebar-layout[data-embedded] {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .ui-sidebar-layout[data-embedded] > .ui-sidebar > .ui-sidebar__panel {
+    height: 100%;
+  }
+
+  .ui-sidebar-layout[data-embedded] > .ui-sidebar-layout__main {
+    overflow: auto;
+  }
+
+  /* 可拖宽度：这一栏跟着侧边栏自己写的宽度走。只在宽屏（窄屏是一栏 + 抽屉） */
+  @media (width >= 768px) {
+    .ui-sidebar-layout:not([data-drawer-below="lg"]):has(> .ui-sidebar[data-resizable]) {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+  }
+
+  @media (width >= 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"]:has(> .ui-sidebar[data-resizable]) {
+      grid-template-columns: auto minmax(0, 1fr);
+    }
+  }
+
+  /* 拖动时不要过渡，跟手 */
+  .ui-sidebar-layout:has(.ui-sidebar__resizer[data-resizing]),
+  .ui-sidebar:has(.ui-sidebar__resizer[data-resizing]) .ui-sidebar__panel {
+    transition: none;
+  }
+
+  /* 宽度把手：贴在面板的结束边上，比边框宽一些好抓。整个放在面板里面：面板是 overflow: hidden，伸出去的一半会被裁掉、抓不到 */
+  .ui-sidebar__resizer {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-end: 0;
+    z-index: var(--z-sticky);
+    display: flex;
+    justify-content: center;
+    width: 8px;
+    cursor: col-resize;
+    touch-action: none;
+  }
+
+  /* ---------- 宽屏：固定在左边，单独滚动 ---------- */
+  .ui-sidebar__panel {
+    position: sticky;
+    inset-block-start: 0;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: var(--ui-sidebar-width, 248px);
+    height: 100%;
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface-sunken);
+  }
+
+  /* 在 SidebarLayout 里占满视口高度；单独用时填满外层容器 */
+  /* 只管布局自己的那个侧边栏（直接子元素）：页面里再放一个 Sidebar（比如文档站的示例）不受影响 */
+  .ui-sidebar-layout > .ui-sidebar > .ui-sidebar__panel {
+    height: 100dvh;
+  }
+
+  /* 单独用时填满外层容器的高度（面板的 height: 100% 才有参照；之前示例里底部内容会溢出到框外） */
+  .ui-sidebar {
+    height: 100%;
+    min-height: 0;
+  }
+
+  .ui-sidebar__header {
+    padding: var(--ui-sidebar-header-padding, var(--space-4) var(--space-4) var(--space-2));
+  }
+
+  .ui-sidebar__body {
+    flex: 1;
+    min-height: 0;
+    padding: var(--space-2);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ui-sidebar__footer {
+    padding: var(--ui-sidebar-footer-padding, var(--space-2) var(--space-4) var(--space-4));
+    border-block-start: 1px solid var(--border);
+  }
+
+  .ui-sidebar__bar {
+    display: none;
+  }
+
+  /* ---------- 收起成图标条（isCollapsible）：只在宽屏 ----------
+     宽度 = 导航项（图标 + 左右内边距）+ 两边的 --space-2；文字、分组标题淡出（宽度为 0，读屏照样能读到）*/
+  .ui-sidebar__panel {
+    --ui-sidebar-rail: calc(var(--icon-md) + 2 * var(--space-3) + 2 * var(--space-2));
+
+    overflow: hidden;
+    transition: width var(--dur-standard) var(--ease-standard);
+  }
+
+  .ui-sidebar__panel[data-collapsed] {
+    width: var(--ui-sidebar-rail);
+  }
+
+  @media (width >= 768px) {
+    .ui-sidebar-layout:has(> .ui-sidebar > .ui-sidebar__panel[data-collapsed]) {
+      --ui-sidebar-width: calc(var(--icon-md) + 2 * var(--space-3) + 2 * var(--space-2));
+    }
+  }
+
+  .ui-sidebar__panel[data-collapsed] .ui-sidebar__header {
+    padding-inline: var(--space-2);
+    text-align: center;
+  }
+
+  .ui-sidebar__panel[data-collapsed] .ui-sidebar__footer {
+    padding: var(--space-2);
+  }
+
+  .ui-sidebar__panel[data-collapsed] :is(.ui-nav-item, .ui-nav-group__trigger) {
+    gap: 0;
+    padding-inline: var(--space-3);
+  }
+
+  .ui-sidebar__panel[data-collapsed]
+    :is(.ui-nav-item__label, .ui-nav-item__trailing, .ui-nav-group__label, .ui-nav-group__trailing, .ui-nav-group__chevron) {
+    flex: 0 0 0;
+    width: 0;
+    overflow: hidden;
+    opacity: 0;
+  }
+
+  /* 分组标题看不见（仍然给分组当名称），分组之间留一点空 */
+  .ui-sidebar__panel[data-collapsed]
+    :is(.ui-nav-list__header, .ui-nav-list__section-header, .ui-nav-list__actions, .ui-nav-group__items) {
+    visibility: hidden;
+    height: 0;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  /* 收起 / 展开按钮：在最下面；收起时居中 */
+  .ui-sidebar__collapse {
+    display: flex;
+    justify-content: flex-end;
+    padding: var(--space-2);
+  }
+
+  .ui-sidebar__panel[data-collapsed] .ui-sidebar__collapse {
+    justify-content: center;
+  }
+
+  /* 有底部内容时按钮和它共用一条分隔线 */
+  .ui-sidebar__footer + .ui-sidebar__collapse {
+    padding-block-start: 0;
+  }
+
+  /* ---------- 窄屏：顶栏 + 左侧抽屉 ----------
+     顶栏的样式写在外面，窄屏时只切换"显示哪一个"。什么时候算窄：默认小于 768px；
+     SidebarLayout 写 drawerBelow="lg" 时小于 1024px（内容区需要更宽的页面，例如文档站：中等宽度就收进抽屉） */
+  .ui-sidebar__bar {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--z-sticky);
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    box-sizing: border-box;
+    min-height: var(--control-lg);
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .ui-sidebar__bar-header {
+    min-width: 0;
+  }
+
+  @media (width < 768px) {
+    .ui-sidebar-layout {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+    }
+
+    .ui-sidebar__panel {
+      display: none;
+    }
+
+    .ui-sidebar__bar {
+      display: flex;
+    }
+  }
+
+  @media (width < 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"] {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto 1fr;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"] .ui-sidebar__panel {
+      display: none;
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"] .ui-sidebar__bar {
+      display: flex;
+    }
+  }
+
+  /* 应用自己有顶栏、不渲染库的手机顶栏时，窄屏不要留出空的第一行。
+     抽屉是 portal，藏掉这个根元素不会把已经打开的 Modal 一起藏掉。
+     用 data 属性而不是嵌套 :has()：:has() 里不能再套 :has()，嵌套会让整条规则被丢弃。 */
+  @media (width < 768px) {
+    .ui-sidebar-layout:has(> .ui-sidebar:not([data-mobile-bar])) {
+      grid-template-rows: minmax(0, 1fr);
+    }
+
+    .ui-sidebar:not([data-mobile-bar]) {
+      display: none;
+    }
+  }
+
+  @media (width < 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"]:has(> .ui-sidebar:not([data-mobile-bar])) {
+      grid-template-rows: minmax(0, 1fr);
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"] > .ui-sidebar:not([data-mobile-bar]) {
+      display: none;
+    }
+  }
+
+  .ui-sidebar__overlay {
+    position: fixed;
+    inset: 0;
+    z-index: var(--z-overlay);
+    background: var(--overlay);
+  }
+
+  .ui-sidebar__overlay[data-entering] {
+    animation: ui-sidebar-fade var(--dur-standard) var(--ease-enter);
+  }
+
+  .ui-sidebar__overlay[data-exiting] {
+    animation: ui-sidebar-fade var(--dur-fast) var(--ease-exit) reverse forwards;
+  }
+
+  .ui-sidebar__drawer {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    box-sizing: border-box;
+    width: min(var(--ui-sidebar-width, 248px) + var(--space-8), 85vw);
+    border-inline-end: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-floating);
+    outline: 1px solid transparent;
+  }
+
+  .ui-sidebar__drawer[data-entering] {
+    animation: ui-sidebar-slide var(--dur-standard) var(--ease-enter);
+  }
+
+  /* 退场比进场快；用 --dur-standard 的倍数而不是 --dur-fast，减弱模式下滑动才会归零 */
+  .ui-sidebar__drawer[data-exiting] {
+    animation: ui-sidebar-slide calc(var(--dur-standard) * 0.7) var(--ease-exit) reverse forwards;
+  }
+
+  .ui-sidebar__dialog {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    outline: 1px solid transparent;
+  }
+
+  /* 带上外层类名：比 .ui-button 的优先级高，不依赖 CSS 加载顺序 */
+  .ui-sidebar__dialog .ui-sidebar__close {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+  }
+
+  @keyframes ui-sidebar-fade {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes ui-sidebar-slide {
+    from {
+      translate: -100% 0;
+    }
+  }
+}

@@ -107,7 +107,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   queue_remove: { args: { request: { conversationId: CONV.rich, id: 'none' } } },
   get_plan_review: { args: { request: { reviewId: PLAN_REVIEW_ID } } },
   list_plan_revisions: { args: { request: { documentId: 'demo-plan-document' } } },
-  get_plan_review_delivery: { args: { request: { reviewId: PLAN_REVIEW_ID } } },
   save_plan_review_draft: {
     args: { request: { reviewId: PLAN_REVIEW_ID, expectedGeneration: 0, normalizedMarkdown: '# x', globalNote: null } },
   },
@@ -120,6 +119,8 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         expectedGeneration: 0,
         expectedDraftHash: 'x',
         action: 'approve',
+        approvalMode: 'default',
+        clearContext: false,
       },
     },
   },

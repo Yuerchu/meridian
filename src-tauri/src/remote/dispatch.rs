@@ -489,8 +489,6 @@ mod tests {
             "save_plan_review_draft",
             "discard_plan_review_draft",
             "decide_plan_review",
-            "get_plan_review_delivery",
-            "continue_plan_review_delivery",
             "resolve_plan_file_conflict",
         ];
         for name in expected {

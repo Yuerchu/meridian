@@ -112,8 +112,14 @@ describe('tool catalog', () => {
       if (ui.readOnly && effect !== 'read') wrong.push(`${name}: readOnly but ${effect}`)
       if (ui.reading && effect !== 'read') wrong.push(`${name}: reading but ${effect}`)
       if (ui.fold === 'commands' && effect !== 'exec') wrong.push(`${name}: folds as a command but ${effect}`)
-      if ((ui.fold === 'files' || ui.fold === 'searches') && effect !== 'read') {
+      if (
+        (ui.fold === 'files' || ui.fold === 'searches' || ui.fold === 'skills' || ui.fold === 'context') &&
+        effect !== 'read'
+      ) {
         wrong.push(`${name}: folds as a read but ${effect}`)
+      }
+      if (ui.fold === 'memory' && effect !== 'read' && effect !== 'app_state') {
+        wrong.push(`${name}: folds as memory but ${effect}`)
       }
       if (ui.touches && effect !== 'write_files') wrong.push(`${name}: touches files but ${effect}`)
       if (ui.interactive && effect !== 'interactive' && effect !== 'mode_transition') {

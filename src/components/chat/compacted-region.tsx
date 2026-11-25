@@ -1,9 +1,10 @@
+import './compacted-region.css'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Link } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
-import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
@@ -50,18 +51,16 @@ export function CompactedRegion({
   if (turns.length === 0) return null
 
   return (
-    <MessageScrollerItem messageId="__compact-region" className="space-y-6">
+    <MessageScrollerItem messageId="__compact-region" className="m-compacted-region">
       {showCompactedMessages ? (
         <>
-          <Button
-            variant="secondary"
-            onPress={() => setShowCompactedMessages(false)}
-            className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
-          >
-            {t('chat.compact.hideCompacted', { count: compactedCount })}
-          </Button>
+          <div className="m-compacted-region__fold">
+            <Button variant="secondary" aria-expanded={true} onPress={() => setShowCompactedMessages(false)}>
+              {t('chat.compact.hideCompacted', { count: compactedCount })}
+            </Button>
+          </div>
           {turns.map((turn, i) => (
-            <div key={turn.id} data-slot="compacted-turn" className="opacity-40">
+            <div key={turn.id} data-slot="compacted-turn" className="m-compacted-region__turn">
               <TurnItem
                 turn={turn}
                 conversationId={conversationId}
@@ -76,32 +75,29 @@ export function CompactedRegion({
           ))}
         </>
       ) : (
-        <Button
-          variant="secondary"
-          onPress={() => setShowCompactedMessages(true)}
-          className="w-full rounded-lg text-center text-caption-1-regular text-text-secondary hover:text-text-secondary py-2"
-        >
-          {t('chat.compact.showCompacted', { count: compactedCount })}
-        </Button>
+        <div className="m-compacted-region__fold">
+          <Button variant="secondary" aria-expanded={false} onPress={() => setShowCompactedMessages(true)}>
+            {t('chat.compact.showCompacted', { count: compactedCount })}
+          </Button>
+        </div>
       )}
-      <Marker variant="separator" className="py-3 px-2">
+      <Marker variant="separator" className="m-compacted-region__marker">
         <MarkerContent>
-          {/* About 18px tall, and it is the only way to open the summary of
-              what was compacted away. */}
-          <Link
+          {/* The only way to open the summary of what was compacted away. */}
+          <Button
             data-slot="compact-boundary-toggle"
+            variant="ghost"
+            size="sm"
+            aria-expanded={showCompactSummary}
             onPress={() => setShowCompactSummary((v) => !v)}
-            className="touch-hitbox text-caption-1-regular text-text-secondary whitespace-nowrap px-2"
           >
             {t('chat.compact.boundary', { count: compactedCount })}
-          </Link>
+          </Button>
         </MarkerContent>
       </Marker>
       {compactSummary && showCompactSummary && (
-        <Bubble variant="muted" data-slot="compact-summary" className="mb-2 max-w-full">
-          <BubbleContent className="text-caption-1-regular whitespace-pre-wrap text-text-secondary">
-            {compactSummary.content}
-          </BubbleContent>
+        <Bubble variant="muted" data-slot="compact-summary" className="m-compacted-region__summary">
+          <BubbleContent className="m-compacted-region__summary-content">{compactSummary.content}</BubbleContent>
         </Bubble>
       )}
     </MessageScrollerItem>

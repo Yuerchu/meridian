@@ -1,7 +1,6 @@
 import fs from 'node:fs'
 import path from 'path'
 import { fileURLToPath } from 'node:url'
-import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
@@ -35,7 +34,7 @@ function trimIconManifest(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), trimIconManifest()],
+  plugins: [react(), trimIconManifest()],
   clearScreen: false,
   resolve: {
     alias: {

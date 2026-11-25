@@ -1,10 +1,12 @@
+import './chat-transcript.css'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { TranscriptConversationProvider } from '@/hooks/use-transcript-conversation'
 import { RevealHostContext } from '@/hooks/use-revealed-text'
 import { useTranslation } from 'react-i18next'
 import { LazyMotion, domAnimation } from 'motion/react'
 import * as m from 'motion/react-m'
-import { Button, Tooltip, TooltipTrigger } from '@/components/base'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -145,9 +147,9 @@ function LoadEarlierTurns({
   const { scrollToMessage } = useMessageScroller()
 
   return (
-    <div data-slot="transcript-load-earlier" className="flex justify-center py-1">
+    <div data-slot="transcript-load-earlier" className="m-chat-transcript__load-earlier">
       <Button
-        size="small"
+        size="sm"
         variant="secondary"
         onPress={() => {
           onLoad()
@@ -441,9 +443,9 @@ export function ChatTranscript({
                 anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null}
               />
               <PendingReveal conversationId={conversationId} turns={turns} />
-              <MessageScroller className="flex-1 min-h-0">
+              <MessageScroller className="m-chat-transcript__scroller">
                 <MessageScrollerViewport>
-                  <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+                  <MessageScrollerContent className="m-chat-transcript__content">
                     {leading}
                     {visibleStart > 0 && (
                       <LoadEarlierTurns
@@ -476,7 +478,7 @@ export function ChatTranscript({
                     {emptyState}
                   </MessageScrollerContent>
                 </MessageScrollerViewport>
-                <TooltipTrigger delay={0}>
+                <TooltipTrigger>
                   <MessageScrollerButton aria-label={scrollToBottomLabel} />
                   <Tooltip>{scrollToBottomLabel}</Tooltip>
                 </TooltipTrigger>

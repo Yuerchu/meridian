@@ -1,242 +1,44 @@
-/* boardui foundation: tailwindcss, theme tokens, typography, animations. */
-@import './styles/globals.css';
-/* OS typeface stacks, and the `--font-inter` / `--font-mono-source` that
-   theme.css reads them through. */
+/* Yuerchu UI: tokens, then the global rules (focus, selection, scrollbars,
+   body text). Components import their own CSS. */
+@import './components/yuerchu-ui/styles/index.css';
+/* The OS typeface stacks, over the library's --font-sans / --font-mono. */
 @import './styles/fonts.css';
-/* Meridian's own semantics on boardui primitives: fonts, status, bubbles,
-   scrollbars, safe-area insets, the motion boardui does not ship. */
+/* Meridian's own layer on the library's tokens: bubbles, insets, the settings
+   width, the arrival mark, the code block, the app frame. */
 @import './styles/meridian.css';
-
-/* Plan review is a document surface with a sibling comment rail. The rail is
-   selected by the page container, not by the window: a narrow split panel gets
-   the same sheet affordance as a phone, while a wide tablet can use both panes. */
-.plan-review-workspace {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.plan-review-comments-aside {
-  display: none;
-}
-
-@container (min-width: 60rem) {
-  .plan-review-workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(18rem, 22rem);
-  }
-
-  .plan-review-comments-aside {
-    display: block;
-  }
-
-  .plan-review-comments-trigger {
-    display: none;
-  }
-}
-
-/* The standalone editor is a rounded field. Here the page already owns the
-   surface and scroll boundary, so the document uses the same tokens without
-   stacking another card inside it. */
-.plan-review-rich-editor .rich-text-editor__shell {
-  border: 0;
-  border-radius: 0;
-  background: var(--color-background-primary-default);
-}
-
-.plan-review-rich-editor .rich-text-editor__toolbar {
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--color-border-button-default);
-}
-
-.plan-review-rich-editor .rich-text-editor__prosemirror {
-  width: 100%;
-  max-width: 54rem;
-  min-height: 100%;
-  margin-inline: auto;
-  padding: 2rem clamp(1rem, 4cqi, 3rem) 6rem;
-}
 
 /* A comment anchor is both tinted and underlined, so it remains identifiable
    when status colours cannot be distinguished. */
 .plan-comment-highlight {
-  border-radius: var(--radius-sm);
-  background: color-mix(in oklab, var(--color-accent-500) 12%, transparent);
-  box-shadow: inset 0 -2px 0 var(--color-accent-500);
+  border-radius: var(--radius-item);
+  background: color-mix(in oklab, var(--accent) 12%, transparent);
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .plan-comment-highlight:hover {
-  outline: 1px solid var(--color-accent-500);
+  outline: 1px solid var(--accent);
   outline-offset: 1px;
   cursor: pointer;
 }
 
 [data-slot='plan-review-page'] article[data-state='orphaned'] {
-  border-inline-start: 3px dashed var(--color-status-warning);
+  border-inline-start: 3px dashed var(--warning-fg);
 }
 
-/* `.plan-review-source` is the field shell (a `flex-col` and the column's
-   `flex-1` child); the textarea fills it. */
-.plan-review-source textarea {
-  flex: 1 1 auto;
-  min-height: 0;
-  height: 100%;
-  resize: none;
-  border-radius: 0;
-  padding: 1.5rem clamp(1rem, 4cqi, 3rem) 6rem;
-  line-height: 1.6;
-}
-
-/* A group header's own buttons — new-conversation and the "…" menu — appear on
-   hover, the way a row's `.sidebar__menu-actions` do; a group label is not a
-   tree row, so that rule cannot reach it and this one stands in. Opacity rather
-   than `display`, because a `display: none` button is skipped by the tab order
-   and these have to stay reachable by keyboard — `:focus-within` is what shows
-   them to it. Always visible in the mobile sheet, where there is no hover. */
-.sidebar-group-actions {
-  opacity: 0;
-}
-.sidebar__group-label:hover .sidebar-group-actions,
-.sidebar-group-actions:focus-within,
-.sidebar-group-actions:has([aria-expanded='true']),
-.sidebar__mobile .sidebar-group-actions {
-  opacity: 1;
-}
-
-/* The drag handle appears on hover, the way a file tree's does. Same opacity
-   reasoning as above: the grip is the keyboard's entry point into a drag, so
-   it may not leave the tab order. The coarse-pointer case is handled by the
-   `hidden pointer-fine:flex` utilities on the element itself.
-   Hidden, it also gives its width back — collapsed to nothing, with the row's
-   8px gap taken back by the margin — because an invisible 24px box plus its gap
-   was what cut every title off a third of the way short of its timestamp.
-   Collapsed rather than `display: none` for the tab order, as above. */
-.sidebar__menu-item .conv-grip {
-  opacity: 0;
-  width: 0;
-  margin-inline-start: -0.5rem;
-  overflow: hidden;
-}
-.sidebar__menu-item:is(:hover, [data-hovered='true']) .conv-grip,
-.conv-grip:focus-visible {
-  opacity: 1;
-  width: 1.5rem;
-  margin-inline-start: 0;
-}
-
-/* Where a dragged conversation would land. React Aria marks the row under the
-   pointer with `data-drop-target`, the whole list when the drop is a root
-   drop, and a group header's `DropZone` likewise. */
-.sidebar__menu-item[data-drop-target] .sidebar__menu-item-content {
-  box-shadow: inset 0 0 0 1px var(--color-accent-500);
-}
-.sidebar__menu[data-drop-target] {
-  outline: 1px dashed var(--color-accent-500);
-  outline-offset: -1px;
-  border-radius: var(--radius-lg);
-}
-.sidebar-group-drop[data-drop-target] {
-  box-shadow: inset 0 0 0 1px var(--color-accent-500);
-  background-color: color-mix(in srgb, var(--color-accent-500) 10%, transparent);
-}
-
-@layer base {
-  * {
-    outline-color: color-mix(in srgb, var(--color-border-focus-ring) 50%, transparent);
-  }
-  body {
-    margin: 0;
-    background-color: var(--color-background-full);
-    color: var(--color-text-primary);
-    font-family: var(--font-sans);
-    -webkit-font-smoothing: antialiased;
-  }
-  html {
-    height: 100%;
-    overflow: hidden;
-    font-family: var(--font-sans);
-    -webkit-tap-highlight-color: transparent;
-    overscroll-behavior: none;
-    /* Kills double-tap-to-zoom, which the viewport meta alone does not always
-       reach, and with it the 300ms wait a WebView spends deciding whether a tap
-       was the first of two. Panning and pinching inside a scroller still work —
-       this only declines the browser's own zoom gestures. */
-    touch-action: manipulation;
-  }
-  body,
-  #root {
-    height: 100%;
-    overflow: hidden;
-    overscroll-behavior: none;
-  }
-  /* Native scrollbars, globally. Chromium ignores `scrollbar-width` once
-     ::-webkit-scrollbar has a size, so these are the final answer rather than a
-     default: to change a scrollbar somewhere, write ::-webkit-scrollbar rules,
-     not a `scrollbar-*` utility. `scrollbar-none` is the exception — hiding
-     still works. */
-  ::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
-  }
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-corner {
-    background: var(--scrollbar-track);
-  }
-  ::-webkit-scrollbar-button {
-    display: none;
-  }
-  ::-webkit-scrollbar-thumb {
-    border: 1px solid transparent;
-    border-radius: 9999px;
-    background-color: var(--scrollbar-thumb);
-    background-clip: content-box;
-  }
-  ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-border-button-hover);
-  }
-}
-
-/* `any-pointer`, not `pointer`. `pointer` describes the *primary* pointer only,
-   and on the machines this most needs to work — a Windows touchscreen laptop, a
-   tablet in a keyboard case — the primary pointer is the trackpad, so it reports
-   `fine` and every one of these hitboxes stayed at its drawn size while a finger
-   was the thing reaching for it. `any-pointer: coarse` is true whenever *some*
-   pointer is coarse, which is the question being asked.
-
-   The cost is that a hybrid device expands them while the mouse is in use. That
-   is the right direction to be wrong in: the expansion is an invisible
-   `::after`, so a mouse user loses nothing but a little precision between
-   neighbours, and a touch user without it loses the control.
-
-   `overflow: visible !important` because the expansion is the element's own
-   child as far as `overflow` goes, and the registry's `Button` is
-   `overflow-hidden`: every expanded button was clipped straight back to its
-   drawn size. `.overflow-hidden` and `.touch-hitbox` are both one class in the
-   same layer, so which wins is emission order — `!important` makes it this one
-   whatever the order (a doubled `&.touch-hitbox` would lose to any variant-
-   qualified `overflow-*` of equal weight). The cost is that a caller cannot
-   clip a hitbox control on a touch screen; none should — nothing a finger has
-   to reach may depend on clipping, and the primary/danger gradient's `::before`
-   rounds itself (`border-radius: inherit`) rather than relying on it.
+/* `any-pointer`, not `pointer`: expand small controls to a 44px touch target
+   whenever any coarse pointer is present, and lift overflow clipping so the
+   invisible ::after hit area is never clipped back to the drawn box.
    `src/dev/responsive-detectors.ts` reads this rule back (`hitboxLiftsOwnClip`). */
-@utility touch-hitbox {
-  @media (any-pointer: coarse) {
-    position: relative;
-    overflow: visible !important;
-    &::after {
-      content: '';
-      position: absolute;
-      inset: min(0px, calc((100% - 2.75rem) / 2));
+@layer utilities {
+  .touch-hitbox {
+    @media (any-pointer: coarse) {
+      position: relative;
+      overflow: visible !important;
+      &::after {
+        content: '';
+        position: absolute;
+        inset: min(0px, calc((100% - 2.75rem) / 2));
+      }
     }
-  }
-}
-
-/* MotionConfig only reaches motion/react. Loading and attention indicators use
-   Tailwind's CSS animations, so honour the same system preference here as the
-   final backstop. The icon or status text remains visible; only movement stops. */
-@media (prefers-reduced-motion: reduce) {
-  .animate-spin,
-  .animate-spin-fast,
-  .animate-pulse,
-  .animate-bounce {
-    animation: none !important;
   }
 }

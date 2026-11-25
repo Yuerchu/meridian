@@ -7,39 +7,27 @@ use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, WriteTx};
 use meridian_core::db::sea::ops::{
     assistant as assistant_ops, conversation as conversation_ops, model_config as config_ops,
-    plan_review as plan_review_ops,
 };
 use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::util::{double_option, now_ms};
 
-const PLAN_REVIEW_ASSISTANT_BARRIER: &str = "This assistant is frozen into a plan review or its continuation. Finish that review before changing or deleting the assistant.";
-
 #[derive(Debug)]
 enum GuardedAssistantMutation<T> {
     Applied(T),
-    PlanReviewBarrier,
     ConversationsChanged,
 }
 
 /// What stops an assistant mutation before it writes anything: the
-/// conversation set having changed since the caller took its leases, or a
-/// plan review whose blocked continuation depends on this assistant. Run first
-/// in the mutation's own write, so the answer still holds when the write lands.
+/// conversation set having changed since the caller took its leases.
 async fn assistant_barrier<T>(
     tx: &WriteTx,
-    assistant_id: &str,
+    _assistant_id: &str,
     expected_conversation_ids: &[String],
 ) -> Result<Option<GuardedAssistantMutation<T>>, DbErr> {
     let mut current = conversation_ops::all_ids(tx).await?;
     current.sort();
     if current != expected_conversation_ids {
         return Ok(Some(GuardedAssistantMutation::ConversationsChanged));
-    }
-    if !plan_review_ops::barrier_conversations_for_assistant(tx, assistant_id)
-        .await?
-        .is_empty()
-    {
-        return Ok(Some(GuardedAssistantMutation::PlanReviewBarrier));
     }
     Ok(None)
 }
@@ -115,7 +103,6 @@ async fn delete_assistant_unless_plan_barrier(
 fn finish_guarded_assistant_mutation<T>(result: GuardedAssistantMutation<T>) -> Result<T, String> {
     match result {
         GuardedAssistantMutation::Applied(value) => Ok(value),
-        GuardedAssistantMutation::PlanReviewBarrier => Err(PLAN_REVIEW_ASSISTANT_BARRIER.into()),
         GuardedAssistantMutation::ConversationsChanged => {
             Err("The conversation set changed while the assistant mutation was being prepared. Try again.".into())
         }
@@ -363,57 +350,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn assistant_update_and_delete_are_blocked_by_its_active_review_runtime() {
+    async fn assistant_delete_refuses_when_conversations_changed() {
         let sea = db::sea::sea_test_db().await;
         sea.write(async |tx| {
             assistant_ops::create_assistant(tx, assistant_row("assistant-1")).await?;
             db::sea::ops::conversation::create_conversation(tx, "conversation-1", None, None, None, 1).await?;
-            let runtime = db::models::plan_review::NativePlanReviewRuntimeConfig {
-                assistant_id: Some("assistant-1".into()),
-                ..db::sea::ops::plan_review::test_runtime("provider-1", "model-1", None)
-            };
-            db::sea::ops::plan_review::seed_pending_native_review(tx, "conversation-1", &runtime)
-                .await
-                .map_err(|e| db::sea::DbErr::Custom(e.to_string()))?;
             Ok::<_, db::sea::DbErr>(())
         })
         .await
         .unwrap();
-        let conversations = vec!["conversation-1".to_string()];
-
-        let updated = sea
-            .write(async |tx| {
-                update_assistant_unless_plan_barrier(
-                    tx,
-                    "assistant-1",
-                    &conversations,
-                    AssistantChangeset {
-                        system_prompt: Some("new prompt".into()),
-                        ..Default::default()
-                    },
-                )
-                .await
-            })
-            .await
-            .unwrap();
-        assert!(matches!(updated, GuardedAssistantMutation::PlanReviewBarrier));
-        let stored = assistant_ops::get_assistant(&sea, "assistant-1")
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(stored.system_prompt, "old prompt");
-
-        let deleted = sea
-            .write(async |tx| delete_assistant_unless_plan_barrier(tx, "assistant-1", &conversations).await)
-            .await
-            .unwrap();
-        assert!(matches!(deleted, GuardedAssistantMutation::PlanReviewBarrier));
-        assert!(
-            assistant_ops::get_assistant(&sea, "assistant-1")
-                .await
-                .unwrap()
-                .is_some()
-        );
 
         let stale = sea
             .write(async |tx| delete_assistant_unless_plan_barrier(tx, "assistant-1", &[]).await)

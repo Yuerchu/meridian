@@ -1,7 +1,6 @@
 import { parseChatStreamEvent } from '@/lib/chat-stream-event'
 import type {
   ChatStreamEvent,
-  PlanReviewDeliveryState,
   PlanReviewStatus,
   SandboxBackend,
   SystemNoticeInfoResponse,
@@ -72,7 +71,6 @@ export interface PlanReviewEvent {
   revision_id: string
   turn_id: string
   status: PlanReviewStatus
-  delivery_state: PlanReviewDeliveryState | null
   lock_version: number
 }
 
@@ -396,16 +394,7 @@ export function parseRemoteResyncEvent(value: unknown): RemoteResyncEvent {
 export function parsePlanReviewEvent(value: unknown, channel = 'plan-review'): PlanReviewEvent {
   const event = exactObject(
     value,
-    [
-      'review_id',
-      'conversation_id',
-      'document_id',
-      'revision_id',
-      'turn_id',
-      'status',
-      'delivery_state',
-      'lock_version',
-    ],
+    ['review_id', 'conversation_id', 'document_id', 'revision_id', 'turn_id', 'status', 'lock_version'],
     `${channel} payload`,
   )
   return {
@@ -419,14 +408,6 @@ export function parsePlanReviewEvent(value: unknown, channel = 'plan-review'): P
       ['pending', 'approved', 'changes_requested', 'orphaned'] as const,
       `${channel} payload.status`,
     ),
-    delivery_state:
-      event.delivery_state === null
-        ? null
-        : enumValue(
-            event.delivery_state,
-            ['queued', 'dispatched', 'acknowledged', 'held', 'in_doubt'] as const,
-            `${channel} payload.delivery_state`,
-          ),
     lock_version: integerValue(event.lock_version, `${channel} payload.lock_version`, 0),
   }
 }

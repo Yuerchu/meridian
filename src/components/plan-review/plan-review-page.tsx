@@ -1,26 +1,24 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Key, type RefObject } from 'react'
+import './plan-review-page.css'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { ChevronDown, Clock, Message, TriangleAlert, X } from '@keyline-icons/react/two-tone'
-import {
-  Alert,
-  Button,
-  Chip,
-  Dropdown,
-  DropdownItem,
-  DropdownPopover,
-  Skeleton,
-  TextArea,
-  Tooltip,
-  TooltipTrigger,
-} from '@/components/base'
-import { Segment } from '@/components/base'
-import { Sheet } from '@/components/base'
+import { Check, ChevronDown, ChevronsRight, Clock, Message, RefreshCw, X, Zap } from '@keyline-icons/react/two-tone'
+import { Menu, MenuItem, MenuSeparator, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { SplitButton } from '@/components/yuerchu-ui/components/split-button/split-button'
+import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Skeleton } from '@/components/yuerchu-ui/components/skeleton/skeleton'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
+import { TextArea as AriaTextArea } from 'react-aria-components'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 
 import { api } from '@/api'
 import { FileDiffCard } from '@/components/chat/file-diff-card'
 import { Hint } from '@/components/ui/hint'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsNarrow } from '@/hooks/use-narrow'
 import { remapSourceRange, sourceRangeAnchor } from '@/lib/plan-comment-decorations'
@@ -39,13 +37,17 @@ import {
   type ProjectedPlanDraft,
 } from '@/lib/plan-review-projection'
 import {
+  PLAN_APPROVAL_OPTIONS,
   PlanDraftSaveQueue,
   PlanDecisionAttempt,
   PlanDecisionInDoubtError,
   planDraftUnsavedParts,
   planReviewActionRules,
+  type PlanApprovalOptionKey,
+  type PlanApprovalOptions,
   type PlanDraftSaveState,
 } from '@/lib/plan-review-draft'
+import { planReviewProjection, receivePlanReview } from '@/lib/plan-review-sync'
 import { usePlanReviewStore } from '@/stores/plan-review-store'
 import type {
   PlanCommentAnchor,
@@ -68,22 +70,23 @@ type ReviewTab = 'plan' | 'changes' | 'suggestions'
  *  already showing the comment, or hides the only pane the comment is in. */
 const COMMENT_RAIL_MIN = 960
 
-/** How long the sheet takes to leave before the editor may take focus. A
+/** How long the drawer takes to leave before the editor may take focus. A
  *  React Aria modal hands focus back to its trigger as it closes, so a
- *  selection made while it is still on screen is taken away again. */
-const SHEET_EXIT_MS = 250
+ *  selection made while it is still on screen is taken away again. The
+ *  drawer's own exit is `--dur-fast`, 160ms. */
+const DRAWER_EXIT_MS = 250
 
 function PlanDiff({ patch, emptyLabel }: { patch: string; emptyLabel: string }) {
   const files = useMemo(() => parsePatchText(patch), [patch])
   if (!patch || files.length === 0) {
     return (
-      <p data-slot="plan-diff-empty" className="px-5 py-12 text-center text-body-regular text-text-secondary">
+      <p data-slot="plan-diff-empty" className="m-plan-review__diff-empty">
         {emptyLabel}
       </p>
     )
   }
   return (
-    <div data-slot="plan-diff" className="space-y-3 p-4">
+    <div data-slot="plan-diff" className="m-plan-review__diff">
       {files.map((file, index) => (
         <FileDiffCard key={`${file.path}:${index}`} diff={file} />
       ))}
@@ -102,44 +105,34 @@ function PlanReviewSkeleton() {
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}
-      className="flex h-full min-h-0 flex-col bg-background-full"
+      className="m-plan-review-page__skeleton"
     >
-      <div
-        data-slot="plan-review-skeleton-header"
-        className="flex min-h-14 shrink-0 items-center gap-3 border-b border-border-button-default px-3 @sm:px-5"
-      >
-        <div data-slot="plan-review-skeleton-heading" className="flex-1 space-y-1.5">
-          <Skeleton className="h-4 w-28 rounded-md" />
-          <Skeleton className="h-3 w-56 rounded-md" />
+      <div data-slot="plan-review-skeleton-header" className="m-plan-review-page__skeleton-header">
+        <div data-slot="plan-review-skeleton-heading" className="m-plan-review-page__skeleton-heading">
+          <Skeleton width="7rem" />
+          <Skeleton width="14rem" />
         </div>
-        <Skeleton className="h-8 w-24 rounded-lg" />
-        <Skeleton className="size-8 rounded-lg" />
+        <Skeleton shape="rect" width="6rem" height="2rem" />
+        <Skeleton shape="rect" width="2rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-views"
-        className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2 @sm:px-5"
-      >
-        <Skeleton className="h-8 w-60 rounded-lg" />
+      <div data-slot="plan-review-skeleton-views" className="m-plan-review-page__skeleton-views">
+        <Skeleton shape="rect" width="15rem" height="2rem" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-document"
-        className="mx-auto w-full max-w-[54rem] flex-1 space-y-3 px-6 py-8"
-      >
-        <Skeleton className="h-6 w-2/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-11/12 rounded-md" />
-        <Skeleton className="h-3.5 w-4/5 rounded-md" />
-        <Skeleton className="mt-6 h-5 w-1/3 rounded-md" />
-        <Skeleton className="h-3.5 w-full rounded-md" />
-        <Skeleton className="h-3.5 w-10/12 rounded-md" />
+      <div data-slot="plan-review-skeleton-document" className="m-plan-review-page__skeleton-document">
+        <Skeleton width="66.67%" />
+        <Skeleton width="100%" />
+        <Skeleton width="91.67%" />
+        <Skeleton width="80%" />
+        <div className="m-plan-review-page__section-placeholder">
+          <Skeleton width="33.33%" />
+        </div>
+        <Skeleton width="100%" />
+        <Skeleton width="83.33%" />
       </div>
-      <div
-        data-slot="plan-review-skeleton-decision"
-        className="flex shrink-0 items-center justify-end gap-2 border-t border-border-button-default px-3 py-3 @sm:px-5"
-      >
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
-        <Skeleton className="h-10 w-24 rounded-lg" />
+      <div data-slot="plan-review-skeleton-decision" className="m-plan-review-page__skeleton-decision">
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
+        <Skeleton shape="rect" width="6rem" height="2.5rem" />
       </div>
     </div>
   )
@@ -164,17 +157,15 @@ function SourceEditor({
 }) {
   const { t } = useTranslation()
   return (
-    <div data-slot="plan-source-editor" className="flex h-full min-h-0 flex-col">
-      <TextArea
+    <div data-slot="plan-source-editor" className="m-plan-review__source-editor">
+      {/* A source editor filling its pane, not a form field: React Aria's bare
+          textarea, without the library field's label and auto-height. */}
+      <AriaTextArea
         ref={textareaRef}
         aria-label={t('planReview.source.label')}
         value={value}
         readOnly={isReadOnly}
-        // The layout classes go on the field shell, which is the flex child
-        // of the column; `className` reaches only the `<textarea>` inside it,
-        // and a percentage height there cannot stretch a content-sized shell.
-        fieldClassName="plan-review-source min-h-0 flex-1 rounded-none p-0"
-        className="font-mono"
+        className="m-plan-review__source-input"
         onChange={(event) => onChange(event.target.value)}
         onSelect={(event) => {
           const target = event.currentTarget
@@ -182,16 +173,13 @@ function SourceEditor({
         }}
       />
       {!isReadOnly && (
-        <div
-          data-slot="plan-source-editor-footer"
-          className="flex shrink-0 items-center justify-between border-t border-border-button-default px-3 py-2"
-        >
-          <p data-slot="plan-source-editor-hint" className="text-caption-1-regular text-text-secondary">
+        <div data-slot="plan-source-editor-footer" className="m-plan-review__source-footer">
+          <p data-slot="plan-source-editor-hint" className="m-plan-review__hint">
             {t('planReview.source.hint')}
           </p>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
             isDisabled={!selection}
             onPress={() => selection && onAddComment(selection)}
@@ -236,7 +224,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const [loading, setLoading] = useState(true)
   const [deciding, setDeciding] = useState(false)
   const [restoring, setRestoring] = useState(false)
-  const [continuing, setContinuing] = useState(false)
   const [editorMount, setEditorMount] = useState(0)
   const [focusAnchor, setFocusAnchor] = useState<PlanProseMirrorRange | null>(null)
   const [commentFocus, setCommentFocus] = useState<PlanCommentFocusRequest | null>(null)
@@ -256,8 +243,9 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   // as long as nothing can be measured.
   const { ref: pageRef, isNarrow: railFolded } = useIsNarrow(COMMENT_RAIL_MIN, useIsMobile())
 
-  // The comment rail's back gesture is the Sheet's own level — see
-  // `base/sheet.tsx`.
+  // The comment drawer is a level of its own: the back gesture closes it before
+  // it reaches anything behind. The library's Drawer does not know about it.
+  useHistoryLevel(commentsOpen, () => setCommentsOpen(false))
 
   const applyReview = useCallback(
     (next: PlanReviewInfoResponse) => {
@@ -329,10 +317,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
 
   useEffect(() => {
     if (!info || !summary) return
-    const projection = `${summary.status}\0${summary.delivery_state ?? ''}`
+    const projection = summary.status
     if (projection === observedSummaryRef.current) return
     observedSummaryRef.current = projection
-    if (summary.status !== info.review.state || summary.delivery_state !== (info.delivery?.state ?? null)) {
+    if (summary.status !== info.review.state) {
       void loadReview()
     }
   }, [info, loadReview, summary])
@@ -451,10 +439,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     }
     if (!hasLocalChanges()) return true
     return confirm({
-      title: t('planReview.leave.title'),
-      body: describeUnsaved(),
+      heading: t('planReview.leave.title'),
+      description: describeUnsaved(),
       confirmLabel: t('planReview.leave.confirm'),
-      status: 'danger',
+      tone: 'danger',
     })
   }
   const requestLeaveRef = useRef(requestLeave)
@@ -467,10 +455,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     if (
       hasLocalChanges() &&
       !(await confirm({
-        title: t('planReview.reloadConfirm.title'),
-        body: describeUnsaved(),
+        heading: t('planReview.reloadConfirm.title'),
+        description: describeUnsaved(),
         confirmLabel: t('planReview.reload'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return
@@ -525,8 +513,8 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       // coordinates now cover other text, and selecting them would put the
       // comment on words it was never about.
       if (comment.state === 'orphaned') return
-      // From inside the sheet the text is behind a backdrop, so the jump would
-      // be invisible; close first and let the sheet leave before taking focus.
+      // From inside the drawer the text is behind a backdrop, so the jump would
+      // be invisible; close first and let the drawer leave before taking focus.
       const wasOpen = commentsOpen
       setCommentsOpen(false)
       const apply = () => {
@@ -541,7 +529,7 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
           sourceRef.current?.setSelectionRange(comment.anchor.from, comment.anchor.to)
         })
       }
-      if (wasOpen) setTimeout(apply, SHEET_EXIT_MS)
+      if (wasOpen) setTimeout(apply, DRAWER_EXIT_MS)
       else apply()
     },
     [commentsOpen],
@@ -591,12 +579,15 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         onGlobalNoteChange={(globalNote) => setDraft((current) => (current ? { ...current, globalNote } : current))}
       />
     ) : (
-      <p data-slot="plan-review-no-feedback" className="p-6 text-center text-body-regular text-text-secondary">
+      <p data-slot="plan-review-no-feedback" className="m-plan-review__no-feedback">
         {t('planReview.history.noFeedback')}
       </p>
     )
 
-  const decide = async (action: 'approve' | 'request_changes') => {
+  const decide = async (
+    action: 'approve' | 'request_changes',
+    approvalOptions: PlanApprovalOptions = PLAN_APPROVAL_OPTIONS.default,
+  ) => {
     setDeciding(true)
     setPageError(null)
     try {
@@ -613,12 +604,16 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
         expectedGeneration: committed.generation,
         expectedDraftHash: committed.draftHash,
         action,
+        approvalMode: action === 'approve' ? approvalOptions.approvalMode : null,
+        clearContext: action === 'approve' ? approvalOptions.clearContext : false,
       })
       setInfo((current) => (current ? { ...current, review: { ...current.review, state: result.state } } : current))
       decisionAttemptRef.current.reset()
-      if (result.delivery_state !== null) {
-        const delivery = await api.getPlanReviewDelivery({ reviewId })
-        setInfo((current) => (current ? { ...current, delivery } : current))
+      try {
+        const refreshed = await api.getPlanReview({ reviewId })
+        receivePlanReview(planReviewProjection(refreshed))
+      } catch {
+        // The decision itself succeeded; the backend event remains the other delivery path.
       }
     } catch (error) {
       setPageError(
@@ -634,10 +629,10 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
   const discard = async () => {
     if (
       !(await confirm({
-        title: t('planReview.discardConfirm.title'),
-        body: t('planReview.discardConfirm.body'),
+        heading: t('planReview.discardConfirm.title'),
+        description: t('planReview.discardConfirm.body'),
         confirmLabel: t('planReview.discard'),
-        status: 'danger',
+        tone: 'danger',
       }))
     ) {
       return
@@ -670,38 +665,17 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     }
   }
 
-  const continueDelivery = async () => {
-    if (!info?.delivery || continuing) return
-    setContinuing(true)
-    setPageError(null)
-    try {
-      const delivery = await api.continuePlanReviewDelivery({ deliveryId: info.delivery.id })
-      setInfo((current) => (current ? { ...current, delivery } : current))
-    } catch (error) {
-      setPageError(String(error))
-    } finally {
-      setContinuing(false)
-    }
-  }
-
   if (loading && !info) {
     return <PlanReviewSkeleton />
   }
 
   if (!info || !draft) {
     return (
-      <div
-        data-slot="plan-review-load-error"
-        className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center"
-      >
-        <p
-          data-slot="plan-review-load-error-message"
-          role="alert"
-          className="max-w-xl text-body-regular text-status-danger"
-        >
+      <div data-slot="plan-review-load-error" className="m-plan-review__load-error">
+        <p data-slot="plan-review-load-error-message" role="alert" className="m-plan-review__load-error-message">
           {t('planReview.loadError', { error: pageError ?? t('planReview.unknownError') })}
         </p>
-        <div data-slot="plan-review-load-error-actions" className="flex gap-2">
+        <div data-slot="plan-review-load-error-actions" className="m-plan-review__actions">
           <Button variant="secondary" onPress={() => void loadReview()}>
             {t('planReview.reload')}
           </Button>
@@ -744,26 +718,6 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
       actions: [{ label: t('planReview.restoreFile'), run: () => void restorePlanFile(), pending: restoring }],
     })
   }
-  if (info.delivery?.state === 'held' || info.delivery?.state === 'in_doubt') {
-    // The error is the whole answer to "why does the button do nothing": a
-    // retry that fails the same way lands back here with the same message.
-    problems.push({
-      key: 'delivery',
-      status: 'warning',
-      message: info.delivery.error
-        ? t('planReview.deliveryHeldError', { error: info.delivery.error })
-        : t('planReview.deliveryHeld'),
-      actions: [{ label: t('planReview.continueDelivery'), run: () => void continueDelivery(), pending: continuing }],
-    })
-  }
-  // Progress, not a problem: the decision is made and on its way. Announced as
-  // status so a screen reader is told once rather than interrupted.
-  const progress =
-    info.delivery?.state === 'queued'
-      ? { message: t('planReview.deliveryQueued'), resumable: true }
-      : info.delivery?.state === 'dispatched'
-        ? { message: t('planReview.deliveryDispatched'), resumable: false }
-        : null
 
   const historyItems = [...revisions]
     // The submitted revision is what "current review" shows; listing it again
@@ -772,171 +726,118 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
     .sort((left, right) => right.revision_no - left.revision_no)
 
   return (
-    <div
-      ref={pageRef}
-      data-slot="plan-review-page"
-      className="@container flex h-full min-h-0 flex-col bg-background-full"
-    >
-      <header data-slot="plan-review-header" className="shrink-0 border-b border-border-button-default">
-        <div
-          data-slot="plan-review-header-row"
-          className="mx-auto flex min-h-14 w-full max-w-[96rem] items-center gap-2 px-3 @sm:px-5"
-        >
-          <div data-slot="plan-review-heading" className="min-w-0 flex-1">
-            <div data-slot="plan-review-title-row" className="flex items-center gap-2">
+    <div ref={pageRef} data-slot="plan-review-page" className="m-plan-review">
+      <header data-slot="plan-review-header" className="m-plan-review__header">
+        <div data-slot="plan-review-header-row" className="m-plan-review__header-row">
+          <div data-slot="plan-review-heading" className="m-plan-review__heading">
+            <div data-slot="plan-review-title-row" className="m-plan-review__title-row">
               {/* `h2`: the shell's header already holds the page's `h1`. */}
-              <h2
-                data-slot="plan-review-title"
-                ref={titleRef}
-                tabIndex={-1}
-                className="truncate rounded-sm text-body-semibold outline-none focus-visible:ring-2 focus-visible:ring-border-focus-ring/50"
-              >
+              <h2 data-slot="plan-review-title" ref={titleRef} tabIndex={-1} className="m-plan-review__title">
                 {t('planReview.title')}
               </h2>
-              <Chip size="sm" variant="secondary">
-                {t(`planReview.status.${info.review.state}`)}
-              </Chip>
+              <Badge size="sm">{t(`planReview.status.${info.review.state}`)}</Badge>
             </div>
-            <p
-              data-slot="plan-review-subtitle"
-              className="flex min-w-0 items-baseline gap-1 text-caption-1-regular text-text-secondary"
-            >
-              <span data-slot="plan-review-revision" className="shrink-0">
+            <p data-slot="plan-review-subtitle" className="m-plan-review__subtitle">
+              <span data-slot="plan-review-revision" className="m-plan-review__revision">
                 {t('planReview.revision', { number: currentRevisionNumber })} ·
               </span>
-              <Hint label={info.document.file_rel_path} className="truncate">
+              <Hint label={info.document.file_rel_path} className="m-plan-review__path">
                 {info.document.file_rel_path}
               </Hint>
             </p>
           </div>
 
-          <Dropdown>
-            <Button trailingIcon={ChevronDown} leadingIcon={Clock} variant="secondary" size="small">
+          <MenuTrigger>
+            <Button iconRight={<ChevronDown />} icon={<Clock />} variant="secondary" size="sm">
               {historicalRevision
                 ? t('planReview.revision', { number: historicalRevision.revision_no })
                 : t('planReview.history.current')}
             </Button>
-            <DropdownPopover
+            <Menu
               placement="bottom end"
               aria-label={t('planReview.history.title')}
               selectionMode="single"
+              disallowEmptySelection
               selectedKeys={[historicalRevisionId ?? 'current']}
             >
-              <DropdownItem
-                id="current"
-                textValue={t('planReview.history.current')}
-                onAction={() => setHistoricalRevisionId(null)}
-              >
+              <MenuItem id="current" onAction={() => setHistoricalRevisionId(null)}>
                 {t('planReview.history.current')}
-              </DropdownItem>
+              </MenuItem>
               {historyItems.map((revision) => (
-                <DropdownItem
+                <MenuItem
                   key={revision.id}
                   id={revision.id}
-                  textValue={t('planReview.revision', { number: revision.revision_no })}
                   onAction={() => {
                     setHistoricalRevisionId(revision.id)
                     setTab('plan')
                   }}
                 >
                   {t('planReview.revision', { number: revision.revision_no })}
-                </DropdownItem>
+                </MenuItem>
               ))}
-            </DropdownPopover>
-          </Dropdown>
+            </Menu>
+          </MenuTrigger>
 
           <TooltipTrigger>
-            <Button
-              iconOnly
-              leadingIcon={X}
-              variant="neutral"
-              size="small"
-              aria-label={t('common.close')}
-              onPress={onClose}
-            />
+            <Button icon={<X />} variant="ghost" size="sm" aria-label={t('common.close')} onPress={onClose} />
             <Tooltip>{t('common.close')}</Tooltip>
           </TooltipTrigger>
         </div>
       </header>
 
       {problems.length > 0 && (
-        <div
-          data-slot="plan-review-problems"
-          className="shrink-0 border-b border-border-button-default px-3 py-2 @sm:px-5"
-        >
-          <div data-slot="plan-review-problem-list" className="mx-auto max-w-[96rem] space-y-2">
+        <div data-slot="plan-review-problems" className="m-plan-review__problems">
+          <div data-slot="plan-review-problem-list" className="m-plan-review__problem-list">
             {problems.map((problem) => (
               <Alert
+                shouldAnnounce
                 key={problem.key}
-                status={problem.status}
+                tone={problem.status}
                 data-problem={problem.key}
-                icon={<TriangleAlert className="size-4" />}
+                actions={
+                  problem.actions && problem.actions.length > 0
+                    ? problem.actions.map((action) => (
+                        <Button
+                          key={action.label}
+                          variant="secondary"
+                          size="sm"
+                          isDisabled={action.pending}
+                          onPress={action.run}
+                        >
+                          {action.label}
+                        </Button>
+                      ))
+                    : undefined
+                }
               >
-                <div data-slot="plan-review-problem-row" className="flex flex-wrap items-center gap-2">
-                  <p data-slot="plan-review-problem-message" className="min-w-0 flex-1 break-words text-body-regular">
-                    {problem.message}
-                  </p>
-                  {problem.actions?.map((action) => (
-                    <Button
-                      key={action.label}
-                      variant="secondary"
-                      size="small"
-                      isDisabled={action.pending}
-                      onPress={action.run}
-                    >
-                      {action.label}
-                    </Button>
-                  ))}
-                </div>
+                <p data-slot="plan-review-problem-message">{problem.message}</p>
               </Alert>
             ))}
           </div>
         </div>
       )}
 
-      {progress && (
-        <div
-          data-slot="plan-review-progress"
-          className="shrink-0 border-b border-border-button-default bg-status-info-soft px-4 py-2 text-body-regular text-status-info-soft-foreground"
-        >
-          <div data-slot="plan-review-progress-row" className="mx-auto flex max-w-[96rem] items-center gap-3">
-            <p data-slot="plan-review-progress-message" role="status" className="min-w-0 flex-1 break-words">
-              {progress.message}
-            </p>
-            {progress.resumable && (
-              <Button size="small" variant="secondary" isDisabled={continuing} onPress={() => void continueDelivery()}>
-                {t('planReview.continueDelivery')}
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
-      <div
-        data-slot="plan-review-body"
-        className="mx-auto flex min-h-0 w-full max-w-[96rem] flex-1 flex-col px-0 @sm:px-5"
-      >
-        <div
-          data-slot="plan-review-toolbar"
-          className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-3 py-2 @sm:px-0"
-        >
-          <Segment
+      <div data-slot="plan-review-body" className="m-plan-review__body">
+        <div data-slot="plan-review-toolbar" className="m-plan-review__toolbar">
+          <SegmentedControl
             aria-label={t('planReview.views')}
             size="sm"
             selectedKey={tab}
-            onSelectionChange={(key: Key) => setTab(key as ReviewTab)}
+            onSelectionChange={(key) => {
+              if (key === 'plan' || key === 'changes' || key === 'suggestions') setTab(key)
+            }}
           >
-            <Segment.Item id="plan">{t('planReview.tabs.plan')}</Segment.Item>
-            <Segment.Item id="changes" isDisabled={historicalRevision !== null}>
+            <Segment id="plan">{t('planReview.tabs.plan')}</Segment>
+            <Segment id="changes" isDisabled={historicalRevision !== null}>
               {t('planReview.tabs.changes')}
-            </Segment.Item>
-            <Segment.Item id="suggestions" isDisabled={historicalRevision !== null}>
+            </Segment>
+            <Segment id="suggestions" isDisabled={historicalRevision !== null}>
               {t('planReview.tabs.suggestions')}
-            </Segment.Item>
-          </Segment>
+            </Segment>
+          </SegmentedControl>
           {/* Not a live region: it changes with every debounced save. A failure
               or a conflict is announced once, by its alert in the banner. */}
-          <span data-slot="plan-review-save-state" className="ms-auto text-caption-1-regular text-text-secondary">
+          <span data-slot="plan-review-save-state" className="m-plan-review__save-state">
             {effectiveSaveState === 'error'
               ? t('planReview.save.failed')
               : effectiveSaveState === 'conflict'
@@ -944,28 +845,28 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 : t(`planReview.save.${saveState}`)}
           </span>
           <Button
-            leadingIcon={Message}
-            size="small"
+            icon={<Message />}
+            size="sm"
             variant="secondary"
-            className="plan-review-comments-trigger"
+            className="m-plan-review__comments-trigger"
             onPress={() => setCommentsOpen(true)}
           >
             {t('planReview.comments.title')}
           </Button>
         </div>
 
-        <div data-slot="plan-review-workspace" className="plan-review-workspace min-h-0 flex-1">
+        <div data-slot="plan-review-workspace" className="m-plan-review__workspace">
           <section
             data-slot="plan-review-document"
-            className="plan-review-document min-h-0 overflow-hidden"
+            className="m-plan-review__document"
             aria-label={t(`planReview.tabs.${tab}`)}
           >
             {tab === 'changes' ? (
-              <div data-slot="plan-review-changes" className="h-full overflow-y-auto">
+              <div data-slot="plan-review-changes" className="m-plan-review__scroll">
                 <PlanDiff patch={submittedPatch} emptyLabel={t('planReview.diff.emptyChanges')} />
               </div>
             ) : tab === 'suggestions' ? (
-              <div data-slot="plan-review-suggestions" className="h-full overflow-y-auto">
+              <div data-slot="plan-review-suggestions" className="m-plan-review__scroll">
                 <PlanDiff patch={suggestionPatch} emptyLabel={t('planReview.diff.emptySuggestions')} />
               </div>
             ) : visibleMode === 'rich' && visibleDocument ? (
@@ -1007,12 +908,9 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
                 }}
               />
             ) : (
-              <div data-slot="plan-review-source" className="flex h-full min-h-0 flex-col">
+              <div data-slot="plan-review-source" className="m-plan-review__source">
                 {visibleFallback && (
-                  <p
-                    data-slot="plan-review-source-fallback"
-                    className="shrink-0 border-b border-border-button-default bg-background-secondary-default px-4 py-2 text-caption-1-regular text-text-secondary"
-                  >
+                  <p data-slot="plan-review-source-fallback" className="m-plan-review__source-fallback">
                     {t(`planReview.source.reason.${visibleFallback}`)}
                   </p>
                 )}
@@ -1052,39 +950,29 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             )}
           </section>
 
-          <aside
-            data-slot="plan-review-comments-aside"
-            className="plan-review-comments-aside min-h-0 border-s border-border-button-default"
-          >
+          <aside data-slot="plan-review-comments-aside" className="m-plan-review__aside">
             {commentsPane('plan-comments-aside-heading')}
           </aside>
         </div>
       </div>
 
-      <footer
-        data-slot="plan-review-footer"
-        className="shrink-0 border-t border-border-button-default bg-background-full px-3 py-3 @sm:px-5"
-      >
-        <div
-          data-slot="plan-review-footer-row"
-          className="mx-auto flex max-w-[96rem] flex-col gap-3 @sm:flex-row @sm:items-center"
-        >
-          <div data-slot="plan-review-footer-status" className="min-w-0 flex-1">
-            <p data-slot="plan-review-decision-state" className="text-caption-1-regular text-text-secondary">
+      <footer data-slot="plan-review-footer" className="m-plan-review__footer">
+        <div data-slot="plan-review-footer-row" className="m-plan-review__footer-row">
+          <div data-slot="plan-review-footer-status" className="m-plan-review__footer-status">
+            <p data-slot="plan-review-decision-state" className="m-plan-review__hint">
               {info.review.state === 'pending'
-                ? t('planReview.queueHeld')
+                ? rules.hasFeedback
+                  ? t('planReview.approveIncludesFeedback')
+                  : t('planReview.ready')
                 : t(`planReview.decision.${info.review.state}`)}
             </p>
-            {!rules.canApprove &&
-              info.review.state === 'pending' &&
-              rules.isPristine &&
-              effectiveSaveState !== 'saved' && (
-                <p data-slot="plan-review-wait-for-save" className="text-caption-1-regular text-text-secondary">
-                  {t('planReview.waitForSave')}
-                </p>
-              )}
+            {!rules.canApprove && info.review.state === 'pending' && effectiveSaveState !== 'saved' && (
+              <p data-slot="plan-review-wait-for-save" className="m-plan-review__hint">
+                {t('planReview.waitForSave')}
+              </p>
+            )}
           </div>
-          <div data-slot="plan-review-decision-actions" className="flex shrink-0 items-center justify-end gap-2">
+          <div data-slot="plan-review-decision-actions" className="m-plan-review__decision-actions">
             <Button
               variant="secondary"
               isDisabled={deciding || effectiveSaveState !== 'saved' || rules.isPristine || isReadOnly}
@@ -1099,45 +987,56 @@ export function PlanReviewPage({ reviewId, onClose }: { reviewId: string; onClos
             >
               {t('planReview.requestChanges')}
             </Button>
-            <Button
-              variant="primary"
+            <SplitButton
+              icon={<Check />}
               isPending={deciding}
               isDisabled={!rules.canApprove}
-              onPress={() => void decide('approve')}
+              onPress={() => void decide('approve', PLAN_APPROVAL_OPTIONS.default)}
+              menuLabel={t('chat.plan.moreModes')}
+              placement="top end"
+              onAction={(key) => {
+                if (key in PLAN_APPROVAL_OPTIONS) {
+                  void decide('approve', PLAN_APPROVAL_OPTIONS[key as PlanApprovalOptionKey])
+                }
+              }}
+              menu={
+                <>
+                  <MenuItem id="default" icon={<Check />}>
+                    {t('planReview.mode.default')}
+                  </MenuItem>
+                  <MenuItem id="accept_edits" icon={<ChevronsRight />}>
+                    {t('planReview.mode.acceptEdits')}
+                  </MenuItem>
+                  <MenuSeparator />
+                  <MenuItem id="clear_context_default" icon={<RefreshCw />}>
+                    {t('planReview.mode.clearContextDefault')}
+                  </MenuItem>
+                  <MenuItem id="clear_context_accept_edits" icon={<Zap />}>
+                    {t('planReview.mode.clearContextAcceptEdits')}
+                  </MenuItem>
+                </>
+              }
             >
               {t('planReview.approve')}
-            </Button>
+            </SplitButton>
           </div>
         </div>
       </footer>
 
       {/* Portalled to `body`, so this is the one width here that really is
-          about the viewport rather than the page. */}
-      <Sheet isOpen={commentsOpen} placement="right" onOpenChange={setCommentsOpen} isDismissable>
-        <Sheet.Backdrop>
-          {/* The modal surface (`MODAL_SURFACE` is `background-full`), not the
-            sheet's default `background-primary`: a field's tertiary well is the same
-            neutral-800 as primary in dark, so on the default the field had no edge. */}
-          <Sheet.Content className="w-full bg-background-full sm:max-w-md">
-            <Sheet.Dialog className="flex h-full min-h-0 flex-col">
-              <Sheet.Header>
-                <Sheet.Heading>{t('planReview.comments.title')}</Sheet.Heading>
-                <Sheet.CloseTrigger aria-label={t('common.close')} />
-              </Sheet.Header>
-              {/* The keyboard inset is added to this body's own (zero) bottom
-                  padding: the overall note sits at the bottom of the pane, and
-                  a soft keyboard would otherwise cover the field being typed
-                  into. The two insets are exclusive, so the sum is one of them. */}
-              <Sheet.Body
-                data-sheet-no-drag
-                className="min-h-0 flex-1 p-0 pb-[calc(0px+var(--ime-bottom,0px)+var(--safe-bottom,0px))]"
-              >
-                {commentsPane('plan-comments-sheet-heading')}
-              </Sheet.Body>
-            </Sheet.Dialog>
-          </Sheet.Content>
-        </Sheet.Backdrop>
-      </Sheet>
+          about the viewport rather than the page. The keyboard and safe-area
+          insets go on the drawer's own box (`plan-review-page.css`): the
+          overall note sits at the bottom of the pane, and a soft keyboard
+          would otherwise cover the field being typed into. */}
+      <Drawer
+        isOpen={commentsOpen}
+        onOpenChange={setCommentsOpen}
+        heading={t('planReview.comments.title')}
+        size="md"
+        className="m-plan-review__drawer"
+      >
+        {commentsPane('plan-comments-sheet-heading')}
+      </Drawer>
       {confirmDialog}
     </div>
   )

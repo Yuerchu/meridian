@@ -1,0 +1,24 @@
+@layer components {
+  .m-auxiliary,
+  .m-sub-agent,
+  .m-sub-agent__kind {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .m-auxiliary,
+  .m-sub-agent {
+    gap: var(--space-4);
+  }
+
+  .m-sub-agent__kind {
+    gap: var(--space-1);
+  }
+
+  .m-sub-agent__label,
+  .m-sub-agent__hint {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+}

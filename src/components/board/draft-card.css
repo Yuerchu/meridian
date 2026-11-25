@@ -1,0 +1,28 @@
+@layer components {
+  .m-board-draft {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: calc(var(--space-2) + 2px);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-item);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+  }
+
+  .m-board-draft__header {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--space-1) + 2px);
+  }
+
+  .m-board-draft__title {
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .m-board-draft__empty {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+}

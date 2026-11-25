@@ -1,6 +1,6 @@
+import './master-detail.css'
 import { useCallback, useLayoutEffect, useRef } from 'react'
 
-import { cx } from '@/utils/cx'
 import { SettingsHeader } from './primitives'
 import { SettingsSubPage } from './settings-subpage'
 import type { MasterDetailNav } from './use-master-detail'
@@ -91,7 +91,6 @@ export function MasterDetail<Aux extends string = never>({
   nav,
   title,
   actions,
-  listWidth = 'w-44',
   headerPlacement = 'list',
   list,
   detail,
@@ -105,8 +104,6 @@ export function MasterDetail<Aux extends string = never>({
   nav: MasterDetailNav<Aux>
   title: React.ReactNode
   actions?: React.ReactNode
-  /** Left column width. The two callers disagree, so it stays explicit. */
-  listWidth?: string
   /**
    * Where the heading sits on a desktop: above the left column, or spanning
    * both. Also explicit rather than unified — the two callers look different
@@ -146,38 +143,46 @@ export function MasterDetail<Aux extends string = never>({
     // measurement each time it flipped. Its width comes from the parent and
     // never from what is rendered inside it, so the observer cannot be fed its
     // own output. The three layouts differ below this line.
-    <div data-slot="master-detail" ref={setRoot} className={cx('mx-auto w-full max-w-settings', className)}>
+    <div
+      data-slot="master-detail"
+      ref={setRoot}
+      className={className ? `m-master-detail ${className}` : 'm-master-detail'}
+    >
       {nav.isNarrow ? (
         nav.showsDetail ? (
           <SettingsSubPage title={nav.aux !== null ? auxTitle : detailTitle} onBack={nav.back}>
             {nav.aux !== null ? aux : detail}
           </SettingsSubPage>
         ) : (
-          <div data-slot="master-detail-list-page" className="space-y-3">
+          <div data-slot="master-detail-list-page" className="m-master-detail__page">
             <SettingsHeader title={title} actions={actions} />
             {emptyState ?? (
-              <div data-slot="master-detail-list" className="space-y-2">
+              <div data-slot="master-detail-list" className="m-master-detail__list">
                 {list}
               </div>
             )}
           </div>
         )
       ) : (
-        <div data-slot="master-detail-wide" className="space-y-4">
+        <div data-slot="master-detail-wide" className="m-master-detail__wide">
           {atTop && <SettingsHeader title={title} actions={actions} />}
           {aux}
           {emptyState ?? (
-            <div data-slot="master-detail-columns" className={cx('flex', atTop ? 'gap-4' : 'gap-6')}>
-              <div data-slot="master-detail-list-column" className={cx('shrink-0 space-y-2', listWidth)}>
-                {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
+            <div
+              data-slot="master-detail-columns"
+              className="m-master-detail__columns"
+              data-spaced={atTop ? undefined : true}
+            >
+              <div data-slot="master-detail-list-column" className="m-master-detail__column">
+                {!atTop && <SettingsHeader title={title} actions={actions} className="m-master-detail__heading" />}
                 {list}
               </div>
               {/* The editor's queries resolve against this column, not against
                   the settings layer: two columns at 560px leaves 352px here,
                   and 208px of that width is one the editor never sees. */}
-              <div data-slot="master-detail-detail-column" className="@container/pane min-w-0 flex-1">
+              <div data-slot="master-detail-detail-column" className="m-master-detail__detail">
                 {detail ?? (
-                  <div data-slot="master-detail-empty-detail" className="text-body-regular text-text-secondary">
+                  <div data-slot="master-detail-empty-detail" className="m-master-detail__empty">
                     {emptyDetail}
                   </div>
                 )}

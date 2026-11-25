@@ -1,0 +1,54 @@
+@layer components {
+  .ui-badge {
+    --ui-badge-bg: var(--info-bg);
+    --ui-badge-fg: var(--info-fg);
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    box-sizing: border-box;
+    min-height: 22px;
+    padding: 0 var(--space-2);
+    border: 1px solid transparent; /* 高对比度模式下显示边界 */
+    border-radius: var(--radius-pill);
+    background: var(--ui-badge-bg);
+    color: var(--ui-badge-fg);
+    font: var(--text-small-medium);
+    white-space: nowrap;
+    vertical-align: middle;
+  }
+
+  .ui-badge[data-size="sm"] {
+    min-height: 18px;
+    padding: 0 calc(var(--space-1) + 1px);
+    font: var(--text-caption);
+  }
+
+  .ui-badge[data-tone="accent"] {
+    --ui-badge-bg: var(--accent-subtle);
+    --ui-badge-fg: var(--accent-strong);
+  }
+
+  .ui-badge[data-tone="success"] {
+    --ui-badge-bg: var(--success-bg);
+    --ui-badge-fg: var(--success-fg);
+  }
+
+  .ui-badge[data-tone="warning"] {
+    --ui-badge-bg: var(--warning-bg);
+    --ui-badge-fg: var(--warning-fg);
+  }
+
+  .ui-badge[data-tone="danger"] {
+    --ui-badge-bg: var(--danger-bg);
+    --ui-badge-fg: var(--danger-fg);
+  }
+
+  .ui-badge__dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: var(--radius-pill);
+    background: currentColor;
+  }
+}

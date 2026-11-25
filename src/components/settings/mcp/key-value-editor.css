@@ -1,0 +1,60 @@
+@layer components {
+  .m-kv-editor {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: var(--space-2);
+  }
+
+  .m-kv-editor__bar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .m-kv-editor__heading {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .m-kv-editor__description {
+    width: 100%;
+    margin: 0;
+    padding-inline: var(--space-4);
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .m-kv-editor__key,
+  .m-kv-editor__value {
+    min-width: 0;
+  }
+
+  .m-kv-editor__key {
+    flex: 2;
+  }
+
+  .m-kv-editor__value {
+    flex: 3;
+  }
+
+  /* A pair of fields on one line, inside the group card. The card puts
+     padding on its own rows; this row is hand-rolled, so it carries the same
+     rhythm (12px block, 16px inline) and the card's separator grammar. */
+  .m-kv-editor__row {
+    display: flex;
+    box-sizing: border-box;
+    width: 100%;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-block-end: 1px solid var(--border);
+  }
+
+  .m-kv-editor__row:last-of-type {
+    border-block-end: none;
+  }
+}

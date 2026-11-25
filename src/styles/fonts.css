@@ -1,22 +1,27 @@
-/* OS typefaces. theme.css (vendored, unreadited) reads `--font-inter` and
- * `--font-mono-source`. This file is that setup. Both are read at computed-value
- * time — `@theme` (not `inline`) emits `--font-sans: var(--font-inter), …` onto
- * `:root` and the utilities say `var(--font-sans)` — so defining them on
- * `:root` here is enough, and anything that redefines `--font-sans` itself
- * afterwards cuts this file out of the chain. `fonts.test.ts` checks both.
+/* The typefaces: the ones already on the device, never a bundled file.
  *
- * A chosen family is prepended onto `--font-*-fallback` by `src/lib/fonts.tsx`;
- * system is the stack below, unchanged. Glyphs missing from the chosen face
- * fall through the named list, then the generic family.
+ * Yuerchu UI's tokens.css names its own families in `--font-sans` /
+ * `--font-mono`, and every `--text-*` composite reads them. This file replaces
+ * both with the OS stacks. It is imported after the library's styles and sits
+ * in the same `theme` layer, so it wins by order; anything that redefines
+ * either variable afterwards cuts it out without a visible error.
+ * `fonts.test.ts` holds the chain together.
+ *
+ * A family chosen in Settings → General is written on `<html>` as an inline
+ * `--font-sans: "Family", var(--font-sans-fallback)` (`src/lib/fonts.tsx`, and
+ * the pre-paint script in index.html before React runs). Glyphs missing from
+ * the chosen face fall through the named list, then the generic family.
  */
 
-:root {
-  --font-inter-fallback:
-    system-ui, 'Segoe UI', 'Segoe UI Variable Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI',
-    'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', sans-serif;
-  --font-inter: var(--font-inter-fallback);
-  --font-mono-source-fallback:
-    ui-monospace, 'Cascadia Code', 'Cascadia Mono', 'Sarasa Gothic', 'JetBrains Mono', 'Maple Mono NF CN',
-    'Noto Sans Mono CJK SC', Consolas, 'Microsoft YaHei UI', monospace;
-  --font-mono-source: var(--font-mono-source-fallback);
+@layer theme {
+  :root {
+    --font-sans-fallback:
+      system-ui, 'Segoe UI', 'Segoe UI Variable Text', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI',
+      'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', sans-serif;
+    --font-sans: var(--font-sans-fallback);
+    --font-mono-fallback:
+      ui-monospace, 'Cascadia Code', 'Cascadia Mono', 'Sarasa Gothic', 'JetBrains Mono', 'Maple Mono NF CN',
+      'Noto Sans Mono CJK SC', Consolas, 'Microsoft YaHei UI', monospace;
+    --font-mono: var(--font-mono-fallback);
+  }
 }

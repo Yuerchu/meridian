@@ -1,0 +1,32 @@
+@layer components {
+  .m-numbered-code {
+    width: max-content;
+    min-width: 100%;
+    overflow: visible;
+    padding: var(--space-1) 0;
+  }
+
+  .m-numbered-code__line {
+    display: flex;
+    color: color-mix(in oklch, var(--text) 85%, transparent);
+  }
+
+  .m-numbered-code__number {
+    position: sticky;
+    inset-inline-start: 0;
+    width: 2.5rem;
+    flex-shrink: 0;
+    background-color: var(--ui-bubble-fill, var(--surface));
+    padding-inline-end: var(--space-2);
+    text-align: end;
+    color: color-mix(in oklch, var(--text-secondary) 70%, transparent);
+    user-select: none;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .m-numbered-code__source {
+    min-width: 0;
+    padding-inline: var(--space-2) var(--space-4);
+    white-space: pre;
+  }
+}

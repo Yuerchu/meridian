@@ -1,0 +1,262 @@
+@layer components {
+  .ui-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-settings-group__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .ui-settings-group__heading {
+    margin: 0;
+    color: var(--text);
+    font: var(--text-headline);
+  }
+
+  .ui-settings-group__description {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* 一张卡片，行之间一条分隔线 */
+  .ui-settings-group__rows {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+  }
+
+  .ui-settings-row + .ui-settings-row {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* 名称与控件保持在首行左右对齐，补充说明跨满整行折于下方，避免长说明把紧凑控件挤到底部 */
+  .ui-settings-row {
+    container-type: inline-size;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--space-1) var(--space-4);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__text {
+    display: contents;
+  }
+
+  .ui-settings-row__text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-settings-row__label {
+    color: var(--text);
+    font: var(--text-body);
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) .ui-settings-row__label {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    align-self: center;
+  }
+
+  .ui-settings-row__description {
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) .ui-settings-row__description {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    min-width: 0;
+  }
+
+  .ui-settings-row__control {
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+  }
+
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__control {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .ui-settings-row[data-layout="stacked"],
+  .ui-settings-row:not(.ui-settings-nav-row):has(> .ui-settings-row__control > .ui-text-area) {
+    gap: var(--space-2) var(--space-4);
+  }
+
+  .ui-settings-row[data-layout="stacked"] .ui-settings-row__label,
+  .ui-settings-row:not(.ui-settings-nav-row):has(> .ui-settings-row__control > .ui-text-area)
+    .ui-settings-row__label {
+    grid-column: 1 / -1;
+  }
+
+  .ui-settings-row[data-layout="stacked"] > .ui-settings-row__control,
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__control:has(> .ui-text-area) {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .ui-settings-row[data-layout="stacked"]
+    > .ui-settings-row__control
+    > :is(
+      .ui-text-field:not(.ui-number-field),
+      .ui-password-field,
+      .ui-search-field,
+      .ui-text-area,
+      .ui-select,
+      .ui-combobox,
+      .ui-slider,
+      .ui-radio-group,
+      .ui-checkbox-group
+    ),
+  .ui-settings-row:not(.ui-settings-nav-row) > .ui-settings-row__control > .ui-text-area {
+    width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .ui-settings-nav-row {
+    display: flex;
+    justify-content: space-between;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .ui-settings-nav-row:first-child {
+    border-start-start-radius: calc(var(--radius-panel) - 1px);
+    border-start-end-radius: calc(var(--radius-panel) - 1px);
+  }
+
+  .ui-settings-nav-row:last-child {
+    border-end-start-radius: calc(var(--radius-panel) - 1px);
+    border-end-end-radius: calc(var(--radius-panel) - 1px);
+  }
+
+  .ui-settings-nav-row__chevron {
+    flex: none;
+    width: var(--icon-md);
+    height: var(--icon-md);
+  }
+
+  .ui-settings-nav-row[data-hovered]:not([data-disabled]),
+  .ui-settings-nav-row[aria-current="page"] {
+    background: var(--surface-muted);
+  }
+
+  .ui-settings-nav-row[aria-current="page"] .ui-settings-row__label {
+    font: var(--text-body-medium);
+  }
+
+  .ui-settings-nav-row[data-pressed]:not([data-disabled]) {
+    background: var(--surface-inset);
+  }
+
+  .ui-settings-nav-row[data-focus-visible] {
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .ui-settings-nav-row[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-settings-nav-row[data-disabled] :is(.ui-settings-row__label, .ui-settings-row__description) {
+    color: inherit;
+  }
+
+  @media (forced-colors: active) {
+    .ui-settings-nav-row[aria-current="page"] {
+      border-color: Highlight;
+    }
+  }
+
+  /* 窄屏下开关、下拉选择、分段控件与数字步进框仍与名称同行，仅宽输入类控件自动折到说明下方 */
+  @container (width < 440px) {
+    .ui-settings-row:not(.ui-settings-nav-row):has(
+        > .ui-settings-row__control
+          > :is(
+            .ui-text-field:not(.ui-number-field),
+            .ui-password-field,
+            .ui-search-field,
+            .ui-text-area,
+            .ui-radio-group,
+            .ui-checkbox-group,
+            .ui-slider
+          )
+      ) {
+      gap: var(--space-2) var(--space-4);
+    }
+
+    .ui-settings-row:not(.ui-settings-nav-row):has(
+        > .ui-settings-row__control
+          > :is(
+            .ui-text-field:not(.ui-number-field),
+            .ui-password-field,
+            .ui-search-field,
+            .ui-text-area,
+            .ui-radio-group,
+            .ui-checkbox-group,
+            .ui-slider
+          )
+      )
+      .ui-settings-row__label {
+      grid-column: 1 / -1;
+    }
+
+    .ui-settings-row:not(.ui-settings-nav-row)
+      > .ui-settings-row__control:has(
+        > :is(
+          .ui-text-field:not(.ui-number-field),
+          .ui-password-field,
+          .ui-search-field,
+          .ui-text-area,
+          .ui-radio-group,
+          .ui-checkbox-group,
+          .ui-slider
+        )
+      ) {
+      grid-column: 1 / -1;
+      grid-row: 3;
+      justify-content: flex-start;
+      width: 100%;
+    }
+
+    .ui-settings-row:not(.ui-settings-nav-row)
+      > .ui-settings-row__control
+      > :is(
+        .ui-text-field:not(.ui-number-field),
+        .ui-password-field,
+        .ui-search-field,
+        .ui-text-area,
+        .ui-radio-group,
+        .ui-checkbox-group,
+        .ui-slider
+      ) {
+      width: 100%;
+      flex: 1 1 auto;
+    }
+  }
+}

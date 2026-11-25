@@ -1,0 +1,20 @@
+@layer components {
+  .m-chat-transcript__load-earlier {
+    display: flex;
+    justify-content: center;
+    padding-block: var(--space-1);
+  }
+
+  .m-chat-transcript__scroller {
+    flex: 1 1 0%;
+    min-height: 0;
+  }
+
+  .m-chat-transcript__content {
+    max-width: 56rem;
+    margin-inline: auto;
+    padding-block: var(--space-6);
+    padding-inline-start: max(var(--space-4), var(--safe-left));
+    padding-inline-end: max(var(--space-4), var(--safe-right));
+  }
+}

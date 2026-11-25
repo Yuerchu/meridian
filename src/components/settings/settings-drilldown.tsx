@@ -1,12 +1,10 @@
 import { useState } from 'react'
-import { useTranslation } from 'react-i18next'
-import { Button, Modal } from '@/components/base'
-import { ArrowLeft } from '@keyline-icons/react/two-tone'
+import { Dialog } from '@/components/yuerchu-ui/components/dialog/dialog'
 
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useHistoryLevel } from '@/hooks/use-history-level'
 import { SettingsNavRow } from './primitives'
-import { titleIfTruncated } from '@/lib/truncation'
+import './settings-drilldown.css'
 
 /**
  * A block of settings that is a section on a desktop and a screen on a phone.
@@ -30,7 +28,6 @@ export function SettingsDrilldown({
   summary?: React.ReactNode
   children: React.ReactNode
 }) {
-  const { t } = useTranslation()
   // The viewport, deliberately, and not the measured container `MasterDetail`
   // moved to: the two branches below share no box to measure — the narrow one
   // is a row plus a portal — so there is nothing to hang a probe on. And the
@@ -45,12 +42,8 @@ export function SettingsDrilldown({
 
   if (!pushes) {
     return (
-      // Both branches are `pane` containers, because a grid inside `children`
-      // has to resolve against whichever of the two it landed in — and the one
-      // below is portalled to `body`, so it is not even a descendant of the
-      // pane that rendered it.
-      <section data-slot="settings-drilldown" className="@container/pane space-y-2">
-        <h3 data-slot="settings-drilldown-title" className="text-body-medium">
+      <section data-slot="settings-drilldown" className="m-drilldown__inline">
+        <h3 data-slot="settings-drilldown-title" className="m-drilldown__title">
           {title}
         </h3>
         {children}
@@ -58,39 +51,18 @@ export function SettingsDrilldown({
     )
   }
 
+  // The library's full-size Dialog, not a page of our own: it draws its heading
+  // and a close button where the old screen had a back bar, and in exchange
+  // owns the focus trap, the scroll lock and the way back. The back gesture is
+  // still `useHistoryLevel`'s.
   return (
     <>
       <SettingsNavRow label={title} value={summary} onPress={() => setOpen(true)} />
-      <Modal.Backdrop isOpen={open} onOpenChange={setOpen}>
-        <Modal.Container size="full">
-          <Modal.Dialog data-slot="settings-drilldown-page" className="p-0">
-            <div data-slot="settings-drilldown-frame" className="flex h-full flex-col">
-              <div
-                data-slot="settings-drilldown-bar"
-                className="flex shrink-0 items-center gap-2 border-b border-border-button-default px-1 pt-[var(--safe-top)]"
-              >
-                <Button
-                  leadingIcon={ArrowLeft}
-                  variant="secondary"
-                  onPress={() => setOpen(false)}
-                  className="h-10 gap-1 rounded-xl px-2 text-body-regular text-text-secondary hover:text-text-primary"
-                >
-                  {t('common.back')}
-                </Button>
-                <Modal.Heading className="min-w-0 flex-1 truncate text-body-medium" onPointerEnter={titleIfTruncated}>
-                  {title}
-                </Modal.Heading>
-              </div>
-              <div
-                data-slot="settings-drilldown-body"
-                className="@container/pane flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]"
-              >
-                {children}
-              </div>
-            </div>
-          </Modal.Dialog>
-        </Modal.Container>
-      </Modal.Backdrop>
+      <Dialog heading={title} size="full" isOpen={open} onOpenChange={setOpen} className="m-drilldown">
+        <div data-slot="settings-drilldown-body" className="m-drilldown__body">
+          {children}
+        </div>
+      </Dialog>
     </>
   )
 }

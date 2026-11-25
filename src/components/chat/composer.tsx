@@ -1,14 +1,19 @@
-import { useCallback, useEffect, useRef, type ReactNode } from 'react'
+import './composer.css'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
+import { TextArea as AriaTextArea } from 'react-aria-components'
+import { ArrowUp } from '@keyline-icons/react/two-tone'
+import { Stop } from '@keyline-icons/react/fill'
 
-import { PromptInput } from '@/components/base'
-import { ComposerLoader } from '@/components/application/composer-loader/composer-loader'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
+import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
+import { ComposerLoader } from './composer-loader'
 import { LOADER_PAUSED, useLoaderSettledIdle } from './composer-loader-idle'
 
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useFileDrop } from '@/hooks/use-file-drop'
 import { filesFromPaste } from '@/lib/paste-files'
-import { cx } from '@/utils/cx'
 
 export type ComposerFieldProps = Pick<
   React.TextareaHTMLAttributes<HTMLTextAreaElement>,
@@ -29,10 +34,9 @@ interface ComposerProps {
    * Lets Enter submit while a reply is still streaming — steering a run rather
    * than starting a turn.
    *
-   * PromptInput keeps Send as Send whenever there is text in that mode, which leaves no
-   * way to stop the run without first emptying the field, so a separate Stop
-   * appears beside it. Off, the composer behaves as it always has: Send becomes
-   * Stop and nothing can be submitted until the answer is finished.
+   * Send stays Send whenever there is text or a payload in that mode, and a
+   * separate Stop appears beside it so the run stays stoppable. Off, Send
+   * becomes Stop and nothing submits until the answer is finished.
    */
   steerable?: boolean
   placeholder?: string
@@ -47,7 +51,7 @@ interface ComposerProps {
   toolbarStart?: ReactNode
   /** Right of the toolbar, before Send: emoji, voice, context usage. */
   toolbarEnd?: ReactNode
-  /** One line above the shell. Not `PromptInput.Footer`, which is below it. */
+  /** One line above the shell. */
   notice?: ReactNode
   /** Caret-anchored completion menu. The textarea keeps focus while it is open. */
   suggestions?: ReactNode
@@ -59,18 +63,12 @@ interface ComposerProps {
    */
   fieldProps?: ComposerFieldProps
   /** Runs before the composer's submit guard; may consume Enter/Tab/Escape. */
-  onKeyDownCapture?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void
-  /** Keeps a caret-aware typeahead in sync without replacing PromptInput's textarea ref. */
+  onKeyDownCapture?: (event: KeyboardEvent<HTMLTextAreaElement>) => void
+  /** Keeps a caret-aware typeahead in sync without replacing the textarea ref. */
   onCaretChange?: (caret: number) => void
   /** A leading bang changes semantics without replacing the textarea. */
   inputMode?: 'prompt' | 'shell'
-  /**
-   * Queued messages, in their own card above the shell.
-   *
-   * A sibling of `PromptInput.Shell` rather than a slot inside it, which is
-   * where PromptInput puts it and where it belongs: the rows are about messages that
-   * have already been written, not about the one being typed.
-   */
+  /** Queued messages, in their own card above the shell. */
   queue?: ReactNode
   /**
    * The status tab hanging from the card's top edge (`ComposerStatusTab`).
@@ -83,18 +81,96 @@ interface ComposerProps {
   /** Files pasted into the field. Absent, a paste is only ever text. */
   onPasteFiles?: (files: File[]) => void
   /**
-   * The field element, once there is one.
-   *
-   * PromptInput points `TextArea`'s ref at its own context and spreads incoming props
-   * after it, so passing a ref would replace theirs and take the built-in
-   * autosize down with it. Callers that need the element — to focus it, or to
-   * read `selectionStart` for a paste — get it this way instead.
+   * The field element, once there is one. Callers that need the element —
+   * to focus it, or to read `selectionStart` for a paste — get it this way.
    */
   onFieldReady?: (el: HTMLTextAreaElement | null) => void
 }
 
+type ComposerStatus = 'ready' | 'submitted' | 'streaming'
+type SendMode = 'send' | 'stop' | 'wait'
+
+const MAX_LINES = 8
+const LABEL_SWAP_MS = 220
 /**
- * The message composer, on PromptInput.
+ * How long a Stop that has just replaced Send ignores presses (Windows' default
+ * double-click interval) so a double-click that started a turn cannot stop it.
+ */
+const STOP_AFTER_SEND_MS = 500
+
+const isRunning = (status: ComposerStatus) => status === 'submitted' || status === 'streaming'
+
+function sendModeOf({
+  status,
+  allowSubmitWhileRunning,
+  value,
+  hasPayload,
+  onStop,
+}: {
+  status: ComposerStatus
+  allowSubmitWhileRunning: boolean
+  value: string
+  hasPayload: boolean
+  onStop?: () => void
+}): SendMode {
+  if (!isRunning(status)) return 'send'
+  if (allowSubmitWhileRunning && (value.trim() !== '' || hasPayload)) return 'send'
+  return onStop ? 'stop' : 'wait'
+}
+
+/** `lines` lines of the field's own type plus vertical padding (20px jsdom fallback). */
+function linesToPixels(style: CSSStyleDeclaration, lines: number): number {
+  const lineHeight = Number.parseFloat(style.lineHeight)
+  const padding = [style.paddingTop, style.paddingBottom]
+    .map((side) => Number.parseFloat(side))
+    .filter(Number.isFinite)
+    .reduce((sum, side) => sum + side, 0)
+  return lines * (Number.isNaN(lineHeight) ? 20 : lineHeight) + padding
+}
+
+/** The lowest of the ceilings that apply: lines and the field's CSS `max-height`. */
+function ceilingOf(el: HTMLElement, maxLines: number): number | undefined {
+  const style = getComputedStyle(el)
+  const css = Number.parseFloat(style.maxHeight)
+  const ceilings = [linesToPixels(style, maxLines), Number.isNaN(css) ? undefined : css].filter(
+    (value): value is number => value !== undefined,
+  )
+  return ceilings.length > 0 ? Math.min(...ceilings) : undefined
+}
+
+function usePlaceholderSwap(placeholder: string | undefined) {
+  const [shown, setShown] = useState(placeholder)
+  const [leaving, setLeaving] = useState<string | null>(null)
+  const [changed, setChanged] = useState(false)
+  if (placeholder !== shown) {
+    setLeaving(shown ?? null)
+    setShown(placeholder)
+    setChanged(true)
+  }
+  useEffect(() => {
+    if (leaving === null) return
+    const timer = window.setTimeout(() => setLeaving(null), LABEL_SWAP_MS)
+    return () => window.clearTimeout(timer)
+  }, [leaving])
+  return { shown, leaving, changed }
+}
+
+/**
+ * Both of the send button's glyphs, stacked so the button never moves and only
+ * its icon transitions across Send / Stop changes.
+ */
+function SendStopGlyph({ mode }: { mode: SendMode }) {
+  const sending = mode === 'send'
+  return (
+    <span aria-hidden data-slot="prompt-input-send-glyph" className="m-composer__send-glyph">
+      <ArrowUp data-active={sending || undefined} className="m-composer__glyph-icon" />
+      <Stop data-active={!sending || undefined} className="m-composer__glyph-icon" />
+    </span>
+  )
+}
+
+/**
+ * The message composer.
  *
  * Everything hangs off it as a slot, because the two callers want very
  * different amounts of it: the empty state is a field and a send button, the
@@ -132,11 +208,11 @@ export function Composer({
   onFieldReady,
 }: ComposerProps) {
   const { t } = useTranslation()
-  const shellRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
   const dropping = useFileDrop(onDropFiles)
 
   useEffect(() => {
-    onFieldReady?.(shellRef.current?.querySelector('textarea') ?? null)
+    onFieldReady?.(textareaRef.current)
     return () => onFieldReady?.(null)
   }, [onFieldReady])
 
@@ -149,13 +225,10 @@ export function Composer({
     onSubmit()
   }, [onSubmit])
 
-  // Capture, not bubble. PromptInput's built-in key handler runs first and has already
-  // called `preventDefault` and `onSubmit` by the time a handler passed in
-  // would see the event; stopping it here is the only way left to hold Enter
-  // back. React ends the dispatch for this element's bubble handler too —
-  // `#playground/webview` has the probe that proves it.
+  // Capture, not bubble: the typeahead runs here and may consume Enter/Tab/Escape,
+  // and coarse-pointer Enter inserts a newline instead of submitting.
   const guardEnter = useCallback(
-    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
       onKeyDownCapture?.(e)
       if (e.defaultPrevented || e.key !== 'Enter' || e.shiftKey) return
       if (!isSubmitKey(e)) e.stopPropagation()
@@ -163,138 +236,205 @@ export function Composer({
     [onKeyDownCapture],
   )
 
-  const loaderActive = !!(pending || streaming)
+  const turnStatus: ComposerStatus = pending ? 'submitted' : streaming ? 'streaming' : 'ready'
+  const running = isRunning(turnStatus)
+  const loaderActive = Boolean(pending || streaming)
   const loaderIdle = useLoaderSettledIdle(loaderActive)
+  const mode = sendModeOf({
+    status: turnStatus,
+    allowSubmitWhileRunning: Boolean(steerable),
+    value,
+    hasPayload: Boolean(hasPayload),
+    onStop,
+  })
+  const isPending = mode !== 'send' && turnStatus === 'submitted'
+
+  useLayoutEffect(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const fit = () => {
+      el.style.height = 'auto'
+      const ceiling = ceilingOf(el, MAX_LINES)
+      const next = ceiling ? Math.min(el.scrollHeight, ceiling) : el.scrollHeight
+      el.style.height = `${next}px`
+      el.style.overflowY = ceiling && el.scrollHeight > ceiling ? 'auto' : 'hidden'
+    }
+    fit()
+    window.addEventListener('resize', fit)
+    let frame = 0
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(fit)
+    })
+    observer.observe(el)
+    return () => {
+      window.removeEventListener('resize', fit)
+      observer.disconnect()
+      cancelAnimationFrame(frame)
+    }
+  }, [value])
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.defaultPrevented) return
+      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && isSubmitKey(e)) {
+        e.preventDefault()
+        if (running && !steerable) return
+        handleSubmit()
+      }
+    },
+    [handleSubmit, running, steerable],
+  )
+
+  const sentAt = useRef(Number.NEGATIVE_INFINITY)
+  const handleSendOrStopPress = useCallback(() => {
+    if (isPending) return
+    if (mode === 'send') {
+      sentAt.current = performance.now()
+      handleSubmit()
+    } else if (mode === 'stop') {
+      if (performance.now() - sentAt.current >= STOP_AFTER_SEND_MS) onStop?.()
+    }
+  }, [handleSubmit, isPending, mode, onStop])
+
+  const swap = usePlaceholderSwap(placeholder)
+  const sendLabel = t('chat.send')
+  const stopLabel = t('chat.stop')
+  const sendDisabled = mode === 'wait' || (Boolean(disabled) && !(hasPayload && !streaming))
 
   return (
-    <div ref={shellRef} data-slot="composer" className={cx('relative w-full', className)} data-input-mode={inputMode}>
+    <div
+      data-slot="composer"
+      className={className ? `m-composer ${className}` : 'm-composer'}
+      data-input-mode={inputMode}
+    >
       {notice}
       {suggestions}
-      <PromptInput
-        value={value}
-        onValueChange={onChange}
-        onSubmit={handleSubmit}
-        onStop={onStop}
-        status={pending ? 'submitted' : streaming ? 'streaming' : 'ready'}
-        disabled={disabled}
-        // Default `true` would grey out the whole toolbar while a reply
-        // streams — including the context gauge, which is when it is most worth
-        // reading. The field stays live as it always has; only Send becomes
-        // Stop.
-        lockInputOnRun={false}
-        allowSubmitWhileRunning={steerable}
-        hasPayload={hasPayload}
-        maxLines={8}
-      >
+      <div data-slot="prompt-input" data-status={turnStatus} className="m-composer__root">
         {queue}
         {status}
-        {/* boardui's composer-loader, as the registry's agent-composer wires it:
-            around the whole shell, lit while a turn runs, and painting the
-            surface itself — the shell goes transparent while it is lit (see
-            `PromptInput.Shell`). `radius` is the shell's `rounded-3xl` in px,
-            because the shell is two rows, not the loader's default pill. */}
-        <ComposerLoader active={loaderActive} radius={24} className={cx(loaderIdle && LOADER_PAUSED)}>
-          {/* PromptInput styles this state — dotted accent border and a soft fill — but
-            sets it for nobody; it is left for whoever owns the drag. */}
-          {/* `@container/composer`: the toolbar drops labels by the width it
-              actually has (the mode chip), not by the window's. Nothing inside
-              is `position: fixed`, which a container would capture. */}
-          <PromptInput.Shell data-dragging={dropping ? 'true' : undefined} className="@container/composer">
-            <PromptInput.Content>
-              {attachments && <PromptInput.Attachments>{attachments}</PromptInput.Attachments>}
+        <ComposerLoader
+          active={loaderActive}
+          paused={loaderIdle}
+          radius={24}
+          className={loaderIdle ? LOADER_PAUSED : undefined}
+        >
+          <div
+            data-slot="prompt-input-shell"
+            data-running={running || undefined}
+            data-dragging={dropping ? 'true' : undefined}
+            className="m-composer__shell"
+          >
+            <div data-slot="prompt-input-content" className="m-composer__content">
+              {attachments && (
+                <div data-slot="prompt-input-attachments" className="m-composer__attachments">
+                  {attachments}
+                </div>
+              )}
               {inputMode === 'shell' && (
-                <div
-                  data-slot="composer-shell-badge"
-                  className="flex items-center gap-1.5 px-3 pt-2 text-caption-1-medium text-text-secondary"
-                  aria-hidden
-                >
-                  <span data-slot="composer-shell-prefix" className="font-mono text-button-ghost-foreground">
+                <div data-slot="composer-shell-badge" className="m-composer__shell-badge" aria-hidden>
+                  <span data-slot="composer-shell-prefix" className="m-composer__shell-prefix">
                     !
                   </span>
                   Shell
                 </div>
               )}
-              <PromptInput.TextArea
-                {...fieldProps}
-                aria-label={ariaLabel}
-                placeholder={placeholder}
-                // Eight lines (`maxLines`), unless that is more than two fifths of
-                // what the keyboard leaves of the screen — on a phone with it
-                // open, eight lines would push the transcript off the top.
-                className="max-h-[calc((100svh_-_var(--ime-bottom,0px))_*_0.4)]"
-                autoFocus={autoFocus}
-                onKeyDownCapture={guardEnter}
-                onPaste={(event) => {
-                  const files = onPasteFiles && filesFromPaste(event.clipboardData)
-                  if (!files) return
-                  event.preventDefault()
-                  onPasteFiles(files)
-                }}
-                onSelect={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
-                onKeyUp={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
-                onClick={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
-                onCompositionStart={() => {
-                  composingRef.current = true
-                }}
-                onCompositionEnd={() => {
-                  composingRef.current = false
-                }}
-              />
-            </PromptInput.Content>
-            <PromptInput.Toolbar>
-              {/* PromptInput's toolbar is a `space-between` flex row inside a shell that
-                clips, and neither half is told what to do when the left one
-                runs out of room. So a wide left half pushes Send past the
-                shell's edge and it is simply gone — which is what a hosted
-                session's knobs did. Scrolling is the fix rather than shrinking:
-                a squashed picker is unreadable, and the reason there is
-                anything to scroll is that the agent decides how many controls
-                there are.
-
-                `scrollbar-none` because the app's own scrollbars are 10px and
-                one of those under a 32px toolbar is taller than the thing it is
-                scrolling — see the note in `index.css` on why the `scrollbar-*`
-                utilities other than this one do nothing here. */}
-              {/* `p-1 -m-1` is not spacing: `overflow-x: auto` forces
-                `overflow-y` to compute as auto too, so without a little slack a
-                focus ring on a control in here is clipped at the top and bottom
-                — and the negative margin gives the slack back, leaving the row
-                exactly where it was.
-
-                The horizontal half was added later and for a second reason:
-                PromptInput leaves this slot no inline padding, so the first control sat
-                flush against a scroll container's edge and `touch-hitbox` had
-                nowhere to expand sideways. The `+` button came out 44px tall
-                and still 40px wide — which the harness at
-                `#playground/responsive` is what noticed. */}
-              {/* `shrink` as well as `min-w-0`, and it is the half that was
-                missing: PromptInput sets `flex-shrink: 0` on this slot, and a flex item
-                that may not shrink ignores `min-w-0` entirely — so the scroller
-                above was real but never narrower than its contents, and Send
-                still went over the clipped edge. Both halves of the toolbar
-                carry PromptInput's `shrink-0`; this is the one that gives way, because
-                the other one is Send. */}
-              <PromptInput.ToolbarStart className="-m-1 min-w-0 shrink overflow-x-auto p-1 scrollbar-none [&>*]:shrink-0">
-                {toolbarStart}
-              </PromptInput.ToolbarStart>
-              <PromptInput.ToolbarEnd className="shrink-0">
-                {toolbarEnd}
-                {/* Drawn by PromptInput exactly when Send is steering, so the
-                  two are never both a Stop and the run is never unstoppable.
-                  Which of the two Send is, and so which label it wears, is
-                  PromptInput's one rule — restating it here is what once put
-                  a Stop icon under a "Send" name beside a second Stop. */}
-                <PromptInput.Stop label={t('chat.stop')} />
-                <PromptInput.Send
-                  sendLabel={t('chat.send')}
-                  stopLabel={t('chat.stop')}
-                  disabled={hasPayload && !streaming ? false : undefined}
+              <div data-slot="prompt-input-field" className="m-composer__field">
+                <AriaTextArea
+                  ref={textareaRef}
+                  data-slot="prompt-input-textarea"
+                  {...fieldProps}
+                  value={value}
+                  onChange={(e) => onChange(e.target.value)}
+                  onKeyDownCapture={guardEnter}
+                  onKeyDown={handleKeyDown}
+                  onPaste={(event) => {
+                    const files = onPasteFiles && filesFromPaste(event.clipboardData)
+                    if (!files) return
+                    event.preventDefault()
+                    onPasteFiles(files)
+                  }}
+                  onSelect={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
+                  onKeyUp={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
+                  onClick={(event) => onCaretChange?.(event.currentTarget.selectionStart)}
+                  onCompositionStart={() => {
+                    composingRef.current = true
+                  }}
+                  onCompositionEnd={() => {
+                    composingRef.current = false
+                  }}
+                  disabled={disabled}
+                  rows={1}
+                  autoFocus={autoFocus}
+                  aria-label={ariaLabel}
+                  aria-placeholder={placeholder}
+                  className="m-composer__textarea"
                 />
-              </PromptInput.ToolbarEnd>
-            </PromptInput.Toolbar>
-          </PromptInput.Shell>
+                {value === '' && swap.leaving !== null && (
+                  <span key={`out:${swap.leaving}`} aria-hidden className="m-composer__placeholder" data-motion="out">
+                    {swap.leaving}
+                  </span>
+                )}
+                {value === '' && swap.shown && (
+                  <span
+                    key={swap.shown}
+                    aria-hidden
+                    data-slot="prompt-input-placeholder"
+                    className="m-composer__placeholder"
+                    data-motion={swap.changed ? 'in' : undefined}
+                  >
+                    {swap.shown}
+                  </span>
+                )}
+              </div>
+            </div>
+            <div data-slot="prompt-input-toolbar" className="m-composer__toolbar">
+              <div data-slot="prompt-input-toolbar-start" className="m-composer__toolbar-start">
+                {toolbarStart}
+              </div>
+              <div data-slot="prompt-input-toolbar-end" className="m-composer__toolbar-end">
+                {toolbarEnd}
+                {running && onStop && mode === 'send' && (
+                  <span className="m-composer__stop">
+                    <TooltipTrigger delay={0}>
+                      <Button
+                        data-slot="prompt-input-stop"
+                        variant="secondary"
+                        size="md"
+                        icon={<Stop />}
+                        aria-label={stopLabel}
+                        onPress={onStop}
+                      />
+                      <Tooltip>{stopLabel}</Tooltip>
+                    </TooltipTrigger>
+                  </span>
+                )}
+                <span className="m-composer__send" data-mode={mode}>
+                  <Button
+                    data-slot="prompt-input-send"
+                    data-running={running || undefined}
+                    data-pending={isPending || undefined}
+                    variant={mode === 'stop' ? 'secondary' : 'primary'}
+                    size="md"
+                    isDisabled={sendDisabled}
+                    onPress={handleSendOrStopPress}
+                    aria-label={mode === 'stop' ? stopLabel : sendLabel}
+                    icon={
+                      isPending ? (
+                        <span data-slot="spinner" className="m-composer__send-spinner">
+                          <Spinner size="sm" aria-label={sendLabel} />
+                        </span>
+                      ) : (
+                        <SendStopGlyph mode={mode} />
+                      )
+                    }
+                  />
+                </span>
+              </div>
+            </div>
+          </div>
         </ComposerLoader>
-      </PromptInput>
+      </div>
     </div>
   )
 }

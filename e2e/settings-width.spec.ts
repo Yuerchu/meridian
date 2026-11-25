@@ -15,7 +15,8 @@ test('every settings page is at the settings width', async ({ page }) => {
   await openApp(page, { theme: 'light' })
   await openSettings(page)
 
-  const labels = (await page.locator('[role="treegrid"] [role="row"]').allInnerTexts())
+  const nav = page.getByRole('navigation', { name: '设置' })
+  const labels = (await nav.locator('.ui-nav-item').allInnerTexts())
     .map((text) => text.trim().split('\n')[0])
     .filter((label) => label && label !== '返回应用')
   expect(labels.length).toBeGreaterThan(10)
@@ -26,14 +27,14 @@ test('every settings page is at the settings width', async ({ page }) => {
   const unique = [...new Set(labels)]
   const heading = page.getByRole('heading', { level: 2 }).first()
   const start = (await heading.count()) ? await heading.textContent() : null
-  await page.getByRole('row', { name: unique[unique.length - 1], exact: true }).click()
+  await nav.getByRole('button', { name: unique[unique.length - 1], exact: true }).click()
   await expect
     .poll(async () => ((await heading.count()) ? await heading.textContent() : null), { timeout: 30_000 })
     .not.toBe(start)
 
   const widths: Record<string, string> = {}
   for (const label of unique) {
-    const row = page.getByRole('row', { name: label, exact: true })
+    const row = nav.getByRole('button', { name: label, exact: true })
     if ((await row.count()) !== 1) continue
     // Every section swaps the one scroller's contents, so measure only once the
     // page's own heading has replaced the previous one — otherwise the first
@@ -57,6 +58,9 @@ test('every settings page is at the settings width', async ({ page }) => {
     })
   }
 
-  const off = Object.entries(widths).filter(([, width]) => width !== '532px')
+  // `--content-settings` is 33.25rem, and the library sets the root font to
+  // 14px (`font: var(--text-body)`), so the column is 466px rather than the
+  // 532px it was at a 16px root.
+  const off = Object.entries(widths).filter(([, width]) => width !== '466px')
   expect(off, JSON.stringify(widths, null, 2)).toEqual([])
 })

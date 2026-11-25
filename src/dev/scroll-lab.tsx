@@ -11,7 +11,7 @@
 // step through a scenario deterministically instead of racing a timer.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/base'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
 import { useAppTheme } from '@/lib/theme'
@@ -788,49 +788,49 @@ export default function ScrollLab() {
         <span data-slot="scroll-lab-title" className="text-body-semibold">
           滚动行为实验场
         </span>
-        <Button size="small" variant="secondary" onPress={() => seedHistory()}>
+        <Button size="sm" variant="secondary" onPress={() => seedHistory()}>
           铺历史
         </Button>
         {/* Well past the transcript's window, so what this measures is the
             cost of a long conversation as the product actually renders one. */}
-        <Button size="small" variant="secondary" onPress={() => seedHistory(200)}>
+        <Button size="sm" variant="secondary" onPress={() => seedHistory(200)}>
           铺 200 轮
         </Button>
-        <Button size="small" variant="secondary" onPress={() => setHasTrailingRow((v) => !v)}>
+        <Button size="sm" variant="secondary" onPress={() => setHasTrailingRow((v) => !v)}>
           尾部状态行
         </Button>
-        <Button size="small" variant="secondary" onPress={() => sendUser(false)}>
+        <Button size="sm" variant="secondary" onPress={() => sendUser(false)}>
           发短消息
         </Button>
-        <Button size="small" variant="secondary" onPress={() => sendUser(true)}>
+        <Button size="sm" variant="secondary" onPress={() => sendUser(true)}>
           发长消息
         </Button>
-        <Button size="small" variant="secondary" onPress={() => sendUser(3)}>
+        <Button size="sm" variant="secondary" onPress={() => sendUser(3)}>
           发超长消息
         </Button>
-        <Button size="small" variant="secondary" onPress={startAssistant}>
+        <Button size="sm" variant="secondary" onPress={startAssistant}>
           助手开始
         </Button>
-        <Button size="small" variant="secondary" onPress={() => streamChunk()}>
+        <Button size="sm" variant="secondary" onPress={() => streamChunk()}>
           流式一块
         </Button>
-        <Button size="small" variant="secondary" onPress={streamAll}>
+        <Button size="sm" variant="secondary" onPress={streamAll}>
           流式到底
         </Button>
-        <Button size="small" variant="secondary" onPress={() => callTool()}>
+        <Button size="sm" variant="secondary" onPress={() => callTool()}>
           工具调用
         </Button>
-        <Button size="small" variant="secondary" onPress={finishTool}>
+        <Button size="sm" variant="secondary" onPress={finishTool}>
           工具返回
         </Button>
-        <Button size="small" variant="secondary" onPress={finishTurn}>
+        <Button size="sm" variant="secondary" onPress={finishTurn}>
           结束本轮
         </Button>
-        <Button size="small" variant="ghost" onPress={reset}>
+        <Button size="sm" variant="ghost" onPress={reset}>
           清空
         </Button>
         <Button
-          size="small"
+          size="sm"
           onPress={() => {
             setResults(null)
             runScenarios().then(setResults)
@@ -838,7 +838,7 @@ export default function ScrollLab() {
         >
           跑全部场景
         </Button>
-        <Button size="small" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
+        <Button size="sm" variant="ghost" onPress={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
           主题
         </Button>
       </div>

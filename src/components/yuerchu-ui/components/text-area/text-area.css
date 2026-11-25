@@ -1,0 +1,120 @@
+@layer components {
+  .ui-text-area {
+    /* 通过变量改 .ui-input（不依赖 CSS 加载顺序，见 DESIGN.md §6.2.1） */
+    --ui-input-height: auto;
+    --ui-input-padding-block: var(--space-2);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    /* 宽度占满：field-sizing: content 也会让宽度跟着内容走，长的一行会把输入框撑出容器 */
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-text-area__input {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    /* 行数 × 行高 + 上下内边距 + 边框 */
+    min-height: calc(var(--ui-text-area-rows, 3) * 1lh + 2 * var(--space-2) + 2px);
+    max-height: calc(var(--ui-text-area-max-rows, 999) * 1lh + 2 * var(--space-2) + 2px);
+    resize: none; /* 用自己的把手（.ui-text-area__grip），见 text-area.tsx */
+    field-sizing: content; /* 高度随内容增长；不支持的浏览器按 rows 固定高度，可以拖右下角的把手 */
+    overflow-wrap: break-word;
+  }
+
+  .ui-text-area[data-readonly] .ui-text-area__input {
+    background: var(--surface-sunken);
+  }
+
+  .ui-text-area__control {
+    position: relative;
+    display: block;
+  }
+
+  /* 拖动改高度的把手：两道斜线，离边框 --space-2（内边距；圆角较大，--space-1 还会碰到圆角的描边）；命中区包括内边距 */
+  .ui-text-area__grip {
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline-end: 0;
+    width: 9px;
+    height: 9px;
+    padding: var(--space-2);
+    background:
+      linear-gradient(135deg, transparent 0 calc(50% - 0.75px), var(--text-muted) calc(50% - 0.75px) calc(50% + 0.75px), transparent calc(50% + 0.75px)) content-box,
+      linear-gradient(135deg, transparent 0 calc(80% - 0.75px), var(--text-muted) calc(80% - 0.75px) calc(80% + 0.75px), transparent calc(80% + 0.75px)) content-box;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+
+  .ui-text-area__grip:dir(rtl) {
+    cursor: ns-resize;
+    scale: -1 1;
+  }
+
+  /* ---------- 行内补全：盖在输入框上的镜像，字体、内边距、换行和输入框一样；前面的文字透明，只露出灰色的续写 ---------- */
+  .ui-text-area__ghost {
+    position: absolute;
+    inset: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    padding: var(--ui-input-padding-block, 0) var(--ui-input-padding, var(--space-3));
+    border: 1px solid transparent;
+    color: transparent;
+    font: var(--text-body);
+    overflow-wrap: break-word;
+    white-space: pre-wrap;
+    pointer-events: none;
+  }
+
+  .ui-text-area__ghost-text {
+    color: var(--text-secondary);
+  }
+
+  .ui-text-area__ghost-key {
+    margin-inline-start: var(--space-1);
+    padding: 0 var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-item) / 2);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  @media (forced-colors: active) {
+    .ui-text-area__ghost-text {
+      color: GrayText;
+    }
+
+    .ui-text-area__grip {
+      forced-color-adjust: none;
+      background:
+        linear-gradient(135deg, transparent 0 calc(50% - 0.75px), CanvasText calc(50% - 0.75px) calc(50% + 0.75px), transparent calc(50% + 0.75px)) content-box,
+        linear-gradient(135deg, transparent 0 calc(80% - 0.75px), CanvasText calc(80% - 0.75px) calc(80% + 0.75px), transparent calc(80% + 0.75px)) content-box;
+    }
+  }
+
+  .ui-text-area__footer {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  .ui-text-area__counter {
+    flex: none;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-text-area__counter[data-full] {
+    color: var(--warning-fg);
+  }
+
+  /* 触屏：字号不小于 16px，避免 iOS 聚焦时放大页面 */
+  @media (pointer: coarse) {
+    .ui-text-area__input {
+      font: var(--text-body-lg);
+    }
+  }
+}

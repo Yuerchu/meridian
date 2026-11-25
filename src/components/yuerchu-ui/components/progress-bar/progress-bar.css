@@ -1,0 +1,62 @@
+@layer components {
+  .ui-progress-bar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-progress-bar__header {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    font: var(--text-small);
+  }
+
+  .ui-progress-bar__label {
+    color: var(--text);
+  }
+
+  .ui-progress-bar__value {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ui-progress-bar__track {
+    height: 6px;
+    overflow: hidden;
+    border: 1px solid transparent; /* 高对比度模式下显示轨道边界 */
+    border-radius: var(--radius-pill);
+    background: var(--control-track);
+  }
+
+  .ui-progress-bar__fill {
+    height: 100%;
+    border-radius: inherit;
+    background: var(--accent);
+    transition: width var(--dur-considered) var(--ease-standard);
+  }
+
+  /* 不确定进度：一段条来回移动。表示"还在进行"，减弱模式下放慢但不停（和加载图标一样用 --dur-spin） */
+  .ui-progress-bar__fill[data-indeterminate] {
+    width: 40%;
+    animation: ui-progress-bar-indeterminate calc(var(--dur-spin) * 2) var(--ease-linear) infinite;
+  }
+
+  @keyframes ui-progress-bar-indeterminate {
+    from {
+      translate: -100% 0;
+    }
+
+    to {
+      translate: 250% 0;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-progress-bar__fill {
+      background: Highlight;
+    }
+  }
+}

@@ -89,48 +89,6 @@ tester.run('no-json-tool-display', plugin.rules['no-json-tool-display'], {
   ],
 })
 
-tester.run('animation-needs-keyframes', plugin.rules['animation-needs-keyframes'], {
-  valid: [
-    `<span className="animate-spin" />`,
-    `<span className="motion-safe:animate-skeleton" />`,
-    `<span className="animate-[ai-chat-text-shimmer_2s_linear_infinite]" />`,
-    `<span className="data-animate-x" />`,
-    // Defined as a plain class in the registry globals.css.
-    `<path className="animate-check-draw" />`,
-  ],
-  invalid: [
-    // The shape that shipped: HeroUI's shimmer, whose keyframes left with HeroUI.
-    {
-      code: `<span className="bg-clip-text animate-[shimmer_2s_linear_infinite]" />`,
-      errors: [{ messageId: 'noKeyframes' }],
-    },
-    { code: `<span className="animate-shimmer" />`, errors: [{ messageId: 'noUtility' }] },
-    { code: 'const c = `x ${y} animate-[nope_1s]`', errors: [{ messageId: 'noKeyframes' }] },
-  ],
-})
-
-tester.run('no-modifier-on-static-utility', plugin.rules['no-modifier-on-static-utility'], {
-  valid: [
-    `<span className="bg-button-primary text-text-white" />`,
-    // The registry's light fills are tokens, which do take a modifier.
-    `<span className="bg-button-ghost-background data-highlighted:bg-dropdown-item-hover-background" />`,
-    `<span className="text-text-primary/80 bg-accent-500/20" />`,
-    // A longer token that merely starts with a utility's name.
-    `<span className="bg-button-primary-disabled/50" />`,
-  ],
-  invalid: [
-    // The three shapes that shipped and drew nothing.
-    {
-      code: `<div className="bg-button-primary/10 text-button-ghost-foreground" />`,
-      errors: [{ messageId: 'modifier' }],
-    },
-    { code: `<li className="hover:x data-highlighted:bg-button-primary/10" />`, errors: [{ messageId: 'modifier' }] },
-    { code: "const c = highlighted ? 'flex bg-button-primary/10' : 'flex'", errors: [{ messageId: 'modifier' }] },
-    { code: `<b className="bg-button-danger/[0.12]" />`, errors: [{ messageId: 'modifier' }] },
-    { code: 'const c = `x ${y} bg-button-danger/5`', errors: [{ messageId: 'modifier' }] },
-  ],
-})
-
 // The selector restrictions are one core rule with many messages, which
 // RuleTester cannot drive with our options; the Linter can. Assert on the
 // message text so a selector that stops matching is caught by name.
@@ -294,10 +252,8 @@ describe('translated-aria-label scope', () => {
     assert.equal(rule?.[0], 2)
     assert.notEqual(rule?.[1]?.allowPropDefaults, true)
   })
-  it('lets vendored registry files keep their prop defaults', async () => {
-    const rule = await setting('src/components/base/pagination/pagination.tsx')
-    assert.equal(rule?.[0], 2)
-    assert.equal(rule?.[1]?.allowPropDefaults, true)
+  it('skips vendored Yuerchu UI files (linted upstream)', async () => {
+    assert.equal(await setting('src/components/yuerchu-ui/components/button/button.tsx'), undefined)
   })
   it('skips the dev playground, test directories and test files', async () => {
     assert.equal(await setting('src/dev/responsive-lab.tsx'), undefined)
@@ -377,6 +333,8 @@ describe('ui selector restrictions', () => {
   }
 
   const clean = [
+    ['a library import path', `import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'`],
+    ['a dynamic import path', `const m = import('./components/text-field/text-field')`],
     [
       'token colours',
       `<p className="text-status-danger-foreground bg-status-danger-soft text-text-secondary bg-background-primary-default border-border-button-default" />`,

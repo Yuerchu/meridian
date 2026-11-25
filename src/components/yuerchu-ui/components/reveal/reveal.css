@@ -1,0 +1,41 @@
+@layer components {
+  /* 交叉淡化时，离开的那一层（AnimatePresence popLayout）按原位置绝对定位叠在上面 */
+  .ui-reveal {
+    position: relative;
+  }
+
+  /* ---------- sample：示例隐藏着排版占住位置，骨架叠在上面 ---------- */
+  .ui-reveal__sample {
+    position: relative;
+  }
+
+  .ui-reveal__sample-content {
+    visibility: hidden;
+  }
+
+  .ui-reveal__bones {
+    position: absolute;
+    inset: 0;
+  }
+
+  /* 记住的形状：下面没有示例，按记下的高度撑开 */
+  .ui-reveal__bones[data-standalone] {
+    position: relative;
+    inset: auto;
+    block-size: var(--ui-reveal-height);
+  }
+
+  .ui-reveal__bone {
+    position: absolute;
+    display: block;
+    inset-block-start: var(--ui-reveal-y);
+    inset-inline-start: var(--ui-reveal-x);
+    inline-size: var(--ui-reveal-w);
+    block-size: var(--ui-reveal-h);
+  }
+
+  /* 只在高度过渡进行中裁切：静止时子元素的焦点环、阴影不被切掉 */
+  .ui-reveal[data-resizing] {
+    overflow: clip;
+  }
+}
