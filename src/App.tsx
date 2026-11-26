@@ -344,7 +344,9 @@ function App() {
       ? t('settings.title')
       : page === 'board'
         ? t('board.title')
-        : (activeConversation?.title ?? activeProject?.name ?? appName)
+        : page === 'studio'
+          ? t('studio.title')
+          : (activeConversation?.title ?? activeProject?.name ?? appName)
 
   useEffect(() => {
     document.title = headerTitle === appName ? appName : `${headerTitle} — ${appName}`
@@ -376,6 +378,8 @@ function App() {
     onCloseSettings: () => setPage('chat'),
     onOpenBoard: () => setPage('board'),
     onCloseBoard: () => setPage('chat'),
+    onOpenStudio: () => setPage('studio'),
+    onCloseStudio: () => setPage('chat'),
     onSettingsTabChange: setSettingsTab,
     onCreateWithDraft: handleCreateWithDraft,
     onInitialDraftConsumed: () => setPendingTurn(null),

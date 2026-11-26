@@ -13,6 +13,7 @@ import type {
   LogEntryInfoResponse,
   LogLevel,
   McpServerInfoResponse,
+  MediaGenerationInfoResponse,
   MemoryInfoResponse,
   MemorySubjectInfoResponse,
   ModelConfigInfoResponse,
@@ -83,6 +84,7 @@ export interface DemoState {
   providers: ProviderInfoResponse[]
   providerKeys: Set<string>
   modelConfigs: ModelConfigInfoResponse[]
+  mediaGenerations: MediaGenerationInfoResponse[]
   assistants: AssistantInfoResponse[]
   mcpServers: McpServerInfoResponse[]
   mcpConnected: Set<string>
@@ -355,6 +357,43 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     providers: buildProviders(now),
     providerKeys: new Set(['demo-provider-anthropic', 'demo-provider-deepseek']),
     modelConfigs: buildModelConfigs(now),
+    mediaGenerations: [
+      {
+        id: 'demo-media-1',
+        capability_domain: 'image_gen',
+        logical_model_id: null,
+        deployment_id: null,
+        provider_id: null,
+        remote_model_id: 'gpt-image-1',
+        protocol_id: 'openai_images',
+        prompt: 'Demo alpine landscape',
+        params_json: '{}',
+        status: 'succeeded',
+        progress_pct: 100,
+        upstream_job_id: null,
+        assets: [
+          {
+            file_uri: 'file:///demo/media_generations/demo-media-1/00.png',
+            relative_path: 'demo-media-1/00.png',
+            mime_type: 'image/png',
+            bytes_len: 128,
+            width: 1024,
+            height: 1024,
+            duration_seconds: null,
+            revised_prompt: null,
+            produce_id: 'produce-demo-1',
+            is_ai_generated: true,
+            watermark_snapshot: null,
+          },
+        ],
+        error_message: null,
+        conversation_id: null,
+        source: 'studio',
+        created_at: now,
+        updated_at: now,
+        completed_at: now,
+      },
+    ],
     assistants: buildAssistants(now),
     mcpServers: buildMcpServers(now),
     mcpConnected: new Set(['demo-mcp-filesystem', 'demo-mcp-github']),

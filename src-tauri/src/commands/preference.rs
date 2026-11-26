@@ -93,6 +93,12 @@ pub enum PreferenceKey {
     /// the host.
     #[serde(rename = "emoji.suggest.model")]
     EmojiSuggestModel,
+    /// Default logical model ID for `image_gen` (Studio & `generate_image` tool).
+    #[serde(rename = "media.default_image_model_id")]
+    MediaDefaultImageModelId,
+    /// Default logical model ID for `video_gen` (Studio & `generate_video` tool).
+    #[serde(rename = "media.default_video_model_id")]
+    MediaDefaultVideoModelId,
 }
 
 impl PreferenceKey {
@@ -119,6 +125,8 @@ impl PreferenceKey {
             Self::GoogleIncludeThoughtsWhenOff => "google.include_thoughts_when_off",
             Self::EmojiEmbedder => "emoji.embedder",
             Self::EmojiSuggestModel => "emoji.suggest.model",
+            Self::MediaDefaultImageModelId => "media.default_image_model_id",
+            Self::MediaDefaultVideoModelId => "media.default_video_model_id",
         }
     }
 
@@ -306,6 +314,10 @@ pub enum PreferenceUpdateRequest {
     EmojiSuggestModel {
         value: RequiredNullable<PreferenceModelSelectionRequest>,
     },
+    #[serde(rename = "media.default_image_model_id")]
+    MediaDefaultImageModelId { value: RequiredNullable<String> },
+    #[serde(rename = "media.default_video_model_id")]
+    MediaDefaultVideoModelId { value: RequiredNullable<String> },
 }
 
 /// Typed current value. `null` means the row is absent; it is not a second
@@ -355,6 +367,10 @@ pub enum PreferenceInfoResponse {
     EmojiEmbedder(Option<String>),
     #[serde(rename = "emoji.suggest.model")]
     EmojiSuggestModel(Option<PreferenceModelSelectionInfoResponse>),
+    #[serde(rename = "media.default_image_model_id")]
+    MediaDefaultImageModelId(Option<String>),
+    #[serde(rename = "media.default_video_model_id")]
+    MediaDefaultVideoModelId(Option<String>),
 }
 
 fn optional_bool(key: PreferenceKey, raw: Option<String>) -> Result<Option<bool>, String> {
@@ -506,6 +522,8 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
             PreferenceInfoResponse::EmojiEmbedder(raw.map(validate_embedder_path).transpose()?)
         }
         PreferenceKey::EmojiSuggestModel => PreferenceInfoResponse::EmojiSuggestModel(parse_model_selection(key, raw)?),
+        PreferenceKey::MediaDefaultImageModelId => PreferenceInfoResponse::MediaDefaultImageModelId(raw),
+        PreferenceKey::MediaDefaultVideoModelId => PreferenceInfoResponse::MediaDefaultVideoModelId(raw),
     })
 }
 
@@ -582,6 +600,14 @@ impl PreferenceUpdateRequest {
             Self::EmojiSuggestModel { value } => (
                 PreferenceKey::EmojiSuggestModel,
                 encode_model_selection(PreferenceKey::EmojiSuggestModel, value.0)?,
+            ),
+            Self::MediaDefaultImageModelId { value } => (
+                PreferenceKey::MediaDefaultImageModelId,
+                value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            ),
+            Self::MediaDefaultVideoModelId { value } => (
+                PreferenceKey::MediaDefaultVideoModelId,
+                value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
             ),
         })
     }

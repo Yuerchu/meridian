@@ -992,5 +992,7 @@ export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: Pre
     'codex.client_version': null,
     'emoji.embedder': null,
     'emoji.suggest.model': null,
+    'media.default_image_model_id': null,
+    'media.default_video_model_id': null,
   }
 }

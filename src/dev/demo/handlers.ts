@@ -37,6 +37,13 @@ import type {
   McpServerUpdateRequest,
   McpToolEnabledUpdateRequest,
   McpToolListRequest,
+  MediaGenerationCancelRequest,
+  MediaGenerationCreateRequest,
+  MediaGenerationDeleteRequest,
+  MediaGenerationExportRequest,
+  MediaGenerationInfoResponse,
+  MediaGenerationListRequest,
+  MediaGenerationReadRequest,
   MemoryCreateRequest,
   MemoryDeleteRequest,
   MemoryInfoResponse,
@@ -1694,6 +1701,103 @@ const emoji: Record<string, DemoHandler> = {
   },
 }
 
+const media: Record<string, DemoHandler> = {
+  create_media_generation: (args, { state }) => {
+    const req = request<MediaGenerationCreateRequest>(args)
+    const now = Date.now()
+    const id = mintId(state, 'media')
+    const record: MediaGenerationInfoResponse = {
+      id,
+      capability_domain: req.capability_domain,
+      logical_model_id: req.logical_model_id,
+      deployment_id: null,
+      provider_id: null,
+      remote_model_id: req.capability_domain === 'image_gen' ? 'gpt-image-1' : 'veo-3.1-generate-preview',
+      protocol_id: req.capability_domain === 'image_gen' ? 'openai_images' : 'google_veo',
+      prompt: req.prompt,
+      params_json: JSON.stringify({
+        aspect_ratio: req.aspect_ratio,
+        size: req.size,
+        quality: req.quality,
+        count: req.count,
+        resolution: req.resolution,
+        duration_seconds: req.duration_seconds,
+        seed: req.seed,
+        generate_audio: req.generate_audio,
+      }),
+      status: 'succeeded',
+      progress_pct: 100,
+      upstream_job_id: null,
+      assets: [
+        {
+          file_uri: `file:///demo/media_generations/${id}/00.${req.capability_domain === 'image_gen' ? 'png' : 'mp4'}`,
+          relative_path: `${id}/00.${req.capability_domain === 'image_gen' ? 'png' : 'mp4'}`,
+          mime_type: req.capability_domain === 'image_gen' ? 'image/png' : 'video/mp4',
+          bytes_len: 128,
+          width: 1024,
+          height: 1024,
+          duration_seconds: req.capability_domain === 'video_gen' ? (req.duration_seconds ?? 5) : null,
+          revised_prompt: null,
+          produce_id: `produce-${id}`,
+          is_ai_generated: true,
+          watermark_snapshot: null,
+        },
+      ],
+      error_message: null,
+      conversation_id: req.conversation_id,
+      source: 'studio',
+      created_at: now,
+      updated_at: now,
+      completed_at: now,
+    }
+    state.mediaGenerations.unshift(record)
+    return record
+  },
+  list_media_generations: (args, { state }) => {
+    const req = request<MediaGenerationListRequest>(args)
+    const filtered =
+      req.capability_domain === null
+        ? state.mediaGenerations
+        : state.mediaGenerations.filter((item) => item.capability_domain === req.capability_domain)
+    const offset = req.offset === null ? 0 : req.offset
+    return req.limit === null ? filtered.slice(offset) : filtered.slice(offset, offset + req.limit)
+  },
+  get_media_generation: (args, { state }) => {
+    const req = request<MediaGenerationReadRequest>(args)
+    return state.mediaGenerations.find((item) => item.id === req.id) ?? null
+  },
+  cancel_media_generation: (args, { state }) => {
+    const req = request<MediaGenerationCancelRequest>(args)
+    const row = state.mediaGenerations.find((item) => item.id === req.id)
+    if (!row) return false
+    row.status = 'cancelled'
+    row.updated_at = Date.now()
+    return true
+  },
+  delete_media_generation: (args, { state }) => {
+    const req = request<MediaGenerationDeleteRequest>(args)
+    const before = state.mediaGenerations.length
+    state.mediaGenerations = state.mediaGenerations.filter((item) => item.id !== req.id)
+    return state.mediaGenerations.length < before
+  },
+  export_media_generation: (args, { state }) => {
+    const req = request<MediaGenerationExportRequest>(args)
+    const row = state.mediaGenerations.find((item) => item.id === req.id)
+    if (!row) throw `media generation not found: ${req.id}`
+    const asset = row.assets[req.asset_index]
+    if (!asset) throw `asset index ${req.asset_index} out of range`
+    return {
+      generation_id: row.id,
+      asset_index: req.asset_index,
+      mime_type: asset.mime_type,
+      bytes_len: asset.bytes_len,
+      produce_id: asset.produce_id,
+      written_path: req.destination_path,
+      base64_data: req.destination_path ? null : 'AAAA',
+    }
+  },
+}
+
 export const DEMO_HANDLERS: Record<string, DemoHandler> = {
   ...conversations,
   ...chat,
@@ -1703,6 +1807,7 @@ export const DEMO_HANDLERS: Record<string, DemoHandler> = {
   ...providers,
   ...assistants,
   ...mcp,
+  ...media,
   ...memories,
   ...system,
   ...integrations,

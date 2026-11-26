@@ -26,6 +26,7 @@ pub mod journal;
 pub mod local_model;
 pub mod logs;
 pub mod mcp;
+pub mod media_gen;
 pub mod memory;
 pub mod message;
 pub mod model_config;

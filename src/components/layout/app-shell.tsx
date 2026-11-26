@@ -33,6 +33,7 @@ import { titleIfTruncated } from '@/lib/truncation'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
 const BoardPage = lazy(() => import('@/components/board/board-page').then((module) => ({ default: module.BoardPage })))
+const StudioPage = lazy(() => import('@/components/studio').then((module) => ({ default: module.StudioPage })))
 const PlanReviewPage = lazy(() =>
   import('@/components/plan-review/plan-review-page').then((module) => ({ default: module.PlanReviewPage })),
 )
@@ -84,6 +85,8 @@ export function AppShell(props: ShellProps) {
     onCloseSettings,
     onOpenBoard,
     onCloseBoard,
+    onOpenStudio,
+    onCloseStudio,
     onSettingsTabChange,
     onCreateWithDraft,
     onInitialDraftConsumed,
@@ -198,6 +201,7 @@ export function AppShell(props: ShellProps) {
   // The board is a page beside the chat, as settings is: the back gesture
   // leaves it, and reaching it from settings asks about unsaved work first.
   useHistoryLevel(page === 'board', onCloseBoard)
+  useHistoryLevel(page === 'studio', onCloseStudio)
 
   // Mobile drawer: back gesture closes it before leaving the app.
   useHistoryLevel(drawerOpen, () => setDrawerOpen(false))
@@ -209,6 +213,15 @@ export function AppShell(props: ShellProps) {
       clearSettingsTabDirty(settingsTab)
     }
     onOpenBoard()
+  }
+
+  const openStudio = async () => {
+    if (!(await leavePlanReview())) return
+    if (page === 'settings') {
+      if (!(await requestLeaveSettings())) return
+      clearSettingsTabDirty(settingsTab)
+    }
+    onOpenStudio()
   }
 
   const commandShortcut =
@@ -265,6 +278,7 @@ export function AppShell(props: ShellProps) {
               onDelete={onDelete}
               page={page}
               onOpenBoard={() => void openBoard()}
+              onOpenStudio={() => void openStudio()}
               onOpenSettings={() => {
                 void leavePlanReview().then((left) => {
                   if (left) onOpenSettings()
@@ -462,6 +476,19 @@ export function AppShell(props: ShellProps) {
                     {/* Opening a card's conversation is the ordinary navigation:
                     it selects the conversation and leaves the board. */}
                     <BoardPage onOpenConversation={(id) => void selectConversation(id)} />
+                  </Suspense>
+                </div>
+              )}
+              {page === 'studio' && (
+                <div data-slot="studio-layer" className="m-app-layer">
+                  <Suspense fallback={null}>
+                    <StudioPage
+                      onOpenModelsSettings={() => {
+                        void changeSettingsTab('models').then((changed) => {
+                          if (changed) onOpenSettings()
+                        })
+                      }}
+                    />
                   </Suspense>
                 </div>
               )}

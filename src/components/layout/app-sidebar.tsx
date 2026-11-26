@@ -38,6 +38,7 @@ import {
   FolderOpen,
   FolderPlus,
   GitPullRequest,
+  Image,
   LayoutDashboard,
   MoreVertical,
   Plus,
@@ -89,6 +90,7 @@ interface AppSidebarProps {
   onMoveToProject: (id: string, projectId: string | null) => Promise<string | null>
   page: Page
   onOpenBoard: () => void
+  onOpenStudio: () => void
   onOpenSettings: () => void
   onCloseSettings: () => void
   settingsTab: SettingsTab
@@ -654,6 +656,7 @@ export function AppSidebar({
   page,
   onOpenSettings,
   onOpenBoard,
+  onOpenStudio,
   onCloseSettings,
   settingsTab,
   onSettingsTabChange,
@@ -771,6 +774,7 @@ export function AppSidebar({
   const openSearch = dismissing(onOpenSearch)
   const openSettings = dismissing(onOpenSettings)
   const openBoard = dismissing(onOpenBoard)
+  const openStudio = dismissing(onOpenStudio)
   const closeSettings = dismissing(onCloseSettings)
   const changeSettingsTab = dismissing(onSettingsTabChange)
 
@@ -1002,6 +1006,9 @@ export function AppSidebar({
               {t('board.title')}
             </NavItem>
           )}
+          <NavItem icon={<Image />} isCurrent={page === 'studio'} onPress={openStudio}>
+            {t('studio.title')}
+          </NavItem>
         </NavList>
         {showNewHosted && (
           <NewHostedSessionForm

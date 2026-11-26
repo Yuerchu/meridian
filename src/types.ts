@@ -581,6 +581,8 @@ export type PreferenceKey =
   | 'codex.client_version'
   | 'emoji.embedder'
   | 'emoji.suggest.model'
+  | 'media.default_image_model_id'
+  | 'media.default_video_model_id'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
@@ -638,6 +640,8 @@ export interface PreferenceInfoValueByKey {
    * the default assistant.
    */
   'emoji.suggest.model': PreferenceModelSelectionInfoResponse | null
+  'media.default_image_model_id': string | null
+  'media.default_video_model_id': string | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -664,6 +668,8 @@ export interface PreferenceUpdateValueByKey {
   'codex.client_version': string | null
   'emoji.embedder': string | null
   'emoji.suggest.model': PreferenceModelSelectionRequest | null
+  'media.default_image_model_id': string | null
+  'media.default_video_model_id': string | null
 }
 
 export type PreferenceUpdateRequest = {
@@ -3777,4 +3783,105 @@ export interface ImeDictionaryDeleteRequest {
 
 export interface ImeProfileUpdateRequest {
   enabled: boolean
+}
+
+export type MediaGenerationDomain = 'image_gen' | 'video_gen'
+export type MediaGenerationStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+export type MediaGenerationSource = 'studio' | 'agent_tool'
+export type MediaReferenceRole = 'reference' | 'first_frame' | 'last_frame'
+
+export interface MediaReferenceImageRequest {
+  mime_type: string
+  base64_data: string | null
+  existing_generation_id: string | null
+  existing_asset_index: number | null
+  role: MediaReferenceRole
+}
+
+export interface MediaGenerationCreateRequest {
+  capability_domain: MediaGenerationDomain
+  logical_model_id: string | null
+  prompt: string
+  reference_images: MediaReferenceImageRequest[]
+  aspect_ratio: string | null
+  size: string | null
+  quality: string | null
+  count: number | null
+  resolution: string | null
+  duration_seconds: number | null
+  seed: number | null
+  generate_audio: boolean | null
+  conversation_id: string | null
+}
+
+export interface MediaGenerationListRequest {
+  capability_domain: MediaGenerationDomain | null
+  limit: number | null
+  offset: number | null
+}
+
+export interface MediaGenerationReadRequest {
+  id: string
+}
+
+export interface MediaGenerationCancelRequest {
+  id: string
+}
+
+export interface MediaGenerationDeleteRequest {
+  id: string
+}
+
+export interface MediaGenerationExportRequest {
+  id: string
+  asset_index: number
+  destination_path: string | null
+}
+
+export interface MediaAssetInfoResponse {
+  file_uri: string
+  relative_path: string
+  mime_type: string
+  bytes_len: number
+  width: number | null
+  height: number | null
+  duration_seconds: number | null
+  revised_prompt: string | null
+  produce_id: string
+  is_ai_generated: boolean
+  watermark_snapshot: string | null
+}
+
+export interface MediaGenerationInfoResponse {
+  id: string
+  capability_domain: MediaGenerationDomain
+  logical_model_id: string | null
+  deployment_id: string | null
+  provider_id: string | null
+  remote_model_id: string | null
+  protocol_id: string | null
+  prompt: string
+  params_json: string
+  status: MediaGenerationStatus
+  progress_pct: number | null
+  upstream_job_id: string | null
+  assets: MediaAssetInfoResponse[]
+  error_message: string | null
+  conversation_id: string | null
+  source: MediaGenerationSource
+  created_at: number
+  updated_at: number
+  completed_at: number | null
+}
+
+export type MediaGenerationListResponse = MediaGenerationInfoResponse[]
+
+export interface MediaGenerationExportResponse {
+  generation_id: string
+  asset_index: number
+  mime_type: string
+  bytes_len: number
+  produce_id: string
+  written_path: string | null
+  base64_data: string | null
 }

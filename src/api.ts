@@ -147,6 +147,15 @@ import type {
   McpToolEnabledUpdateRequest,
   McpToolListRequest,
   McpToolListResponse,
+  MediaGenerationCancelRequest,
+  MediaGenerationCreateRequest,
+  MediaGenerationDeleteRequest,
+  MediaGenerationExportRequest,
+  MediaGenerationExportResponse,
+  MediaGenerationInfoResponse,
+  MediaGenerationListRequest,
+  MediaGenerationListResponse,
+  MediaGenerationReadRequest,
   MemoryCreateRequest,
   MemoryDeleteRequest,
   MemoryEnumsResponse,
@@ -737,5 +746,18 @@ export const api = {
     deletePreset: (request: ToolPresetDeleteRequest) => invoke<void>('delete_tool_preset', { request }),
     setServiceKey: (request: ServiceKeyUpdateRequest) => invoke<void>('set_service_key', { request }),
     testServiceKey: (request: ServiceKeyTestRequest) => invoke<boolean>('test_service_key', { request }),
+  },
+
+  media: {
+    create: (request: MediaGenerationCreateRequest) =>
+      invoke<MediaGenerationInfoResponse>('create_media_generation', { request }),
+    list: (request: MediaGenerationListRequest) =>
+      invoke<MediaGenerationListResponse>('list_media_generations', { request }),
+    get: (request: MediaGenerationReadRequest) =>
+      invoke<MediaGenerationInfoResponse | null>('get_media_generation', { request }),
+    cancel: (request: MediaGenerationCancelRequest) => invoke<boolean>('cancel_media_generation', { request }),
+    delete: (request: MediaGenerationDeleteRequest) => invoke<boolean>('delete_media_generation', { request }),
+    export: (request: MediaGenerationExportRequest) =>
+      invoke<MediaGenerationExportResponse>('export_media_generation', { request }),
   },
 }

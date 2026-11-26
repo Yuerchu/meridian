@@ -79,6 +79,14 @@ export interface PlanReviewEvent {
   lock_version: number
 }
 
+export interface MediaGenerationUpdatedEvent {
+  generation_id: string
+  capability_domain: 'image_gen' | 'video_gen'
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  progress_pct: number | null
+  error_message: string | null
+}
+
 export interface AppEventPayloadMap {
   'chat-stream': ChatStreamEvent
   'conversation-updated': ConversationUpdatedEvent
@@ -96,6 +104,7 @@ export interface AppEventPayloadMap {
   'system-notice': SystemNoticeEvent
   'plan-review-requested': PlanReviewEvent
   'plan-review-updated': PlanReviewEvent
+  'media-generation-updated': MediaGenerationUpdatedEvent
 }
 
 export type AppEventChannel = keyof AppEventPayloadMap
@@ -417,6 +426,29 @@ export function parsePlanReviewEvent(value: unknown, channel = 'plan-review'): P
   }
 }
 
+export function parseMediaGenerationUpdatedEvent(value: unknown): MediaGenerationUpdatedEvent {
+  const event = exactObject(
+    value,
+    ['generation_id', 'capability_domain', 'status', 'progress_pct', 'error_message'],
+    'media-generation-updated payload',
+  )
+  return {
+    generation_id: stringValue(event.generation_id, 'media-generation-updated payload.generation_id'),
+    capability_domain: enumValue(
+      event.capability_domain,
+      ['image_gen', 'video_gen'] as const,
+      'media-generation-updated payload.capability_domain',
+    ),
+    status: enumValue(
+      event.status,
+      ['queued', 'running', 'succeeded', 'failed', 'cancelled'] as const,
+      'media-generation-updated payload.status',
+    ),
+    progress_pct: nullableInteger(event.progress_pct, 'media-generation-updated payload.progress_pct', 0),
+    error_message: nullableString(event.error_message, 'media-generation-updated payload.error_message'),
+  }
+}
+
 /**
  * Validate every backend-owned event at the transport boundary. The exported
  * `listen` wrapper calls this for local Tauri and remote WebSocket delivery;
@@ -457,6 +489,8 @@ export function parseAppEventPayload(channel: string, value: unknown): unknown {
     case 'plan-review-requested':
     case 'plan-review-updated':
       return parsePlanReviewEvent(value, channel)
+    case 'media-generation-updated':
+      return parseMediaGenerationUpdatedEvent(value)
     default:
       throw new Error(`unknown app event channel: ${channel}`)
   }

@@ -281,6 +281,32 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
     },
   },
   delete_model_deployment: { args: { request: { id: 'demo-model-ds-reasoner' } } },
+  create_media_generation: {
+    args: {
+      request: {
+        capability_domain: 'image_gen',
+        logical_model_id: null,
+        prompt: 'a red fox in snow',
+        reference_images: [],
+        aspect_ratio: '16:9',
+        size: null,
+        quality: null,
+        count: 1,
+        resolution: null,
+        duration_seconds: null,
+        seed: null,
+        generate_audio: null,
+        conversation_id: null,
+      },
+    },
+  },
+  list_media_generations: {
+    args: { request: { capability_domain: null, limit: 20, offset: 0 } },
+  },
+  get_media_generation: { args: { request: { id: 'demo-media-1' } } },
+  cancel_media_generation: { args: { request: { id: 'demo-media-1' } } },
+  export_media_generation: { args: { request: { id: 'demo-media-1', asset_index: 0, destination_path: null } } },
+  delete_media_generation: { args: { request: { id: 'demo-media-1' } } },
   get_usage_report: {
     args: { request: { dimension: 'total', since_ms: null, until_ms: null, origin: null, conversation_id: null } },
   },

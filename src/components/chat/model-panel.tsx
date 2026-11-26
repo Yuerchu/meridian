@@ -424,6 +424,7 @@ export function ModelPanel(props: ModelPanelProps) {
     const enabledProviderIds = new Set(props.providers.filter((p) => p.is_enabled).map((p) => p.id))
     const out: ModelRow[] = []
     for (const item of logicalModels) {
+      if (item.profile.capability_domain !== 'chat') continue
       const enabledDeps = item.deployments.filter((d) => d.is_enabled && enabledProviderIds.has(d.provider_id))
       if (enabledDeps.length === 0) continue
       const matchesQuery =

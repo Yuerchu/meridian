@@ -226,6 +226,25 @@ macro_rules! with_all_commands {
                 request: $crate::commands::model_config::ModelDeploymentDeleteRequest,
             ),
 
+            async commands::media_gen => create_media_generation(
+                request: $crate::commands::media_gen::MediaGenerationCreateRequest,
+            ),
+            async commands::media_gen => list_media_generations(
+                request: $crate::commands::media_gen::MediaGenerationListRequest,
+            ),
+            async commands::media_gen => get_media_generation(
+                request: $crate::commands::media_gen::MediaGenerationReadRequest,
+            ),
+            async commands::media_gen => cancel_media_generation(
+                request: $crate::commands::media_gen::MediaGenerationCancelRequest,
+            ),
+            async commands::media_gen => delete_media_generation(
+                request: $crate::commands::media_gen::MediaGenerationDeleteRequest,
+            ),
+            async commands::media_gen => export_media_generation(
+                request: $crate::commands::media_gen::MediaGenerationExportRequest,
+            ),
+
             async commands::project => list_projects(),
             async commands::project => create_project(
                 request: $crate::commands::project::ProjectCreateRequest,

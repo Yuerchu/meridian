@@ -86,6 +86,7 @@ function renderSidebar(over: Partial<React.ComponentProps<typeof AppSidebar>> = 
     onMoveToProject: vi.fn().mockResolvedValue(null),
     page: 'chat',
     onOpenBoard: vi.fn(),
+    onOpenStudio: vi.fn(),
     onOpenSettings: vi.fn(),
     onCloseSettings: vi.fn(),
     settingsTab: 'provider',
