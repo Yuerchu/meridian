@@ -302,6 +302,115 @@ pub fn run() {
                 tauri::async_runtime::spawn(bootstrap::reconnect_mcp(services));
             }
 
+            {
+                let services = services.clone();
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use meridian_core::tools::sticker_embed::EmbedderState;
+                    use tauri::Emitter;
+
+                    let mut rx = services.sticker_embed.subscribe();
+                    services.sticker_embed.start_from_preference().await;
+
+                    let mut active_notice: Option<(u64, String)> = None;
+                    let mut last_error_run: Option<u64> = None;
+
+                    let sync_snapshot = |snap: &meridian_core::tools::sticker_embed::EmbedderStatusSnapshot,
+                                         active_notice: &mut Option<(u64, String)>,
+                                         last_error_run: &mut Option<u64>| {
+                        let payload = commands::emoji::EmojiEmbedderStatusResponse::from(snap.clone());
+                        if let Err(e) = handle.emit(commands::emoji::EMOJI_EMBEDDER_UPDATED_CHANNEL, &payload) {
+                            tracing::warn!(error = %e, "emoji embedder status not delivered to the window");
+                        }
+
+                        let notices = handle.state::<system_notice::SystemNotices>();
+                        match snap.state {
+                            EmbedderState::Disabled | EmbedderState::Loading => {
+                                if let Some((_, id)) = active_notice.take() {
+                                    notices.remove(&id);
+                                }
+                            }
+                            EmbedderState::Indexing => {
+                                if snap.work_run_id == 0 {
+                                    return;
+                                }
+                                let detail = commands::system_notice::SystemNoticeDetail::EmojiEmbeddingIndex {
+                                    state: commands::system_notice::EmojiEmbeddingIndexNoticeState::Indexing,
+                                    vision: snap.vision,
+                                    indexed: snap.indexed,
+                                    total: snap.total,
+                                    error: None,
+                                };
+                                match active_notice.as_ref() {
+                                    Some((run_id, id)) if *run_id == snap.work_run_id => {
+                                        notices.update(id, detail, false);
+                                    }
+                                    _ => {
+                                        if let Some((_, old_id)) = active_notice.take() {
+                                            notices.remove(&old_id);
+                                        }
+                                        let id = notices.start(detail);
+                                        *active_notice = Some((snap.work_run_id, id));
+                                    }
+                                }
+                            }
+                            EmbedderState::Ready => {
+                                if let Some((run_id, id)) = active_notice.take() {
+                                    if run_id == snap.work_run_id {
+                                        let detail =
+                                            commands::system_notice::SystemNoticeDetail::EmojiEmbeddingIndex {
+                                                state:
+                                                    commands::system_notice::EmojiEmbeddingIndexNoticeState::Succeeded,
+                                                vision: snap.vision,
+                                                indexed: snap.indexed,
+                                                total: snap.total,
+                                                error: None,
+                                            };
+                                        notices.update(&id, detail, true);
+                                    } else {
+                                        notices.remove(&id);
+                                    }
+                                }
+                            }
+                            EmbedderState::Error => {
+                                if snap.work_run_id == 0 || *last_error_run == Some(snap.work_run_id) {
+                                    return;
+                                }
+                                *last_error_run = Some(snap.work_run_id);
+                                let detail = commands::system_notice::SystemNoticeDetail::EmojiEmbeddingIndex {
+                                    state: commands::system_notice::EmojiEmbeddingIndexNoticeState::Failed,
+                                    vision: snap.vision,
+                                    indexed: snap.indexed,
+                                    total: snap.total,
+                                    error: snap.error.clone(),
+                                };
+                                match active_notice.take() {
+                                    Some((run_id, id)) if run_id == snap.work_run_id => {
+                                        notices.update(&id, detail, true);
+                                    }
+                                    Some((_, old_id)) => {
+                                        notices.remove(&old_id);
+                                        notices.start_finished(detail);
+                                    }
+                                    None => {
+                                        notices.start_finished(detail);
+                                    }
+                                }
+                            }
+                        }
+                    };
+
+                    {
+                        let initial = rx.borrow_and_update().clone();
+                        sync_snapshot(&initial, &mut active_notice, &mut last_error_run);
+                    }
+                    while rx.changed().await.is_ok() {
+                        let snap = rx.borrow_and_update().clone();
+                        sync_snapshot(&snap, &mut active_notice, &mut last_error_run);
+                    }
+                });
+            }
+
             // Settle the containers an earlier run left: remove the ones whose
             // conversation no longer exists, stop the ones still counting on
             // their writable layer. This is the path that covers a crash, which

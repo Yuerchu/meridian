@@ -833,6 +833,7 @@ macro_rules! with_all_commands {
             async commands::emoji => get_emoji_file_url(
                 request: $crate::commands::emoji::EmojiFileUrlReadRequest,
             ),
+            local commands::emoji => get_emoji_embedder_status(),
 
             async commands::tool_system => list_tool_categories(),
             async commands::tool_system => list_custom_tools(),

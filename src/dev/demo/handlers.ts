@@ -1688,6 +1688,13 @@ const emoji: Record<string, DemoHandler> = {
     if (!url) throw 'sticker not found'
     return url
   },
+  get_emoji_embedder_status: () => ({
+    state: 'disabled',
+    vision: false,
+    indexed: 0,
+    total: 0,
+    error: null,
+  }),
   update_emoji: (args, { state }) => {
     const req = request<EmojiUpdateRequest>(args)
     const row = state.emojis.find((e) => e.id === req.id)

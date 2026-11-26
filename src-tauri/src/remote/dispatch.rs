@@ -636,10 +636,12 @@ mod tests {
             "import_ime_dictionaries",
             "import_ime_rime_ice",
             "cancel_ime_dictionary_staging",
-            // What this machine did on its own (a dictionary upgrade): shown
-            // in this window's inbox, and not a remote client's business.
+            // What this machine did on its own (a dictionary upgrade or sticker
+            // embedding index): shown in this window's inbox/settings, and not
+            // a remote client's business.
             "list_system_notices",
             "delete_system_notice",
+            "get_emoji_embedder_status",
             "set_ime_dictionary_enabled",
             "delete_ime_dictionary",
             "get_ime_learning",

@@ -19,6 +19,7 @@ vi.mock('@/api', () => ({
       createPack: vi.fn(),
       import: vi.fn(),
       suggestSemantics: vi.fn(),
+      getEmbedderStatus: vi.fn(),
     },
     preferences: {
       get: vi.fn(),
@@ -83,6 +84,13 @@ describe('EmojiSettings', () => {
     resetStickerUrls()
     mockApi.emojis.listPacks.mockResolvedValue([PACK])
     mockApi.emojis.getFileUrl.mockResolvedValue('blob:sticker')
+    mockApi.emojis.getEmbedderStatus.mockResolvedValue({
+      state: 'disabled',
+      vision: false,
+      indexed: 0,
+      total: 0,
+      error: null,
+    })
     mockApi.emojis.update.mockImplementation(async ({ id, action }) =>
       makeEmoji({
         id,
