@@ -8,13 +8,17 @@ import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from '../primitives'
-import type { LogicalModelInfoResponse, ModelDeploymentInfoResponse, RoutingPolicy } from '@/types'
+import type { CapabilityDomain, LogicalModelInfoResponse, ModelDeploymentInfoResponse, RoutingPolicy } from '@/types'
 
 const ROUTING_POLICIES: RoutingPolicy[] = ['sticky_manual', 'auto_failover_stateless', 'user_opt_in_failover']
+const DOMAIN_FILTERS = ['all', 'chat', 'image_gen', 'video_gen'] as const
+type DomainFilter = (typeof DOMAIN_FILTERS)[number]
+const CREATABLE_DOMAINS: CapabilityDomain[] = ['chat', 'image_gen', 'video_gen']
 
 function formatCompactWindow(tokens: number, locale: string): string {
   return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(tokens)
@@ -116,11 +120,15 @@ export function ModelsSettings() {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { confirm, confirmDialog } = useConfirm()
   const [models, setModels] = useState<LogicalModelInfoResponse[]>([])
+  const [domainFilter, setDomainFilter] = useState<DomainFilter>('all')
+  const [defaultImageModelId, setDefaultImageModelId] = useState<string | null>(null)
+  const [defaultVideoModelId, setDefaultVideoModelId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
   const [newCanonicalId, setNewCanonicalId] = useState('')
+  const [newDomain, setNewDomain] = useState<CapabilityDomain>('chat')
   const [newFamily, setNewFamily] = useState('')
   const [newContextWindow, setNewContextWindow] = useState('128000')
   const [newPolicy, setNewPolicy] = useState<RoutingPolicy>('sticky_manual')
@@ -129,8 +137,14 @@ export function ModelsSettings() {
   const refresh = useCallback(async () => {
     try {
       setError(null)
-      const list = await api.logicalModels.list()
+      const [list, imgPref, vidPref] = await Promise.all([
+        api.logicalModels.list(),
+        api.preferences?.get?.({ key: 'media.default_image_model_id' }).catch(() => null) ?? Promise.resolve(null),
+        api.preferences?.get?.({ key: 'media.default_video_model_id' }).catch(() => null) ?? Promise.resolve(null),
+      ])
       setModels(list)
+      setDefaultImageModelId(imgPref?.key === 'media.default_image_model_id' ? imgPref.value : null)
+      setDefaultVideoModelId(vidPref?.key === 'media.default_video_model_id' ? vidPref.value : null)
     } catch (err) {
       setError(String(err))
     }
@@ -144,6 +158,29 @@ export function ModelsSettings() {
     value: policy,
     label: t(`settings.models.routingPolicy.${policy}`),
   }))
+
+  const domainOptions = CREATABLE_DOMAINS.map((domain) => ({
+    value: domain,
+    label: t(`settings.models.domain.${domain}`),
+  }))
+
+  const handleSetDefaultMediaModel = useCallback(
+    async (domain: 'image_gen' | 'video_gen', profileId: string | null) => {
+      try {
+        setError(null)
+        if (domain === 'image_gen') {
+          await api.preferences.set({ key: 'media.default_image_model_id', value: profileId })
+          setDefaultImageModelId(profileId)
+        } else {
+          await api.preferences.set({ key: 'media.default_video_model_id', value: profileId })
+          setDefaultVideoModelId(profileId)
+        }
+      } catch (err) {
+        setError(String(err))
+      }
+    },
+    [],
+  )
 
   const handlePolicyChange = useCallback(
     async (profileId: string, next: string) => {
@@ -235,7 +272,7 @@ export function ModelsSettings() {
 
   const handleCreate = useCallback(async () => {
     const trimmedName = newName.trim()
-    const windowNum = Number.parseInt(newContextWindow, 10)
+    const windowNum = newDomain === 'chat' ? Number.parseInt(newContextWindow, 10) : 128000
     if (!trimmedName || Number.isNaN(windowNum) || windowNum <= 0) return
     setSubmitting(true)
     try {
@@ -243,7 +280,7 @@ export function ModelsSettings() {
       await api.logicalModels.create({
         name: trimmedName,
         canonical_id: newCanonicalId.trim() || null,
-        capability_domain: 'chat',
+        capability_domain: newDomain,
         family: newFamily.trim() || null,
         icon: null,
         routing_policy: newPolicy,
@@ -260,6 +297,7 @@ export function ModelsSettings() {
       setCreating(false)
       setNewName('')
       setNewCanonicalId('')
+      setNewDomain('chat')
       setNewFamily('')
       setNewContextWindow('128000')
       setNewPolicy('sticky_manual')
@@ -269,7 +307,10 @@ export function ModelsSettings() {
     } finally {
       setSubmitting(false)
     }
-  }, [newName, newCanonicalId, newFamily, newContextWindow, newPolicy, refresh])
+  }, [newName, newCanonicalId, newDomain, newFamily, newContextWindow, newPolicy, refresh])
+
+  const filteredModels =
+    domainFilter === 'all' ? models : models.filter(({ profile }) => profile.capability_domain === domainFilter)
 
   if (loading) return <SettingsSkeleton />
 
@@ -292,7 +333,19 @@ export function ModelsSettings() {
       )}
 
       <div data-slot="models-settings-list" className="m-models-settings">
-        {models.length === 0 ? (
+        <SegmentedControl
+          aria-label={t('settings.models.domainFilter')}
+          selectedKey={domainFilter}
+          onSelectionChange={(key) => setDomainFilter(key as DomainFilter)}
+        >
+          {DOMAIN_FILTERS.map((key) => (
+            <Segment key={key} id={key}>
+              {t(`settings.models.domain.${key}`)}
+            </Segment>
+          ))}
+        </SegmentedControl>
+
+        {filteredModels.length === 0 ? (
           <EmptyState
             heading={t('settings.models.empty')}
             headingLevel={3}
@@ -301,62 +354,88 @@ export function ModelsSettings() {
           />
         ) : (
           <div className="m-models-settings__list">
-            {models.map(({ profile, deployments }) => (
-              <section key={profile.id} data-slot="logical-model-card" className="m-models-settings__card">
-                <div className="m-models-settings__card-header">
-                  <div className="m-models-settings__title-group">
-                    <div className="m-models-settings__title-row">
-                      <ModelIcon model={profile.canonical_id ?? profile.name} size={18} />
-                      <span className="m-models-settings__name">{profile.name}</span>
-                      {profile.canonical_id && (
-                        <span className="m-models-settings__canonical">{profile.canonical_id}</span>
-                      )}
+            {filteredModels.map(({ profile, deployments }) => {
+              const isDefaultMedia =
+                (profile.capability_domain === 'image_gen' && defaultImageModelId === profile.id) ||
+                (profile.capability_domain === 'video_gen' && defaultVideoModelId === profile.id)
+              return (
+                <section key={profile.id} data-slot="logical-model-card" className="m-models-settings__card">
+                  <div className="m-models-settings__card-header">
+                    <div className="m-models-settings__title-group">
+                      <div className="m-models-settings__title-row">
+                        <ModelIcon model={profile.canonical_id ?? profile.name} size={18} />
+                        <span className="m-models-settings__name">{profile.name}</span>
+                        <span className="m-models-settings__canonical">
+                          {t(`settings.models.domain.${profile.capability_domain}`)}
+                        </span>
+                        {profile.canonical_id && (
+                          <span className="m-models-settings__canonical">{profile.canonical_id}</span>
+                        )}
+                      </div>
+                      <span className="m-models-settings__meta">
+                        {profile.capability_domain === 'chat'
+                          ? `${formatCompactWindow(profile.context_window, locale)} · `
+                          : ''}
+                        {t('settings.models.deploymentsCount', { count: deployments.length })}
+                      </span>
                     </div>
-                    <span className="m-models-settings__meta">
-                      {formatCompactWindow(profile.context_window, locale)} ·{' '}
-                      {t('settings.models.deploymentsCount', { count: deployments.length })}
-                    </span>
-                  </div>
-                  <div className="m-models-settings__controls">
-                    <SettingsSelect
-                      ariaLabel={`${profile.name} ${t('settings.models.routingPolicy')}`}
-                      value={profile.routing_policy}
-                      options={policyOptions}
-                      onChange={(next) => void handlePolicyChange(profile.id, next)}
-                    />
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      icon={<Bin />}
-                      aria-label={`${t('common.delete')} ${profile.name}`}
-                      onPress={() => void handleDeleteModel(profile.id)}
-                    >
-                      {t('common.delete')}
-                    </Button>
-                  </div>
-                </div>
-
-                {deployments.length === 0 ? (
-                  <p data-slot="logical-model-no-deployments" className="m-models-settings__empty-channels">
-                    {t('settings.models.noDeployments')}
-                  </p>
-                ) : (
-                  <div className="m-models-settings__deployments">
-                    {deployments.map((dep) => (
-                      <DeploymentRow
-                        key={dep.id}
-                        deployment={dep}
-                        canSplit={deployments.length > 1}
-                        onToggleEnabled={(d, enabled) => void handleToggleDeployment(d, enabled)}
-                        onChangePriority={(d, priority) => void handleChangePriority(d, priority)}
-                        onSplit={(d) => void handleSplitDeployment(d)}
-                        onUnlink={(d) => void handleUnlinkDeployment(d)}
+                    <div className="m-models-settings__controls">
+                      {(profile.capability_domain === 'image_gen' || profile.capability_domain === 'video_gen') && (
+                        <Button
+                          size="sm"
+                          variant={isDefaultMedia ? 'primary' : 'secondary'}
+                          onPress={() =>
+                            void handleSetDefaultMediaModel(
+                              profile.capability_domain as 'image_gen' | 'video_gen',
+                              isDefaultMedia ? null : profile.id,
+                            )
+                          }
+                        >
+                          {isDefaultMedia
+                            ? t('settings.models.defaultMediaActive')
+                            : t('settings.models.setDefaultMedia')}
+                        </Button>
+                      )}
+                      <SettingsSelect
+                        ariaLabel={`${profile.name} ${t('settings.models.routingPolicy')}`}
+                        value={profile.routing_policy}
+                        options={policyOptions}
+                        onChange={(next) => void handlePolicyChange(profile.id, next)}
                       />
-                    ))}
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        icon={<Bin />}
+                        aria-label={`${t('common.delete')} ${profile.name}`}
+                        onPress={() => void handleDeleteModel(profile.id)}
+                      >
+                        {t('common.delete')}
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </section>
-            ))}
+
+                  {deployments.length === 0 ? (
+                    <p data-slot="logical-model-no-deployments" className="m-models-settings__empty-channels">
+                      {t('settings.models.noDeployments')}
+                    </p>
+                  ) : (
+                    <div className="m-models-settings__deployments">
+                      {deployments.map((dep) => (
+                        <DeploymentRow
+                          key={dep.id}
+                          deployment={dep}
+                          canSplit={deployments.length > 1}
+                          onToggleEnabled={(d, enabled) => void handleToggleDeployment(d, enabled)}
+                          onChangePriority={(d, priority) => void handleChangePriority(d, priority)}
+                          onSplit={(d) => void handleSplitDeployment(d)}
+                          onUnlink={(d) => void handleUnlinkDeployment(d)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )
+            })}
           </div>
         )}
       </div>
@@ -380,6 +459,20 @@ export function ModelsSettings() {
       >
         <div className="m-models-settings__form">
           <TextField label={t('settings.models.name')} name="logicalModelName" value={newName} onChange={setNewName} />
+          <SettingsSelect
+            ariaLabel={t('settings.models.domainFilter')}
+            value={newDomain}
+            options={domainOptions}
+            onChange={(next) => {
+              const domain = next as CapabilityDomain
+              setNewDomain(domain)
+              if (domain === 'image_gen' || domain === 'video_gen') {
+                setNewPolicy('auto_failover_stateless')
+              } else {
+                setNewPolicy('sticky_manual')
+              }
+            }}
+          />
           <TextField
             label={t('settings.models.canonicalId')}
             name="logicalModelCanonicalId"
@@ -393,12 +486,14 @@ export function ModelsSettings() {
             value={newFamily}
             onChange={setNewFamily}
           />
-          <TextField
-            label={t('settings.models.contextWindow')}
-            name="logicalModelContextWindow"
-            value={newContextWindow}
-            onChange={setNewContextWindow}
-          />
+          {newDomain === 'chat' && (
+            <TextField
+              label={t('settings.models.contextWindow')}
+              name="logicalModelContextWindow"
+              value={newContextWindow}
+              onChange={setNewContextWindow}
+            />
+          )}
           <SettingsSelect
             ariaLabel={t('settings.models.routingPolicy')}
             value={newPolicy}

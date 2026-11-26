@@ -2451,6 +2451,67 @@ const RAW_TABLES: RawTable[] = [
     ],
   },
   {
+    name: 'media_generations',
+    group: 'provider',
+    title: '图片与视频生成任务',
+    mig: 78,
+    tags: ['多模态生成', '无状态故障转移', 'D-001 干净原件'],
+    show: ['id', 'capability_domain', 'logical_model_id', 'status', 'progress_pct', 'source', 'created_at'],
+    note: '图片与视频生成任务的持久化台账，同时服务独立创作台（<code>studio</code>）与内置 Agent 工具（<code>agent_tool</code>）。干净原件落在 <code>&lt;app_data&gt;/media_generations/&lt;id&gt;/</code>，与用户上传目录严格隔离；导出统一经 core 的 <code>MediaCompliancePort</code>。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', '任务 UUID'],
+      ['capability_domain', 'TEXT', ['NN', 'IDX'], '—', '<code>image_gen</code> | <code>video_gen</code>'],
+      ['logical_model_id', 'TEXT', ['FK', 'NULL'], 'NULL', '→ <code>model_profiles(id)</code> SET NULL'],
+      ['deployment_id', 'TEXT', ['FK', 'NULL'], 'NULL', '→ <code>model_configs(id)</code> SET NULL，实际命中的部署'],
+      ['provider_id', 'TEXT', ['FK', 'NULL'], 'NULL', '→ <code>providers(id)</code> SET NULL'],
+      ['remote_model_id', 'TEXT', ['NULL'], 'NULL', '上游实际执行的远端模型 ID'],
+      [
+        'protocol_id',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '实际使用的官方协议 ID（如 <code>openai_images</code>、<code>google_veo</code>）',
+      ],
+      ['prompt', 'TEXT', ['NN'], '—', '生成提示词'],
+      ['params_json', 'TEXT', ['NN'], '—', '宽高比、分辨率、时长、种子等参数快照 JSON'],
+      [
+        'status',
+        'TEXT',
+        ['NN'],
+        '—',
+        '<code>queued</code> | <code>running</code> | <code>succeeded</code> | <code>failed</code> | <code>cancelled</code>',
+      ],
+      ['progress_pct', 'INTEGER', ['NULL'], 'NULL', '0-100 进度百分比'],
+      ['upstream_job_id', 'TEXT', ['NULL'], 'NULL', '异步视频任务的上游操作/任务 ID'],
+      [
+        'result_files_json',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '生成产物 JSON 数组（含 <code>produce_id</code>、<code>is_ai_generated</code>、<code>watermark_snapshot</code>）',
+      ],
+      ['error_message', 'TEXT', ['NULL'], 'NULL', '失败诊断文案'],
+      [
+        'conversation_id',
+        'TEXT',
+        ['FK', 'NULL', 'IDX'],
+        'NULL',
+        '→ <code>conversations(id)</code> SET NULL（工具调用来源时绑定）',
+      ],
+      ['source', 'TEXT', ['NN'], '—', '<code>studio</code> | <code>agent_tool</code>'],
+      ['created_at', 'BIGINT', ['NN', 'IDX'], '—', '创建时间戳（毫秒）'],
+      ['updated_at', 'BIGINT', ['NN'], '—', '最后更新时间戳（毫秒）'],
+      ['completed_at', 'BIGINT', ['NULL'], 'NULL', '终态完成时间戳（毫秒）'],
+    ],
+    rels: [
+      '→ <code>model_profiles</code>、<code>model_configs</code>、<code>providers</code>、<code>conversations</code>（全部 SET NULL，删除上游实体不丢历史记录）。',
+    ],
+    rules: [
+      '仅允许 <code>SwitchImpact::Stateless</code> 下的可重试错误（429/5xx/超时）自动切换备用部署；内容安全拦截与参数错误不静默换通道。',
+      '上游默认下发关闭水印参数，原件只保存在独立托管目录，导出统一经 <code>MediaCompliancePort</code>。',
+    ],
+  },
+  {
     name: 'preferences',
     group: 'sys',
     title: '偏好 / 服务配置',
@@ -2585,6 +2646,24 @@ export const EDGES: SchemaEdge[] = [
   { from: 'skill_bindings_project', col: 'project_id', to: 'projects', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'skill_bindings_assistant', col: 'dir_name', to: 'skills', toCol: 'dir_name', kind: 'fk', act: 'CASCADE' },
   { from: 'skill_bindings_assistant', col: 'assistant_id', to: 'assistants', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  {
+    from: 'media_generations',
+    col: 'logical_model_id',
+    to: 'model_profiles',
+    toCol: 'id',
+    kind: 'fk',
+    act: 'SET NULL',
+  },
+  {
+    from: 'media_generations',
+    col: 'deployment_id',
+    to: 'model_configs',
+    toCol: 'id',
+    kind: 'fk',
+    act: 'SET NULL',
+  },
+  { from: 'media_generations', col: 'provider_id', to: 'providers', toCol: 'id', kind: 'fk', act: 'SET NULL' },
+  { from: 'media_generations', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'SET NULL' },
 
   // 逻辑引用（故意不建外键）
   {
@@ -2673,7 +2752,7 @@ export const EDGES: SchemaEdge[] = [
 const LAYOUT: { x: number; tables: string[] }[] = [
   {
     x: 0,
-    tables: ['providers', 'model_profiles', 'model_configs', 'cached_models', 'mcp_servers'],
+    tables: ['providers', 'model_profiles', 'model_configs', 'cached_models', 'media_generations', 'mcp_servers'],
   },
   { x: 340, tables: ['assistants', 'tool_presets', 'tool_categories', 'custom_tools', 'projects', 'skills'] },
   {

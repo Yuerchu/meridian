@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：297
+- 事务根（非测试）：303
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -19,6 +19,7 @@
 - 1 个：custom_tool
 - 1 个：journal
 - 1 个：mcp_server
+- 1 个：media_generation
 - 1 个：notification
 - 1 个：redaction_rule
 - 1 个：skill
@@ -124,6 +125,12 @@
 | `src-tauri/crates/core/src/journal/capture.rs` › `command_bracket` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `record` | sea-write | journal |
 | `src-tauri/crates/core/src/journal/capture.rs` › `settle_command_bracket` | sea-write | journal |
+| `src-tauri/crates/core/src/media/runner.rs` › `cancel` | sea-write | media_generation |
+| `src-tauri/crates/core/src/media/runner.rs` › `create_queued_row` | sea-write | media_generation |
+| `src-tauri/crates/core/src/media/runner.rs` › `delete` | sea-write | media_generation |
+| `src-tauri/crates/core/src/media/runner.rs` › `resolve_candidates` | sea-read | model_profile, provider |
+| `src-tauri/crates/core/src/media/runner.rs` › `run_video_attempt` | sea-write | media_generation |
+| `src-tauri/crates/core/src/media/runner.rs` › `update_progress` | sea-write | media_generation |
 | `src-tauri/crates/core/src/notify/mod.rs` › `check_usage` | sea-read | model_config, usage |
 | `src-tauri/crates/core/src/notify/mod.rs` › `clear` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
