@@ -354,6 +354,10 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   },
   ToolSearch: unrecorded(['query', 'max_results'], { result: 'text', ident: text('query'), fold: 'context' }),
 
+  // ---- media generation ----
+  generate_image: plain('native', { ident: text('prompt') }),
+  generate_video: plain('native', { ident: text('prompt') }),
+
   // ---- plans ----
   enter_plan: {
     side: 'native',

@@ -221,7 +221,7 @@ export function StudioPage({ onOpenModelsSettings }: StudioPageProps) {
       {
         id: `reuse-${item.id}-${assetIndex}-${Date.now()}`,
         label: `${item.remote_model_id ?? 'original'} #${assetIndex + 1}`,
-        previewUrl: assetSrc(asset.file_uri),
+        previewUrl: assetSrc(asset.file_uri) ?? null,
         mimeType: asset.mime_type,
         base64Data: null,
         existingGenerationId: item.id,

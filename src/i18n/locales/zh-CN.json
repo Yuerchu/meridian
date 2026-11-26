@@ -222,6 +222,8 @@
   "chat.tool.name.delete_memory": "删除记忆",
   "chat.tool.name.ask_user": "提问",
   "chat.tool.name.web_search": "网络搜索",
+  "chat.tool.name.generate_image": "生成图片",
+  "chat.tool.name.generate_video": "生成视频",
   "chat.tool.name.google_search": "Google 搜索",
   "chat.tool.name.url_context": "网页获取",
   "chat.tool.name.update_todos": "任务清单",
