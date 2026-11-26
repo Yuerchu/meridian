@@ -58,7 +58,7 @@ const LOCAL_COMMANDS = new Set([
 ])
 
 /** Channels emitted by this device rather than by whatever it is connected to. */
-const LOCAL_CHANNELS = new Set(['insets-changed', 'launch-request', 'system-notice'])
+const LOCAL_CHANNELS = new Set(['insets-changed', 'launch-request', 'system-notice', 'emoji-embedder-updated'])
 
 /** Every channel the current desktop protocol can put on the remote socket. */
 const REMOTE_CHANNELS = new Set([

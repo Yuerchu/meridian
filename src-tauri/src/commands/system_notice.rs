@@ -31,8 +31,8 @@ pub struct SystemNoticeInfoResponse {
 
 pub type SystemNoticeListResponse = Vec<SystemNoticeInfoResponse>;
 
-/// What happened. One kind today; each kind names its own facts so the page
-/// can word them, rather than the backend handing over a sentence.
+/// What happened. Each kind names its own facts so the page can word them,
+/// rather than the backend handing over a sentence.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SystemNoticeDetail {
@@ -47,6 +47,23 @@ pub enum SystemNoticeDetail {
         upgraded: u32,
         failures: Vec<ImeDictionaryUpgradeFailureInfoResponse>,
     },
+    /// Background on-device embedding index for confirmed stickers
+    /// (`StickerEmbedIndex`).
+    EmojiEmbeddingIndex {
+        state: EmojiEmbeddingIndexNoticeState,
+        vision: bool,
+        indexed: u64,
+        total: u64,
+        error: Option<String>,
+    },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EmojiEmbeddingIndexNoticeState {
+    Indexing,
+    Succeeded,
+    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -70,8 +87,6 @@ pub struct ImeDictionaryUpgradeFailureInfoResponse {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SystemNoticeEvent {
     /// A notice appeared or changed; replaces any with the same id.
-    // IME upgrades are currently the only producer, on Windows and Android.
-    #[cfg_attr(not(any(windows, target_os = "android")), allow(dead_code))]
     Upsert {
         notice: SystemNoticeInfoResponse,
     },

@@ -13,6 +13,36 @@ use meridian_core::emoji;
 use meridian_core::util::now_ms;
 use meridian_core::{agent, provider};
 
+/// Device-local channel emitted to the desktop window whenever the background
+/// sticker embedding index changes state or progress.
+pub const EMOJI_EMBEDDER_UPDATED_CHANNEL: &str = "emoji-embedder-updated";
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct EmojiEmbedderStatusResponse {
+    pub state: meridian_core::tools::sticker_embed::EmbedderState,
+    pub vision: bool,
+    pub indexed: u64,
+    pub total: u64,
+    pub error: Option<String>,
+}
+
+impl From<meridian_core::tools::sticker_embed::EmbedderStatusSnapshot> for EmojiEmbedderStatusResponse {
+    fn from(s: meridian_core::tools::sticker_embed::EmbedderStatusSnapshot) -> Self {
+        Self {
+            state: s.state,
+            vision: s.vision,
+            indexed: s.indexed,
+            total: s.total,
+            error: s.error,
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn get_emoji_embedder_status(app: tauri::AppHandle) -> Result<EmojiEmbedderStatusResponse, String> {
+    Ok(app.services().sticker_embed.status().into())
+}
+
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct EmojiPackListRequest {
@@ -157,6 +187,7 @@ pub async fn delete_emoji_pack(app: tauri::AppHandle, request: EmojiPackDeleteRe
         return Err(refused);
     }
     emoji::delete_pack_dir(&services.paths.data_dir, &id);
+    services.sticker_embed.notify_deleted();
     Ok(())
 }
 
@@ -224,6 +255,8 @@ pub async fn import_emojis(app: tauri::AppHandle, request: EmojiImportRequest) -
             .map_err(|e| e.to_string())?;
         imported.push(created.into());
     }
+    let imported_ids: Vec<String> = imported.iter().map(|e: &EmojiInfoResponse| e.id.clone()).collect();
+    services.sticker_embed.enqueue_emojis(imported_ids);
     Ok(imported)
 }
 
@@ -243,19 +276,19 @@ pub async fn delete_emoji(app: tauri::AppHandle, request: EmojiDeleteRequest) ->
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("sticker `{id}` not found"))?;
     emoji::delete_file(&services.paths.data_dir, &gone.pack_id, &gone.file_name);
+    services.sticker_embed.notify_deleted();
     Ok(())
 }
 
 #[tauri::command]
 pub async fn update_emoji(app: tauri::AppHandle, request: EmojiUpdateRequest) -> Result<EmojiInfoResponse, String> {
     let services = app.services();
-    match request.action {
+    let updated = match request.action {
         EmojiUpdateAction::Rename { name } => services
             .db
             .write(async |tx| emoji_ops::rename(tx, &request.id, &name).await)
             .await
-            .map(Into::into)
-            .map_err(|e| e.to_string()),
+            .map_err(|e| e.to_string())?,
         EmojiUpdateAction::ConfirmSemantics { name, tags } => {
             let name = name.trim();
             if name.is_empty() {
@@ -266,10 +299,13 @@ pub async fn update_emoji(app: tauri::AppHandle, request: EmojiUpdateRequest) ->
                 .db
                 .write(async |tx| emoji_ops::confirm_semantics(tx, &request.id, name, tags).await)
                 .await
-                .map(Into::into)
-                .map_err(|e| e.to_string())
+                .map_err(|e| e.to_string())?
         }
+    };
+    if updated.semantic_status == EmojiSemanticStatus::Confirmed && updated.file_format != "lottie" {
+        services.sticker_embed.enqueue_emojis(vec![updated.id.clone()]);
     }
+    Ok(updated.into())
 }
 
 /// The model that looks at a sticker for `suggest_sticker_semantics`.

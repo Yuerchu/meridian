@@ -375,16 +375,20 @@ another file here — the index in `CLAUDE.md` says which.
   prefix cache.
 
   **An optional on-device embedder sits on top of that floor.** `emoji.embedder`
-  is an absolute `.litertlm` path (EmbeddingGemma 2). Exact name still wins;
-  otherwise cosine among items that have a vector can pick a mood the tags never
-  named. A 740M bundle turns the vision backend on: each confirmed sticker's
-  file is one document (GIF/APNG as a PNG contact sheet, stills as the file
-  bytes) plus its name/tags in the same `compute_embedding` call, so inventory
-  without a useful name still ranks. A missing file, a failed run, or an empty
-  preference leaves the lexical pick unchanged. The engine and per-sticker
-  vectors live in a process `OnceLock`, keyed by id plus name/tags/image
-  bytes. The preference is `is_server_owned` because it is a path on this
-  machine.
+  is an absolute `.litertlm` path (EmbeddingGemma 2). Exact name still wins and
+  short-circuits before touching the embedder; otherwise cosine among items
+  that have a persisted vector can pick a mood the tags never named. A 740M
+  bundle turns the vision backend on: each confirmed sticker's file is one
+  document (GIF/APNG as a PNG contact sheet, stills as the file bytes) plus its
+  name/tags in the same `compute_embedding` call, so inventory without a useful
+  name still ranks. Indexing and query matching are strictly separated by
+  `StickerEmbedIndex` on `Services`: vectors persist in SQLite
+  (`emoji_embeddings`, keyed by `model_fingerprint` and raw-file `source_hash`)
+  and are reconciled asynchronously on startup and on sticker/preference
+  changes on a dedicated single-owner worker thread with bounded CPU threads
+  and inter-sticker pacing, while `send_sticker` stays read-only and bounds its
+  single query embedding with a hard timeout, failing open to lexical ranking.
+  The preference is `is_server_owned` because it is a path on this machine.
 
 - **Sticker "generate suggestion" has its own model.** `emoji.suggest.model` is
   a `provider:model` pair. Empty follows the default assistant, which is what

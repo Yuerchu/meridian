@@ -3642,14 +3642,35 @@ export interface SystemNoticeInfoResponse {
 
 export type SystemNoticeListResponse = SystemNoticeInfoResponse[]
 
-export type SystemNoticeDetail = {
-  kind: 'ime_dictionary_upgrade'
-  state: ImeDictionaryUpgradeState
-  /** The dictionaries being upgraded, in catalog order. */
-  dictionaries: string[]
-  upgraded: number
-  failures: ImeDictionaryUpgradeFailureInfoResponse[]
+export type EmojiEmbedderState = 'disabled' | 'loading' | 'indexing' | 'ready' | 'error'
+
+export interface EmojiEmbedderStatusResponse {
+  state: EmojiEmbedderState
+  vision: boolean
+  indexed: number
+  total: number
+  error: string | null
 }
+
+export type SystemNoticeDetail =
+  | {
+      kind: 'ime_dictionary_upgrade'
+      state: ImeDictionaryUpgradeState
+      /** The dictionaries being upgraded, in catalog order. */
+      dictionaries: string[]
+      upgraded: number
+      failures: ImeDictionaryUpgradeFailureInfoResponse[]
+    }
+  | {
+      kind: 'emoji_embedding_index'
+      state: EmojiEmbeddingIndexNoticeState
+      vision: boolean
+      indexed: number
+      total: number
+      error: string | null
+    }
+
+export type EmojiEmbeddingIndexNoticeState = 'indexing' | 'succeeded' | 'failed'
 
 export type ImeDictionaryUpgradeState = 'running' | 'succeeded' | 'failed'
 

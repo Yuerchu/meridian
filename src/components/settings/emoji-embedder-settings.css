@@ -1,4 +1,12 @@
 @layer components {
+  .m-emoji-embedder__control {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .m-emoji-embedder__value {
     display: flex;
     align-items: center;
@@ -15,5 +23,12 @@
     font: var(--text-small);
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .m-emoji-embedder__status {
+    margin: 0;
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
   }
 }

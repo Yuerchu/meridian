@@ -74,6 +74,7 @@ import type {
   CustomToolListResponse,
   CustomToolUpdateRequest,
   EmojiDeleteRequest,
+  EmojiEmbedderStatusResponse,
   EmojiFileUrlReadRequest,
   EmojiImportRequest,
   EmojiInfoResponse,
@@ -728,6 +729,7 @@ export const api = {
     setPackAssignment: (request: EmojiPackAssignmentUpdateRequest) =>
       invoke<void>('set_emoji_pack_assignment', { request }),
     getFileUrl: (request: EmojiFileUrlReadRequest) => invoke<string>('get_emoji_file_url', { request }),
+    getEmbedderStatus: () => invoke<EmojiEmbedderStatusResponse>('get_emoji_embedder_status'),
   },
 
   tools: {

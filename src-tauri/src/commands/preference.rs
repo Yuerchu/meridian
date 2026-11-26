@@ -629,6 +629,7 @@ pub async fn get_preference(
 pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequest) -> Result<(), String> {
     let (key, value) = request.into_storage()?;
     let services = app.services();
+    let embedder_reload = (key == PreferenceKey::EmojiEmbedder).then(|| value.clone());
     services
         .db
         .write(async |tx| match value {
@@ -636,7 +637,11 @@ pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequ
             None => db::sea::ops::preference::delete(tx, key.as_str()).await,
         })
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if let Some(next_path) = embedder_reload {
+        services.sticker_embed.reload(next_path);
+    }
+    Ok(())
 }
 
 #[cfg(test)]

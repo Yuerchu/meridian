@@ -365,4 +365,50 @@ describe('system notices', () => {
     expect(mocks.dismissNotice).toHaveBeenCalledWith({ id: 'n1' })
     await waitFor(() => expect(useSystemNoticeStore.getState().notices).toEqual([]))
   })
+
+  it('shows sticker embedding progress and opens emoji settings on failure', async () => {
+    const onOpenSettingsTab = vi.fn()
+    seed([])
+    const indexingNotice: SystemNoticeInfoResponse = {
+      id: 'embed-1',
+      started_at: Date.now(),
+      finished_at: null,
+      detail: {
+        kind: 'emoji_embedding_index',
+        state: 'indexing',
+        vision: true,
+        indexed: 18,
+        total: 120,
+        error: null,
+      },
+    }
+    const failedNotice: SystemNoticeInfoResponse = {
+      id: 'embed-2',
+      started_at: Date.now(),
+      finished_at: Date.now(),
+      detail: {
+        kind: 'emoji_embedding_index',
+        state: 'failed',
+        vision: false,
+        indexed: 0,
+        total: 0,
+        error: 'missing model file',
+      },
+    }
+    useSystemNoticeStore.setState({ notices: [indexingNotice, failedNotice] })
+    render(
+      <NotificationInbox onSelect={async () => true} onOpenSettingsTab={onOpenSettingsTab} transcriptInert={false} />,
+    )
+    const dialog = await open()
+    const [first, second] = rows(dialog)
+    expect(first).toHaveTextContent(i18n.t('notifications.system.emojiEmbedding.indexing.title'))
+    expect(first).toHaveTextContent('18/120')
+    expect(within(first).queryByRole('button')).toBeNull()
+
+    expect(second).toHaveTextContent(i18n.t('notifications.system.emojiEmbedding.failed.title'))
+    expect(second).toHaveTextContent('missing model file')
+    await userEvent.click(within(second).getByRole('button', { name: i18n.t('notifications.system.openSettings') }))
+    expect(onOpenSettingsTab).toHaveBeenCalledWith('emoji')
+    expect(mocks.dismissNotice).toHaveBeenCalledWith({ id: 'embed-2' })
+  })
 })

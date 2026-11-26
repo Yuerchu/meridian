@@ -139,9 +139,9 @@ export function NotificationInbox({
     })
     const system = notices.map((notice) =>
       systemEntry(notice, t, relativeTime, {
-        settings: () => {
+        settings: (tab) => {
           setIsOpen(false)
-          onOpenSettingsTab('ime')
+          onOpenSettingsTab(tab)
           void dismissNotice(notice.id).catch((err) => console.error('notice not dismissed', err))
         },
         dismiss: () => void dismissNotice(notice.id).catch((err) => console.error('notice not dismissed', err)),
@@ -299,9 +299,66 @@ function systemEntry(
   notice: SystemNoticeInfoResponse,
   t: TFunction,
   relativeTime: (ms: number) => string,
-  on: { settings: () => void; dismiss: () => void },
+  on: { settings: (tab: SettingsTab) => void; dismiss: () => void },
 ): InboxEntry {
   const { detail } = notice
+  if (detail.kind === 'emoji_embedding_index') {
+    const running = detail.state === 'indexing'
+    const failed = detail.state === 'failed'
+    const description = (() => {
+      if (detail.state === 'indexing') {
+        return t('notifications.system.emojiEmbedding.indexing.description', {
+          indexed: detail.indexed,
+          total: detail.total,
+        })
+      }
+      if (detail.state === 'succeeded') {
+        return t(
+          detail.vision
+            ? 'notifications.system.emojiEmbedding.succeeded.descriptionVision'
+            : 'notifications.system.emojiEmbedding.succeeded.descriptionText',
+          { count: detail.total },
+        )
+      }
+      return detail.error
+        ? t('notifications.system.emojiEmbedding.failed.descriptionWithError', { error: detail.error })
+        : t('notifications.system.emojiEmbedding.failed.description')
+    })()
+
+    return {
+      id: `system:${notice.id}`,
+      category: SYSTEM_CATEGORY,
+      group: t('notifications.system.group'),
+      pending: running || failed,
+      card: (
+        <NotificationCard
+          key={`system:${notice.id}`}
+          heading={t(`notifications.system.emojiEmbedding.${detail.state}.title`)}
+          description={
+            <>
+              {description}
+              <span className="m-inbox__time">{relativeTime(notice.finished_at ?? notice.started_at)}</span>
+            </>
+          }
+          actions={
+            running ? null : (
+              <>
+                {failed && (
+                  <Button size="sm" variant="secondary" onPress={() => on.settings('emoji')}>
+                    {t('notifications.system.openSettings')}
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onPress={on.dismiss}>
+                  {t('notifications.system.dismiss')}
+                </Button>
+              </>
+            )
+          }
+        />
+      ),
+    }
+  }
+
   const names = detail.dictionaries.join('、')
   const running = detail.state === 'running'
   const failed = detail.state === 'failed'
@@ -335,7 +392,7 @@ function systemEntry(
           running ? null : (
             <>
               {failed && (
-                <Button size="sm" variant="secondary" onPress={on.settings}>
+                <Button size="sm" variant="secondary" onPress={() => on.settings('ime')}>
                   {t('notifications.system.openSettings')}
                 </Button>
               )}

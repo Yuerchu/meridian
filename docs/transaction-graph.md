@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：303
+- 事务根（非测试）：305
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -17,6 +17,7 @@
 
 - 30 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_price model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
 - 1 个：custom_tool
+- 1 个：emoji_embedding
 - 1 个：journal
 - 1 个：mcp_server
 - 1 个：media_generation
@@ -189,6 +190,8 @@
 | `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
 | `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
+| `src-tauri/crates/core/src/tools/sticker_embed.rs` › `embed_and_store_one` | sea-write | emoji_embedding |
+| `src-tauri/crates/core/src/tools/sticker_embed.rs` › `run_generation` | sea-write | emoji_embedding |
 | `src-tauri/crates/core/src/tools/todo.rs` › `execute` | sea-write | plan, todo |
 | `src-tauri/crates/core/src/tools/usage.rs` › `execute` | sea-read | model_config, usage |
 | `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |

@@ -509,6 +509,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   },
   list_emojis: { args: { request: { filter: { kind: 'pack', pack_id: 'demo-pack-daily' } } } },
   get_emoji_file_url: { args: { request: { emoji_id: STICKERS.cat } } },
+  get_emoji_embedder_status: {},
   update_emoji: { args: { request: { id: STICKERS.cat, action: { kind: 'rename', name: '猫' } } } },
 }
 
