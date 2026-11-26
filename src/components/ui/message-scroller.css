@@ -39,6 +39,14 @@
     flex-shrink: 0;
   }
 
+  /* Turns carry `tabIndex={-1}` for programmatic scroll-anchor focus after
+     "Load earlier". Suppressing the block focus ring prevents a full-column
+     accent rectangle from wrapping multi-bubble turns while keeping keyboard
+     focus rings on every interactive control inside. */
+  .m-message-scroller__item:focus-visible {
+    outline: none;
+  }
+
   /* content-visibility:auto crashes WebView2; keep it on Android only. */
   .m-message-scroller__item[data-android] {
     content-visibility: auto;

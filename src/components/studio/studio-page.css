@@ -26,7 +26,7 @@
   .m-studio__title {
     margin: 0;
     color: var(--text);
-    font: var(--text-title);
+    font: var(--text-title-3);
   }
 
   .m-studio__subtitle {
@@ -54,7 +54,7 @@
     gap: var(--space-4);
     padding: var(--space-4);
     border: 1px solid var(--border);
-    border-radius: var(--radius-card);
+    border-radius: var(--radius-panel);
     background: var(--surface);
   }
 
@@ -91,7 +91,7 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface-subtle);
+    background: var(--surface-muted);
     color: var(--text);
     font: var(--text-small);
   }
@@ -102,7 +102,7 @@
     padding: var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface-subtle);
+    background: var(--surface-muted);
     color: var(--text);
     font: var(--text-body);
     resize: vertical;
@@ -134,7 +134,7 @@
     padding: var(--space-2);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface-subtle);
+    background: var(--surface-muted);
     font: var(--text-caption);
     color: var(--text);
   }
@@ -142,7 +142,7 @@
   .m-studio__ref-thumb {
     width: 2rem;
     height: 2rem;
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-item);
     object-fit: cover;
     flex-shrink: 0;
   }
@@ -173,7 +173,7 @@
     gap: var(--space-3);
     padding: var(--space-3);
     border: 1px solid var(--border);
-    border-radius: var(--radius-card);
+    border-radius: var(--radius-panel);
     background: var(--surface);
   }
 
@@ -181,7 +181,7 @@
     position: relative;
     aspect-ratio: 16 / 10;
     border-radius: var(--radius-control);
-    background: var(--surface-subtle);
+    background: var(--surface-muted);
     overflow: hidden;
     display: flex;
     align-items: center;

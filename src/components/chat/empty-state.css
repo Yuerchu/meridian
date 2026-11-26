@@ -14,7 +14,7 @@
     align-items: center;
     gap: var(--space-6);
     width: 100%;
-    max-width: var(--content-prose);
+    max-width: min(var(--content-chat), 800px);
     margin: auto;
     padding-block: var(--space-8);
   }

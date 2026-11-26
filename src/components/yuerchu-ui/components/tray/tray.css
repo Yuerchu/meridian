@@ -1,0 +1,77 @@
+@layer components {
+  /* 托盘壳（DESIGN §6.8）：槽是 --surface-inset，面板贴三边、顶上露出标题带；同心圆角 */
+  .ui-tray {
+    --ui-tray-pad: var(--space-1);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--ui-tray-pad);
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: var(--ui-tray-pad);
+    border-radius: var(--radius-surface);
+    background: var(--surface-inset);
+    color: var(--text);
+    font: var(--text-small);
+  }
+
+  /* ---------- 标题带：不另铺底，底下也不加分隔线（露出的那条就是标题） ---------- */
+  .ui-tray__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1) var(--space-3);
+    min-height: var(--control-sm);
+    padding: var(--space-1) var(--space-2);
+  }
+
+  .ui-tray__heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    margin: 0;
+    font: var(--text-small-medium);
+  }
+
+  .ui-tray__description {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .ui-tray__actions {
+    display: flex;
+    gap: var(--space-1);
+  }
+
+  /* ---------- 面板：白卡，圆角 = 壳的圆角 − 内边距 ---------- */
+  .ui-tray__panel {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-surface) - var(--ui-tray-pad));
+    background: var(--surface);
+  }
+
+  .ui-tray__panel[data-divided] > * + * {
+    border-block-start: 1px solid var(--border);
+  }
+
+  /* ---------- 底栏：铺在槽色上（不用 --surface-muted：暗色里会浮起来） ---------- */
+  .ui-tray__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    color: var(--text-secondary);
+  }
+
+  @media (forced-colors: active) {
+    .ui-tray {
+      border: 1px solid CanvasText;
+    }
+  }
+}

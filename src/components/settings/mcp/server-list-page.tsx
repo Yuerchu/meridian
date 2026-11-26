@@ -85,10 +85,11 @@ export function McpServerListPage({
     }
   }, [tools])
 
-  if (loading && servers.length === 0) return <SettingsSkeleton />
+  if (loading && servers.length === 0) return <SettingsSkeleton width="wide" />
 
   return (
     <SettingsPage
+      width="wide"
       title={t('settings.mcp.title')}
       subtitle={t('settings.mcp.subtitle')}
 

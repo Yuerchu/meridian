@@ -367,10 +367,10 @@ export function ModelsSettings() {
   const filteredModels =
     domainFilter === 'all' ? models : models.filter(({ profile }) => profile.capability_domain === domainFilter)
 
-  if (loading) return <SettingsSkeleton />
+  if (loading) return <SettingsSkeleton width="wide" />
 
   return (
-    <SettingsPane>
+    <SettingsPane width="wide">
       <SettingsHeader
         title={t('settings.models.title')}
         subtitle={t('settings.models.subtitle')}

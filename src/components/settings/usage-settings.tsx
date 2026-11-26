@@ -509,31 +509,35 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
   const [gapsOpen, setGapsOpen] = useState(false)
 
   return (
-    <SettingsPane>
-      <SettingsHeader title={t('settings.usage.title')} subtitle={t('settings.usage.subtitle')} />
-
-      <div data-slot="usage-filters" className="m-usage-settings__filters">
-        <Filter
-          label={t('settings.usage.rangeLabel')}
-          selectedKey={String(range)}
-          onChange={(key) => setRange(key === 'null' ? null : (Number(key) as Range))}
-          items={RANGES.map((value) => [String(value), rangeLabel(value)])}
-        />
-        <Filter
-          label={t('settings.usage.originLabel')}
-          selectedKey={origin ?? 'all'}
-          onChange={(key) => setOrigin(key === 'all' ? null : (key as Origin))}
-          items={ORIGINS.map((value) => [value ?? 'all', t(`settings.usage.origin.${value ?? 'all'}`)])}
-        />
-        {/* Only once there is something to refresh. The first load draws the
-            skeleton below instead, and two loading indicators for one wait is
-            one too many. */}
-        {loading && report && (
-          <span className="m-usage-settings__refreshing">
-            <Spinner size="sm" aria-label={t('common.loading')} />
-          </span>
-        )}
-      </div>
+    <SettingsPane width="wide">
+      <SettingsHeader
+        title={t('settings.usage.title')}
+        subtitle={t('settings.usage.subtitle')}
+        actions={
+          <div data-slot="usage-filters" className="m-usage-settings__filters">
+            <Filter
+              label={t('settings.usage.rangeLabel')}
+              selectedKey={String(range)}
+              onChange={(key) => setRange(key === 'null' ? null : (Number(key) as Range))}
+              items={RANGES.map((value) => [String(value), rangeLabel(value)])}
+            />
+            <Filter
+              label={t('settings.usage.originLabel')}
+              selectedKey={origin ?? 'all'}
+              onChange={(key) => setOrigin(key === 'all' ? null : (key as Origin))}
+              items={ORIGINS.map((value) => [value ?? 'all', t(`settings.usage.origin.${value ?? 'all'}`)])}
+            />
+            {/* Only once there is something to refresh. The first load draws the
+                skeleton below instead, and two loading indicators for one wait is
+                one too many. */}
+            {loading && report && (
+              <span className="m-usage-settings__refreshing">
+                <Spinner size="sm" aria-label={t('common.loading')} />
+              </span>
+            )}
+          </div>
+        }
+      />
 
       {error && (
         <Alert
@@ -598,9 +602,10 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
             </Kpi>
           </div>
 
-          <RequestTypeTable kinds={report?.kinds ?? []} />
-
-          <CacheMisses misses={report?.misses ?? EMPTY_MISSES} />
+          <div data-slot="usage-insights" className="m-usage-settings__insights">
+            <RequestTypeTable kinds={report?.kinds ?? []} />
+            <CacheMisses misses={report?.misses ?? EMPTY_MISSES} />
+          </div>
 
           {localQualifier !== 'exact' && (
             <p
@@ -663,7 +668,7 @@ export function UsageSettings({ onOpenConversation }: { onOpenConversation: (con
               content beneath them, so this one has panels. Only the selected
               panel renders, and `rows` is that dimension's data — the fetch is
               keyed on the same state the tab is. */}
-          <section data-slot="usage-breakdown" className="m-usage-settings__section">
+          <section data-slot="usage-breakdown" className="m-usage-settings__card">
             <h3 data-slot="usage-breakdown-title" className="m-usage-settings__title">
               {t('settings.usage.breakdown')}
             </h3>
@@ -855,11 +860,7 @@ function CostBreakdown({ bucket }: { bucket: UsageBucketInfoResponse }) {
           ? t('settings.usage.pricedPartsOnly')
           : null
   return (
-    <section
-      data-slot="cost-breakdown"
-      className="m-usage-settings__section"
-      aria-labelledby="usage-cost-breakdown-title"
-    >
+    <section data-slot="cost-breakdown" className="m-usage-settings__card" aria-labelledby="usage-cost-breakdown-title">
       <div data-slot="cost-breakdown-header" className="m-usage-settings__breakdown-header">
         <h3 data-slot="cost-breakdown-title" id="usage-cost-breakdown-title" className="m-usage-settings__title">
           {t('settings.usage.costBreakdown')}
@@ -930,7 +931,7 @@ function TokenTrend({ days }: { days: UsageBucketInfoResponse[] }) {
       x="day"
       series={bands.map((band) => ({ key: band.key, label: t(band.labelKey) }))}
       stacked
-      height={200}
+      height={240}
       showLegend
       valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
     />
@@ -1018,7 +1019,7 @@ function TokenComposition({ total }: { total: UsageBucketInfoResponse }) {
       value="value"
       totalLabel={incomplete ? `≥ ${t('settings.usage.compositionCenter')}` : t('settings.usage.compositionCenter')}
       valueFormat={{ notation: 'compact', maximumFractionDigits: 1 }}
-      height={200}
+      height={220}
       showLegend
     />
   )

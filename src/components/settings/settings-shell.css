@@ -15,9 +15,15 @@
     padding: var(--space-4);
   }
 
-  @container settings (width >= 42rem) {
+  @container settings (width >= 640px) {
     .m-settings-shell__panel {
       padding: var(--space-6);
+    }
+  }
+
+  @container settings (width >= 1120px) {
+    .m-settings-shell__panel {
+      padding: var(--space-6) var(--space-8);
     }
   }
 }

@@ -36,9 +36,20 @@ import { titleIfTruncated } from '@/lib/truncation'
  * containing block for any `position: fixed` descendant. `ActionBar` is
  * one and does not portal itself — see the two call sites, which do it for it.
  */
-export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
+export type SettingsWidth = 'default' | 'wide'
+
+export function SettingsPane({
+  width = 'default',
+  className,
+  ...props
+}: React.ComponentProps<'div'> & { width?: SettingsWidth }) {
   return (
-    <div data-slot="settings-pane" className={['m-settings-pane', className].filter(Boolean).join(' ')} {...props} />
+    <div
+      data-slot="settings-pane"
+      data-width={width === 'wide' ? 'wide' : undefined}
+      className={['m-settings-pane', className].filter(Boolean).join(' ')}
+      {...props}
+    />
   )
 }
 
@@ -364,11 +375,17 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
  * from a column of grey boxes — it is the one thing the line of text it
  * replaces did better. `aria-busy` rather than announcing every row.
  */
-export function SettingsSkeleton({ rows = 4, className, ...props }: React.ComponentProps<'div'> & { rows?: number }) {
+export function SettingsSkeleton({
+  rows = 4,
+  width = 'default',
+  className,
+  ...props
+}: React.ComponentProps<'div'> & { rows?: number; width?: SettingsWidth }) {
   const { t } = useTranslation()
   return (
     <div
       data-slot="settings-skeleton"
+      data-width={width === 'wide' ? 'wide' : undefined}
       role="status"
       aria-busy="true"
       aria-label={t('common.loading')}

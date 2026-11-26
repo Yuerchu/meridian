@@ -2,16 +2,12 @@ import { expect, test } from '@playwright/test'
 import { openApp, openSettings, settle } from './fixtures'
 
 /**
- * Every settings page sits at the one settings width (`max-w-settings`,
- * 532px — the registry settings-modal's content pane).
- *
- * The page shells carry it (`primitives.test.tsx` checks those), but a page
- * that does not go through a shell carries nothing, and a unit test cannot
- * see that: the memory page stayed full-width when every other page moved.
- * So this walks the settings nav in the running app and measures the first
- * element under the scroller that has a max-width at all.
+ * Every settings page declares one of the two settings widths:
+ * `--content-settings` (780px) for form/toggle sections or
+ * `--content-settings-wide` (1400px) for dashboards, tables and split-pane
+ * workspaces. Nothing under the scroller should escape uncapped.
  */
-test('every settings page is at the settings width', async ({ page }) => {
+test('every settings page uses a declared settings width', async ({ page }) => {
   await openApp(page, { theme: 'light' })
   await openSettings(page)
 
@@ -50,17 +46,16 @@ test('every settings page is at the settings width', async ({ page }) => {
       const scroller = document.querySelector('[data-slot="settings-scroller"]')
       if (!scroller) return 'no settings scroller'
       for (const el of scroller.querySelectorAll('*')) {
-        if (getComputedStyle(el).maxWidth === 'none') continue
+        const maxWidth = getComputedStyle(el).maxWidth
+        if (maxWidth === 'none') continue
         if (el.getBoundingClientRect().width < 300) continue
-        return `${Math.round(el.getBoundingClientRect().width)}px`
+        return maxWidth
       }
       return 'uncapped'
     })
   }
 
-  // `--content-settings` is 33.25rem, and the library sets the root font to
-  // 14px (`font: var(--text-body)`), so the column is 466px rather than the
-  // 532px it was at a 16px root.
-  const off = Object.entries(widths).filter(([, width]) => width !== '466px')
+  const allowed = new Set(['780px', '1400px'])
+  const off = Object.entries(widths).filter(([, maxWidth]) => !allowed.has(maxWidth))
   expect(off, JSON.stringify(widths, null, 2)).toEqual([])
 })

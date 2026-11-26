@@ -78,11 +78,11 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
     onOpen(created.id)
   }, [refresh, onOpen, t])
 
-  if (loading) return <SettingsSkeleton />
+  if (loading) return <SettingsSkeleton width="wide" />
 
   if (loadError && providers.length === 0) {
     return (
-      <SettingsPage title={t('settings.provider.title')}>
+      <SettingsPage width="wide" title={t('settings.provider.title')}>
         <Alert
           tone="danger"
           shouldAnnounce
@@ -110,7 +110,7 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
   }
 
   return (
-    <SettingsPage title={t('settings.provider.title')} subtitle={t('settings.provider.subtitle')}>
+    <SettingsPage width="wide" title={t('settings.provider.title')} subtitle={t('settings.provider.subtitle')}>
       {/* settings-tools.tsx's server list: one card, a row per provider with
           its mark and name on one line, and the way to add another as the
           card's last row rather than a lone "+" in the header. The row says

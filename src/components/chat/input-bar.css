@@ -11,8 +11,14 @@
   }
 
   .m-input-bar__inner {
-    max-width: 42rem;
+    max-width: var(--content-chat);
     margin-inline: auto;
+  }
+
+  @media (width >= 768px) {
+    .m-input-bar {
+      padding-inline: max(var(--space-6), var(--safe-left)) max(var(--space-6), var(--safe-right));
+    }
   }
 
   .m-input-bar__menu-target {

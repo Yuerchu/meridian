@@ -11,10 +11,17 @@
   }
 
   .m-chat-transcript__content {
-    max-width: 56rem;
+    max-width: var(--content-chat);
     margin-inline: auto;
     padding-block: var(--space-6);
     padding-inline-start: max(var(--space-4), var(--safe-left));
     padding-inline-end: max(var(--space-4), var(--safe-right));
+  }
+
+  @media (width >= 768px) {
+    .m-chat-transcript__content {
+      padding-inline-start: max(var(--space-6), var(--safe-left));
+      padding-inline-end: max(var(--space-6), var(--safe-right));
+    }
   }
 }

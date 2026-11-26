@@ -1,10 +1,13 @@
 import { useState } from 'react'
-import { Archive, Gauge, Messages, Plug } from '@keyline-icons/react/two-tone'
+import { Archive, Folder, Gauge, Messages, Plug } from '@keyline-icons/react/two-tone'
 
+import { FileDetails } from '@/components/yuerchu-ui/blocks/file-details/file-details'
 import { NavGroup, NavItem, NavList, NavSection } from '@/components/yuerchu-ui/components/nav-list/nav-list'
 import { Pagination } from '@/components/yuerchu-ui/components/pagination/pagination'
+import { PathBar, type PathSegment } from '@/components/yuerchu-ui/components/path-bar/path-bar'
 import { Tab, TabList, TabPanel, Tabs } from '@/components/yuerchu-ui/components/tabs/tabs'
 import { AppShell } from '@/components/yuerchu-ui/templates/app-shell/app-shell'
+import { FileManager } from '@/components/yuerchu-ui/templates/file-manager/file-manager'
 import { Section, Stage } from './shell'
 import { NavigationParts } from './parts'
 
@@ -38,6 +41,52 @@ function PaginationCase() {
   )
 }
 
+const SAMPLE_SEGMENTS: readonly PathSegment[] = [
+  { id: 'root', label: '表情包', icon: <Folder /> },
+  { id: 'daily', label: '日常' },
+]
+
+function PathBarCase() {
+  const [segments, setSegments] = useState<readonly PathSegment[]>(SAMPLE_SEGMENTS)
+  return (
+    <Stage>
+      <PathBar
+        segments={segments}
+        onNavigate={(id) => {
+          const idx = SAMPLE_SEGMENTS.findIndex((s) => s.id === id)
+          if (idx >= 0) setSegments(SAMPLE_SEGMENTS.slice(0, idx + 1))
+        }}
+        aria-label="表情路径"
+      />
+    </Stage>
+  )
+}
+
+function FileManagerCase() {
+  const [tags, setTags] = useState(['可爱', '好奇'])
+  return (
+    <FileManager
+      embedded
+      headingLevel={3}
+      heading="日常表情包"
+      description="统一管理本地表情资源与语义标签"
+      details={
+        <FileDetails
+          heading="猫猫探头"
+          info={[
+            { label: '状态', value: '已确认' },
+            { label: '出现次数', value: '3' },
+          ]}
+          tags={tags}
+          onTagsChange={setTags}
+        />
+      }
+    >
+      <p>文件列表区域</p>
+    </FileManager>
+  )
+}
+
 export default function Navigation() {
   return (
     <>
@@ -46,6 +95,9 @@ export default function Navigation() {
       </Section>
       <Section title="Pagination">
         <PaginationCase />
+      </Section>
+      <Section title="PathBar">
+        <PathBarCase />
       </Section>
       <Section title="NavList">
         <Stage>
@@ -74,6 +126,9 @@ export default function Navigation() {
         >
           <p>主内容</p>
         </AppShell>
+      </Section>
+      <Section title="FileManager & FileDetails">
+        <FileManagerCase />
       </Section>
       <NavigationParts />
     </>

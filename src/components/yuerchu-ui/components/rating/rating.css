@@ -1,0 +1,115 @@
+@layer components {
+  .ui-rating {
+    --ui-rating-cell: var(--control-md);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+  }
+
+  .ui-rating[data-half] {
+    --ui-rating-cell: calc(var(--space-6) * 2);
+  }
+
+  .ui-rating__stars {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+  }
+
+  .ui-rating__cell {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ui-rating-cell);
+    height: var(--ui-rating-cell);
+  }
+
+  .ui-rating__star {
+    position: relative;
+    display: inline-block;
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    color: var(--ink);
+  }
+
+  .ui-rating__star svg {
+    display: block;
+    width: var(--icon-lg);
+    height: var(--icon-lg);
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linejoin: round;
+  }
+
+  .ui-rating__outline {
+    fill: none;
+  }
+
+  .ui-rating__fill {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: 0;
+    overflow: hidden;
+  }
+
+  .ui-rating__fill svg {
+    fill: currentColor;
+  }
+
+  .ui-rating__fill:dir(rtl) svg {
+    float: right;
+  }
+
+  .ui-rating__option {
+    position: absolute;
+    inset: 0;
+    border-radius: var(--radius-item);
+    cursor: pointer;
+  }
+
+  .ui-rating__option[data-half="start"] {
+    inset-inline-end: 50%;
+  }
+
+  .ui-rating__option[data-half="end"] {
+    inset-inline-start: 50%;
+  }
+
+  .ui-rating__option[data-hovered]:not([data-disabled]) {
+    background: var(--surface-inset);
+  }
+
+  .ui-rating__option[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .ui-rating[data-disabled] {
+    opacity: 0.5;
+  }
+
+  .ui-rating__option[data-disabled] {
+    cursor: not-allowed;
+  }
+
+  .ui-rating__value {
+    color: var(--text-secondary);
+    font: var(--text-body);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (pointer: coarse) {
+    .ui-rating {
+      --ui-rating-cell: var(--control-lg);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .ui-rating__star {
+      color: CanvasText;
+    }
+  }
+}

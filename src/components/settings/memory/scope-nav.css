@@ -65,9 +65,14 @@
     font-variant-ligatures: none;
   }
 
-  @container pane (width >= 560px) {
+  @container pane (width >= 680px) {
     .m-scope-nav {
-      width: 14rem;
+      width: 17rem;
+      padding: var(--space-3);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-panel);
+      background: var(--surface);
+      box-shadow: var(--shadow-resting);
     }
   }
 }

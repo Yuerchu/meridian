@@ -608,12 +608,12 @@ export function AssistantSettings() {
   )
 
   if (loading) {
-    return <SettingsSkeleton />
+    return <SettingsSkeleton width="wide" />
   }
 
   if (loadError && assistants.length === 0) {
     return (
-      <SettingsPane>
+      <SettingsPane width="wide">
         <SettingsHeader title={t('settings.assistant.title')} subtitle={t('settings.assistant.subtitle')} />
         <Alert
           tone="danger"
@@ -642,7 +642,7 @@ export function AssistantSettings() {
   }
 
   return (
-    <SettingsPane>
+    <SettingsPane width="wide">
       <SettingsHeader
         title={t('settings.assistant.title')}
         subtitle={t('settings.assistant.subtitle')}

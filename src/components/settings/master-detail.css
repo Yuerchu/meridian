@@ -1,7 +1,7 @@
 @layer components {
   .m-master-detail {
     width: 100%;
-    max-width: var(--content-settings);
+    max-width: var(--content-settings-wide);
     margin-inline: auto;
   }
 

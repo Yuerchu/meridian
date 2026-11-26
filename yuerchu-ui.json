@@ -6,6 +6,7 @@
     "commit": "6b8a5048c7ec22d3ec0cc397e3a3dca0f343b264"
   },
   "entries": [
+    "blocks/file-details/file-details.tsx",
     "components/alert/alert.tsx",
     "components/attachment-preview/attachment-preview.tsx",
     "components/avatar/avatar.tsx",
@@ -36,6 +37,7 @@
     "components/number-field/number-field.tsx",
     "components/pagination/pagination.tsx",
     "components/password-field/password-field.tsx",
+    "components/path-bar/path-bar.tsx",
     "components/popover/popover.tsx",
     "components/progress-circle/progress-circle.tsx",
     "components/radio-group/radio-group.tsx",
@@ -63,7 +65,8 @@
     "components/tooltip/tooltip.tsx",
     "components/tree/tree.tsx",
     "styles/index.css",
-    "templates/app-shell/app-shell.tsx"
+    "templates/app-shell/app-shell.tsx",
+    "templates/file-manager/file-manager.tsx"
   ],
   "dependencies": {
     "@number-flow/react": "0.6.2",
@@ -77,6 +80,9 @@
     "react-stately": "3.51.0"
   },
   "files": {
+    "blocks/file-details/file-details.css": "5f030575d95c64c1e683f87347125e293844550942264b0a9446bad55eaa9bed",
+    "blocks/file-details/file-details.strings.ts": "34684e6eb640b71f4e58eae7c31fb2e06688bb9a7e204ca2dcb0f680d56a0c49",
+    "blocks/file-details/file-details.tsx": "a019f3175a4113334fa4d3555a678f3a2c5528d0c990a697655b58a62576efa3",
     "components/alert/alert.css": "16b193d878a402e04f097afc4c71fae927af89fd9df498151b14ff8ad814c16a",
     "components/alert/alert.strings.ts": "b5a02fe0fe996db2460bf2449f74c4e265fb9d8e0141de04d092bb6822755084",
     "components/alert/alert.tsx": "059800250cec64db783c3e789f6479f818021aca801ae73baf96da3e7d22b1fc",
@@ -110,6 +116,7 @@
     "components/citation/citation.css": "6cb65dbcf3a55d3b2a3e5138e5381a73d44b8b92120645d6ec278a721aa50311",
     "components/citation/citation.strings.ts": "52ad88e8714e0f02d32db87b5a5efa649c54c918e48b01580ed58ab27319176e",
     "components/citation/citation.tsx": "ba9838ced68878719e5e250afefbe001755610ba56e0665e1516912482d026f1",
+    "components/combo-box/combo-box.css": "2782f68cefe14d9316df45d703096b0826acb6ed3f56624c02cd2ab3f6d9a880",
     "components/command-palette/command-palette.css": "a0d641542f4108b6c4fded3bccfd63ac1f8a2e12e559e4c53e4044d82dbf61e5",
     "components/command-palette/command-palette.strings.ts": "08c1cf4052b31afe0498887201a34543966b73481288d23a9127c728fd67bd55",
     "components/command-palette/command-palette.tsx": "de0aeeb19db0f8abbb5acccc395b50a1cb9d8f87afb1cb9d0e55de44576cac14",
@@ -188,6 +195,9 @@
     "components/password-field/password-field.css": "a7beadd2a1b8a0c11dc1b5533c7304fa2eadbc85e27d72efb8f10e71103dee6b",
     "components/password-field/password-field.strings.ts": "c03d99c1051e7af975d1a35c302004bcbfae250c2059d8d37b9cdecbf897ff06",
     "components/password-field/password-field.tsx": "a4f2d4d30bc88e35465432e90905c815fccb9501e0872cbfd0075d35953f927a",
+    "components/path-bar/path-bar.css": "0733cc621b56455244ea2e5a5fcb7beea7ed441b108829a0f6d58d104ed34269",
+    "components/path-bar/path-bar.strings.ts": "9e7a77e825160580611181771a74c99d741104e45504a37e876378a1c9d19f6b",
+    "components/path-bar/path-bar.tsx": "52581edfa1d054b3ea2b2b6441b7e8dacc53773171fd436b52592f2d4c7b63e8",
     "components/popover/popover.css": "7476c27dafb51a4c7ef4d24a0957de06be4f333a2a8fae2d4481c6f820ce1df7",
     "components/popover/popover.tsx": "0fe09af1cf68a58d898bb6f0c37a42b7fb8362a2ce61260e0f03d4715a67ea28",
     "components/progress-bar/progress-bar.css": "6a59af2eca420e76b59fdfa1410cc53c5601af3cc7f88b9d350cb278b5bc4b02",
@@ -196,6 +206,9 @@
     "components/progress-circle/progress-circle.tsx": "80dac448859fb2394de5cf4fa0fd95e7a11cefbf7490c7eb71ba552e51921b1b",
     "components/radio-group/radio-group.css": "f0e8fb207aceeeaf0f4a3919cd16fa1e8c2af65b2c3079e309e325d8db799d5a",
     "components/radio-group/radio-group.tsx": "8cdba081dc22309e8f1288d4bce8e2e28f27e60ac3070023ddc3f784aa0b0809",
+    "components/rating/rating.css": "fd94074eeedf59a025a1d4c4d18263a86f6b9dfc797445627964515ac9768029",
+    "components/rating/rating.strings.ts": "acca19df159cf5d2023f2239677e2bbf0b840b496af9c897159d460e4f6c5297",
+    "components/rating/rating.tsx": "944a4922be6ada99c8893ce54271dcb01a1ac802923e09bf6d290cb82efecb48",
     "components/resizable-panels/resizable-panels.css": "05d3bd6144dbd416c54829ba1d296725a5a964411f7a1097284ea55964205bad",
     "components/resizable-panels/resizable-panels.strings.ts": "fe7bbd7cefab1881d9544c74b842c39c103670906950ca0dc8457e206f43f733",
     "components/resizable-panels/resizable-panels.tsx": "b66bc3f12194c565071da54159148875d15810ad036cdba8a1520afe0b8d17c4",
@@ -243,6 +256,9 @@
     "components/tabs/tabs.css": "5779adc7947684ccf3abe3d13bfa0f1bb6e06fe28c7319da011868d5b1cf762f",
     "components/tabs/tabs.strings.ts": "7fd5fccda20f0abfb1b8d73c40891432d9ca1c36380db8ec8252addb3d3a00f2",
     "components/tabs/tabs.tsx": "dd8b541381cd0d5fc74659cf425d9a4428dfe499b18bfa4e970c79cfd68a4f5d",
+    "components/tag-field/tag-field.css": "724d7e1a5482b5c9bc718566b8677cc2fcec14af425504ca9f1ceb4228b70ad2",
+    "components/tag-field/tag-field.strings.ts": "9eae46f955b1d33a6a18ea35536a11de45d9f015a091c068bfa0b9c10de590aa",
+    "components/tag-field/tag-field.tsx": "537a8df750e2c4615a02cd8c64d69c5537762182c4eeda7bdc23f8c2a4421f74",
     "components/tag-group/tag-group.css": "ec59fa4ab1283e0c36d06ff748f1a55a3429a066d84e77891035690ec923ec8f",
     "components/tag-group/tag-group.tsx": "98ea4a8e5dfe6b62648759dbc7985221a3ff99a3f04d5f2a11661445ef5c7c27",
     "components/text-area/text-area.css": "ab2be2839f74298a29a1d8ac7eabcca261488a22fc6d8fffd34aff526bce5174",
@@ -253,6 +269,9 @@
     "components/thinking-state/thinking-state.css": "6e82146eea704c19a9335018a8f03263276d30cd6363c40a0cf5c2de85c35f36",
     "components/thinking-state/thinking-state.strings.ts": "b504f0431b4164f61c84ac0357c657e5c604e35184829dd399125d52cfd1460d",
     "components/thinking-state/thinking-state.tsx": "5f311cab54fcd4eb787c11d6b5b3ffb4deff0e2b18743be750164c823e9c2a0a",
+    "components/timeline/timeline.css": "74d87ca2e1e632cab679489d5806f372820ed0545d9b7697d03478c43478d1cc",
+    "components/timeline/timeline.strings.ts": "1705eca3ed486d2c6bab3a74b26e4aeb4d40bf64a6717cc36f083365457fa3c6",
+    "components/timeline/timeline.tsx": "e8ec9e0b3ca9818f828a16da6358297ceec4c455aea11d3f6e06ffb67c2873fb",
     "components/toast/toast.css": "97ab9f41d06a6007e7d81c05f6c6c02260d10f8c96c1b64ba0b62000a630a835",
     "components/toast/toast.strings.ts": "dc3148b0c9a5e7e1ef3c0cd6c7cf89fa46b055fa58d6c8a3aa3a11c309ffc1aa",
     "components/toast/toast.tsx": "1a0293e8d73cbb8dd1e53ed6e8df2d174b6e0b440517251b1a0843674a08d5c3",
@@ -261,6 +280,8 @@
     "components/tool-views/tool-views.tsx": "09eac07544d28b41920db72be1550dfa00b38da498bb5ff923042efc11b83a33",
     "components/tooltip/tooltip.css": "07b6fca933fa35a20416f53f712497a22e1da81e8d24e7e4607d60835c034dbd",
     "components/tooltip/tooltip.tsx": "5fb04fba98632547b63ad190b6e370fc12c17cca8fc16d21620e1752007f381d",
+    "components/tray/tray.css": "693e5bebd298f2cda563389e989bc3f7b5dffc0bb80528ae8befaa592e0858bf",
+    "components/tray/tray.tsx": "139f320771781d6d26f41e6352be62b82c5d16fe0e560c4a78bba8ef57ce8332",
     "components/tree/tree.css": "751dfbe73660ce0370b412cdd30ea01eb8c56d5fbdef2173ebe67cfffbd9acc9",
     "components/tree/tree.strings.ts": "80b880eea091876248557bc1ebc20b3f2513d33c172c9fb880373d68afed818d",
     "components/tree/tree.tsx": "d90f5fae39756b4e7915b6ea4b1dea35820896c9b228cd3e8d330a7a443177bb",
@@ -292,6 +313,8 @@
     "styles/index.css": "72fb8b5da4ac4047ae14f181298ecf69f802b430972e9d1c40ebcdb0eba5d9d1",
     "styles/tokens.css": "1d266b9181a446946ae0c4334b68b001c66e2ad2f1af0d487b308b99f11017e6",
     "templates/app-shell/app-shell.css": "be73afb7d9255a38fbfa63366b5685304018f9cf26e9ed9f711a81a8d334c599",
-    "templates/app-shell/app-shell.tsx": "3153a7752a7617d227327ec7c8dfbc3cbedb8a4b2c6056935715676e20958092"
+    "templates/app-shell/app-shell.tsx": "3153a7752a7617d227327ec7c8dfbc3cbedb8a4b2c6056935715676e20958092",
+    "templates/file-manager/file-manager.css": "784348584e283608318facfd8a777e6f037688f6cff9f5973569372648e55266",
+    "templates/file-manager/file-manager.tsx": "cbacf336b831ee19dde34e09e4f1a3732eee992a4636c76ee0a36cb3869272b5"
   }
 }

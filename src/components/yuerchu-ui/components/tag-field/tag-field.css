@@ -1,0 +1,89 @@
+@layer components {
+  /* 边框画在外层（像有前后缀的输入框）：标签和输入框排在框里，标签多了换行，框跟着变高 */
+  .ui-tag-field {
+    --ui-tag-height: 22px;
+    --ui-tag-field-gap: var(--space-1);
+  }
+
+  .ui-tag-field__control {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--ui-tag-field-gap);
+    box-sizing: border-box;
+    min-height: var(--ui-input-height);
+    padding: var(--space-1);
+    border: 1px solid var(--border-control);
+    border-radius: var(--ui-input-radius);
+    background: var(--surface);
+    cursor: text;
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-tag-field__control:has(.ui-input[data-hovered]:not([data-disabled])) {
+    border-color: var(--border-control-hover);
+  }
+
+  .ui-tag-field__control:has(.ui-input[data-focused]) {
+    border-color: var(--accent);
+    box-shadow: var(--focus-glow);
+  }
+
+  .ui-tag-field[data-invalid] .ui-tag-field__control {
+    border-color: var(--danger);
+  }
+
+  .ui-tag-field[data-invalid] .ui-tag-field__control:has(.ui-input[data-focused]) {
+    box-shadow: 0 0 0 3px var(--danger-bg);
+  }
+
+  .ui-tag-field[data-disabled] .ui-tag-field__control {
+    border-color: var(--border);
+    background: var(--surface-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-tag-field[data-readonly] .ui-tag-field__control {
+    background: var(--surface-sunken);
+  }
+
+  /* 标签组不单独换行成一块：标签和输入框在同一个流里 */
+  .ui-tag-field__value,
+  .ui-tag-field__tags {
+    display: contents;
+  }
+
+  .ui-tag-field__tags .ui-tag-group__list {
+    display: contents;
+  }
+
+  .ui-tag-field .ui-tag {
+    padding-inline-start: var(--space-2);
+    font: var(--text-caption);
+  }
+
+  /* 框里的输入框：没有自己的边框和光晕，占满剩下的宽度，至少能放几个字 */
+  .ui-tag-field .ui-input {
+    flex: 1 1 6em;
+    height: var(--ui-tag-height);
+    padding: 0 var(--space-1);
+    border: 1px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ui-tag-field .ui-input:is([data-focused], [data-invalid], [data-disabled]) {
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .ui-tag-field .ui-combo-box__button {
+    --ui-combo-button-size: var(--ui-tag-height);
+
+    margin-inline-start: auto;
+  }
+}

@@ -1,0 +1,129 @@
+@layer components {
+  .ui-timeline {
+    --ui-timeline-marker: var(--space-3);
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* 日期：滚动时吸在顶部（滚动容器是页面或外层） */
+  .ui-timeline__day {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: var(--z-sticky);
+    padding-block: var(--space-1);
+    background: var(--ui-timeline-bg, var(--background));
+    color: var(--text-secondary);
+    font: var(--text-small-medium);
+  }
+
+  .ui-timeline__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  /* ---------- 一条：时间 | 圆点（连线）| 内容 ---------- */
+  .ui-timeline__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: 3.5em var(--ui-timeline-marker) minmax(0, 1fr);
+    column-gap: var(--space-3);
+    padding-block-end: var(--space-4);
+  }
+
+  /* 竖线：从这一点的圆点往下连到下一条 */
+  .ui-timeline__item:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    inset-block: calc(var(--space-2) + var(--ui-timeline-marker)) 0;
+    inset-inline-start: calc(3.5em + var(--space-3) + var(--ui-timeline-marker) / 2);
+    width: 1px;
+    background: var(--border);
+  }
+
+  .ui-timeline__time {
+    color: var(--text-secondary);
+    font: var(--text-small);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .ui-timeline__marker {
+    font: var(--text-body);
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-timeline-marker);
+    height: var(--ui-timeline-marker);
+    /* 和第一行文字（--text-body，行高 22px）垂直居中 */
+    margin-block-start: calc((1lh - var(--ui-timeline-marker)) / 2);
+    border: 2px solid var(--border-strong);
+    border-radius: 50%;
+    background: var(--surface);
+  }
+
+  .ui-timeline__item[data-tone="success"] .ui-timeline__marker {
+    /* 状态色只有 -fg（文字）和 -bg（浅底）两档：图形用 -fg，够 3:1 */
+    border-color: var(--success-fg);
+    background: var(--success-fg);
+  }
+
+  .ui-timeline__item[data-tone="warning"] .ui-timeline__marker {
+    border-color: var(--warning-fg);
+    background: var(--warning-fg);
+  }
+
+  .ui-timeline__item[data-tone="danger"] .ui-timeline__marker {
+    border-color: var(--danger);
+    background: var(--danger);
+  }
+
+  .ui-timeline__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-timeline__title {
+    font: var(--text-body);
+  }
+
+  /* 语气写成文字给读屏；眼睛看圆点颜色。失败的另外用红字强调 */
+  .ui-timeline__tone-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  .ui-timeline__item[data-tone="danger"] .ui-timeline__title {
+    color: var(--danger-fg);
+  }
+
+  .ui-timeline__description {
+    color: var(--text-secondary);
+    font: var(--text-small);
+  }
+
+  /* 加载中的占位事件：等待阶段占住位置但看不见；时间的占位靠右，和真实时间对齐 */
+  .ui-timeline__list[data-waiting] {
+    visibility: hidden;
+  }
+
+  .ui-timeline__list[data-loading] .ui-timeline__time {
+    justify-self: end;
+  }
+
+  @media (forced-colors: active) {
+    .ui-timeline__marker {
+      border-color: CanvasText;
+    }
+  }
+}

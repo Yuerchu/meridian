@@ -334,11 +334,11 @@ export function ToolMarketplace() {
   }, [refresh])
 
   if (loading) {
-    return <SettingsSkeleton />
+    return <SettingsSkeleton width="wide" />
   }
 
   return (
-    <SettingsPane>
+    <SettingsPane width="wide">
       <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
 
       {loadError && (
