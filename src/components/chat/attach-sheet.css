@@ -16,6 +16,6 @@
   }
 
   .m-attach-sheet__body {
-    padding-block-end: max(var(--space-2), var(--safe-bottom));
+    padding-block-end: var(--space-2);
   }
 }

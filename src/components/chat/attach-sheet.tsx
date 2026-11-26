@@ -66,11 +66,8 @@ export function AttachSheet({
         <Tooltip>{t('composer.menu')}</Tooltip>
       </TooltipTrigger>
       <Drawer isOpen={open} onOpenChange={setOpen} side="bottom" size="lg" heading={t('composer.menu')}>
-        {/* `--safe-bottom`, not bare `env()`: Android WebView reports zero
-            for the latter (crbug 40699457, only fixed in M144), which is the
-            whole reason the native bridge writes these variables. With
-            3-button navigation that bar is 48dp of opaque buttons, so the
-            last row here was landing under it and could not be tapped. */}
+        {/* `Drawer` already clears `--ui-safe-bottom` (bridged to Android's native
+            insets in `meridian.css`), so the body only adds its own visual gap. */}
         <div className="m-attach-sheet__body">
           <Menu variant="inline" data-slot="attach-sheet-menu" aria-label={t('composer.menu')}>
             {supportsImages ? (

@@ -19,6 +19,14 @@
     --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
     --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 
+    /* Feed the same native insets into Yuerchu UI's safe-area tokens so its
+       overlays (Sidebar drawer, Drawer, Dialog, Toast, NotificationStack) clear
+       Android status/navigation bars where WebView `env()` stays 0px. */
+    --ui-safe-top: var(--safe-top);
+    --ui-safe-right: var(--safe-right);
+    --ui-safe-bottom: var(--safe-bottom);
+    --ui-safe-left: var(--safe-left);
+
     /* The one width every settings page has: moving between sections must not
        move the column under the reader. */
     --content-settings: 33.25rem;
