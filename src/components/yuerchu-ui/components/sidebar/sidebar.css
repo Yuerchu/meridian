@@ -26,6 +26,11 @@
     .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]):not([data-embedded]) {
       height: 100dvh;
       min-height: 0;
+      padding:
+        max(var(--space-2), var(--ui-safe-top))
+        max(var(--space-2), var(--ui-safe-right))
+        max(var(--space-2), var(--ui-safe-bottom))
+        max(var(--space-2), var(--ui-safe-left));
     }
 
     .ui-sidebar-layout[data-variant="inset"]:not([data-drawer-below="lg"]) > .ui-sidebar > .ui-sidebar__panel {
@@ -54,6 +59,11 @@
     .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"]:not([data-embedded]) {
       height: 100dvh;
       min-height: 0;
+      padding:
+        max(var(--space-2), var(--ui-safe-top))
+        max(var(--space-2), var(--ui-safe-right))
+        max(var(--space-2), var(--ui-safe-bottom))
+        max(var(--space-2), var(--ui-safe-left));
     }
 
     .ui-sidebar-layout[data-drawer-below="lg"][data-variant="inset"] > .ui-sidebar > .ui-sidebar__panel {
@@ -83,6 +93,39 @@
 
   .ui-sidebar-layout[data-embedded] > .ui-sidebar-layout__main {
     overflow: auto;
+  }
+
+  /* 非内嵌宽屏贴边布局：面板内容让出上下与左侧安全区，背景仍铺满边缘 */
+  @media (width >= 768px) {
+    .ui-sidebar-layout:not([data-drawer-below="lg"]):not([data-embedded]):not([data-variant="inset"]) {
+      grid-template-columns: calc(var(--ui-sidebar-width) + var(--ui-safe-left)) minmax(0, 1fr);
+    }
+
+    .ui-sidebar-layout:not([data-drawer-below="lg"]):not([data-embedded]):not([data-variant="inset"]) > .ui-sidebar > .ui-sidebar__panel {
+      width: calc(var(--ui-sidebar-width, 248px) + var(--ui-safe-left));
+      padding-block: var(--ui-safe-top) var(--ui-safe-bottom);
+      padding-inline-start: var(--ui-safe-left);
+    }
+
+    .ui-sidebar-layout:not([data-drawer-below="lg"]):not([data-embedded]):not([data-variant="inset"]) > .ui-sidebar > .ui-sidebar__panel[data-collapsed] {
+      width: calc(var(--ui-sidebar-rail) + var(--ui-safe-left));
+    }
+  }
+
+  @media (width >= 1024px) {
+    .ui-sidebar-layout[data-drawer-below="lg"]:not([data-embedded]):not([data-variant="inset"]) {
+      grid-template-columns: calc(var(--ui-sidebar-width) + var(--ui-safe-left)) minmax(0, 1fr);
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"]:not([data-embedded]):not([data-variant="inset"]) > .ui-sidebar > .ui-sidebar__panel {
+      width: calc(var(--ui-sidebar-width, 248px) + var(--ui-safe-left));
+      padding-block: var(--ui-safe-top) var(--ui-safe-bottom);
+      padding-inline-start: var(--ui-safe-left);
+    }
+
+    .ui-sidebar-layout[data-drawer-below="lg"]:not([data-embedded]):not([data-variant="inset"]) > .ui-sidebar > .ui-sidebar__panel[data-collapsed] {
+      width: calc(var(--ui-sidebar-rail) + var(--ui-safe-left));
+    }
   }
 
   /* 可拖宽度：这一栏跟着侧边栏自己写的宽度走。只在宽屏（窄屏是一栏 + 抽屉） */
@@ -251,6 +294,15 @@
     min-width: 0;
   }
 
+  .ui-sidebar-layout:not([data-embedded]) > .ui-sidebar > .ui-sidebar__bar {
+    min-height: calc(var(--control-lg) + var(--ui-safe-top));
+    padding:
+      calc(var(--space-1) + var(--ui-safe-top))
+      max(var(--space-2), var(--ui-safe-right))
+      var(--space-1)
+      max(var(--space-4), var(--ui-safe-left));
+  }
+
   @media (width < 768px) {
     .ui-sidebar-layout {
       grid-template-columns: minmax(0, 1fr);
@@ -324,7 +376,9 @@
     inset-block: 0;
     inset-inline-start: 0;
     box-sizing: border-box;
-    width: min(var(--ui-sidebar-width, 248px) + var(--space-8), 85vw);
+    width: min(var(--ui-sidebar-width, 248px) + var(--space-8) + var(--ui-safe-left), 85vw);
+    padding-block: var(--ui-safe-top) var(--ui-safe-bottom);
+    padding-inline-start: var(--ui-safe-left);
     border-inline-end: 1px solid var(--border);
     background: var(--surface);
     box-shadow: var(--shadow-floating);
@@ -341,6 +395,7 @@
   }
 
   .ui-sidebar__dialog {
+    position: relative;
     display: flex;
     flex-direction: column;
     height: 100%;

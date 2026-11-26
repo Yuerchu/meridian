@@ -21,10 +21,11 @@
 
   /* On narrow viewports AppShell mounts the sidebar inside a drawer whose close
      button sits in the top-right corner; without a library brand header, reserve
-     room so the first row's actions never collide with that close button. */
+     room so the first row's actions never collide with that close button. The
+     drawer itself clears `--ui-safe-top`. */
   @media (width < 768px) {
     .m-sidebar__header {
-      padding-block-start: calc(var(--control-sm) + var(--space-1) + var(--safe-top, 0px));
+      padding-block-start: calc(var(--control-sm) + var(--space-1));
     }
   }
 
