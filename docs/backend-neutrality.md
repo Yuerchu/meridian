@@ -72,6 +72,7 @@ SeaORM 侧跑的每一条手写 SQL 都在 `core/src/db/sql.rs`，以 `ReadOnly`
 | `USAGE_BY_TOTAL` | 用量报表按总计分组（键为常量 `''`）：每组的条数、四类 token 求和与二十余个条件计数，价格列与计费方式一并分组 | 位置 `?`；标量两参数 `MAX(a, b)`（取较大值）；`CASE … THEN 1 ELSE 0` 计数 | 占位符改 `$n`；两参数 `MAX` 改 `GREATEST` |
 | `USAGE_BY_PROVIDER` | 同上，按 `COALESCE(provider_name, provider_id, '')` 分组 | 同上 | 同上 |
 | `USAGE_BY_MODEL` | 同上，按 `COALESCE(model_id, '')` 分组 | 同上 | 同上 |
+| `USAGE_BY_LOGICAL_MODEL` | 同上，按 `COALESCE(logical_model_id, model_id, '')` 跨供应商按逻辑模型聚合 | 同上 | 同上 |
 | `USAGE_BY_BOT` | 同上，按 `COALESCE(CAST(self_id AS TEXT), '')` 分组 | 同上 | 同上（`CAST(… AS TEXT)` 通用） |
 | `USAGE_BY_SOURCE` | 同上，按 `COALESCE(source_type \|\| ':' \|\| source_id, '')` 分组 | 同上；`\|\|` 遇 NULL 得 NULL 的语义 | 同上；`\|\|` 在 PostgreSQL 语义相同 |
 | `USAGE_BY_CONVERSATION` | 同上，按 `conversation_id` 分组 | 同上 | 同上 |

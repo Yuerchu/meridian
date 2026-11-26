@@ -54,6 +54,8 @@ export function buildProviders(now: number): ProviderInfoResponse[] {
     icon: null,
     codex_request_shape: false,
     local_backend: null,
+    capability_domain: 'chat' as const,
+    config_json: null,
   }
   return [
     {
@@ -103,6 +105,7 @@ export function buildCatalog(): ProviderCatalogEntryInfoResponse[] {
     provider_type: type,
     name,
     icon: name,
+    domains: ['chat'],
     balance,
     websites: { official: url, api_key: `${url}/keys`, docs: `${url}/docs`, models: null },
     auth: [
@@ -114,6 +117,7 @@ export function buildCatalog(): ProviderCatalogEntryInfoResponse[] {
         default_base_url: { chat_completions: url },
       },
     ],
+    config_fields: [],
     models: [{ family: name, ids: models }],
   })
   return [
@@ -130,6 +134,7 @@ export function buildCatalog(): ProviderCatalogEntryInfoResponse[] {
       provider_type: 'litert_lm',
       name: 'LiteRT-LM (On-Device)',
       icon: 'litert',
+      domains: ['chat'],
       balance: false,
       websites: {
         official: 'https://ai.google.dev/edge/litert-lm',
@@ -146,6 +151,7 @@ export function buildCatalog(): ProviderCatalogEntryInfoResponse[] {
           default_base_url: { litert_lm: 'local://' },
         },
       ],
+      config_fields: [],
       models: [],
     },
   ]
@@ -162,6 +168,12 @@ function profile(
   return {
     id,
     name,
+    canonical_id: null,
+    capability_domain: 'chat',
+    family: null,
+    icon: null,
+    routing_policy: 'sticky_manual',
+    is_archived: false,
     context_window: window,
     compact_threshold: Math.round(window * 0.8),
     max_output_tokens: 64_000,
@@ -189,6 +201,10 @@ export function buildModelConfigs(now: number): ModelConfigInfoResponse[] {
     provider_id: providerId,
     model_id: modelId,
     profile: p,
+    protocol_override: null,
+    is_enabled: true,
+    priority: 100,
+    capability_overrides: null,
     overrides_pricing: override !== undefined,
     input_price: override ? decimal(override[0]) : null,
     output_price: override ? decimal(override[1]) : null,
@@ -258,6 +274,8 @@ export function buildAssistants(now: number): AssistantInfoResponse[] {
     thinking_budget: null,
     tool_preset_id: null,
     auto_compact_enabled: true,
+    logical_model_id: null,
+    deployment_id: null,
   }
   return [
     {
@@ -687,6 +705,7 @@ export function usageBuckets(dimension: UsageDimension, now: number): UsageBucke
         bucket('demo-provider-deleted', null, 13, 30_000, 4_000, 0, ['0', '0', '0', '0']),
       ]
     case 'model':
+    case 'logical_model':
       return [
         bucket('claude-sonnet-5', 'claude-sonnet-5', 240, 2_100_000, 280_000, 1_900_000, [
           '1.65',

@@ -203,6 +203,28 @@ macro_rules! with_all_commands {
             async commands::model_config => delete_model_config(
                 request: $crate::commands::model_config::ModelConfigDeleteRequest,
             ),
+            async commands::model_config => list_logical_models(),
+            async commands::model_config => create_logical_model(
+                request: $crate::commands::model_config::LogicalModelCreateRequest,
+            ),
+            async commands::model_config => update_logical_model(
+                request: $crate::commands::model_config::LogicalModelUpdateRequest,
+            ),
+            async commands::model_config => delete_logical_model(
+                request: $crate::commands::model_config::LogicalModelDeleteRequest,
+            ),
+            async commands::model_config => attach_model_deployment(
+                request: $crate::commands::model_config::ModelDeploymentAttachRequest,
+            ),
+            async commands::model_config => update_model_deployment(
+                request: $crate::commands::model_config::ModelDeploymentUpdateRequest,
+            ),
+            async commands::model_config => switch_model_deployment_profile(
+                request: $crate::commands::model_config::ModelDeploymentProfileSwitchRequest,
+            ),
+            async commands::model_config => delete_model_deployment(
+                request: $crate::commands::model_config::ModelDeploymentDeleteRequest,
+            ),
 
             async commands::project => list_projects(),
             async commands::project => create_project(

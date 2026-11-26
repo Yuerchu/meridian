@@ -167,6 +167,8 @@ pub async fn create_assistant(
         thinking_budget: None,
         tool_preset_id: None,
         auto_compact_enabled: SqlBool::FALSE,
+        logical_model_id: None,
+        deployment_id: None,
     };
     app.services()
         .db
@@ -309,6 +311,8 @@ mod tests {
             thinking_budget: None,
             tool_preset_id: None,
             auto_compact_enabled: SqlBool::FALSE,
+            logical_model_id: None,
+            deployment_id: None,
         }
     }
 
@@ -335,6 +339,8 @@ mod tests {
                     icon: None,
                     codex_request_shape: SqlBool::FALSE,
                     local_backend: None,
+                    capability_domain: meridian_core::provider::CapabilityDomain::Chat,
+                    config_json: None,
                 },
             )
             .await?;

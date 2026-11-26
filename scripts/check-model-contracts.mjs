@@ -76,6 +76,8 @@ const REQUIRED_FILES = [
   'scripts/generate-invoke-response-schema.mjs',
   'src-tauri/Cargo.toml',
   'src-tauri/crates/core/Cargo.toml',
+  'src-tauri/crates/provider-sdk/Cargo.toml',
+  'src-tauri/crates/providers/Cargo.toml',
   'src-tauri/crates/core/schema.snapshot.sql',
   'src-tauri/crates/core/src/acp/import.rs',
   'src-tauri/crates/core/src/agent/auto_review/mod.rs',
@@ -86,14 +88,14 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/db/sea/ops/message.rs',
   'src-tauri/crates/core/src/db/sea/ops/usage.rs',
   'src-tauri/crates/core/src/db/types.rs',
-  'src-tauri/crates/core/src/decimal.rs',
+  'src-tauri/crates/provider-sdk/src/decimal.rs',
   'src-tauri/crates/core/src/events.rs',
   'src-tauri/crates/core/src/hooks/mod.rs',
   'src-tauri/crates/core/src/logging/reader.rs',
   'src-tauri/crates/core/src/onebot/mod.rs',
-  'src-tauri/crates/core/src/provider/balance.rs',
-  'src-tauri/crates/core/src/provider/catalog.rs',
-  'src-tauri/crates/core/src/provider/mod.rs',
+  'src-tauri/crates/provider-sdk/src/balance.rs',
+  'src-tauri/crates/providers/src/catalog.rs',
+  'src-tauri/crates/provider-sdk/src/chat.rs',
   'src-tauri/crates/core/src/tools/mod.rs',
   'src-tauri/crates/core/src/workspace/reference.rs',
   'src-tauri/src/command_table.rs',
@@ -500,7 +502,7 @@ requireRustFields(entityResponseFile, 'ModelProfileInfoResponse', {
 requireRustFields(entityResponseFile, 'ModelPricingInfoResponse', {
   pricing_tiers: /^Vec<(?:[\w:]+::)*PriceTier>$/,
 })
-requireRustFields('src-tauri/crates/core/src/provider/mod.rs', 'ProviderCapabilities', {
+requireRustFields('src-tauri/crates/provider-sdk/src/chat.rs', 'ProviderCapabilities', {
   server_tools: /^Vec<ServerToolKind>$/,
 })
 requireRustFields(entityResponseFile, 'ProviderCapabilityOverrides', {
@@ -1238,7 +1240,7 @@ if (!/BTreeMap<String,\s*V>/.test(mergeByCall ?? '') || /serde_json::Value/.test
 if (!/call_id\.is_empty\(\)/.test(mergeByCall ?? '')) {
   add(messageOpsFile, 'merge_by_call 必须拒绝空 call_id')
 }
-const providerContractFile = 'src-tauri/crates/core/src/provider/mod.rs'
+const providerContractFile = 'src-tauri/crates/provider-sdk/src/chat.rs'
 const providerContractSource = readAt(providerContractFile)
 if (
   !/struct ServerToolCall[\s\S]{0,900}?deserialize_required_nullable[^\]]*\]\s*pub arguments:\s*Option<String>/.test(
@@ -1743,9 +1745,9 @@ const strictObjectFiles = [
   ...filesUnder('src-tauri/src/remote', ['.rs']),
   ...filesUnder('src-tauri/crates/core/src/hooks', ['.rs']),
   'src-tauri/crates/core/src/events.rs',
-  'src-tauri/crates/core/src/provider/state.rs',
-  'src-tauri/crates/core/src/provider/capabilities.rs',
-  'src-tauri/crates/core/src/provider/catalog.rs',
+  'src-tauri/crates/provider-sdk/src/chat_state.rs',
+  'src-tauri/crates/providers/src/capabilities.rs',
+  'src-tauri/crates/providers/src/catalog.rs',
   'src-tauri/crates/core/src/agent/pricing.rs',
 ]
 for (const file of new Set(strictObjectFiles)) {
@@ -1761,14 +1763,14 @@ for (const file of new Set(strictObjectFiles)) {
   }
 }
 
-const providerCatalogContractFile = 'src-tauri/crates/core/src/provider/catalog.rs'
+const providerCatalogContractFile = 'src-tauri/crates/providers/src/catalog.rs'
 const providerCatalogContract = readAt(providerCatalogContractFile)
 if (/serde\([^\]]*\bdefault\b/.test(providerCatalogContract ?? '')) {
   add(providerCatalogContractFile, '首方 provider catalog 禁止用 serde default 补造缺失字段')
 }
 for (const field of ['official', 'api_key', 'docs', 'models']) {
   const pattern = new RegExp(
-    `deserialize_with\\s*=\\s*"crate::events::deserialize_required_nullable"\\)\\]\\s*pub ${field}: Option<String>`,
+    `deserialize_with\\s*=\\s*"(?:crate::events|meridian_provider_sdk::wire)::deserialize_required_nullable"\\)\\]\\s*pub ${field}: Option<String>`,
   )
   if (!pattern.test(providerCatalogContract ?? '')) {
     add(providerCatalogContractFile, `Websites.${field} 必须是显式 required nullable key`)
@@ -1779,7 +1781,12 @@ for (const field of ['official', 'api_key', 'docs', 'models']) {
 // flag an optional `.ok()` probe by itself (for example, checking ownership of
 // a stale hook handshake before deleting it); it flags only a decode chain that
 // subsequently manufactures an empty/default contract value.
-for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...filesUnder('src-tauri/src', ['.rs'])]) {
+for (const file of [
+  ...filesUnder('src-tauri/crates/core/src', ['.rs']),
+  ...filesUnder('src-tauri/crates/provider-sdk/src', ['.rs']),
+  ...filesUnder('src-tauri/crates/providers/src', ['.rs']),
+  ...filesUnder('src-tauri/src', ['.rs']),
+]) {
   const source = readAt(file)
   if (source == null) continue
   for (const finding of forbiddenJsonFallbacks(source)) {
@@ -1869,7 +1876,7 @@ for (const file of [...filesUnder('src-tauri/crates/core/src', ['.rs']), ...file
   }
 }
 
-const decimalFile = 'src-tauri/crates/core/src/decimal.rs'
+const decimalFile = 'src-tauri/crates/provider-sdk/src/decimal.rs'
 const decimalSource = readAt(decimalFile)
 if (decimalSource == null) add(decimalFile, '缺少统一 Decimal 边界类型')
 for (const [pattern, message] of [
@@ -1904,7 +1911,13 @@ for (const [pattern, message] of [
 // 看不见的绕法：`use entity::conversation; conversation::Entity::find()` 在 sea/ops 之外
 // 直接查——那是模块限定的用法，这里不拦；dieselOpsCalls 之外没有计数守它，靠审查。
 const ENTITY_DIR = 'src-tauri/crates/core/src/db/entity/'
-const RUST_CRATE_DIRS = ['src-tauri/crates/core/src', 'src-tauri/src', 'src-tauri/crates/meridiand/src']
+const RUST_CRATE_DIRS = [
+  'src-tauri/crates/core/src',
+  'src-tauri/crates/provider-sdk/src',
+  'src-tauri/crates/providers/src',
+  'src-tauri/src',
+  'src-tauri/crates/meridiand/src',
+]
 const STATEMENT_ALLOWED = new Set([
   'src-tauri/crates/core/src/db/sql.rs',
   'src-tauri/crates/core/src/db/sea/mod.rs',
@@ -2012,7 +2025,12 @@ for (const [file, source] of rustSources) {
 
 // 两个 Cargo.toml 都不许开 sea-orm 的 with-bigdecimal。先去掉 `#` 注释：core 的那份正是在
 // 注释里解释为什么不开它。
-for (const manifest of ['src-tauri/Cargo.toml', 'src-tauri/crates/core/Cargo.toml']) {
+for (const manifest of [
+  'src-tauri/Cargo.toml',
+  'src-tauri/crates/core/Cargo.toml',
+  'src-tauri/crates/provider-sdk/Cargo.toml',
+  'src-tauri/crates/providers/Cargo.toml',
+]) {
   const source = readAt(manifest)
   if (source == null) continue
   const uncommented = source.replace(/#[^\n]*/g, '')
@@ -2077,7 +2095,7 @@ if (usageBucket) {
   add(usageFile, '这里没有 pub struct UsageBucket：它搬到哪里，这条金额规则就要跟到哪里')
 }
 
-requireRustFields('src-tauri/crates/core/src/provider/balance.rs', 'BalanceAccount', {
+requireRustFields('src-tauri/crates/provider-sdk/src/balance.rs', 'BalanceAccount', {
   total_balance: /^Decimal$/,
   granted_balance: /^Option<Decimal>$/,
   topped_up_balance: /^Option<Decimal>$/,

@@ -45,9 +45,11 @@ import type {
   DecimalString,
   LocalInferenceBackend,
   ModelConfigInfoResponse,
+  ProviderCatalogConfigFieldInfoResponse,
   ProviderInfoResponse,
   ProviderBalanceInfoResponse,
   ProviderApiFormat,
+  ProviderModelInfoResponse,
 } from '@/types'
 import { titleIfTruncated } from '@/lib/truncation'
 
@@ -68,10 +70,37 @@ function offersCodexRequestShapeFor(apiFormat: ProviderApiFormat, provider: Prov
 interface ModelRow {
   id: string
   name: string
+  suggestedCanonicalId: string | null
+  suggestedProtocol: string | null
   config?: ModelConfigInfoResponse
   /** `null` when nothing has been fetched yet: the page has not asked the
    *  provider, so it has nothing to say about what the provider lists. */
   listed: boolean | null
+}
+
+function protocolIdFor(providerType: string, apiFormat: string): string {
+  if (providerType === 'anthropic') return 'anthropic_messages'
+  if (providerType === 'google') {
+    if (apiFormat === 'gemini_generate_content') return 'google_generate_content'
+    if (apiFormat === 'gemini_interactions') return 'google_interactions'
+    return 'openai_chat'
+  }
+  if (providerType === 'litert_lm') return 'litert_lm'
+  if (apiFormat === 'responses') return 'openai_responses'
+  if (apiFormat === 'gemma_tool') return 'gemma_tool'
+  return 'openai_chat'
+}
+
+function isConfigFieldVisible(
+  field: ProviderCatalogConfigFieldInfoResponse,
+  protocol: string,
+  authId: string | undefined,
+): boolean {
+  if (field.secret) return false
+  if (field.key === 'codex_request_shape' || field.key === 'local_backend') return false
+  const protocolOk = !field.visible_when_protocol || field.visible_when_protocol.includes(protocol)
+  const authOk = !field.visible_when_auth || (authId !== undefined && field.visible_when_auth.includes(authId))
+  return protocolOk && authOk
 }
 
 /**
@@ -186,7 +215,12 @@ function ProviderEditor({
     icon: provider.icon,
     codexRequestShape: provider.codex_request_shape,
     localBackend: provider.local_backend,
+    configJson: JSON.stringify(provider.config_json ?? {}),
   }))
+  const [extraConfig, setExtraConfig] = useState<Record<string, unknown>>(() => ({
+    ...(provider.config_json ?? {}),
+  }))
+  const [togglingModelId, setTogglingModelId] = useState<string | null>(null)
   const [apiKey, setApiKey] = useState('')
   const { confirm, confirmDialog } = useConfirm()
   // Not a boolean: while the lookup is in flight `false` renders exactly like
@@ -200,7 +234,7 @@ function ProviderEditor({
   const [savingKey, setSavingKey] = useState(false)
   const [keySaved, markKeySaved] = useTemporaryFlag()
   const [saved, markSaved] = useTemporaryFlag()
-  const [models, setModels] = useState<{ id: string; name: string }[]>([])
+  const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   // Whether `models` says anything about the provider: a fetch that answered,
   // or a cache that holds one. An empty cache is nothing fetched yet, not an
   // announcement that the provider lists nothing.
@@ -221,6 +255,7 @@ function ProviderEditor({
   const [deleteError, setDeleteError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const extraConfigDirty = JSON.stringify(extraConfig) !== savedDraft.configJson
   const dirty =
     name !== savedDraft.name ||
     providerType !== savedDraft.providerType ||
@@ -229,6 +264,7 @@ function ProviderEditor({
     icon !== savedDraft.icon ||
     codexRequestShape !== savedDraft.codexRequestShape ||
     localBackend !== savedDraft.localBackend ||
+    extraConfigDirty ||
     (offersCodexRequestShapeFor(apiFormat, provider) &&
       codexRequestShape &&
       codexClientVersion.trim() !== savedCodexClientVersion.trim())
@@ -324,6 +360,13 @@ function ProviderEditor({
     return rowEntry.auth.find((a) => a.credential_kind === provider.credential_kind) ?? rowEntry.auth[0]
   })()
 
+  const currentProtocol = protocolIdFor(providerType, apiFormat)
+  const visibleExtraFields = useMemo(
+    () =>
+      (rowEntry?.config_fields ?? []).filter((field) => isConfigFieldVisible(field, currentProtocol, activeAuth?.id)),
+    [rowEntry, currentProtocol, activeAuth?.id],
+  )
+
   // Only the Responses adapter reads the column, so only a Responses row is
   // offered the switch. A `chatgpt_codex` row is the shape already — it goes to
   // `CodexProvider`, which does not consult the setting — and showing a
@@ -365,6 +408,9 @@ function ProviderEditor({
         // `responses` hides the control, and leaving the column as it was would
         // keep a setting the user can no longer see or turn off.
         codex_request_shape: offersCodexRequestShape ? codexRequestShape : false,
+        ...(visibleExtraFields.length > 0 && extraConfigDirty
+          ? { config_json: Object.keys(extraConfig).length > 0 ? extraConfig : null }
+          : {}),
       })
       // The row is written, so it is no longer unsaved even if the preference
       // below fails — that failure is reported, and only that field stays dirty.
@@ -376,6 +422,7 @@ function ProviderEditor({
         icon,
         codexRequestShape: offersCodexRequestShape ? codexRequestShape : false,
         localBackend,
+        configJson: JSON.stringify(extraConfig),
       })
       // After the row, and only where the field was on screen: a save from a page
       // that never showed it must not clear somebody else's override. `null` is
@@ -410,6 +457,9 @@ function ProviderEditor({
     codexClientVersion,
     offersCodexRequestShape,
     activeAuth,
+    visibleExtraFields.length,
+    extraConfigDirty,
+    extraConfig,
     onUpdate,
     markSaved,
   ])
@@ -647,15 +697,50 @@ function ProviderEditor({
    * never be given a window or a price.
    */
   const listedIds = useMemo(() => new Set(models.map((model) => model.id)), [models])
+  const handleToggleModelDeployment = useCallback(
+    async (row: ModelRow, nextEnabled: boolean) => {
+      if (togglingModelId === row.id) return
+      setTogglingModelId(row.id)
+      setModelsError(null)
+      try {
+        if (row.config) {
+          await api.modelDeployments.update({ id: row.config.id, is_enabled: nextEnabled })
+        } else if (nextEnabled) {
+          await api.modelDeployments.attach({
+            provider_id: provider.id,
+            model_id: row.id,
+            display_name: row.name || row.id,
+            profile_id: null,
+            protocol_override: null,
+            priority: null,
+          })
+        }
+        await loadModelConfigs()
+      } catch (err) {
+        setModelsError(String(err))
+      } finally {
+        setTogglingModelId(null)
+      }
+    },
+    [provider.id, togglingModelId, loadModelConfigs],
+  )
+
   const allModels = useMemo<ModelRow[]>(() => {
-    const extra = [...modelConfigs.values()]
+    const extra: ProviderModelInfoResponse[] = [...modelConfigs.values()]
       .filter((config) => !listedIds.has(config.model_id))
-      .map((config) => ({ id: config.model_id, name: config.profile.name || config.model_id }))
+      .map((config) => ({
+        id: config.model_id,
+        name: config.profile.name || config.model_id,
+        suggested_canonical_id: config.profile.canonical_id,
+        suggested_protocol: null,
+      }))
     return [...models, ...extra]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((model) => ({
         id: model.id,
         name: model.name,
+        suggestedCanonicalId: model.suggested_canonical_id ?? null,
+        suggestedProtocol: model.suggested_protocol ?? null,
         config: modelConfigs.get(model.id),
         listed: modelsKnown ? listedIds.has(model.id) : null,
       }))
@@ -699,6 +784,11 @@ function ProviderEditor({
             {row.name !== row.id && (
               <span data-slot="model-row-id" onPointerEnter={titleIfTruncated} className="m-provider-page__model-id">
                 {row.id}
+              </span>
+            )}
+            {!row.config && row.suggestedCanonicalId && (
+              <span data-slot="model-row-merge-hint" className="m-provider-page__muted">
+                {t('settings.provider.modelMergeHint', { canonical: row.suggestedCanonicalId })}
               </span>
             )}
           </span>
@@ -747,8 +837,25 @@ function ProviderEditor({
         width: 96,
         cell: (row) => <ModelStatus config={row.config} listed={row.listed} />,
       },
+      {
+        id: 'enabled',
+        header: t('settings.provider.modelEnabledColumn'),
+        align: 'end',
+        width: 68,
+        cell: (row) => (
+          <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+            <Switch
+              size="sm"
+              aria-label={`${row.name} ${t('settings.provider.modelEnabledColumn')}`}
+              isSelected={row.config?.is_enabled === true}
+              isDisabled={togglingModelId === row.id}
+              onChange={(next) => void handleToggleModelDeployment(row, next)}
+            />
+          </span>
+        ),
+      },
     ],
-    [t, locale],
+    [t, locale, togglingModelId, handleToggleModelDeployment],
   )
 
   // Straight from the catalog, and not translated: these are brand names. The
@@ -940,6 +1047,53 @@ function ProviderEditor({
               onBackendChange={setLocalBackend}
             />
           )}
+          {visibleExtraFields.map((field) => {
+            const rawValue = extraConfig[field.key]
+            if (field.kind === 'boolean') {
+              const checked = typeof rawValue === 'boolean' ? rawValue : field.default_value === 'true'
+              return (
+                <SettingsRow key={field.key} label={field.label}>
+                  <Switch
+                    aria-label={field.label}
+                    isSelected={checked}
+                    onChange={(next) => setExtraConfig((current) => ({ ...current, [field.key]: next }))}
+                  />
+                </SettingsRow>
+              )
+            }
+            if (field.kind === 'select') {
+              const selected =
+                typeof rawValue === 'string' ? rawValue : (field.default_value ?? field.options[0]?.value ?? '')
+              return (
+                <SettingsRow key={field.key} label={field.label}>
+                  <SettingsSelect
+                    ariaLabel={field.label}
+                    value={selected}
+                    options={field.options}
+                    onChange={(next) => setExtraConfig((current) => ({ ...current, [field.key]: next }))}
+                  />
+                </SettingsRow>
+              )
+            }
+            const textValue = typeof rawValue === 'string' ? rawValue : (field.default_value ?? '')
+            return (
+              <SettingsRow key={field.key} label={field.label}>
+                <TextField
+                  name={`vendorConfig-${provider.id}-${field.key}`}
+                  value={textValue}
+                  placeholder={field.placeholder ?? undefined}
+                  onChange={(next) =>
+                    setExtraConfig((current) => {
+                      const updated = { ...current }
+                      if (next.trim() === '') delete updated[field.key]
+                      else updated[field.key] = next
+                      return updated
+                    })
+                  }
+                />
+              </SettingsRow>
+            )
+          })}
         </SettingsGroup>
       </div>
 

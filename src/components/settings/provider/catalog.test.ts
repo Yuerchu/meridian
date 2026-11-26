@@ -19,9 +19,11 @@ const entry = (over: Partial<ProviderCatalogEntryInfoResponse>): ProviderCatalog
   provider_type: 'openai',
   name: 'OpenAI',
   icon: 'openai',
+  domains: ['chat'],
   balance: false,
   websites: { official: '', api_key: '', docs: '', models: '' },
   auth: [],
+  config_fields: [],
   models: [],
   ...over,
 })

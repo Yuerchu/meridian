@@ -231,6 +231,56 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
     },
   },
   delete_model_config: { args: { request: { id: 'demo-model-haiku' } } },
+  list_logical_models: {},
+  create_logical_model: {
+    args: {
+      request: {
+        name: 'Standalone Model',
+        canonical_id: null,
+        capability_domain: 'chat',
+        family: null,
+        icon: null,
+        routing_policy: 'sticky_manual',
+        context_window: 128_000,
+        compact_threshold: 100_000,
+        max_output_tokens: null,
+        ...DECIMAL_ZERO_PRICE,
+        pricing_tiers: [],
+        capability_overrides: null,
+      },
+    },
+  },
+  update_logical_model: {
+    args: { request: { id: 'demo-profile-sonnet', routing_policy: 'user_opt_in_failover' } },
+  },
+  delete_logical_model: {
+    args: { request: { id: 'demo-profile-haiku', cascade_deployments: true } },
+  },
+  attach_model_deployment: {
+    args: {
+      request: {
+        provider_id: PROVIDER.anthropic,
+        model_id: 'claude-opus-5',
+        display_name: 'Claude Opus 5',
+        profile_id: null,
+        protocol_override: null,
+        priority: 50,
+      },
+    },
+  },
+  update_model_deployment: {
+    args: { request: { id: 'demo-model-sonnet', priority: 10, is_enabled: true } },
+  },
+  switch_model_deployment_profile: {
+    args: {
+      request: {
+        deployment_id: 'demo-model-sonnet',
+        target_profile_id: null,
+        new_profile_name: 'Claude Sonnet Split',
+      },
+    },
+  },
+  delete_model_deployment: { args: { request: { id: 'demo-model-ds-reasoner' } } },
   get_usage_report: {
     args: { request: { dimension: 'total', since_ms: null, until_ms: null, origin: null, conversation_id: null } },
   },

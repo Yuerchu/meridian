@@ -309,6 +309,7 @@ export interface ProviderUpdateRequest {
    */
   codex_request_shape?: boolean
   local_backend?: LocalInferenceBackend | null
+  config_json?: Record<string, unknown> | null
 }
 
 export interface ProviderDeleteRequest {
@@ -1067,6 +1068,8 @@ export interface ConversationInfoResponse {
   agent_kind: ConversationAgentKind | null
   agent_provider_id: string | null
   agent_model_id: string | null
+  logical_model_id: string | null
+  deployment_id: string | null
 }
 
 /** One conversation whose transcript says the search query, with a snippet
@@ -2211,6 +2214,8 @@ export interface AssistantInfoResponse {
   thinking_budget: number | null
   tool_preset_id: string | null
   auto_compact_enabled: boolean
+  logical_model_id: string | null
+  deployment_id: string | null
 }
 
 /** Effort tiers a model can advertise, ascending. Mirrors EFFORT_LADDER in the Rust catalog. */
@@ -2341,6 +2346,8 @@ export interface ProviderInfoResponse {
    */
   codex_request_shape: boolean
   local_backend: LocalInferenceBackend | null
+  capability_domain: CapabilityDomain
+  config_json: Record<string, unknown> | null
 }
 
 /**
@@ -2356,6 +2363,28 @@ export interface ProviderCatalogWebsitesInfoResponse {
   models: string | null
 }
 
+export type CapabilityDomain = 'chat' | 'web_search' | 'tts' | 'embedding' | 'image_gen' | 'video_gen'
+
+export type ConfigFieldKind = 'text' | 'secret' | 'select' | 'boolean' | 'file_path' | 'multiline_secret'
+
+export interface ProviderCatalogConfigFieldOptionInfoResponse {
+  value: string
+  label: string
+}
+
+export interface ProviderCatalogConfigFieldInfoResponse {
+  key: string
+  label: string
+  kind: ConfigFieldKind
+  required: boolean
+  secret: boolean
+  default_value: string | null
+  placeholder: string | null
+  options: ProviderCatalogConfigFieldOptionInfoResponse[]
+  visible_when_protocol: string[] | null
+  visible_when_auth: string[] | null
+}
+
 export interface ProviderCatalogModelGroupInfoResponse {
   family: string
   ids: string[]
@@ -2366,9 +2395,11 @@ export interface ProviderCatalogEntryInfoResponse {
   provider_type: ProviderType
   name: string
   icon: string
+  domains: CapabilityDomain[]
   balance: boolean
   websites: ProviderCatalogWebsitesInfoResponse
   auth: ProviderCatalogAuthOptionInfoResponse[]
+  config_fields: ProviderCatalogConfigFieldInfoResponse[]
   models: ProviderCatalogModelGroupInfoResponse[]
 }
 
@@ -2411,6 +2442,8 @@ export interface ProviderCatalogAuthOptionInfoResponse {
 export interface ProviderModelInfoResponse {
   id: string
   name: string
+  suggested_canonical_id: string | null
+  suggested_protocol: string | null
 }
 
 export type ProviderModelListResponse = ProviderModelInfoResponse[]
@@ -2836,10 +2869,23 @@ export interface ProviderCapabilityOverrides {
  * can be asked to do and usually its prices are facts about the model, held
  * once and pointed at by every provider that reaches it.
  */
+export type RoutingPolicy = 'sticky_manual' | 'auto_failover_stateless' | 'user_opt_in_failover'
+
+export type ProtocolCompliance =
+  | { status: 'standard' }
+  | { status: 'degraded'; expected: string[]; lost_capabilities: string[] }
+  | { status: 'unknown' }
+
 export interface ModelProfileInfoResponse {
   id: string
   /** What a person calls this model, which is rarely any provider's wire id. */
   name: string
+  canonical_id: string | null
+  capability_domain: CapabilityDomain
+  family: string | null
+  icon: string | null
+  routing_policy: RoutingPolicy
+  is_archived: boolean
   context_window: number
   compact_threshold: number
   max_output_tokens: number | null
@@ -2861,7 +2907,7 @@ export interface ModelProfileInfoResponse {
   pricing_tiers: PriceTier[]
   /** Strict patch over the built-in catalog; malformed or unknown persisted fields fail the read. */
   capability_overrides: ProviderCapabilityOverrides | null
-  /** How many providers reach this model. Editing it reaches all of them. */
+  /** How many provider deployments reach this model (0 is valid for standalone models). */
   model_count: number
   created_at: number
   updated_at: number
@@ -2891,6 +2937,10 @@ export interface ModelConfigInfoResponse {
   /** What this provider answers to. See `profile.name` for the readable one. */
   model_id: string
   profile: ModelProfileInfoResponse
+  protocol_override: string | null
+  is_enabled: boolean
+  priority: number
+  capability_overrides: ProviderCapabilityOverrides | null
   /**
    * Whether the five price fields below are read at all. Off is ordinary and
    * means the profile's rates apply; the fields stay null rather than holding a
@@ -2919,6 +2969,34 @@ export interface ModelConfigInfoResponse {
   created_at: number
   updated_at: number
 }
+
+export interface ModelDeploymentInfoResponse {
+  id: string
+  provider_id: string
+  provider_name: string
+  provider_icon: string | null
+  provider_catalog_id: string | null
+  provider_enabled: boolean
+  model_id: string
+  profile_id: string
+  effective_protocol: string
+  protocol_override: string | null
+  compliance: ProtocolCompliance
+  is_enabled: boolean
+  priority: number
+  overrides_pricing: boolean
+  effective_pricing: ModelPricingInfoResponse
+  capability_overrides: ProviderCapabilityOverrides | null
+  created_at: number
+  updated_at: number
+}
+
+export interface LogicalModelInfoResponse {
+  profile: ModelProfileInfoResponse
+  deployments: ModelDeploymentInfoResponse[]
+}
+
+export type LogicalModelListResponse = LogicalModelInfoResponse[]
 
 /**
  * One run of a provider-side tool, as the stream reports it.
@@ -3015,6 +3093,67 @@ export interface ModelConfigReadRequest {
   model_id: string
 }
 
+export interface LogicalModelCreateRequest {
+  name: string
+  canonical_id: string | null
+  capability_domain: CapabilityDomain
+  family: string | null
+  icon: string | null
+  routing_policy: RoutingPolicy
+  context_window: number
+  compact_threshold: number
+  max_output_tokens: number | null
+  input_price: DecimalString | null
+  output_price: DecimalString | null
+  cache_read_price: DecimalString | null
+  cache_write_price: DecimalString | null
+  pricing_tiers: PriceTier[]
+  capability_overrides: ProviderCapabilityOverrides | null
+}
+
+export interface LogicalModelUpdateRequest {
+  id: string
+  name?: string
+  canonical_id?: string | null
+  capability_domain?: CapabilityDomain
+  family?: string | null
+  icon?: string | null
+  routing_policy?: RoutingPolicy
+  is_archived?: boolean
+}
+
+export interface LogicalModelDeleteRequest {
+  id: string
+  cascade_deployments: boolean
+}
+
+export interface ModelDeploymentAttachRequest {
+  provider_id: string
+  model_id: string
+  display_name: string | null
+  profile_id: string | null
+  protocol_override: string | null
+  priority: number | null
+}
+
+export interface ModelDeploymentUpdateRequest {
+  id: string
+  is_enabled?: boolean
+  priority?: number
+  protocol_override?: string | null
+  capability_overrides?: ProviderCapabilityOverrides | null
+}
+
+export interface ModelDeploymentProfileSwitchRequest {
+  deployment_id: string
+  target_profile_id: string | null
+  new_profile_name: string | null
+}
+
+export interface ModelDeploymentDeleteRequest {
+  id: string
+}
+
 /**
  * A usage report, grouped by one thing.
  *
@@ -3026,6 +3165,7 @@ export type UsageDimension =
   | 'total'
   | 'provider'
   | 'model'
+  | 'logical_model'
   | 'bot'
   | 'source'
   | 'conversation'

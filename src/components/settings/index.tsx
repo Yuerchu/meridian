@@ -1,5 +1,6 @@
 import './settings-shell.css'
 import { ProviderSettings } from './provider'
+import { ModelsSettings } from './models'
 import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
@@ -35,6 +36,9 @@ export default function SettingsPage({
   switch (activeTab) {
     case 'provider':
       panel = <ProviderSettings />
+      break
+    case 'models':
+      panel = <ModelsSettings />
       break
     case 'usage':
       panel = <UsageSettings onOpenConversation={onOpenConversation} />

@@ -131,6 +131,10 @@ import type {
   LogPageResponse,
   LogQueryRequest,
   LogSettingsResponse,
+  LogicalModelCreateRequest,
+  LogicalModelDeleteRequest,
+  LogicalModelListResponse,
+  LogicalModelUpdateRequest,
   McpConnectionStatusListResponse,
   McpServerConnectRequest,
   McpServerCreateRequest,
@@ -167,6 +171,11 @@ import type {
   ModelConfigListResponse,
   ModelConfigReadRequest,
   ModelConfigUpsertRequest,
+  ModelDeploymentAttachRequest,
+  ModelDeploymentDeleteRequest,
+  ModelDeploymentProfileSwitchRequest,
+  ModelDeploymentUpdateRequest,
+  ModelProfileInfoResponse,
   ModelProfileListResponse,
   OneBotConfigInfoResponse,
   OneBotConfigUpdateRequest,
@@ -396,6 +405,25 @@ export const api = {
     get: (request: ModelConfigReadRequest) => invoke<ModelConfigInfoResponse | null>('get_model_config', { request }),
     set: (request: ModelConfigUpsertRequest) => invoke<ModelConfigInfoResponse>('set_model_config', { request }),
     delete: (request: ModelConfigDeleteRequest) => invoke<void>('delete_model_config', { request }),
+  },
+
+  logicalModels: {
+    list: () => invoke<LogicalModelListResponse>('list_logical_models'),
+    create: (request: LogicalModelCreateRequest) =>
+      invoke<ModelProfileInfoResponse>('create_logical_model', { request }),
+    update: (request: LogicalModelUpdateRequest) =>
+      invoke<ModelProfileInfoResponse>('update_logical_model', { request }),
+    delete: (request: LogicalModelDeleteRequest) => invoke<void>('delete_logical_model', { request }),
+  },
+
+  modelDeployments: {
+    attach: (request: ModelDeploymentAttachRequest) =>
+      invoke<ModelConfigInfoResponse>('attach_model_deployment', { request }),
+    update: (request: ModelDeploymentUpdateRequest) =>
+      invoke<ModelConfigInfoResponse>('update_model_deployment', { request }),
+    switchProfile: (request: ModelDeploymentProfileSwitchRequest) =>
+      invoke<ModelConfigInfoResponse>('switch_model_deployment_profile', { request }),
+    delete: (request: ModelDeploymentDeleteRequest) => invoke<void>('delete_model_deployment', { request }),
   },
 
   projects: {

@@ -1,0 +1,164 @@
+@layer components {
+  .m-models-settings {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    gap: var(--space-5);
+  }
+
+  .m-models-settings__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .m-models-settings__card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    background: var(--surface);
+  }
+
+  .m-models-settings__card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__title-group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .m-models-settings__title-row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__name {
+    color: var(--text);
+    font: var(--text-body-medium);
+  }
+
+  .m-models-settings__meta {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__canonical {
+    display: inline-flex;
+    align-items: center;
+    padding-inline: var(--space-2);
+    padding-block: 2px;
+    border-radius: var(--radius-pill);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__controls {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__deployments {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .m-models-settings__deployment {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface-subtle);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__deployment-main {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .m-models-settings__deployment-title {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__provider-name {
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .m-models-settings__wire-id {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__compliance {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding-inline: var(--space-2);
+    padding-block: 1px;
+    border-radius: var(--radius-pill);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__compliance[data-status='standard'] {
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+  }
+
+  .m-models-settings__compliance[data-status='degraded'] {
+    background: var(--warning-soft);
+    color: var(--warning);
+  }
+
+  .m-models-settings__degraded-hint {
+    color: var(--warning);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__deployment-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-wrap: wrap;
+  }
+
+  .m-models-settings__priority {
+    width: 4.5rem;
+  }
+
+  .m-models-settings__empty-channels {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-models-settings__form {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+}
