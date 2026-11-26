@@ -277,6 +277,8 @@ pub struct AssistantInfoResponse {
     pub thinking_budget: Option<i32>,
     pub tool_preset_id: Option<String>,
     pub auto_compact_enabled: bool,
+    pub logical_model_id: Option<String>,
+    pub deployment_id: Option<String>,
 }
 
 impl From<assistant::Model> for AssistantInfoResponse {
@@ -303,6 +305,8 @@ impl From<assistant::Model> for AssistantInfoResponse {
             thinking_budget: row.thinking_budget,
             tool_preset_id: row.tool_preset_id,
             auto_compact_enabled: row.auto_compact_enabled.get(),
+            logical_model_id: row.logical_model_id,
+            deployment_id: row.deployment_id,
         }
     }
 }
@@ -332,6 +336,8 @@ pub struct ConversationInfoResponse {
     pub agent_kind: Option<ConversationAgentKind>,
     pub agent_provider_id: Option<String>,
     pub agent_model_id: Option<String>,
+    pub logical_model_id: Option<String>,
+    pub deployment_id: Option<String>,
 }
 
 impl TryFrom<conversation::Model> for ConversationInfoResponse {
@@ -380,6 +386,8 @@ impl TryFrom<conversation::Model> for ConversationInfoResponse {
             agent_kind,
             agent_provider_id: row.agent_provider_id,
             agent_model_id: row.agent_model_id,
+            logical_model_id: row.logical_model_id,
+            deployment_id: row.deployment_id,
         })
     }
 }
@@ -630,6 +638,12 @@ pub type MemorySubjectListResponse = Vec<MemorySubjectInfoResponse>;
 pub struct ModelProfileInfoResponse {
     pub id: String,
     pub name: String,
+    pub canonical_id: Option<String>,
+    pub capability_domain: meridian_core::provider::CapabilityDomain,
+    pub family: Option<String>,
+    pub icon: Option<String>,
+    pub routing_policy: meridian_core::provider::RoutingPolicy,
+    pub is_archived: bool,
     pub context_window: i32,
     pub compact_threshold: i32,
     pub max_output_tokens: Option<i32>,
@@ -639,9 +653,8 @@ pub struct ModelProfileInfoResponse {
     pub cache_write_price: Option<meridian_core::decimal::Decimal>,
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub capability_overrides: Option<ProviderCapabilityOverrides>,
-    /// How many provider rows point at this profile. Zero never reaches a
-    /// client: a profile nothing describes is collected when the last model
-    /// leaves it.
+    /// How many provider deployments point at this logical model (0 is valid:
+    /// logical models persist independently of providers).
     pub model_count: i64,
     pub created_at: i64,
     pub updated_at: i64,
@@ -659,6 +672,12 @@ impl ModelProfileInfoResponse {
         Ok(Self {
             id: row.id,
             name: row.name,
+            canonical_id: row.canonical_id,
+            capability_domain: row.capability_domain,
+            family: row.family,
+            icon: row.icon,
+            routing_policy: row.routing_policy,
+            is_archived: row.is_archived.get(),
             context_window: row.context_window,
             compact_threshold: row.compact_threshold,
             max_output_tokens: row.max_output_tokens,
@@ -701,6 +720,10 @@ pub struct ModelConfigInfoResponse {
     /// person calls it — see `profile.name`.
     pub model_id: String,
     pub profile: ModelProfileInfoResponse,
+    pub protocol_override: Option<String>,
+    pub is_enabled: bool,
+    pub priority: i32,
+    pub capability_overrides: Option<ProviderCapabilityOverrides>,
     /// Whether the five price fields below are read at all.
     pub overrides_pricing: bool,
     pub input_price: Option<meridian_core::decimal::Decimal>,
@@ -734,11 +757,20 @@ impl ModelConfigInfoResponse {
         let pricing_tiers = meridian_core::agent::pricing::parse_tiers(row.pricing_tiers.as_deref())
             .map_err(|error| error.to_string())?;
         let server_tools = row.server_tools.as_deref().map(parse_model_server_tools).transpose()?;
+        let capability_overrides = row
+            .capability_overrides
+            .as_deref()
+            .map(ProviderCapabilityOverrides::from_storage_json)
+            .transpose()?;
         Ok(Self {
             id: row.id,
             provider_id: row.provider_id,
             model_id: row.model_id,
             profile: ModelProfileInfoResponse::from_row(profile, model_count)?,
+            protocol_override: row.protocol_override,
+            is_enabled: row.is_enabled.get(),
+            priority: row.priority,
+            capability_overrides,
             overrides_pricing: row.overrides_pricing.get(),
             input_price: row.input_price,
             output_price: row.output_price,
@@ -755,6 +787,39 @@ impl ModelConfigInfoResponse {
 }
 
 pub type ModelConfigListResponse = Vec<ModelConfigInfoResponse>;
+
+/// One provider channel serving a logical model, enriched with provider metadata
+/// and official-protocol compliance verdict for dual-perspective management UI.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ModelDeploymentInfoResponse {
+    pub id: String,
+    pub provider_id: String,
+    pub provider_name: String,
+    pub provider_icon: Option<String>,
+    pub provider_catalog_id: Option<String>,
+    pub provider_enabled: bool,
+    pub model_id: String,
+    pub profile_id: String,
+    pub effective_protocol: String,
+    pub protocol_override: Option<String>,
+    pub compliance: meridian_core::provider::ProtocolCompliance,
+    pub is_enabled: bool,
+    pub priority: i32,
+    pub overrides_pricing: bool,
+    pub effective_pricing: ModelPricingInfoResponse,
+    pub capability_overrides: Option<ProviderCapabilityOverrides>,
+    pub created_at: i64,
+    pub updated_at: i64,
+}
+
+/// First-class logical model alongside every provider deployment that serves it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LogicalModelInfoResponse {
+    pub profile: ModelProfileInfoResponse,
+    pub deployments: Vec<ModelDeploymentInfoResponse>,
+}
+
+pub type LogicalModelListResponse = Vec<LogicalModelInfoResponse>;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ProjectInfoResponse {
@@ -855,6 +920,8 @@ pub struct ProviderInfoResponse {
     /// `responses`; the settings page offers it nowhere else.
     pub codex_request_shape: bool,
     pub local_backend: Option<meridian_core::provider::registry::LocalInferenceBackend>,
+    pub capability_domain: meridian_core::provider::CapabilityDomain,
+    pub config_json: Option<BTreeMap<String, serde_json::Value>>,
 }
 
 impl TryFrom<provider::Model> for ProviderInfoResponse {
@@ -870,6 +937,14 @@ impl TryFrom<provider::Model> for ProviderInfoResponse {
             row.credential_kind.as_str(),
         )?;
         meridian_core::provider::registry::validate_local_backend(row.provider_type, row.local_backend)?;
+        let config_json = row
+            .config_json
+            .as_deref()
+            .map(|raw| {
+                serde_json::from_str::<BTreeMap<String, serde_json::Value>>(raw)
+                    .map_err(|error| format!("invalid persisted provider.config_json: {error}"))
+            })
+            .transpose()?;
         Ok(Self {
             id: row.id,
             name: row.name,
@@ -886,6 +961,8 @@ impl TryFrom<provider::Model> for ProviderInfoResponse {
             icon: row.icon,
             codex_request_shape: row.codex_request_shape.get(),
             local_backend: row.local_backend,
+            capability_domain: row.capability_domain,
+            config_json,
         })
     }
 }
@@ -1139,6 +1216,8 @@ mod tests {
             agent_kind: agent_kind.map(str::to_owned),
             agent_provider_id: None,
             agent_model_id: None,
+            logical_model_id: None,
+            deployment_id: None,
         }
     }
 
@@ -1241,6 +1320,10 @@ mod tests {
             server_tool_price: None,
             created_at: 1,
             updated_at: 2,
+            protocol_override: None,
+            is_enabled: meridian_core::db::types::SqlBool::TRUE,
+            priority: 100,
+            capability_overrides: None,
         }
     }
 
@@ -1261,6 +1344,12 @@ mod tests {
             ),
             created_at: 1,
             updated_at: 2,
+            canonical_id: None,
+            capability_domain: meridian_core::provider::CapabilityDomain::Chat,
+            family: None,
+            icon: None,
+            routing_policy: meridian_core::provider::RoutingPolicy::StickyManual,
+            is_archived: meridian_core::db::types::SqlBool::FALSE,
         }
     }
 

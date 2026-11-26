@@ -3,6 +3,7 @@ import {
   Broadcast,
   ChartColumn,
   Cloud,
+  Cpu,
   FaceSmile,
   FlaskConical,
   Info,
@@ -33,6 +34,7 @@ import { isRemote } from '@/lib/transport'
  */
 export type SettingsTab =
   | 'provider'
+  | 'models'
   | 'usage'
   | 'assistants'
   | 'emoji'
@@ -61,6 +63,7 @@ export interface SettingsTabDef {
 /** Everything a tab is, except where it sits — which is the group's to say. */
 const TAB_DEFS: Record<SettingsTab, Omit<SettingsTabDef, 'id'>> = {
   provider: { labelKey: 'settings.provider', icon: Cloud },
+  models: { labelKey: 'settings.models', icon: Cpu },
   usage: { labelKey: 'settings.usage', icon: ChartColumn },
   assistants: { labelKey: 'settings.assistants', icon: Bot },
   emoji: { labelKey: 'settings.emoji', icon: FaceSmile },
@@ -117,7 +120,7 @@ export interface SettingsTabGroupDef {
  * typeahead cannot disagree about where a tab lives.
  */
 export const settingsTabGroups: readonly SettingsTabGroupDef[] = [
-  { id: 'models', labelKey: 'settings.group.models', tabs: ['provider', 'usage', 'assistants'] },
+  { id: 'models', labelKey: 'settings.group.models', tabs: ['provider', 'models', 'usage', 'assistants'] },
   {
     id: 'agent',
     labelKey: 'settings.group.agent',

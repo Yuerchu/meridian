@@ -74,6 +74,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
     provider_type: 'openai',
     name: 'OpenAI',
     icon: 'openai',
+    domains: ['chat'],
     balance: false,
     websites: { official: null, api_key: null, docs: null, models: null },
     auth: [
@@ -95,6 +96,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
         default_base_url: { responses: 'https://chatgpt.com/backend-api/codex' },
       },
     ],
+    config_fields: [],
     models: [],
   },
   {
@@ -102,6 +104,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
     provider_type: 'google',
     name: 'Google Gemini',
     icon: 'google',
+    domains: ['chat'],
     balance: false,
     websites: { official: null, api_key: null, docs: null, models: null },
     auth: [
@@ -124,6 +127,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
         default_base_url: { gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global' },
       },
     ],
+    config_fields: [],
     models: [],
   },
   {
@@ -131,6 +135,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
     provider_type: 'litert_lm',
     name: 'LiteRT-LM (On-Device)',
     icon: 'litert',
+    domains: ['chat'],
     balance: false,
     websites: { official: null, api_key: null, docs: null, models: null },
     auth: [
@@ -142,6 +147,7 @@ const CATALOG: ProviderCatalogEntryInfoResponse[] = [
         default_base_url: { litert_lm: 'local://' },
       },
     ],
+    config_fields: [],
     models: [],
   },
 ]

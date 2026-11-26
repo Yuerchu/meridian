@@ -8,8 +8,8 @@ function validate(command: string, value: unknown, args?: Record<string, unknown
 
 describe('invoke response schema', () => {
   it('covers every invoke declared by api.ts', () => {
-    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(239)
-    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(239)
+    expect(INVOKE_RESPONSE_SCHEMA_COMMAND_COUNT).toBe(247)
+    expect(Object.keys(invokeResponseSchemaDocument.commands)).toHaveLength(247)
     expect(() => validate('toString', 'prototype value')).toThrow('No response schema is registered')
   })
 
@@ -114,6 +114,12 @@ describe('invoke response schema', () => {
     const profile = {
       id: 'profile-1',
       name: 'Model One',
+      canonical_id: null,
+      capability_domain: 'chat',
+      family: null,
+      icon: null,
+      routing_policy: 'sticky_manual',
+      is_archived: false,
       context_window: 128_000,
       compact_threshold: 100_000,
       max_output_tokens: null,
@@ -132,6 +138,10 @@ describe('invoke response schema', () => {
       provider_id: 'provider-1',
       model_id: 'model-1',
       profile,
+      protocol_override: null,
+      is_enabled: true,
+      priority: 100,
+      capability_overrides: null,
       overrides_pricing: false,
       input_price: null,
       output_price: null,

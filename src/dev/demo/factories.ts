@@ -41,6 +41,8 @@ export function conversation(
     agent_kind: null,
     agent_provider_id: null,
     agent_model_id: null,
+    logical_model_id: null,
+    deployment_id: null,
     ...over,
   }
 }

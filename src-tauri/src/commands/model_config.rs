@@ -2,17 +2,20 @@ use std::collections::HashMap;
 
 use crate::ServicesExt;
 use crate::commands::entity_response::{
-    ModelConfigInfoResponse, ModelConfigListResponse, ModelProfileInfoResponse, ModelProfileListResponse,
+    LogicalModelInfoResponse, LogicalModelListResponse, ModelConfigInfoResponse, ModelConfigListResponse,
+    ModelDeploymentInfoResponse, ModelPricingInfoResponse, ModelProfileInfoResponse, ModelProfileListResponse,
     ProviderCapabilityOverrides, validate_model_server_tools,
 };
 use meridian_core::db::entity::model_profile::ModelProfileChangeset;
-use meridian_core::db::entity::{model_config, model_profile};
+use meridian_core::db::entity::{model_config, model_profile, provider};
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, Snapshot, WriteTx};
 use meridian_core::db::sea::ops::{
     conversation as conversation_ops, model_config as config_ops, model_profile as profile_ops,
+    provider as provider_ops,
 };
 use meridian_core::db::types::SqlBool;
+use meridian_core::provider::{CapabilityDomain, ProtocolCompliance, RoutingPolicy};
 use meridian_core::util::now_ms;
 
 #[derive(Debug)]
@@ -104,6 +107,12 @@ impl ProfileWrite {
             capability_overrides: self.capability_overrides,
             created_at: self.now,
             updated_at: self.now,
+            canonical_id: None,
+            capability_domain: CapabilityDomain::Chat,
+            family: None,
+            icon: None,
+            routing_policy: RoutingPolicy::StickyManual,
+            is_archived: SqlBool::FALSE,
         }
     }
 
@@ -518,6 +527,10 @@ pub async fn set_model_config(
         server_tool_price: request.server_tool_price.0,
         created_at: now,
         updated_at: now,
+        protocol_override: None,
+        is_enabled: SqlBool::TRUE,
+        priority: 100,
+        capability_overrides: None,
     };
     let guarded = services
         .db
@@ -579,6 +592,658 @@ pub async fn delete_model_config(app: tauri::AppHandle, request: ModelConfigDele
     finish_guarded_model_config_mutation(guarded)
 }
 
+fn patch_nullable<'de, D, T>(deserializer: D) -> Result<Option<RequiredNullable<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    <RequiredNullable<T> as serde::Deserialize>::deserialize(deserializer).map(Some)
+}
+
+fn validate_protocol_id(protocol: &str) -> Result<(), String> {
+    if meridian_core::provider::protocols::BUILTIN_PROTOCOLS
+        .iter()
+        .any(|p| p.id == protocol)
+    {
+        Ok(())
+    } else {
+        Err(format!("unknown wire protocol `{protocol}`"))
+    }
+}
+
+fn build_deployment_response(
+    row: model_config::Model,
+    profile: &model_profile::Model,
+    provider: Option<&provider::Model>,
+) -> Result<ModelDeploymentInfoResponse, String> {
+    let resolved = meridian_core::agent::model_config::effective(&row, profile);
+    let effective_pricing = ModelPricingInfoResponse {
+        input_price: resolved.input_price,
+        output_price: resolved.output_price,
+        cache_read_price: resolved.cache_read_price,
+        cache_write_price: resolved.cache_write_price,
+        pricing_tiers: meridian_core::agent::pricing::parse_tiers(resolved.pricing_tiers.as_deref())
+            .map_err(|error| error.to_string())?,
+        server_tool_price: resolved.server_tool_price,
+    };
+    let capability_overrides = row
+        .capability_overrides
+        .as_deref()
+        .map(ProviderCapabilityOverrides::from_storage_json)
+        .transpose()?;
+    let effective_protocol = match row.protocol_override.as_deref() {
+        Some(override_id) => override_id.to_owned(),
+        None => provider
+            .and_then(|p| {
+                meridian_core::provider::protocols::canonical_protocol_id(
+                    p.provider_type.as_str(),
+                    p.api_format.as_str(),
+                )
+            })
+            .unwrap_or("openai_chat")
+            .to_owned(),
+    };
+    let canonical_key = profile.canonical_id.as_deref().unwrap_or(&row.model_id);
+    let compliance =
+        meridian_core::provider::canonical_models::evaluate_protocol_compliance(canonical_key, &effective_protocol);
+    Ok(ModelDeploymentInfoResponse {
+        id: row.id,
+        provider_id: row.provider_id,
+        provider_name: provider
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| "Unknown Provider".into()),
+        provider_icon: provider.and_then(|p| p.icon.clone()),
+        provider_catalog_id: provider.and_then(|p| p.catalog_id.clone()),
+        provider_enabled: provider.is_some_and(|p| p.is_enabled.get()),
+        model_id: row.model_id,
+        profile_id: row.profile_id,
+        effective_protocol,
+        protocol_override: row.protocol_override,
+        compliance,
+        is_enabled: row.is_enabled.get(),
+        priority: row.priority,
+        overrides_pricing: row.overrides_pricing.get(),
+        effective_pricing,
+        capability_overrides,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
+fn compliance_rank(compliance: &ProtocolCompliance) -> u8 {
+    match compliance {
+        ProtocolCompliance::Standard => 0,
+        ProtocolCompliance::Unknown => 1,
+        ProtocolCompliance::Degraded { .. } => 2,
+    }
+}
+
+/// First-class list of every logical model alongside its ordered provider
+/// deployments (including 0-deployment logical models).
+#[tauri::command]
+pub async fn list_logical_models(app: tauri::AppHandle) -> Result<LogicalModelListResponse, String> {
+    let (models_with_deps, providers) = app
+        .services()
+        .db
+        .read(async |tx| {
+            let models = profile_ops::list_with_deployments(tx, false).await?;
+            let providers = provider_ops::list(tx).await?;
+            Ok::<_, DbErr>((models, providers))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    let provider_map: HashMap<&str, &provider::Model> = providers.iter().map(|p| (p.id.as_str(), p)).collect();
+    let mut out = Vec::with_capacity(models_with_deps.len());
+    for (profile, deps) in models_with_deps {
+        let count = deps.len() as i64;
+        let mut built_deps = Vec::with_capacity(deps.len());
+        for dep in deps {
+            let prov = provider_map.get(dep.provider_id.as_str()).copied();
+            built_deps.push(build_deployment_response(dep, &profile, prov)?);
+        }
+        built_deps.sort_by(|a, b| {
+            b.is_enabled
+                .cmp(&a.is_enabled)
+                .then_with(|| compliance_rank(&a.compliance).cmp(&compliance_rank(&b.compliance)))
+                .then_with(|| a.priority.cmp(&b.priority))
+                .then_with(|| a.provider_name.cmp(&b.provider_name))
+        });
+        out.push(LogicalModelInfoResponse {
+            profile: ModelProfileInfoResponse::from_row(profile, count)?,
+            deployments: built_deps,
+        });
+    }
+    Ok(out)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogicalModelCreateRequest {
+    pub name: String,
+    pub canonical_id: RequiredNullable<String>,
+    pub capability_domain: CapabilityDomain,
+    pub family: RequiredNullable<String>,
+    pub icon: RequiredNullable<String>,
+    pub routing_policy: RoutingPolicy,
+    pub context_window: i32,
+    pub compact_threshold: i32,
+    pub max_output_tokens: RequiredNullable<i32>,
+    pub input_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    #[serde(deserialize_with = "deserialize_price_tiers")]
+    pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
+    pub capability_overrides: RequiredNullable<ProviderCapabilityOverrides>,
+}
+
+impl LogicalModelCreateRequest {
+    fn validate(mut self) -> Result<Self, String> {
+        if self.name.trim().is_empty() {
+            return Err("logical model name is required".into());
+        }
+        if self.context_window <= 0 {
+            return Err("context_window must be positive".into());
+        }
+        if self.compact_threshold <= 0 || self.compact_threshold >= self.context_window {
+            return Err("compact_threshold must be positive and smaller than context_window".into());
+        }
+        if self.max_output_tokens.0.is_some_and(|v| v <= 0) {
+            return Err("max_output_tokens must be positive".into());
+        }
+        if self.input_price.0.is_some() != self.output_price.0.is_some() {
+            return Err("input_price and output_price must be configured together".into());
+        }
+        for (field, value) in [
+            ("input_price", self.input_price.0.as_ref()),
+            ("output_price", self.output_price.0.as_ref()),
+            ("cache_read_price", self.cache_read_price.0.as_ref()),
+            ("cache_write_price", self.cache_write_price.0.as_ref()),
+        ] {
+            if value.is_some_and(meridian_core::decimal::Decimal::is_negative) {
+                return Err(format!("{field} must be non-negative"));
+            }
+        }
+        if !self.pricing_tiers.is_empty() && self.input_price.0.is_none() {
+            return Err("pricing_tiers requires configured input_price and output_price".into());
+        }
+        self.pricing_tiers =
+            meridian_core::agent::pricing::validate_tiers(self.pricing_tiers).map_err(|error| error.to_string())?;
+        if let Some(overrides) = self.capability_overrides.0.as_ref() {
+            overrides.storage_json()?;
+        }
+        Ok(self)
+    }
+}
+
+#[tauri::command]
+pub async fn create_logical_model(
+    app: tauri::AppHandle,
+    request: LogicalModelCreateRequest,
+) -> Result<ModelProfileInfoResponse, String> {
+    let request = request.validate()?;
+    let now = now_ms();
+    let pricing_tiers = (!request.pricing_tiers.is_empty())
+        .then(|| serde_json::to_string(&request.pricing_tiers).expect("PriceTier always serializes"));
+    let capability_overrides = request
+        .capability_overrides
+        .0
+        .as_ref()
+        .map(ProviderCapabilityOverrides::storage_json)
+        .transpose()?;
+    let row = model_profile::Model {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: request.name.trim().to_owned(),
+        context_window: request.context_window,
+        compact_threshold: request.compact_threshold,
+        max_output_tokens: request.max_output_tokens.0,
+        input_price: request.input_price.0,
+        output_price: request.output_price.0,
+        cache_read_price: request.cache_read_price.0,
+        cache_write_price: request.cache_write_price.0,
+        pricing_tiers,
+        capability_overrides,
+        created_at: now,
+        updated_at: now,
+        canonical_id: request
+            .canonical_id
+            .0
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty()),
+        capability_domain: request.capability_domain,
+        family: request.family.0.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()),
+        icon: request.icon.0.map(|s| s.trim().to_owned()).filter(|s| !s.is_empty()),
+        routing_policy: request.routing_policy,
+        is_archived: SqlBool::FALSE,
+    };
+    let saved = app
+        .services()
+        .db
+        .write(async |tx| profile_ops::insert(tx, row).await)
+        .await
+        .map_err(|error| error.to_string())?;
+    ModelProfileInfoResponse::from_row(saved, 0)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogicalModelUpdateRequest {
+    pub id: String,
+    pub name: Option<String>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    pub canonical_id: Option<RequiredNullable<String>>,
+    pub capability_domain: Option<CapabilityDomain>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    pub family: Option<RequiredNullable<String>>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    pub icon: Option<RequiredNullable<String>>,
+    pub routing_policy: Option<RoutingPolicy>,
+    pub is_archived: Option<bool>,
+}
+
+#[tauri::command]
+pub async fn update_logical_model(
+    app: tauri::AppHandle,
+    request: LogicalModelUpdateRequest,
+) -> Result<ModelProfileInfoResponse, String> {
+    if let Some(name) = request.name.as_deref()
+        && name.trim().is_empty()
+    {
+        return Err("logical model name cannot be empty".into());
+    }
+    let services = app.services();
+    let now = now_ms();
+    let (updated, count) = services
+        .db
+        .write(async |tx| {
+            let Some(existing) = profile_ops::get(tx, &request.id).await? else {
+                return Ok::<_, DbErr>(Err(format!("logical model `{}` does not exist", request.id)));
+            };
+            let meta = profile_ops::LogicalModelMetaChangeset {
+                name: request.name.as_deref().map(|s| s.trim().to_owned()),
+                canonical_id: match &request.canonical_id {
+                    Some(RequiredNullable(Some(v))) => Some(v.trim().to_owned()).filter(|s| !s.is_empty()),
+                    Some(RequiredNullable(None)) => None,
+                    None => existing.canonical_id,
+                },
+                capability_domain: request.capability_domain.unwrap_or(existing.capability_domain),
+                family: match &request.family {
+                    Some(RequiredNullable(Some(v))) => Some(v.trim().to_owned()).filter(|s| !s.is_empty()),
+                    Some(RequiredNullable(None)) => None,
+                    None => existing.family,
+                },
+                icon: match &request.icon {
+                    Some(RequiredNullable(Some(v))) => Some(v.trim().to_owned()).filter(|s| !s.is_empty()),
+                    Some(RequiredNullable(None)) => None,
+                    None => existing.icon,
+                },
+                routing_policy: request.routing_policy.unwrap_or(existing.routing_policy),
+                is_archived: request.is_archived.map(SqlBool::from).unwrap_or(existing.is_archived),
+                updated_at: now,
+            };
+            let saved = profile_ops::update_meta(tx, &request.id, meta).await?;
+            let count = profile_model_counts(tx)
+                .await?
+                .get(&saved.id)
+                .copied()
+                .unwrap_or_default();
+            Ok(Ok((saved, count)))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    ModelProfileInfoResponse::from_row(updated, count)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LogicalModelDeleteRequest {
+    pub id: String,
+    pub cascade_deployments: bool,
+}
+
+#[tauri::command]
+pub async fn delete_logical_model(app: tauri::AppHandle, request: LogicalModelDeleteRequest) -> Result<(), String> {
+    let services = app.services();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the delete on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
+    let _leases = services
+        .turns
+        .clone()
+        .try_acquire_mutations(&conversation_ids, "a logical model delete")
+        .map_err(|busy| busy.to_string())?;
+    let guarded = services
+        .db
+        .write(async |tx| {
+            if let Some(refused) = model_config_barrier(tx, "", "", &conversation_ids).await? {
+                return Ok::<_, DbErr>(refused);
+            }
+            profile_ops::delete_logical_model(tx, &request.id, request.cascade_deployments).await?;
+            Ok(GuardedModelConfigMutation::Applied(()))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    finish_guarded_model_config_mutation(guarded)
+}
+
+/// Explicit opt-in from a provider's discovered model list: links
+/// `(provider_id, model_id)` to an existing logical model (either explicit
+/// `profile_id` or matched by canonical ID) or creates a new logical model +
+/// deployment in one transaction.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelDeploymentAttachRequest {
+    pub provider_id: String,
+    pub model_id: String,
+    pub display_name: RequiredNullable<String>,
+    pub profile_id: RequiredNullable<String>,
+    pub protocol_override: RequiredNullable<String>,
+    pub priority: RequiredNullable<i32>,
+}
+
+#[tauri::command]
+pub async fn attach_model_deployment(
+    app: tauri::AppHandle,
+    request: ModelDeploymentAttachRequest,
+) -> Result<ModelConfigInfoResponse, String> {
+    if request.provider_id.trim().is_empty() || request.model_id.trim().is_empty() {
+        return Err("provider_id and model_id are required".into());
+    }
+    if let Some(protocol) = request.protocol_override.0.as_deref() {
+        validate_protocol_id(protocol)?;
+    }
+    let services = app.services();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the attach on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
+    let _leases = services
+        .turns
+        .clone()
+        .try_acquire_mutations(&conversation_ids, "a model deployment attach")
+        .map_err(|busy| busy.to_string())?;
+    let now = now_ms();
+    let canonical_spec = meridian_core::provider::canonical_models::canonicalize_model_id(&request.model_id);
+    let priority = request.priority.0.unwrap_or(100);
+    let guarded = services
+        .db
+        .write(async |tx| {
+            if let Some(refused) =
+                model_config_barrier(tx, &request.provider_id, &request.model_id, &conversation_ids).await?
+            {
+                return Ok::<_, DbErr>(Ok(refused));
+            }
+            let Some(provider_row) = provider_ops::get(tx, &request.provider_id).await? else {
+                return Ok(Err(format!("provider `{}` does not exist", request.provider_id)));
+            };
+            let target_profile = if let Some(explicit_profile_id) = request.profile_id.0.as_deref() {
+                match profile_ops::get(tx, explicit_profile_id).await? {
+                    Some(found) => found,
+                    None => return Ok(Err(format!("logical model `{explicit_profile_id}` does not exist"))),
+                }
+            } else if let Some(spec) = canonical_spec.as_ref()
+                && let Some(existing) = profile_ops::find_by_canonical_id(tx, &spec.canonical_id).await?
+            {
+                existing
+            } else {
+                let model_caps = meridian_core::provider::capabilities::resolve(
+                    provider_row.provider_type.as_str(),
+                    Some(provider_row.api_format.as_str()),
+                    &request.model_id,
+                );
+                let Some(max_context) = model_caps.max_context_tokens else {
+                    return Ok(Err(format!(
+                        "model `{}` has no known context window in the catalog; open its configuration page to set one explicitly",
+                        request.model_id
+                    )));
+                };
+                let context_window = max_context as i32;
+                let compact_threshold = (context_window / 5 * 4).max(1).min(context_window - 1);
+                let max_output_tokens = model_caps.max_output_tokens.map(|v| v as i32);
+                let name = request
+                    .display_name
+                    .0
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .or_else(|| canonical_spec.as_ref().map(|s| s.matched_prefix.clone()))
+                    .unwrap_or_else(|| request.model_id.clone());
+                let new_profile = model_profile::Model {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name,
+                    context_window,
+                    compact_threshold,
+                    max_output_tokens,
+                    input_price: None,
+                    output_price: None,
+                    cache_read_price: None,
+                    cache_write_price: None,
+                    pricing_tiers: None,
+                    capability_overrides: None,
+                    created_at: now,
+                    updated_at: now,
+                    canonical_id: canonical_spec.as_ref().map(|s| s.canonical_id.clone()),
+                    capability_domain: CapabilityDomain::Chat,
+                    family: canonical_spec.as_ref().map(|s| s.family.clone()),
+                    icon: None,
+                    routing_policy: RoutingPolicy::StickyManual,
+                    is_archived: SqlBool::FALSE,
+                };
+                profile_ops::insert(tx, new_profile).await?
+            };
+            let deployment = model_config::Model {
+                id: uuid::Uuid::new_v4().to_string(),
+                provider_id: request.provider_id.clone(),
+                model_id: request.model_id.clone(),
+                profile_id: target_profile.id.clone(),
+                overrides_pricing: SqlBool::FALSE,
+                input_price: None,
+                output_price: None,
+                cache_read_price: None,
+                cache_write_price: None,
+                pricing_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
+                created_at: now,
+                updated_at: now,
+                protocol_override: request.protocol_override.0.clone(),
+                is_enabled: SqlBool::TRUE,
+                priority,
+                capability_overrides: None,
+            };
+            let saved = config_ops::upsert(tx, deployment).await?;
+            let count = profile_model_counts(tx)
+                .await?
+                .get(&target_profile.id)
+                .copied()
+                .unwrap_or_default();
+            Ok(Ok(GuardedModelConfigMutation::Applied((saved, target_profile, count))))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    let (row, saved_profile, count) = finish_guarded_model_config_mutation(guarded)?;
+    meridian_core::provider::models_dev::fill_for_config(
+        &services.db,
+        &services.models_dev,
+        &row.provider_id,
+        &row.model_id,
+    )
+    .await;
+    let saved_profile = profile_ops::get(&services.db, &row.profile_id)
+        .await
+        .map_err(|error| error.to_string())?
+        .unwrap_or(saved_profile);
+    ModelConfigInfoResponse::from_rows(row, saved_profile, count)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelDeploymentUpdateRequest {
+    pub id: String,
+    pub is_enabled: Option<bool>,
+    pub priority: Option<i32>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    pub protocol_override: Option<RequiredNullable<String>>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    pub capability_overrides: Option<RequiredNullable<ProviderCapabilityOverrides>>,
+}
+
+#[tauri::command]
+pub async fn update_model_deployment(
+    app: tauri::AppHandle,
+    request: ModelDeploymentUpdateRequest,
+) -> Result<ModelConfigInfoResponse, String> {
+    if let Some(RequiredNullable(Some(protocol))) = &request.protocol_override {
+        validate_protocol_id(protocol)?;
+    }
+    let capability_overrides = match &request.capability_overrides {
+        Some(RequiredNullable(Some(ov))) => Some(Some(ov.storage_json()?)),
+        Some(RequiredNullable(None)) => Some(None),
+        None => None,
+    };
+    let protocol_override = match &request.protocol_override {
+        Some(RequiredNullable(Some(p))) => Some(Some(p.clone())),
+        Some(RequiredNullable(None)) => Some(None),
+        None => None,
+    };
+    let services = app.services();
+    let now = now_ms();
+    let (row, profile, count) = services
+        .db
+        .write(async |tx| {
+            let updated = config_ops::update_deployment(
+                tx,
+                &request.id,
+                config_ops::DeploymentUpdate {
+                    profile_id: None,
+                    protocol_override,
+                    is_enabled: request.is_enabled.map(SqlBool::from),
+                    priority: request.priority,
+                    capability_overrides,
+                    updated_at: now,
+                },
+            )
+            .await?;
+            let profile = profile_ops::get(tx, &updated.profile_id)
+                .await?
+                .ok_or_else(|| DbErr::RecordNotFound(format!("logical model `{}`", updated.profile_id)))?;
+            let count = profile_model_counts(tx)
+                .await?
+                .get(&profile.id)
+                .copied()
+                .unwrap_or_default();
+            Ok::<_, DbErr>((updated, profile, count))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    ModelConfigInfoResponse::from_rows(row, profile, count)
+}
+
+/// Merge a deployment into an existing logical model (`target_profile_id: Some`)
+/// or split it out onto a brand-new logical model (`target_profile_id: None`).
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelDeploymentProfileSwitchRequest {
+    pub deployment_id: String,
+    pub target_profile_id: RequiredNullable<String>,
+    pub new_profile_name: RequiredNullable<String>,
+}
+
+#[tauri::command]
+pub async fn switch_model_deployment_profile(
+    app: tauri::AppHandle,
+    request: ModelDeploymentProfileSwitchRequest,
+) -> Result<ModelConfigInfoResponse, String> {
+    let services = app.services();
+    let now = now_ms();
+    let (row, profile, count) = services
+        .db
+        .write(async |tx| {
+            let Some(existing_dep) = config_ops::get(tx, &request.deployment_id).await? else {
+                return Ok::<_, DbErr>(Err(format!(
+                    "model deployment `{}` does not exist",
+                    request.deployment_id
+                )));
+            };
+            let (updated, profile) = if let Some(target_id) = request.target_profile_id.0.as_deref() {
+                let updated =
+                    config_ops::merge_deployment_into_model(tx, &request.deployment_id, target_id, now).await?;
+                let profile = profile_ops::get(tx, target_id)
+                    .await?
+                    .ok_or_else(|| DbErr::RecordNotFound(format!("logical model `{target_id}`")))?;
+                (updated, profile)
+            } else {
+                let source = profile_ops::get(tx, &existing_dep.profile_id)
+                    .await?
+                    .ok_or_else(|| DbErr::RecordNotFound(format!("logical model `{}`", existing_dep.profile_id)))?;
+                let split_name = request
+                    .new_profile_name
+                    .0
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| existing_dep.model_id.clone());
+                let cloned = model_profile::Model {
+                    id: uuid::Uuid::new_v4().to_string(),
+                    name: split_name,
+                    canonical_id: None,
+                    created_at: now,
+                    updated_at: now,
+                    ..source
+                };
+                let (created, updated) =
+                    config_ops::split_deployment_to_new_model(tx, &request.deployment_id, cloned, now).await?;
+                (updated, created)
+            };
+            let count = profile_model_counts(tx)
+                .await?
+                .get(&profile.id)
+                .copied()
+                .unwrap_or_default();
+            Ok(Ok((updated, profile, count)))
+        })
+        .await
+        .map_err(|error| error.to_string())??;
+    ModelConfigInfoResponse::from_rows(row, profile, count)
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ModelDeploymentDeleteRequest {
+    pub id: String,
+}
+
+/// Unlink one provider deployment without deleting its logical model even when
+/// it drops to zero channels.
+#[tauri::command]
+pub async fn delete_model_deployment(
+    app: tauri::AppHandle,
+    request: ModelDeploymentDeleteRequest,
+) -> Result<(), String> {
+    let services = app.services();
+    // pool-read-before-write: these ids only pick which turn leases to take; the
+    // write re-reads them and refuses the delete on any difference.
+    let conversation_ids = sorted_conversation_ids(&services.db).await?;
+    let _leases = services
+        .turns
+        .clone()
+        .try_acquire_mutations(&conversation_ids, "a model deployment unlink")
+        .map_err(|busy| busy.to_string())?;
+    let guarded = services
+        .db
+        .write(async |tx| {
+            if let Some(refused) = model_config_barrier(tx, "", "", &conversation_ids).await? {
+                return Ok::<_, DbErr>(refused);
+            }
+            config_ops::unlink_deployment(tx, &request.id).await?;
+            Ok(GuardedModelConfigMutation::Applied(()))
+        })
+        .await
+        .map_err(|error| error.to_string())?;
+    finish_guarded_model_config_mutation(guarded)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,6 +1275,10 @@ mod tests {
             server_tool_price: None,
             created_at: 4,
             updated_at: 4,
+            protocol_override: None,
+            is_enabled: SqlBool::TRUE,
+            priority: 100,
+            capability_overrides: None,
         }
     }
 
@@ -894,5 +1563,98 @@ mod tests {
         let mut unknown = request();
         unknown["future_field"] = serde_json::json!(true);
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(unknown).is_err());
+    }
+
+    #[test]
+    fn logical_model_and_deployment_requests_are_strict_and_validate_protocols() {
+        assert!(validate_protocol_id("anthropic_messages").is_ok());
+        assert!(validate_protocol_id("openai_chat").is_ok());
+        assert!(validate_protocol_id("invented_private_protocol").is_err());
+
+        let valid_attach = serde_json::json!({
+            "provider_id": "p1",
+            "model_id": "claude-sonnet-4-6",
+            "display_name": null,
+            "profile_id": null,
+            "protocol_override": null,
+            "priority": 10
+        });
+        assert!(serde_json::from_value::<ModelDeploymentAttachRequest>(valid_attach.clone()).is_ok());
+        let mut missing_nullable = valid_attach.clone();
+        missing_nullable.as_object_mut().unwrap().remove("protocol_override");
+        assert!(serde_json::from_value::<ModelDeploymentAttachRequest>(missing_nullable).is_err());
+
+        let mut unknown_attach = valid_attach;
+        unknown_attach["extra"] = serde_json::json!(true);
+        assert!(serde_json::from_value::<ModelDeploymentAttachRequest>(unknown_attach).is_err());
+
+        let omitted: ModelDeploymentUpdateRequest = serde_json::from_value(serde_json::json!({"id": "dep-1"})).unwrap();
+        assert!(omitted.protocol_override.is_none());
+        let cleared: ModelDeploymentUpdateRequest =
+            serde_json::from_value(serde_json::json!({"id": "dep-1", "protocol_override": null})).unwrap();
+        assert!(matches!(cleared.protocol_override, Some(RequiredNullable(None))));
+        let set: ModelDeploymentUpdateRequest =
+            serde_json::from_value(serde_json::json!({"id": "dep-1", "protocol_override": "anthropic_messages"}))
+                .unwrap();
+        assert!(matches!(
+            set.protocol_override,
+            Some(RequiredNullable(Some(ref p))) if p == "anthropic_messages"
+        ));
+    }
+
+    #[test]
+    fn build_deployment_response_marks_claude_on_openai_chat_as_degraded() {
+        let profile = model_profile::Model {
+            canonical_id: Some("anthropic/claude-sonnet-4-6".into()),
+            ..profile_write().into_model("profile-claude".into())
+        };
+        let official_provider = provider::Model {
+            id: "p-anthropic".into(),
+            name: "Anthropic".into(),
+            provider_type: meridian_core::provider::registry::ProviderType::Anthropic,
+            base_url: "https://api.anthropic.com".into(),
+            is_enabled: SqlBool::TRUE,
+            sort_order: 0,
+            created_at: 1,
+            updated_at: 1,
+            api_format: meridian_core::provider::registry::ApiFormat::ChatCompletions,
+            catalog_id: Some("anthropic".into()),
+            credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
+            transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
+            icon: None,
+            codex_request_shape: SqlBool::FALSE,
+            local_backend: None,
+            capability_domain: CapabilityDomain::Chat,
+            config_json: None,
+        };
+        let relay_provider = provider::Model {
+            id: "p-relay".into(),
+            name: "Relay".into(),
+            provider_type: meridian_core::provider::registry::ProviderType::Openai,
+            base_url: "https://relay.invalid/v1".into(),
+            api_format: meridian_core::provider::registry::ApiFormat::ChatCompletions,
+            catalog_id: None,
+            ..official_provider.clone()
+        };
+        let dep_official = model_config::Model {
+            id: "dep-1".into(),
+            provider_id: "p-anthropic".into(),
+            model_id: "claude-sonnet-4-6".into(),
+            profile_id: "profile-claude".into(),
+            ..model_row()
+        };
+        let dep_relay = model_config::Model {
+            id: "dep-2".into(),
+            provider_id: "p-relay".into(),
+            model_id: "anthropic/claude-sonnet-4-6".into(),
+            profile_id: "profile-claude".into(),
+            ..model_row()
+        };
+        let r_official = build_deployment_response(dep_official, &profile, Some(&official_provider)).unwrap();
+        let r_relay = build_deployment_response(dep_relay, &profile, Some(&relay_provider)).unwrap();
+        assert_eq!(r_official.effective_protocol, "anthropic_messages");
+        assert_eq!(r_official.compliance, ProtocolCompliance::Standard);
+        assert_eq!(r_relay.effective_protocol, "openai_chat");
+        assert!(matches!(r_relay.compliance, ProtocolCompliance::Degraded { .. }));
     }
 }

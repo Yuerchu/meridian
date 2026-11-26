@@ -836,6 +836,8 @@ mod tests {
             thinking_budget: None,
             tool_preset_id: preset.map(str::to_string),
             auto_compact_enabled: meridian_core::db::types::SqlBool::FALSE,
+            logical_model_id: None,
+            deployment_id: None,
         }
     }
 

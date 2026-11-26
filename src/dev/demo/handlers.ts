@@ -29,6 +29,10 @@ import type {
   EmojiPackListRequest,
   EmojiUpdateRequest,
   LocalModelInspectRequest,
+  LogicalModelCreateRequest,
+  LogicalModelDeleteRequest,
+  LogicalModelInfoResponse,
+  LogicalModelUpdateRequest,
   McpServerCreateRequest,
   McpServerUpdateRequest,
   McpToolEnabledUpdateRequest,
@@ -43,6 +47,11 @@ import type {
   MemoryUpdateRequest,
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
+  ModelDeploymentAttachRequest,
+  ModelDeploymentDeleteRequest,
+  ModelDeploymentProfileSwitchRequest,
+  ModelDeploymentUpdateRequest,
+  ModelProfileInfoResponse,
   OneBotConfigUpdateRequest,
   PendingApprovalInfoResponse,
   PreferenceKey,
@@ -105,15 +114,23 @@ function request<T = Rec>(args: DemoArgs): T {
 
 /** What the demo provider's model list names: every configured model, plus two
  *  more for Anthropic so the picker has something to add. */
-function demoProviderModels(state: DemoBackend['state'], id: string): { id: string; name: string }[] {
+function demoProviderModels(
+  state: DemoBackend['state'],
+  id: string,
+): { id: string; name: string; suggested_canonical_id: string | null; suggested_protocol: string | null }[] {
   const provider = state.providers.find((row) => row.id === id) ?? null
   if (provider !== null && provider.provider_type === 'litert_lm' && provider.local_backend !== null) {
     const info = demoLocalModel(provider.base_url, provider.local_backend)
-    return [{ id: info.file_name, name: info.file_name }]
+    return [{ id: info.file_name, name: info.file_name, suggested_canonical_id: null, suggested_protocol: null }]
   }
   const configured = state.modelConfigs.filter((m) => m.provider_id === id).map((m) => m.model_id)
   const extra = id === 'demo-provider-anthropic' ? ['claude-opus-5', 'claude-sonnet-5-preview'] : []
-  return [...configured, ...extra].map((model) => ({ id: model, name: model }))
+  return [...configured, ...extra].map((model) => ({
+    id: model,
+    name: model,
+    suggested_canonical_id: null,
+    suggested_protocol: null,
+  }))
 }
 
 function conversationOf(backend: DemoBackend, id: string): ConversationInfoResponse {
@@ -206,9 +223,15 @@ function modelConfigFrom(backend: DemoBackend, req: ModelConfigUpsertRequest): M
   const existing = backend.state.modelConfigs.find(
     (m) => m.provider_id === req.provider_id && m.model_id === req.model_id,
   )
-  const profile = {
+  const profile: ModelProfileInfoResponse = {
     id: req.profile.id ?? mintId(backend.state, 'profile'),
     name: req.profile.name,
+    canonical_id: existing?.profile.canonical_id ?? null,
+    capability_domain: existing?.profile.capability_domain ?? 'chat',
+    family: existing?.profile.family ?? null,
+    icon: existing?.profile.icon ?? null,
+    routing_policy: existing?.profile.routing_policy ?? 'sticky_manual',
+    is_archived: false,
     context_window: req.profile.context_window,
     compact_threshold: req.profile.compact_threshold,
     max_output_tokens: req.profile.max_output_tokens,
@@ -227,6 +250,10 @@ function modelConfigFrom(backend: DemoBackend, req: ModelConfigUpsertRequest): M
     provider_id: req.provider_id,
     model_id: req.model_id,
     profile,
+    protocol_override: existing?.protocol_override ?? null,
+    is_enabled: existing?.is_enabled ?? true,
+    priority: existing?.priority ?? 100,
+    capability_overrides: existing?.capability_overrides ?? null,
     overrides_pricing: req.overrides_pricing,
     input_price: req.input_price,
     output_price: req.output_price,
@@ -914,6 +941,8 @@ const providers: Record<string, DemoHandler> = {
       icon: null,
       codex_request_shape: false,
       local_backend: req.local_backend,
+      capability_domain: 'chat',
+      config_json: null,
     }
     state.providers.push(row)
     return row
@@ -986,6 +1015,169 @@ const providers: Record<string, DemoHandler> = {
   set_model_config: (args, backend) => modelConfigFrom(backend, request<ModelConfigUpsertRequest>(args)),
   delete_model_config: (args, { state }) => {
     const id = request<{ id: string }>(args).id
+    state.modelConfigs = state.modelConfigs.filter((m) => m.id !== id)
+    return null
+  },
+  list_logical_models: (_args, { state }) => {
+    const byProfile = new Map<string, LogicalModelInfoResponse>()
+    for (const cfg of state.modelConfigs) {
+      const provider = state.providers.find((p) => p.id === cfg.provider_id)
+      const existing = byProfile.get(cfg.profile.id) ?? { profile: cfg.profile, deployments: [] }
+      existing.deployments.push({
+        id: cfg.id,
+        provider_id: cfg.provider_id,
+        provider_name: provider?.name ?? 'Unknown Provider',
+        provider_icon: provider?.icon ?? null,
+        provider_catalog_id: provider?.catalog_id ?? null,
+        provider_enabled: provider?.is_enabled ?? false,
+        model_id: cfg.model_id,
+        profile_id: cfg.profile.id,
+        effective_protocol:
+          cfg.protocol_override ?? (provider?.provider_type === 'anthropic' ? 'anthropic_messages' : 'openai_chat'),
+        protocol_override: cfg.protocol_override,
+        compliance: { status: 'standard' },
+        is_enabled: cfg.is_enabled,
+        priority: cfg.priority,
+        overrides_pricing: cfg.overrides_pricing,
+        effective_pricing: cfg.effective_pricing,
+        capability_overrides: cfg.capability_overrides,
+        created_at: cfg.created_at,
+        updated_at: cfg.updated_at,
+      })
+      byProfile.set(cfg.profile.id, existing)
+    }
+    return [...byProfile.values()]
+  },
+  create_logical_model: (args, { state }) => {
+    const req = request<LogicalModelCreateRequest>(args)
+    const now = Date.now()
+    const created: ModelProfileInfoResponse = {
+      id: mintId(state, 'profile'),
+      name: req.name,
+      canonical_id: req.canonical_id,
+      capability_domain: req.capability_domain,
+      family: req.family,
+      icon: req.icon,
+      routing_policy: req.routing_policy,
+      is_archived: false,
+      context_window: req.context_window,
+      compact_threshold: req.compact_threshold,
+      max_output_tokens: req.max_output_tokens,
+      input_price: req.input_price,
+      output_price: req.output_price,
+      cache_read_price: req.cache_read_price,
+      cache_write_price: req.cache_write_price,
+      pricing_tiers: req.pricing_tiers,
+      capability_overrides: req.capability_overrides,
+      model_count: 0,
+      created_at: now,
+      updated_at: now,
+    }
+    return created
+  },
+  update_logical_model: (args, { state }) => {
+    const req = request<LogicalModelUpdateRequest>(args)
+    const match = state.modelConfigs.find((m) => m.profile.id === req.id)
+    if (!match) throw 'logical model not found'
+    patch(match.profile, req)
+    match.profile.updated_at = Date.now()
+    return match.profile
+  },
+  delete_logical_model: (args, { state }) => {
+    const req = request<LogicalModelDeleteRequest>(args)
+    if (req.cascade_deployments) {
+      state.modelConfigs = state.modelConfigs.filter((m) => m.profile.id !== req.id)
+    }
+    return null
+  },
+  attach_model_deployment: (args, backend) => {
+    const req = request<ModelDeploymentAttachRequest>(args)
+    const now = Date.now()
+    const profile: ModelProfileInfoResponse = (req.profile_id
+      ? backend.state.modelConfigs.find((m) => m.profile.id === req.profile_id)?.profile
+      : undefined) ?? {
+      id: req.profile_id ?? mintId(backend.state, 'profile'),
+      name: req.display_name ?? req.model_id,
+      canonical_id: null,
+      capability_domain: 'chat',
+      family: null,
+      icon: null,
+      routing_policy: 'sticky_manual',
+      is_archived: false,
+      context_window: 128_000,
+      compact_threshold: 100_000,
+      max_output_tokens: null,
+      input_price: null,
+      output_price: null,
+      cache_read_price: null,
+      cache_write_price: null,
+      pricing_tiers: [],
+      capability_overrides: null,
+      model_count: 1,
+      created_at: now,
+      updated_at: now,
+    }
+    const row: ModelConfigInfoResponse = {
+      id: mintId(backend.state, 'model'),
+      provider_id: req.provider_id,
+      model_id: req.model_id,
+      profile,
+      protocol_override: req.protocol_override,
+      is_enabled: true,
+      priority: req.priority ?? 100,
+      capability_overrides: null,
+      overrides_pricing: false,
+      input_price: null,
+      output_price: null,
+      cache_read_price: null,
+      cache_write_price: null,
+      pricing_tiers: [],
+      server_tools: null,
+      server_tool_price: null,
+      effective_pricing: {
+        input_price: profile.input_price,
+        output_price: profile.output_price,
+        cache_read_price: profile.cache_read_price,
+        cache_write_price: profile.cache_write_price,
+        pricing_tiers: profile.pricing_tiers,
+        server_tool_price: null,
+      },
+      created_at: now,
+      updated_at: now,
+    }
+    backend.state.modelConfigs.push(row)
+    return row
+  },
+  update_model_deployment: (args, { state }) => {
+    const req = request<ModelDeploymentUpdateRequest>(args)
+    const row = state.modelConfigs.find((m) => m.id === req.id)
+    if (!row) throw 'model deployment not found'
+    patch(row, req)
+    row.updated_at = Date.now()
+    return row
+  },
+  switch_model_deployment_profile: (args, { state }) => {
+    const req = request<ModelDeploymentProfileSwitchRequest>(args)
+    const row = state.modelConfigs.find((m) => m.id === req.deployment_id)
+    if (!row) throw 'model deployment not found'
+    if (req.target_profile_id) {
+      const target = state.modelConfigs.find((m) => m.profile.id === req.target_profile_id)?.profile
+      if (target) row.profile = target
+    } else {
+      row.profile = {
+        ...row.profile,
+        id: mintId(state, 'profile'),
+        name: req.new_profile_name ?? row.model_id,
+        canonical_id: null,
+        model_count: 1,
+        updated_at: Date.now(),
+      }
+    }
+    row.updated_at = Date.now()
+    return row
+  },
+  delete_model_deployment: (args, { state }) => {
+    const id = request<ModelDeploymentDeleteRequest>(args).id
     state.modelConfigs = state.modelConfigs.filter((m) => m.id !== id)
     return null
   },

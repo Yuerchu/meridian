@@ -209,6 +209,8 @@ const RAW_TABLES: RawTable[] = [
         '子 agent 实际跑的供应商，普通会话恒为 NULL（模型选择只在前端 state 里）',
       ],
       ['agent_model_id', 'TEXT', ['NULL'], 'NULL', '同上，与前一列成对'],
+      ['logical_model_id', 'TEXT', ['NULL'], 'NULL', '会话绑定的逻辑模型 ID（多对多架构）'],
+      ['deployment_id', 'TEXT', ['NULL'], 'NULL', '会话粘性锁定的通道部署 ID（Stateful 场景不静默漂移）'],
     ],
     rels: [
       '被 <code>messages</code>、<code>turns</code>、<code>mode_artifacts</code>、<code>todo_lists</code> 以 <b>ON DELETE CASCADE</b> 引用。',
@@ -565,6 +567,20 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         'LiteRT 的 auto/cpu/gpu/npu 选择；其他供应商为 NULL，自动只遵循模型推荐、不静默回退（SeaORM 迁移 6）',
       ],
+      [
+        'capability_domain',
+        'TEXT',
+        ['NN'],
+        "'chat'",
+        '供应商所属能力域（chat / web_search / tts / embedding / image_gen / video_gen）',
+      ],
+      [
+        'config_json',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '经 VendorManifest::config_fields 严格校验的非敏感扩展配置 JSON（绝不存密钥）',
+      ],
     ],
     rels: [
       '<code>assistants.provider_id</code>、<code>messages.provider_id</code> → <b>SET NULL</b>。',
@@ -626,6 +642,24 @@ const RAW_TABLES: RawTable[] = [
       ],
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
+      ['canonical_id', 'TEXT', ['NULL', 'IDX'], 'NULL', '跨供应商规范模型 ID（如 anthropic/claude-sonnet-4-6）'],
+      [
+        'capability_domain',
+        'TEXT',
+        ['NN'],
+        "'chat'",
+        '模型所属能力域（chat / embedding / image_gen / video_gen / tts）',
+      ],
+      ['family', 'TEXT', ['NULL'], 'NULL', '规范模型原厂家族（如 anthropic-claude）'],
+      ['icon', 'TEXT', ['NULL'], 'NULL', '模型图标键'],
+      [
+        'routing_policy',
+        'TEXT',
+        ['NN'],
+        "'sticky_manual'",
+        '多通道切换策略（sticky_manual / auto_failover_stateless / user_opt_in_failover）',
+      ],
+      ['is_archived', 'INTEGER', ['NN'], '0', '软归档标记（0/1），逻辑模型独立存在不随通道删空而自动销毁'],
     ],
     rels: [
       '被 <code>model_configs.profile_id</code> 引用，<b>没有 ON DELETE</b>：还有模型指着的档案不许删，没有档案的配置也跑不了一轮（没有窗口）。',
@@ -687,6 +721,10 @@ const RAW_TABLES: RawTable[] = [
       ],
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
+      ['protocol_override', 'TEXT', ['NULL'], 'NULL', '通道级线协议覆写（使多协议聚合商下不同模型各自走官方标准协议）'],
+      ['is_enabled', 'INTEGER', ['NN'], '1', '显式启用态（0/1）'],
+      ['priority', 'INTEGER', ['NN', 'IDX'], '0', '同逻辑模型多通道排序优先级（越小越优先）'],
+      ['capability_overrides', 'TEXT', ['NULL'], 'NULL', '通道级能力裁剪覆盖 JSON（三层交集的 Layer 3）'],
     ],
     rels: [
       '<code>providers</code>（CASCADE）、<code>model_profiles</code>（无 ON DELETE）。价格<b>不</b>被 audit_messages 以 join 方式使用——那边自带写入时快照。',
@@ -715,6 +753,14 @@ const RAW_TABLES: RawTable[] = [
       ['model_id', 'TEXT', ['NN', 'UQ'], '—', '<code>UNIQUE(provider_id, model_id)</code>'],
       ['model_name', 'TEXT', ['NN'], '—', ''],
       ['fetched_at', 'BIGINT', ['NN'], '—', '拉取时间，决定是否过期'],
+      [
+        'suggested_canonical_id',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '归并器自动识别的规范模型 ID 建议（仅建议，用户显式勾选后才入库）',
+      ],
+      ['suggested_protocol', 'TEXT', ['NULL'], 'NULL', '推荐的官方标准线协议 ID'],
     ],
     rels: [
       '<code>providers</code>（CASCADE）。与 <code>model_configs</code> <b>无</b>约束关系：一个是发现结果，一个是用户配置。模型列表因此是两者的<b>并集</b>——内测模型不在 <code>/v1/models</code> 里，但配过就该能改。',
@@ -756,6 +802,8 @@ const RAW_TABLES: RawTable[] = [
       ['thinking_budget', 'INTEGER', ['NULL'], 'NULL', '只有 thinking_enabled=1 时才被读'],
       ['tool_preset_id', 'TEXT', ['FK', 'NULL'], 'NULL', '→ <code>tool_presets(id)</code> SET NULL（迁移 8）'],
       ['auto_compact_enabled', 'INTEGER', ['NN'], '0', '0/1（迁移 13）'],
+      ['logical_model_id', 'TEXT', ['NULL'], 'NULL', '助手绑定的逻辑模型 ID（多对多架构）'],
+      ['deployment_id', 'TEXT', ['NULL'], 'NULL', '可选：固定使用的通道部署 ID；NULL 表示按模型路由策略自动选择'],
     ],
     rels: [
       '→ <code>providers</code>、<code>tool_presets</code>（都是 SET NULL）。',
@@ -2263,6 +2311,8 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         '上游响应报告的实际模型名快照；与 <code>model_id</code>（请求模型）对照，用来发现代理或负载均衡器的静默换模。NULL = 上游未提供，或是迁移 60 之前写入的旧行',
       ],
+      ['logical_model_id', 'TEXT', ['NULL', 'IDX'], 'NULL', '命中的逻辑模型 ID 快照，用于跨供应商按逻辑模型聚合用量'],
+      ['deployment_id', 'TEXT', ['NULL'], 'NULL', '命中的具体通道部署 ID 快照'],
     ],
     rels: [
       '<b>零外键</b>。所有 id 列都是裸 TEXT/BIGINT 快照。',

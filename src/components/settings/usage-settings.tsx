@@ -56,7 +56,7 @@ type Origin = (typeof ORIGINS)[number]
 // because it is the same question — where did the money go — and because the
 // total above already includes both: without a way to decompose it, a user who
 // turns the reviewer on has no way to find out what it costs them.
-const BREAKDOWNS = ['conversation', 'source', 'bot', 'kind'] as const
+const BREAKDOWNS = ['logical_model', 'conversation', 'source', 'bot', 'kind'] as const
 type Breakdown = (typeof BREAKDOWNS)[number]
 
 const DAY_MS = 86_400_000

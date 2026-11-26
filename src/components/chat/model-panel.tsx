@@ -1,7 +1,7 @@
 import { DialogTrigger, Dialog as PopoverDialog, Button as PopoverButton } from 'react-aria-components'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { Slider } from '@/components/yuerchu-ui/components/slider/slider'
-import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   Button as AriaButton,
@@ -11,9 +11,11 @@ import {
   ListBoxItem as AriaListBoxItem,
   type Key,
 } from 'react-aria-components'
-import { Bot, Check, ChevronDown } from '@keyline-icons/react/two-tone'
+import { Bot, Check, ChevronDown, TriangleAlert } from '@keyline-icons/react/two-tone'
 
+import { api } from '@/api'
 import { Menu, MenuItem, MenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
@@ -26,6 +28,8 @@ import './model-panel.css'
 import type {
   AcpConfigOptionInfoResponse,
   AssistantInfoResponse,
+  LogicalModelInfoResponse,
+  ModelDeploymentInfoResponse,
   ProviderCapabilitiesInfoResponse,
   ProviderInfoResponse,
   ThinkingEffort,
@@ -247,6 +251,8 @@ interface ModelRow {
   name: string
   /** Shown beside the name in search results, where providers are mixed. */
   provider?: string
+  /** Optional inline channel chip / compliance badge in "By model" view. */
+  trailing?: ReactNode
 }
 
 /** The list of models, one row selected; the selected row carries `extra`. */
@@ -292,6 +298,7 @@ function ModelList({
               {row.name}
               {row.provider && <span className="m-model-panel__row-provider">{row.provider}</span>}
             </span>
+            {row.trailing}
             {selected && extra}
             {selected && <Check aria-hidden className="m-model-panel__check" />}
           </GridListItem>
@@ -349,9 +356,33 @@ export interface ModelPanelProps {
 export function ModelPanel(props: ModelPanelProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [viewMode, setViewMode] = useState<'provider' | 'model'>('provider')
+  const [logicalModels, setLogicalModels] = useState<LogicalModelInfoResponse[]>([])
+  const [logicalLoading, setLogicalLoading] = useState(false)
+  const canUseModelView = typeof api.logicalModels?.list === 'function'
   const models = useProviderModels(props.providers, open)
   const search = useQuickSearch()
   const [railChoice, setRailChoice] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open || viewMode !== 'model' || !canUseModelView) return
+    let cancelled = false
+    setLogicalLoading(true)
+    api.logicalModels
+      .list()
+      .then((list) => {
+        if (!cancelled) setLogicalModels(list)
+      })
+      .catch((err) => {
+        console.error('Failed to load logical models:', err)
+      })
+      .finally(() => {
+        if (!cancelled) setLogicalLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, viewMode, canUseModelView])
 
   const supportsThinking = props.capabilities?.supports_thinking !== false
   const efforts = useMemo(() => allowedEfforts(props.capabilities ?? null), [props.capabilities])
@@ -371,7 +402,7 @@ export function ModelPanel(props: ModelPanelProps) {
     null
 
   const query = search.query.trim().toLowerCase()
-  const rows: ModelRow[] = query
+  const providerRows: ModelRow[] = query
     ? groups.flatMap((g) =>
         g.models
           .filter((m) => `${m.name} ${m.id} ${g.provider.name}`.toLowerCase().includes(query))
@@ -387,11 +418,92 @@ export function ModelPanel(props: ModelPanelProps) {
         modelId: m.id,
         name: m.name || m.id,
       }))
+
+  const logicalRows: ModelRow[] = useMemo(() => {
+    if (viewMode !== 'model') return []
+    const enabledProviderIds = new Set(props.providers.filter((p) => p.is_enabled).map((p) => p.id))
+    const out: ModelRow[] = []
+    for (const item of logicalModels) {
+      const enabledDeps = item.deployments.filter((d) => d.is_enabled && enabledProviderIds.has(d.provider_id))
+      if (enabledDeps.length === 0) continue
+      const matchesQuery =
+        !query ||
+        `${item.profile.name} ${item.profile.canonical_id ?? ''} ${enabledDeps.map((d) => `${d.provider_name} ${d.model_id}`).join(' ')}`
+          .toLowerCase()
+          .includes(query)
+      if (!matchesQuery) continue
+      const activeDep: ModelDeploymentInfoResponse =
+        enabledDeps.find((d) => d.provider_id === props.currentProviderId && d.model_id === props.currentModelId) ??
+        enabledDeps[0]
+      const degraded = activeDep.compliance.status === 'degraded'
+      const trailing =
+        enabledDeps.length > 1 ? (
+          <MenuTrigger>
+            <AriaButton
+              data-slot="model-channel-chip"
+              aria-label={`${t('composer.providerChannel')}: ${activeDep.provider_name}`}
+              className="m-model-panel__channel-chip"
+              data-degraded={degraded || undefined}
+            >
+              {degraded && <TriangleAlert aria-hidden size={12} />}
+              <span>{activeDep.provider_name}</span>
+              <ChevronDown aria-hidden className="m-model-panel__chip-chevron" />
+            </AriaButton>
+            <Menu
+              aria-label={t('composer.providerChannel')}
+              placement="bottom end"
+              selectionMode="single"
+              disallowEmptySelection
+              selectedKeys={[`${activeDep.provider_id}:${activeDep.model_id}`]}
+              onAction={(key: Key) => {
+                const raw = String(key)
+                const at = raw.indexOf(':')
+                props.onSelectModel(raw.slice(at + 1), raw.slice(0, at))
+              }}
+            >
+              {enabledDeps.map((dep) => (
+                <MenuItem
+                  key={`${dep.provider_id}:${dep.model_id}`}
+                  id={`${dep.provider_id}:${dep.model_id}`}
+                  textValue={dep.provider_name}
+                >
+                  <span className="m-model-panel__channel-option">
+                    {dep.provider_name}
+                    {dep.compliance.status === 'degraded' && (
+                      <span className="m-model-panel__degraded-tag">{t('settings.models.protocolDegraded')}</span>
+                    )}
+                  </span>
+                </MenuItem>
+              ))}
+            </Menu>
+          </MenuTrigger>
+        ) : (
+          <span
+            data-slot="model-channel-badge"
+            className="m-model-panel__channel-badge"
+            data-degraded={degraded || undefined}
+          >
+            {degraded && <TriangleAlert aria-hidden size={12} />}
+            {activeDep.provider_name}
+          </span>
+        )
+      out.push({
+        key: `${activeDep.provider_id}:${activeDep.model_id}`,
+        modelId: activeDep.model_id,
+        name: item.profile.name,
+        trailing,
+      })
+    }
+    return out
+  }, [viewMode, logicalModels, props, query, t])
+
+  const rows = viewMode === 'model' ? logicalRows : providerRows
   const selectedKey =
     props.currentProviderId && props.currentModelId ? `${props.currentProviderId}:${props.currentModelId}` : null
 
   const empty =
-    models.state === 'loading' || models.state === 'idle' ? (
+    (viewMode === 'provider' && (models.state === 'loading' || models.state === 'idle')) ||
+    (viewMode === 'model' && logicalLoading) ? (
       <div className="m-model-panel__loading">
         <Spinner size="sm" />
       </div>
@@ -399,7 +511,7 @@ export function ModelPanel(props: ModelPanelProps) {
       <p data-slot="model-panel-empty" className="m-model-panel__empty">
         {query
           ? t('composer.noModelsMatch')
-          : models.state === 'failed'
+          : viewMode === 'provider' && models.state === 'failed'
             ? models.failure
               ? t('toolbar.modelsLoadFailedReason', { error: models.failure })
               : t('toolbar.modelsLoadFailed')
@@ -430,7 +542,7 @@ export function ModelPanel(props: ModelPanelProps) {
           {/* The keyboard shortcuts for the search listen here, inside the panel
               only: `/` in the field is a slash command and must stay one. */}
           <div onKeyDown={search.onKeyDown} className="m-model-panel__body">
-            {groups.length > 1 && !query && (
+            {viewMode === 'provider' && groups.length > 1 && !query && (
               <AriaListBox
                 data-slot="model-panel-rail"
                 aria-label={t('composer.providers')}
@@ -464,6 +576,19 @@ export function ModelPanel(props: ModelPanelProps) {
               </AriaListBox>
             )}
             <div className="m-model-panel__main">
+              {canUseModelView && (
+                <div className="m-model-panel__view-toggle">
+                  <SegmentedControl
+                    aria-label={t('composer.modelViewMode')}
+                    size="sm"
+                    selectedKey={viewMode}
+                    onSelectionChange={(key) => setViewMode(key === 'model' ? 'model' : 'provider')}
+                  >
+                    <Segment id="provider">{t('composer.viewByProvider')}</Segment>
+                    <Segment id="model">{t('composer.viewByModel')}</Segment>
+                  </SegmentedControl>
+                </div>
+              )}
               <PanelSearch search={search} />
               <ModelList
                 label={t('toolbar.models')}

@@ -194,4 +194,40 @@ describe('checkIpcWireParity', () => {
     )
     assert.ok(result.problems.some((p) => p.includes("'nonexistent_cmd' 未注册")))
   })
+
+  it('splits single-letter uppercase prefixes like XSearch to x_search under snake_case', () => {
+    const result = checkIpcWireParity(
+      makeFixture({
+        rustCmds: `sync commands::sample => check_tool(request: $crate::commands::sample::ToolCheckRequest),`,
+        rustTypes: `
+          #[derive(serde::Deserialize)]
+          #[serde(rename_all = "snake_case")]
+          pub enum ServerToolKind {
+            WebSearch,
+            XSearch,
+          }
+          #[derive(serde::Deserialize)]
+          pub struct ToolCheckRequest {
+            pub tool: ServerToolKind,
+          }
+          #[tauri::command]
+          pub fn check_tool(request: ToolCheckRequest) -> Result<bool, String> { Ok(true) }
+        `,
+        tsApi: `
+          export const api = {
+            tools: {
+              checkTool: (request: ToolCheckRequest) => invoke<boolean>('check_tool', { request }),
+            },
+          }
+        `,
+        tsTypes: `
+          export type ServerToolKind = 'web_search' | 'x_search'
+          export interface ToolCheckRequest {
+            tool: ServerToolKind
+          }
+        `,
+      }),
+    )
+    assert.deepEqual(result.problems, [])
+  })
 })

@@ -142,14 +142,36 @@ pub struct ProviderCatalogModelGroupInfoResponse {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct ProviderCatalogConfigFieldOptionInfoResponse {
+    pub value: String,
+    pub label: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProviderCatalogConfigFieldInfoResponse {
+    pub key: String,
+    pub label: String,
+    pub kind: meridian_core::provider::ConfigFieldKind,
+    pub required: bool,
+    pub secret: bool,
+    pub default_value: Option<String>,
+    pub placeholder: Option<String>,
+    pub options: Vec<ProviderCatalogConfigFieldOptionInfoResponse>,
+    pub visible_when_protocol: Option<Vec<String>>,
+    pub visible_when_auth: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct ProviderCatalogEntryInfoResponse {
     pub id: String,
     pub provider_type: ProviderType,
     pub name: String,
     pub icon: String,
+    pub domains: Vec<meridian_core::provider::CapabilityDomain>,
     pub balance: bool,
     pub websites: ProviderCatalogWebsitesInfoResponse,
     pub auth: Vec<ProviderCatalogAuthOptionInfoResponse>,
+    pub config_fields: Vec<ProviderCatalogConfigFieldInfoResponse>,
     pub models: Vec<ProviderCatalogModelGroupInfoResponse>,
 }
 
@@ -162,6 +184,7 @@ impl TryFrom<&meridian_core::provider::catalog::CatalogEntry> for ProviderCatalo
             provider_type: ProviderType::parse(&value.provider_type)?,
             name: value.name.clone(),
             icon: value.icon.clone(),
+            domains: value.domains.clone(),
             balance: value.balance,
             websites: ProviderCatalogWebsitesInfoResponse {
                 official: value.websites.official.clone(),
@@ -174,6 +197,29 @@ impl TryFrom<&meridian_core::provider::catalog::CatalogEntry> for ProviderCatalo
                 .iter()
                 .map(TryInto::try_into)
                 .collect::<Result<Vec<_>, _>>()?,
+            config_fields: value
+                .config_fields
+                .iter()
+                .map(|field| ProviderCatalogConfigFieldInfoResponse {
+                    key: field.key.clone(),
+                    label: field.label.clone(),
+                    kind: field.kind,
+                    required: field.required,
+                    secret: field.secret,
+                    default_value: field.default_value.clone(),
+                    placeholder: field.placeholder.clone(),
+                    options: field
+                        .options
+                        .iter()
+                        .map(|opt| ProviderCatalogConfigFieldOptionInfoResponse {
+                            value: opt.value.clone(),
+                            label: opt.label.clone(),
+                        })
+                        .collect(),
+                    visible_when_protocol: field.visible_when_protocol.clone(),
+                    visible_when_auth: field.visible_when_auth.clone(),
+                })
+                .collect(),
             models: value
                 .models
                 .iter()
@@ -192,13 +238,18 @@ pub type ProviderCatalogEntryListResponse = Vec<ProviderCatalogEntryInfoResponse
 pub struct ProviderModelInfoResponse {
     pub id: String,
     pub name: String,
+    pub suggested_canonical_id: Option<String>,
+    pub suggested_protocol: Option<String>,
 }
 
 impl From<meridian_core::provider::models::ModelInfo> for ProviderModelInfoResponse {
     fn from(value: meridian_core::provider::models::ModelInfo) -> Self {
+        let canonical = meridian_core::provider::canonical_models::canonicalize_model_id(&value.id);
         Self {
             id: value.id,
             name: value.name,
+            suggested_canonical_id: canonical.as_ref().map(|m| m.canonical_id.clone()),
+            suggested_protocol: canonical.and_then(|m| m.canonical_protocols.first().cloned()),
         }
     }
 }
@@ -415,6 +466,8 @@ pub struct ProviderUpdateRequest {
     codex_request_shape: Option<bool>,
     #[serde(default, deserialize_with = "patch_nullable")]
     local_backend: Option<RequiredNullable<LocalInferenceBackend>>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    config_json: Option<RequiredNullable<BTreeMap<String, serde_json::Value>>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -595,6 +648,10 @@ pub async fn create_provider(
             // the address behind it is a relay for a Codex backend.
             codex_request_shape: SqlBool::FALSE,
             local_backend: local_backend.0,
+            capability_domain: catalog
+                .and_then(|entry| entry.domains.first().copied())
+                .unwrap_or(meridian_core::provider::CapabilityDomain::Chat),
+            config_json: None,
         }
     };
     services
@@ -682,6 +739,32 @@ pub async fn update_provider(
                 }
                 None => None,
             };
+            let effective_catalog_id = match &catalog_id {
+                Some(next) => next.as_deref(),
+                None => current.catalog_id.as_deref(),
+            };
+            let next_config_json = match &request.config_json {
+                Some(RequiredNullable(Some(values))) => {
+                    if let Some(manifest) =
+                        effective_catalog_id.and_then(meridian_core::provider::vendors::find_manifest)
+                    {
+                        let next_type = provider_type.unwrap_or(current.provider_type).as_str();
+                        let next_format = api_format.unwrap_or(current.api_format).as_str();
+                        let protocol =
+                            meridian_core::provider::protocols::canonical_protocol_id(next_type, next_format);
+                        if let Err(refused) = manifest.validate_non_secret_config(protocol, None, values) {
+                            return Ok(Err(refused));
+                        }
+                    }
+                    let encoded = match serde_json::to_string(values) {
+                        Ok(encoded) => encoded,
+                        Err(error) => return Ok(Err(format!("cannot encode provider.config_json: {error}"))),
+                    };
+                    Some(Some(encoded))
+                }
+                Some(RequiredNullable(None)) => Some(None),
+                None => None,
+            };
             let changeset = ProviderChangeset {
                 name: request.name.clone(),
                 provider_type,
@@ -695,6 +778,7 @@ pub async fn update_provider(
                 icon: icon.clone(),
                 codex_request_shape: request.codex_request_shape.map(SqlBool::from),
                 local_backend: request.local_backend.as_ref().map(|value| value.0),
+                config_json: next_config_json,
                 ..Default::default()
             };
             update_provider_unless_plan_barrier(tx, &request.id, &conversation_ids, changeset, should_clear_cache)
@@ -849,6 +933,8 @@ async fn cached_models_for(
         .map(|row| ProviderModelInfoResponse {
             id: row.model_id,
             name: row.model_name,
+            suggested_canonical_id: row.suggested_canonical_id,
+            suggested_protocol: row.suggested_protocol,
         })
         .collect())
 }
@@ -882,6 +968,8 @@ pub async fn list_provider_models(
                 .map(|c| ProviderModelInfoResponse {
                     id: c.model_id,
                     name: c.model_name,
+                    suggested_canonical_id: c.suggested_canonical_id,
+                    suggested_protocol: c.suggested_protocol,
                 })
                 .collect());
         }
@@ -1148,6 +1236,8 @@ mod response_contract_tests {
                     icon: None,
                     codex_request_shape: db::types::SqlBool::FALSE,
                     local_backend: None,
+                    capability_domain: meridian_core::provider::CapabilityDomain::Chat,
+                    config_json: None,
                 },
             )
             .await?;
@@ -1187,6 +1277,8 @@ mod response_contract_tests {
                 icon: None,
                 codex_request_shape: SqlBool::FALSE,
                 local_backend: None,
+                capability_domain: meridian_core::provider::CapabilityDomain::Chat,
+                config_json: None,
             };
             provider_ops::create(tx, row).await?;
             cached_ops::replace_models(tx, "provider-1", &[("m".into(), "M".into())], 1).await
@@ -1326,7 +1418,15 @@ mod cached_model_tests {
             .await
             .unwrap();
         let got = serde_json::to_value(cached_models_for(&db, "p1").await.unwrap()).unwrap();
-        assert_eq!(got, serde_json::json!([{ "id": "gpt-5.6", "name": "GPT 5.6" }]));
+        assert_eq!(
+            got,
+            serde_json::json!([{
+                "id": "gpt-5.6",
+                "name": "GPT 5.6",
+                "suggested_canonical_id": "openai/gpt-5.6",
+                "suggested_protocol": "openai_responses",
+            }])
+        );
     }
 
     #[tokio::test]

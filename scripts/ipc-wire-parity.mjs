@@ -41,7 +41,10 @@ const BACKEND_ONLY_PREFERENCE_KEYS = new Set(['google.compat_thinking_mode', 'go
 
 function toCase(name, mode) {
   if (!mode) return name
-  const words = name.replace(/([a-z0-9])([A-Z])/g, '$1_$2').split('_')
+  const words = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z])([A-Z][a-z])/g, '$1_$2')
+    .split('_')
   if (mode === 'snake_case') return words.map((w) => w.toLowerCase()).join('_')
   if (mode === 'SCREAMING_SNAKE_CASE') return words.map((w) => w.toUpperCase()).join('_')
   if (mode === 'kebab-case') return words.map((w) => w.toLowerCase()).join('-')
@@ -526,7 +529,12 @@ export function checkIpcWireParity({ readAt, filesUnder }) {
     return { problems, stats: { commands: 0, structs: 0, enums: 0 } }
   }
 
-  const rustFiles = [...filesUnder('src-tauri/src', ['.rs']), ...filesUnder('src-tauri/crates/core/src', ['.rs'])]
+  const rustFiles = [
+    ...filesUnder('src-tauri/src', ['.rs']),
+    ...filesUnder('src-tauri/crates/core/src', ['.rs']),
+    ...filesUnder('src-tauri/crates/provider-sdk/src', ['.rs']),
+    ...filesUnder('src-tauri/crates/providers/src', ['.rs']),
+  ]
   const rustEntries = rustFiles.map((file) => ({ file, source: readAt(file) }))
   const { rustStructs, rustEnums, rustAliases, rustCmdReturns } = parseRustSources(rustEntries)
   const { tsInterfaces, tsTypes } = parseTsContracts(typesSource)
