@@ -30,6 +30,7 @@ import {
   entryByType,
   entryForRow,
   typeSelectOptions,
+  vendorEntriesForType,
   formatsFor,
   parseProviderApiFormat,
   requireProviderType,
@@ -42,6 +43,7 @@ import { isPriced } from './pricing'
 import { LocalModelSettings } from './local-model-settings'
 import { isRemote } from '@/lib/transport'
 import type {
+  CapabilityDomain,
   DecimalString,
   LocalInferenceBackend,
   ModelConfigInfoResponse,
@@ -72,11 +74,14 @@ interface ModelRow {
   name: string
   suggestedCanonicalId: string | null
   suggestedProtocol: string | null
+  suggestedDomain: CapabilityDomain
   config?: ModelConfigInfoResponse
   /** `null` when nothing has been fetched yet: the page has not asked the
    *  provider, so it has nothing to say about what the provider lists. */
   listed: boolean | null
 }
+
+const CUSTOM_VENDOR = '__custom__'
 
 function protocolIdFor(providerType: string, apiFormat: string): string {
   if (providerType === 'anthropic') return 'anthropic_messages'
@@ -189,6 +194,7 @@ function ProviderEditor({
   const catalog = useProviderCatalog()
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
+  const [catalogId, setCatalogId] = useState<string | null>(provider.catalog_id)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [icon, setIcon] = useState(provider.icon)
@@ -210,6 +216,7 @@ function ProviderEditor({
   const [savedDraft, setSavedDraft] = useState(() => ({
     name: provider.name,
     providerType: provider.provider_type,
+    catalogId: provider.catalog_id,
     baseUrl: provider.base_url,
     apiFormat: provider.api_format || 'chat_completions',
     icon: provider.icon,
@@ -259,6 +266,7 @@ function ProviderEditor({
   const dirty =
     name !== savedDraft.name ||
     providerType !== savedDraft.providerType ||
+    catalogId !== savedDraft.catalogId ||
     baseUrl !== savedDraft.baseUrl ||
     apiFormat !== savedDraft.apiFormat ||
     icon !== savedDraft.icon ||
@@ -349,7 +357,8 @@ function ProviderEditor({
 
   // The vendor this row is, which is not the same question as which adapter
   // family it uses — three of them are `openai`.
-  const rowEntry = entryForRow(catalog, provider.catalog_id, providerType)
+  const rowEntry = entryForRow(catalog, catalogId, providerType)
+  const typeVendors = useMemo(() => vendorEntriesForType(catalog, providerType), [catalog, providerType])
 
   // The sign-in option the form is under right now: the row's stored kind
   // resolved against its vendor's entry. A type transition chooses a new login
@@ -390,6 +399,7 @@ function ProviderEditor({
           ? {}
           : {
               provider_type: providerType,
+              ...(catalogId !== savedDraft.catalogId ? { catalog_id: catalogId } : {}),
               base_url: baseUrl,
               api_format: apiFormat,
               local_backend: localBackend,
@@ -417,6 +427,7 @@ function ProviderEditor({
       setSavedDraft({
         name,
         providerType,
+        catalogId,
         baseUrl,
         apiFormat,
         icon,
@@ -424,6 +435,17 @@ function ProviderEditor({
         localBackend,
         configJson: JSON.stringify(extraConfig),
       })
+      // When switching vendor or type (especially to a media channel), refresh the
+      // shipped/cached model list immediately so official models appear right away.
+      if (catalogId !== savedDraft.catalogId || providerType !== savedDraft.providerType) {
+        void api.providers
+          .listModels({ provider_id: provider.id, fetch_policy: 'cache_only' })
+          .then((list) => {
+            setModels(list)
+            setModelsKnown(list.length > 0)
+          })
+          .catch(() => {})
+      }
       // After the row, and only where the field was on screen: a save from a page
       // that never showed it must not clear somebody else's override. `null` is
       // the blank field, which means "back to the shipped default".
@@ -449,6 +471,9 @@ function ProviderEditor({
     provider.id,
     name,
     providerType,
+    catalogId,
+    savedDraft.catalogId,
+    savedDraft.providerType,
     baseUrl,
     apiFormat,
     icon,
@@ -473,9 +498,13 @@ function ProviderEditor({
         nextEntry?.auth[0]
       // The dialect a vendor is best reached on. Catalog order is editorial, so
       // the first one listed is the recommendation.
-      const nextFormat = formatsFor(nextAuth)[0] ?? 'chat_completions'
+      const nextFormat = formatsFor(nextAuth)[0] ?? (next === 'media' ? 'media_native' : 'chat_completions')
       setProviderType(next)
+      setCatalogId(nextEntry?.id ?? null)
       setLocalBackend(next === 'litert_lm' ? 'auto' : null)
+      if (nextEntry && (!name.trim() || name === rowEntry?.name)) {
+        setName(nextEntry.name)
+      }
       setBaseUrl((current) => {
         // Only replace an address the user never touched. Anything they typed —
         // a relay, a self-hosted endpoint — survives a change of vendor, which
@@ -486,7 +515,30 @@ function ProviderEditor({
       })
       setApiFormat(nextFormat)
     },
-    [catalog, provider.credential_kind, activeAuth, apiFormat],
+    [catalog, provider.credential_kind, activeAuth, apiFormat, name, rowEntry?.name],
+  )
+
+  const handleVendorChange = useCallback(
+    (raw: string) => {
+      if (raw === CUSTOM_VENDOR) {
+        setCatalogId(null)
+        return
+      }
+      const nextEntry = typeVendors.find((entry) => entry.id === raw)
+      if (!nextEntry) return
+      const nextAuth =
+        nextEntry.auth.find((candidate) => candidate.credential_kind === provider.credential_kind) ?? nextEntry.auth[0]
+      const nextFormat = formatsFor(nextAuth)[0] ?? apiFormat
+      const oldDefault = defaultUrlFor(activeAuth, apiFormat)
+      const replacement = defaultUrlFor(nextAuth, nextFormat)
+      setCatalogId(nextEntry.id)
+      if (!name.trim() || name === rowEntry?.name) {
+        setName(nextEntry.name)
+      }
+      setBaseUrl((current) => (!current || current === oldDefault ? (replacement ?? current) : current))
+      setApiFormat(nextFormat)
+    },
+    [typeVendors, provider.credential_kind, activeAuth, apiFormat, name, rowEntry?.name],
   )
 
   const handleApiFormatChange = useCallback(
@@ -711,7 +763,7 @@ function ProviderEditor({
             model_id: row.id,
             display_name: row.name || row.id,
             profile_id: null,
-            protocol_override: null,
+            protocol_override: row.suggestedDomain !== 'chat' ? row.suggestedProtocol : null,
             priority: null,
           })
         }
@@ -732,7 +784,8 @@ function ProviderEditor({
         id: config.model_id,
         name: config.profile.name || config.model_id,
         suggested_canonical_id: config.profile.canonical_id,
-        suggested_protocol: null,
+        suggested_protocol: config.protocol_override,
+        suggested_domain: config.profile.capability_domain,
       }))
     return [...models, ...extra]
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -741,6 +794,7 @@ function ProviderEditor({
         name: model.name,
         suggestedCanonicalId: model.suggested_canonical_id ?? null,
         suggestedProtocol: model.suggested_protocol ?? null,
+        suggestedDomain: model.suggested_domain ?? 'chat',
         config: modelConfigs.get(model.id),
         listed: modelsKnown ? listedIds.has(model.id) : null,
       }))
@@ -786,6 +840,11 @@ function ProviderEditor({
                 {row.id}
               </span>
             )}
+            {(row.config?.profile.capability_domain ?? row.suggestedDomain) !== 'chat' && (
+              <span data-slot="model-row-domain" className="m-provider-page__muted">
+                {t(`settings.models.domain.${row.config?.profile.capability_domain ?? row.suggestedDomain}`)}
+              </span>
+            )}
             {!row.config && row.suggestedCanonicalId && (
               <span data-slot="model-row-merge-hint" className="m-provider-page__muted">
                 {t('settings.provider.modelMergeHint', { canonical: row.suggestedCanonicalId })}
@@ -802,7 +861,10 @@ function ProviderEditor({
         sortValue: (row) => row.config?.profile.context_window ?? null,
         cell: (row) => (
           <span className="m-provider-page__figure-value">
-            {row.config
+            {row.config &&
+            row.config.profile.capability_domain !== 'image_gen' &&
+            row.config.profile.capability_domain !== 'video_gen' &&
+            row.config.profile.context_window > 0
               ? formatTokenCount(row.config.profile.context_window, locale)
               : t('settings.provider.modelNoValue')}
           </span>
@@ -866,7 +928,14 @@ function ProviderEditor({
   // Until the catalog is loaded this is empty, so the current value is carried
   // as a lone option; without it the select would show blank and a save would
   // write it back.
-  const typeOptions = typeSelectOptions(catalog, providerType)
+  const typeOptions = typeSelectOptions(catalog, providerType, t('settings.provider.typeMedia'))
+  const vendorOptions = useMemo(() => {
+    const items = typeVendors.map((entry) => ({ value: entry.id, label: entry.name }))
+    if (providerType !== 'media') {
+      items.push({ value: CUSTOM_VENDOR, label: t('settings.provider.vendorCustom') })
+    }
+    return items
+  }, [typeVendors, providerType, t])
   const formatOptions: { value: ProviderApiFormat; label: string }[] = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
@@ -907,7 +976,7 @@ function ProviderEditor({
             <ProviderIconPicker
               ariaLabel={t('settings.provider.icon')}
               value={icon}
-              catalogId={provider.catalog_id}
+              catalogId={catalogId}
               providerType={providerType}
               onChange={setIcon}
             />
@@ -922,6 +991,24 @@ function ProviderEditor({
               disabled={isRemote}
             />
           </SettingsRow>
+
+          {typeVendors.length > 1 && (
+            <SettingsRow label={t('settings.provider.vendor')}>
+              <SettingsSelect
+                ariaLabel={t('settings.provider.vendor')}
+                value={
+                  catalogId && typeVendors.some((entry) => entry.id === catalogId)
+                    ? catalogId
+                    : providerType === 'media'
+                      ? (typeVendors[0]?.id ?? '')
+                      : CUSTOM_VENDOR
+                }
+                options={vendorOptions}
+                onChange={handleVendorChange}
+                disabled={isRemote}
+              />
+            </SettingsRow>
+          )}
 
           {/* Only where the vendor lists more than one way in. This is the one
             control that writes `credential_kind`, and without it a login could

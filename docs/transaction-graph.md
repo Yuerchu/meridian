@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：305
+- 事务根（非测试）：306
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -304,10 +304,11 @@
 | `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
 | `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | board_task, conversation, memory, project |
 | `src-tauri/src/commands/project.rs` › `update_project` | sea-write | conversation, project |
-| `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model |
+| `src-tauri/src/commands/provider.rs` › `cached_models_for` | sea-read | cached_model, provider |
 | `src-tauri/src/commands/provider.rs` › `create_provider` | sea-write | provider |
 | `src-tauri/src/commands/provider.rs` › `delete_provider` | sea-write | conversation, provider |
 | `src-tauri/src/commands/provider.rs` › `get_provider_capabilities` | sea-read | model_config, model_profile, provider |
+| `src-tauri/src/commands/provider.rs` › `list_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `list_provider_models` | sea-write | cached_model |
 | `src-tauri/src/commands/provider.rs` › `set_provider_key` | sea-write | cached_model, conversation |
 | `src-tauri/src/commands/provider.rs` › `update_provider` | sea-write | cached_model, conversation, provider |

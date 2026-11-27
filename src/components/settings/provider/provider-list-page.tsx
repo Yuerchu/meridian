@@ -132,6 +132,11 @@ export function ProviderListPage({ onOpen }: { onOpen: (providerId: string) => v
                 />
               }
               label={provider.name}
+              badge={
+                provider.capability_domain !== 'chat'
+                  ? t(`settings.models.domain.${provider.capability_domain}`)
+                  : undefined
+              }
               value={hostOf(provider.base_url)}
               onPress={() => onOpen(provider.id)}
             />

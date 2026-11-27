@@ -35,6 +35,7 @@ const EXISTING = {
   profile: {
     id: 'prof-1',
     name: 'm1',
+    capability_domain: 'chat',
     context_window: 200000,
     compact_threshold: 150000,
     max_output_tokens: null,
@@ -315,5 +316,38 @@ describe('ModelPage', () => {
     expect(parseTokenCount('12k')).toBeUndefined()
     expect(parseTokenCount('0')).toBeUndefined()
     expect(parseTokenCount('')).toBeUndefined()
+  })
+
+  it('allows configuring a media_native video_gen model without chat token limits', async () => {
+    mockApi.modelConfigs.get.mockResolvedValueOnce(null as never)
+    const user = userEvent.setup()
+    render(
+      <ModelPage
+        providerId="p-kling"
+        modelId="kling-3.0"
+        apiFormat="media_native"
+        onSaved={() => {}}
+        onDeleted={() => {}}
+        confirm={vi.fn().mockResolvedValue(true)}
+      />,
+    )
+
+    await screen.findByRole('button', { name: i18n.t('common.save') })
+    expect(screen.queryByRole('textbox', { name: i18n.t('settings.model.contextWindow') })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: i18n.t('common.save') }))
+    await waitFor(() => expect(mockApi.modelConfigs.set).toHaveBeenCalledTimes(1))
+    expect(mockApi.modelConfigs.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider_id: 'p-kling',
+        model_id: 'kling-3.0',
+        protocol_override: null,
+        profile: expect.objectContaining({
+          capability_domain: 'video_gen',
+          context_window: 0,
+          compact_threshold: 0,
+        }),
+      }),
+    )
   })
 })

@@ -3562,6 +3562,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "litert_lm"
+        },
+        {
+          "kind": "literal",
+          "value": "media_native"
         }
       ]
     },
@@ -3652,6 +3656,10 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
         {
           "kind": "literal",
           "value": "google"
+        },
+        {
+          "kind": "literal",
+          "value": "media"
         }
       ]
     },
@@ -11265,6 +11273,12 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
             "kind": "string"
           }
         },
+        "media_native": {
+          "optional": true,
+          "schema": {
+            "kind": "string"
+          }
+        },
         "responses": {
           "optional": true,
           "schema": {
@@ -11501,6 +11515,13 @@ export const invokeResponseSchemaDocument: InvokeResponseSchemaDocument = {
           "schema": {
             "kind": "ref",
             "id": 2
+          }
+        },
+        "suggested_domain": {
+          "optional": false,
+          "schema": {
+            "kind": "ref",
+            "id": 23
           }
         },
         "suggested_protocol": {

@@ -149,6 +149,8 @@ describe('strict decoders', () => {
 
   it('accepts the five provider types and nothing else', () => {
     expect(requireProviderType('anthropic')).toBe('anthropic')
+    expect(requireProviderType('media')).toBe('media')
+    expect(parseProviderApiFormat('media_native')).toBe('media_native')
     expect(() => requireProviderType('vertex')).toThrow(/unknown provider type/)
   })
 

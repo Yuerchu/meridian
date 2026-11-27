@@ -23,6 +23,7 @@ import { PriceTierEditor } from './price-tier-editor'
 import { parseTokenCount, safeThreshold, triFrom, triTo, type Tri } from './capabilities'
 import { optionalPrice, tiersFrom, tiersTo, type PriceField, type TierDraft } from './pricing'
 import type {
+  CapabilityDomain,
   DecimalString,
   ModelConfigInfoResponse,
   ModelConfigUpsertRequest,
@@ -39,6 +40,36 @@ import { READABLE_MIMES } from '@/types'
 
 /** The option that creates a description rather than pointing at one. */
 const NEW_PROFILE = '__new__'
+const AUTO_PROTOCOL = '__auto__'
+const EDITABLE_DOMAINS: CapabilityDomain[] = ['chat', 'image_gen', 'video_gen']
+const PROTOCOLS_BY_DOMAIN: Record<string, readonly string[]> = {
+  chat: ['openai_chat', 'openai_responses', 'anthropic_messages', 'google_generate_content', 'google_interactions'],
+  image_gen: ['openai_images', 'google_image_gen', 'volcengine_seedream'],
+  video_gen: ['google_veo', 'volcengine_seedance', 'kling_video', 'minimax_video', 'vidu_video', 'bailian_wan_video'],
+}
+
+function inferDomainForModel(modelId: string, apiFormat: string): CapabilityDomain {
+  const lower = modelId.toLowerCase()
+  if (
+    lower.includes('gpt-image') ||
+    lower.includes('imagen') ||
+    lower.includes('seedream') ||
+    lower.includes('flash-image')
+  ) {
+    return 'image_gen'
+  }
+  if (
+    lower.includes('veo') ||
+    lower.includes('seedance') ||
+    lower.includes('kling') ||
+    lower.includes('hailuo') ||
+    lower.includes('vidu') ||
+    lower.includes('wan')
+  ) {
+    return 'video_gen'
+  }
+  return apiFormat === 'media_native' ? 'video_gen' : 'chat'
+}
 
 type ConfirmFn = SettingsStack<unknown>['confirm']
 type LimitField = 'contextWindow' | 'compactThreshold' | 'maxOutput'
@@ -226,6 +257,11 @@ function ModelConfigEditor({
   // and it replaces every field below with that profile's.
   const [profileId, setProfileId] = useState<string | null>(profile?.id ?? null)
   const [profileName, setProfileName] = useState(profile?.name ?? modelId)
+  const [capabilityDomain, setCapabilityDomain] = useState<CapabilityDomain>(
+    profile?.capability_domain ?? inferDomainForModel(modelId, apiFormat),
+  )
+  const [protocolOverride, setProtocolOverride] = useState<string>(existing?.protocol_override ?? AUTO_PROTOCOL)
+  const isChatDomain = capabilityDomain === 'chat'
   // Whether this provider charges its own rates. Off is the ordinary case and
   // the four fields below stay blank rather than holding a copy of the
   // profile's — a number kept in two places is a number that comes to disagree,
@@ -346,6 +382,7 @@ function ModelConfigEditor({
     if (next === NEW_PROFILE) {
       setProfileId(null)
       setProfileName(modelId)
+      setCapabilityDomain(inferDomainForModel(modelId, apiFormat))
       // A description that does not exist yet carries no patch. Leaving the
       // old one's tri-states in place would pin the new description with
       // overrides nobody chose for it.
@@ -357,6 +394,7 @@ function ModelConfigEditor({
     showCapabilities(chosen.capability_overrides)
     setProfileId(chosen.id)
     setProfileName(chosen.name)
+    setCapabilityDomain(chosen.capability_domain ?? 'chat')
     setContextWindow(chosen.context_window.toString())
     setCompactThreshold(chosen.compact_threshold.toString())
     setMaxOutput(chosen.max_output_tokens?.toString() ?? '')
@@ -426,27 +464,31 @@ function ModelConfigEditor({
       compactThreshold: t('settings.model.compactThreshold'),
       maxOutput: t('settings.model.maxOutput'),
     }
-    const limits: Partial<Record<LimitField, number | null>> = {}
-    for (const [field, raw, optional] of [
-      ['contextWindow', contextWindow, false],
-      ['compactThreshold', compactThreshold, false],
-      ['maxOutput', maxOutput, apiFormat !== 'litert_lm'],
-    ] as const) {
-      const blank = raw.trim() === ''
-      const value = optional && blank ? null : parseTokenCount(raw)
-      if (value === undefined) {
-        setPriceError(
-          t(blank ? 'settings.model.limitRequiredError' : 'settings.model.limitInvalidError', {
-            field: limitLabels[field],
-          }),
-        )
-        setInvalidPrices(new Set())
-        setInvalidLimits(new Set([field]))
-        limitRefs[field].current?.scrollIntoView({ block: 'center' })
-        limitRefs[field].current?.focus()
-        return
+    const limits: Partial<Record<LimitField, number | null>> = isChatDomain
+      ? {}
+      : { contextWindow: 0, compactThreshold: 0, maxOutput: null }
+    if (isChatDomain) {
+      for (const [field, raw, optional] of [
+        ['contextWindow', contextWindow, false],
+        ['compactThreshold', compactThreshold, false],
+        ['maxOutput', maxOutput, apiFormat !== 'litert_lm'],
+      ] as const) {
+        const blank = raw.trim() === ''
+        const value = optional && blank ? null : parseTokenCount(raw)
+        if (value === undefined) {
+          setPriceError(
+            t(blank ? 'settings.model.limitRequiredError' : 'settings.model.limitInvalidError', {
+              field: limitLabels[field],
+            }),
+          )
+          setInvalidPrices(new Set())
+          setInvalidLimits(new Set([field]))
+          limitRefs[field].current?.scrollIntoView({ block: 'center' })
+          limitRefs[field].current?.focus()
+          return
+        }
+        limits[field] = value
       }
-      limits[field] = value
     }
     if (localInfo !== null && typeof limits.contextWindow === 'number') {
       const maximum = localInfo.max_context_tokens
@@ -533,10 +575,11 @@ function ModelConfigEditor({
     // Only the fields that decide whether a bound assistant still fits. Editing
     // a price must not be refused for a mismatch this save does not touch.
     const limitsChanged =
-      !existing ||
-      limits.contextWindow !== existing.profile.context_window ||
-      (limits.maxOutput ?? null) !== existing.profile.max_output_tokens ||
-      triTo(capThinking) !== existing.profile.capability_overrides?.supports_thinking
+      isChatDomain &&
+      (!existing ||
+        limits.contextWindow !== existing.profile.context_window ||
+        (limits.maxOutput ?? null) !== existing.profile.max_output_tokens ||
+        triTo(capThinking) !== existing.profile.capability_overrides?.supports_thinking)
     if (limitsChanged) {
       let assistants
       try {
@@ -600,12 +643,14 @@ function ModelConfigEditor({
           // a second provider stops repeating the first.
           id: profileId,
           name: profileName.trim() || modelId,
-          context_window: limits.contextWindow!,
-          compact_threshold: limits.compactThreshold!,
+          capability_domain: capabilityDomain,
+          context_window: isChatDomain ? limits.contextWindow! : 0,
+          compact_threshold: isChatDomain ? limits.compactThreshold! : 0,
           max_output_tokens: limits.maxOutput ?? null,
           ...prices,
-          capability_overrides: buildOverrides(),
+          capability_overrides: isChatDomain ? buildOverrides() : null,
         },
+        protocol_override: protocolOverride === AUTO_PROTOCOL ? null : protocolOverride,
         overrides_pricing: overridesPricing,
         // Blank whenever the switch is off, which the backend enforces too: the
         // columns are read at all only when it is on, so leaving a copy of the
@@ -690,49 +735,53 @@ function ModelConfigEditor({
           </p>
         </SettingsRow>
       )}
-      <div data-slot="model-config-limits" className="m-model-page__grid">
-        <NumberField
-          isRequired
-          isInvalid={invalidLimits.has('contextWindow')}
-          label={t('settings.model.contextWindow')}
-          value={draftToNumber(contextWindow)}
-          onChange={(value) => {
-            setContextWindow(numberToDraft(value))
-            setDirty(true)
-          }}
-          ref={limitRefs.contextWindow}
-          name={`modelContextWindow-${modelId}`}
-          formatOptions={{ maximumFractionDigits: 0 }}
-        />
-        <NumberField
-          isRequired
-          isInvalid={invalidLimits.has('compactThreshold')}
-          label={t('settings.model.compactThreshold')}
-          value={draftToNumber(compactThreshold)}
-          onChange={(value) => {
-            setCompactThreshold(numberToDraft(value))
-            setDirty(true)
-          }}
-          ref={limitRefs.compactThreshold}
-          name={`modelCompactThreshold-${modelId}`}
-          formatOptions={{ maximumFractionDigits: 0 }}
-        />
-      </div>
-      <NumberField
-        isInvalid={invalidLimits.has('maxOutput')}
-        isRequired={apiFormat === 'litert_lm'}
-        label={t('settings.model.maxOutput')}
-        description={t('settings.model.maxOutputHint')}
-        value={draftToNumber(maxOutput)}
-        onChange={(value) => {
-          setMaxOutput(numberToDraft(value))
-          setDirty(true)
-        }}
-        ref={limitRefs.maxOutput}
-        name={`modelMaxOutput-${modelId}`}
-        placeholder={t('settings.model.optional')}
-        formatOptions={{ maximumFractionDigits: 0 }}
-      />
+      {isChatDomain && (
+        <>
+          <div data-slot="model-config-limits" className="m-model-page__grid">
+            <NumberField
+              isRequired
+              isInvalid={invalidLimits.has('contextWindow')}
+              label={t('settings.model.contextWindow')}
+              value={draftToNumber(contextWindow)}
+              onChange={(value) => {
+                setContextWindow(numberToDraft(value))
+                setDirty(true)
+              }}
+              ref={limitRefs.contextWindow}
+              name={`modelContextWindow-${modelId}`}
+              formatOptions={{ maximumFractionDigits: 0 }}
+            />
+            <NumberField
+              isRequired
+              isInvalid={invalidLimits.has('compactThreshold')}
+              label={t('settings.model.compactThreshold')}
+              value={draftToNumber(compactThreshold)}
+              onChange={(value) => {
+                setCompactThreshold(numberToDraft(value))
+                setDirty(true)
+              }}
+              ref={limitRefs.compactThreshold}
+              name={`modelCompactThreshold-${modelId}`}
+              formatOptions={{ maximumFractionDigits: 0 }}
+            />
+          </div>
+          <NumberField
+            isInvalid={invalidLimits.has('maxOutput')}
+            isRequired={apiFormat === 'litert_lm'}
+            label={t('settings.model.maxOutput')}
+            description={t('settings.model.maxOutputHint')}
+            value={draftToNumber(maxOutput)}
+            onChange={(value) => {
+              setMaxOutput(numberToDraft(value))
+              setDirty(true)
+            }}
+            ref={limitRefs.maxOutput}
+            name={`modelMaxOutput-${modelId}`}
+            placeholder={t('settings.model.optional')}
+            formatOptions={{ maximumFractionDigits: 0 }}
+          />
+        </>
+      )}
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
@@ -793,7 +842,7 @@ function ModelConfigEditor({
       {/* Only where the model has any. Elsewhere this is not a switch that is
           off, it is a thing that does not exist — and an empty section reads as
           a feature that failed to load. */}
-      {(caps?.server_tools?.length ?? 0) > 0 && (
+      {isChatDomain && (caps?.server_tools?.length ?? 0) > 0 && (
         <div data-slot="server-tools" className="m-model-page__tools">
           <CheckboxGroup
             data-slot="server-tool-options"
@@ -853,73 +902,75 @@ function ModelConfigEditor({
           }}
         />
       </ModelFold>
-      <ModelFold
-        slot="capability-overrides"
-        expanded={showCaps}
-        onExpandedChange={setShowCaps}
-        label={t('settings.model.capabilities')}
-      >
-        <div className="m-model-page__overrides">
-          <CheckboxGroup
-            data-slot="effort-whitelist"
-            label={t('settings.model.supportedEfforts')}
-            orientation="horizontal"
-            value={efforts}
-            onChange={(next) => {
-              // Rebuild from the ladder so the stored array stays in
-              // ascending order -- the median coercion ranks on position.
-              setEfforts(EFFORT_LADDER.filter((tier) => next.includes(tier)))
-              effortsDirty.current = true
-              setDirty(true)
-            }}
-          >
-            {EFFORT_LADDER.map((tier) => (
-              <Checkbox key={tier} value={tier}>
-                {t(`toolbar.thinking.${tier}`)}
-              </Checkbox>
-            ))}
-          </CheckboxGroup>
-          <CheckboxGroup
-            data-slot="readable-mimes"
-            label={t('settings.model.readableMimes')}
-            orientation="horizontal"
-            value={mimes}
-            onChange={(next) => {
-              setMimes(READABLE_MIMES.filter((mime) => next.includes(mime)))
-              mimesDirty.current = true
-              setDirty(true)
-            }}
-          >
-            {READABLE_MIMES.map((mime) => (
-              <Checkbox key={mime} value={mime}>
-                {mime}
-              </Checkbox>
-            ))}
-          </CheckboxGroup>
-          <CapabilityTriRow
-            label={t('settings.model.capThinking')}
-            value={capThinking}
-            onChange={(value) => {
-              setCapThinking(value)
-              setDirty(true)
-            }}
-          />
-          <CapabilityTriRow
-            label={t('settings.model.capFast')}
-            value={capFast}
-            onChange={(value) => {
-              setCapFast(value)
-              setDirty(true)
-            }}
-          />
-          <p data-slot="capabilities-hint" className="m-model-page__muted">
-            {t('settings.model.capabilitiesHint')}
-          </p>
-          <Button variant="ghost" size="sm" onPress={resetOverrides}>
-            {t('settings.model.capReset')}
-          </Button>
-        </div>
-      </ModelFold>
+      {isChatDomain && (
+        <ModelFold
+          slot="capability-overrides"
+          expanded={showCaps}
+          onExpandedChange={setShowCaps}
+          label={t('settings.model.capabilities')}
+        >
+          <div className="m-model-page__overrides">
+            <CheckboxGroup
+              data-slot="effort-whitelist"
+              label={t('settings.model.supportedEfforts')}
+              orientation="horizontal"
+              value={efforts}
+              onChange={(next) => {
+                // Rebuild from the ladder so the stored array stays in
+                // ascending order -- the median coercion ranks on position.
+                setEfforts(EFFORT_LADDER.filter((tier) => next.includes(tier)))
+                effortsDirty.current = true
+                setDirty(true)
+              }}
+            >
+              {EFFORT_LADDER.map((tier) => (
+                <Checkbox key={tier} value={tier}>
+                  {t(`toolbar.thinking.${tier}`)}
+                </Checkbox>
+              ))}
+            </CheckboxGroup>
+            <CheckboxGroup
+              data-slot="readable-mimes"
+              label={t('settings.model.readableMimes')}
+              orientation="horizontal"
+              value={mimes}
+              onChange={(next) => {
+                setMimes(READABLE_MIMES.filter((mime) => next.includes(mime)))
+                mimesDirty.current = true
+                setDirty(true)
+              }}
+            >
+              {READABLE_MIMES.map((mime) => (
+                <Checkbox key={mime} value={mime}>
+                  {mime}
+                </Checkbox>
+              ))}
+            </CheckboxGroup>
+            <CapabilityTriRow
+              label={t('settings.model.capThinking')}
+              value={capThinking}
+              onChange={(value) => {
+                setCapThinking(value)
+                setDirty(true)
+              }}
+            />
+            <CapabilityTriRow
+              label={t('settings.model.capFast')}
+              value={capFast}
+              onChange={(value) => {
+                setCapFast(value)
+                setDirty(true)
+              }}
+            />
+            <p data-slot="capabilities-hint" className="m-model-page__muted">
+              {t('settings.model.capabilitiesHint')}
+            </p>
+            <Button variant="ghost" size="sm" onPress={resetOverrides}>
+              {t('settings.model.capReset')}
+            </Button>
+          </div>
+        </ModelFold>
+      )}
     </div>
   )
 
@@ -953,8 +1004,35 @@ function ModelConfigEditor({
     </ModelFold>
   )
 
+  const domainOptions = useMemo(
+    () =>
+      EDITABLE_DOMAINS.map((domain) => ({
+        value: domain,
+        label: t(`settings.models.domain.${domain}`),
+      })),
+    [t],
+  )
+  const protocolOptions = useMemo(() => {
+    const candidates = PROTOCOLS_BY_DOMAIN[capabilityDomain] ?? PROTOCOLS_BY_DOMAIN.chat
+    return [
+      { value: AUTO_PROTOCOL, label: t('settings.model.protocolAuto') },
+      ...candidates.map((proto) => ({ value: proto, label: proto })),
+    ]
+  }, [capabilityDomain, t])
+
   const providerSection = (
     <SettingsGroup headingLevel={3} heading={t('settings.model.sectionThisProvider')}>
+      <SettingsRow label={t('settings.model.protocolOverride')}>
+        <SettingsSelect
+          ariaLabel={t('settings.model.protocolOverride')}
+          value={protocolOptions.some((o) => o.value === protocolOverride) ? protocolOverride : AUTO_PROTOCOL}
+          options={protocolOptions}
+          onChange={(next) => {
+            setProtocolOverride(next)
+            setDirty(true)
+          }}
+        />
+      </SettingsRow>
       <SettingsRow label={t('settings.model.overridePricing')} description={t('settings.model.overridePricingHint')}>
         <Switch
           isSelected={overridesPricing}
@@ -1031,6 +1109,18 @@ function ModelConfigEditor({
             value={profileName}
             onChange={(event) => {
               setProfileName(event)
+              setDirty(true)
+            }}
+          />
+        </SettingsRow>
+        <SettingsRow label={t('settings.model.capabilityDomain')}>
+          <SettingsSelect
+            ariaLabel={t('settings.model.capabilityDomain')}
+            value={capabilityDomain}
+            options={domainOptions}
+            onChange={(next) => {
+              setCapabilityDomain(next as CapabilityDomain)
+              setProtocolOverride(AUTO_PROTOCOL)
               setDirty(true)
             }}
           />

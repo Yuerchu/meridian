@@ -240,18 +240,66 @@ pub struct ProviderModelInfoResponse {
     pub name: String,
     pub suggested_canonical_id: Option<String>,
     pub suggested_protocol: Option<String>,
+    pub suggested_domain: meridian_core::provider::CapabilityDomain,
 }
 
 impl From<meridian_core::provider::models::ModelInfo> for ProviderModelInfoResponse {
     fn from(value: meridian_core::provider::models::ModelInfo) -> Self {
         let canonical = meridian_core::provider::canonical_models::canonicalize_model_id(&value.id);
+        let suggested_domain = canonical
+            .as_ref()
+            .map(meridian_core::provider::canonical_models::CanonicalModelMatch::capability_domain)
+            .unwrap_or(meridian_core::provider::CapabilityDomain::Chat);
         Self {
             id: value.id,
             name: value.name,
             suggested_canonical_id: canonical.as_ref().map(|m| m.canonical_id.clone()),
             suggested_protocol: canonical.and_then(|m| m.canonical_protocols.first().cloned()),
+            suggested_domain,
         }
     }
+}
+
+fn catalog_models_for(catalog_id: Option<&str>) -> Vec<ProviderModelInfoResponse> {
+    let Some(entry) = catalog_id.and_then(meridian_core::provider::catalog::find) else {
+        return Vec::new();
+    };
+    let fallback_domain = entry
+        .domains
+        .first()
+        .copied()
+        .unwrap_or(meridian_core::provider::CapabilityDomain::Chat);
+    let mut out = Vec::new();
+    for group in &entry.models {
+        for model_id in &group.ids {
+            let canonical = meridian_core::provider::canonical_models::canonicalize_model_id(model_id);
+            let suggested_domain = canonical
+                .as_ref()
+                .map(meridian_core::provider::canonical_models::CanonicalModelMatch::capability_domain)
+                .unwrap_or(fallback_domain);
+            out.push(ProviderModelInfoResponse {
+                id: model_id.clone(),
+                name: model_id.clone(),
+                suggested_canonical_id: canonical.as_ref().map(|m| m.canonical_id.clone()),
+                suggested_protocol: canonical.and_then(|m| m.canonical_protocols.first().cloned()),
+                suggested_domain,
+            });
+        }
+    }
+    out
+}
+
+fn merge_catalog_media_models(
+    mut models: Vec<ProviderModelInfoResponse>,
+    catalog_id: Option<&str>,
+) -> Vec<ProviderModelInfoResponse> {
+    let existing: std::collections::HashSet<String> = models.iter().map(|m| m.id.clone()).collect();
+    for item in catalog_models_for(catalog_id) {
+        if item.suggested_domain != meridian_core::provider::CapabilityDomain::Chat && !existing.contains(&item.id) {
+            models.push(item);
+        }
+    }
+    models
 }
 
 pub type ProviderModelListResponse = Vec<ProviderModelInfoResponse>;
@@ -456,6 +504,8 @@ pub struct ProviderUpdateRequest {
     api_format: Option<ApiFormat>,
     credential_kind: Option<CredentialKind>,
     transport_profile: Option<TransportProfile>,
+    #[serde(default, deserialize_with = "patch_nullable")]
+    catalog_id: Option<RequiredNullable<String>>,
     /// Absent leaves the logo alone, `null` puts it back to whatever the
     /// catalog says this vendor is, and a string names a mark.
     #[serde(default, deserialize_with = "patch_nullable")]
@@ -687,7 +737,8 @@ pub async fn update_provider(
         || provider_type.is_some()
         || api_format.is_some()
         || credential_kind.is_some()
-        || transport_profile.is_some();
+        || transport_profile.is_some()
+        || request.catalog_id.is_some();
     // Deliberately not part of the line above: a logo decides nothing about
     // which adapter answers or what it can be asked, so changing one must not
     // throw away a model list that costs a round trip to rebuild.
@@ -725,19 +776,50 @@ pub async fn update_provider(
             if let Err(refused) = checked {
                 return Ok(Err(refused));
             }
-            // A changed *type* re-decides the catalog identity; a changed address
-            // alone never does (a relay is still the vendor the user picked). The
-            // row starts as the catalog's default entry and is often re-typed into
-            // the vendor actually wanted — without this, that row kept the default
-            // vendor's logo and key page forever. Same conservative rule as
-            // creation and the migration backfill: exactly one entry fits or the
-            // answer is no identity, and `Some(None)` is how the changeset says so.
-            let catalog_id = match provider_type {
-                Some(next_type) => {
-                    let final_url = request.base_url.as_deref().unwrap_or(&current.base_url);
-                    Some(meridian_core::provider::catalog::identify(next_type.as_str(), final_url).map(str::to_string))
+            let next_provider_type = provider_type.unwrap_or(current.provider_type);
+            let (catalog_id, capability_domain) = match &request.catalog_id {
+                Some(RequiredNullable(Some(wanted_id))) => {
+                    let Some(entry) = meridian_core::provider::catalog::find(wanted_id) else {
+                        return Ok(Err(format!("unknown provider catalog id `{wanted_id}`")));
+                    };
+                    if entry.provider_type != next_provider_type.as_str() {
+                        return Ok(Err(format!(
+                            "catalog entry `{}` belongs to provider type `{}`, not `{}`",
+                            entry.id,
+                            entry.provider_type,
+                            next_provider_type.as_str()
+                        )));
+                    }
+                    (Some(Some(entry.id.clone())), entry.domains.first().copied())
                 }
-                None => None,
+                Some(RequiredNullable(None)) => (
+                    Some(None),
+                    provider_type.map(|t| {
+                        if t == ProviderType::Media {
+                            meridian_core::provider::CapabilityDomain::ImageGen
+                        } else {
+                            meridian_core::provider::CapabilityDomain::Chat
+                        }
+                    }),
+                ),
+                None => match provider_type {
+                    Some(next_type) => {
+                        let final_url = request.base_url.as_deref().unwrap_or(&current.base_url);
+                        let identified = meridian_core::provider::catalog::identify(next_type.as_str(), final_url);
+                        let domain = identified
+                            .and_then(meridian_core::provider::catalog::find)
+                            .and_then(|e| e.domains.first().copied())
+                            .unwrap_or_else(|| {
+                                if next_type == ProviderType::Media {
+                                    meridian_core::provider::CapabilityDomain::ImageGen
+                                } else {
+                                    meridian_core::provider::CapabilityDomain::Chat
+                                }
+                            });
+                        (Some(identified.map(str::to_string)), Some(domain))
+                    }
+                    None => (None, None),
+                },
             };
             let effective_catalog_id = match &catalog_id {
                 Some(next) => next.as_deref(),
@@ -778,6 +860,7 @@ pub async fn update_provider(
                 icon: icon.clone(),
                 codex_request_shape: request.codex_request_shape.map(SqlBool::from),
                 local_backend: request.local_backend.as_ref().map(|value| value.0),
+                capability_domain,
                 config_json: next_config_json,
                 ..Default::default()
             };
@@ -923,20 +1006,38 @@ async fn cached_models_for(
     db: &meridian_core::db::sea::cap::Db,
     provider_id: &str,
 ) -> Result<ProviderModelListResponse, String> {
-    let rows = db
-        .read(async |tx| meridian_core::db::sea::ops::cached_model::list_cached_for_provider(tx, provider_id).await)
+    let (provider, rows) = db
+        .read(async |tx| {
+            let Some(provider) = provider_ops::get(tx, provider_id).await? else {
+                return Ok::<_, DbErr>(None);
+            };
+            let rows = meridian_core::db::sea::ops::cached_model::list_by_provider(tx, provider_id).await?;
+            Ok(Some((provider, rows)))
+        })
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("provider `{provider_id}` does not exist"))?;
-    Ok(rows
+    let cached: Vec<ProviderModelInfoResponse> = rows
         .into_iter()
-        .map(|row| ProviderModelInfoResponse {
-            id: row.model_id,
-            name: row.model_name,
-            suggested_canonical_id: row.suggested_canonical_id,
-            suggested_protocol: row.suggested_protocol,
+        .map(|row| {
+            let canonical = meridian_core::provider::canonical_models::canonicalize_model_id(&row.model_id);
+            let suggested_domain = canonical
+                .as_ref()
+                .map(meridian_core::provider::canonical_models::CanonicalModelMatch::capability_domain)
+                .unwrap_or(meridian_core::provider::CapabilityDomain::Chat);
+            ProviderModelInfoResponse {
+                id: row.model_id,
+                name: row.model_name,
+                suggested_canonical_id: row.suggested_canonical_id,
+                suggested_protocol: row.suggested_protocol,
+                suggested_domain,
+            }
         })
-        .collect())
+        .collect();
+    if cached.is_empty() && provider.provider_type == ProviderType::Media {
+        return Ok(catalog_models_for(provider.catalog_id.as_deref()));
+    }
+    Ok(merge_catalog_media_models(cached, provider.catalog_id.as_deref()))
 }
 
 #[tauri::command]
@@ -958,26 +1059,15 @@ pub async fn list_provider_models(
     // pool-read-before-write: the cache read only decides whether to go to the network,
     // and a network call sits between it and the write, which replaces the list whole.
     if fetch_policy == ProviderModelFetchPolicy::CacheFirst {
-        let cached = meridian_core::db::sea::ops::cached_model::list_by_provider(&services.db, &provider_id)
-            .await
-            .map_err(|e| e.to_string())?;
-
+        let cached = cached_models_for(&services.db, &provider_id).await?;
         if !cached.is_empty() {
-            return Ok(cached
-                .into_iter()
-                .map(|c| ProviderModelInfoResponse {
-                    id: c.model_id,
-                    name: c.model_name,
-                    suggested_canonical_id: c.suggested_canonical_id,
-                    suggested_protocol: c.suggested_protocol,
-                })
-                .collect());
+            return Ok(cached);
         }
     }
 
     // pool-read-before-write: the address is read for the network call; the write
     // after it replaces the cached list whole and depends on nothing read here.
-    let (provider_type, base_url, api_format, transport_profile, credential_kind) = {
+    let (provider_type, base_url, api_format, transport_profile, credential_kind, catalog_id) = {
         let p = provider_ops::get(&services.db, &provider_id)
             .await
             .map_err(|e| e.to_string())?
@@ -988,6 +1078,7 @@ pub async fn list_provider_models(
             p.api_format.as_str().to_owned(),
             p.transport_profile.as_str().to_owned(),
             p.credential_kind.as_str().to_owned(),
+            p.catalog_id,
         )
     };
 
@@ -1000,6 +1091,21 @@ pub async fn list_provider_models(
         &transport_profile,
         &credential_kind,
     )?;
+
+    if provider_type == ProviderType::Media.as_str() {
+        let catalog_models = catalog_models_for(catalog_id.as_deref());
+        let listed: Vec<(String, String)> = catalog_models.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
+        let cached = services
+            .db
+            .write(async |tx| {
+                meridian_core::db::sea::ops::cached_model::replace_models(tx, &provider_id, &listed, now_ms()).await
+            })
+            .await;
+        if let Err(error) = cached {
+            tracing::warn!(error = %error, "could not cache catalog media model list");
+        }
+        return Ok(catalog_models);
+    }
 
     // A transport that lists its models from local knowledge needs no key, and
     // demanding one would make the picker unusable for a login that never has
@@ -1021,9 +1127,11 @@ pub async fn list_provider_models(
     .await
     .map_err(|e| e.to_string())?;
 
+    let merged = merge_catalog_media_models(models.into_iter().map(Into::into).collect(), catalog_id.as_deref());
+
     // The list is answered either way; a cache that could not be written only
     // means the next open fetches again.
-    let listed: Vec<(String, String)> = models.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
+    let listed: Vec<(String, String)> = merged.iter().map(|m| (m.id.clone(), m.name.clone())).collect();
     let cached = services
         .db
         .write(async |tx| {
@@ -1034,7 +1142,7 @@ pub async fn list_provider_models(
         tracing::warn!(error = %error, "could not cache the fetched model list");
     }
 
-    Ok(models.into_iter().map(Into::into).collect())
+    Ok(merged)
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -1425,8 +1533,27 @@ mod cached_model_tests {
                 "name": "GPT 5.6",
                 "suggested_canonical_id": "openai/gpt-5.6",
                 "suggested_protocol": "openai_responses",
+                "suggested_domain": "chat",
             }])
         );
+    }
+
+    #[tokio::test]
+    async fn media_provider_surfaces_official_catalog_models_on_empty_cache() {
+        let db = meridian_core::db::sea::sea_test_db().await;
+        meridian_core::db::sea::execute_for_tests(
+            &db,
+            "INSERT INTO providers (id, name, provider_type, base_url, api_format, catalog_id, capability_domain, created_at, updated_at)
+             VALUES ('p-kling', 'Kling AI', 'media', 'https://api-beijing.klingai.com', 'media_native', 'kling', 'video_gen', 1, 1)",
+        )
+        .await
+        .unwrap();
+        let models = cached_models_for(&db, "p-kling").await.unwrap();
+        assert!(models.iter().any(|m| {
+            m.id == "kling-3.0"
+                && m.suggested_domain == meridian_core::provider::CapabilityDomain::VideoGen
+                && m.suggested_protocol.as_deref() == Some("kling_video")
+        }));
     }
 
     #[tokio::test]

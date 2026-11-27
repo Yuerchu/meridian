@@ -221,6 +221,7 @@ for (const rel of manifestPaths) {
   }
 
   const isChat = domains.includes('chat')
+  const isMedia = !isChat && (domains.includes('image_gen') || domains.includes('video_gen'))
   if (isChat) {
     const type = entry.provider_type
     if (typeof type !== 'string' || !type) {
@@ -230,13 +231,17 @@ for (const rel of manifestPaths) {
     } else if (!NAMESPACES.has(type)) {
       fail(`${at}: capabilities 没有 provider_type '${type}' 的 namespace`)
     }
+  } else if (isMedia) {
+    if (entry.provider_type !== 'media') {
+      fail(`${at}: 纯图片/视频生成厂商必须声明 provider_type = 'media'`)
+    }
   } else if (entry.provider_type !== null) {
-    fail(`${at}: 非 chat 域厂商 provider_type 应为 null`)
+    fail(`${at}: 非 chat / media 域厂商 provider_type 应为 null`)
   }
 
   const auth = Array.isArray(entry.auth) ? entry.auth : []
   if (!Array.isArray(entry.auth)) fail(`${at}.auth: 必须是 array`)
-  if (isChat && auth.length === 0) fail(`${at}: chat 域厂商至少要有一种登录方式`)
+  if ((isChat || isMedia) && auth.length === 0) fail(`${at}: chat / media 域厂商至少要有一种登录方式`)
 
   const seenAuthIds = new Set()
   for (const [optionIndex, option] of auth.entries()) {
