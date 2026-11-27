@@ -787,6 +787,13 @@ pub async fn submit_plan_review_decision(
     app: tauri::AppHandle,
     request: PlanReviewDecisionRequest,
 ) -> Result<PlanReviewDecisionResponse, String> {
+    Box::pin(submit_plan_review_decision_inner(app, request)).await
+}
+
+async fn submit_plan_review_decision_inner(
+    app: tauri::AppHandle,
+    request: PlanReviewDecisionRequest,
+) -> Result<PlanReviewDecisionResponse, String> {
     let accept_edits = match (request.action, request.approval_mode.0) {
         (PlanReviewDecisionActionRequest::Approve, Some(PlanApprovalModeRequest::Default)) => Some(false),
         (PlanReviewDecisionActionRequest::Approve, Some(PlanApprovalModeRequest::AcceptEdits)) => Some(true),

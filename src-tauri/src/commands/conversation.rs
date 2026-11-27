@@ -75,14 +75,14 @@ pub async fn invoke_conversation_compaction(
         trigger: CompactTrigger::Manual,
     })?;
 
-    let result = do_compact(
+    let result = Box::pin(do_compact(
         &services.db,
         &secrets,
         &conversation_id,
         assistant.as_ref(),
         keep_recent,
         custom_instructions.as_deref(),
-    )
+    ))
     .await;
 
     if let Err(ref e) = result {
@@ -374,7 +374,7 @@ pub async fn delete_conversation(app: tauri::AppHandle, request: ConversationDel
             card.title
         ));
     }
-    delete_conversation_tree(&services, &id).await
+    Box::pin(delete_conversation_tree(&services, &id)).await
 }
 
 /// Delete a conversation with its delegated runs, their processes and their

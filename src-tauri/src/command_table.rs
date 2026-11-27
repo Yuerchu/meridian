@@ -1111,4 +1111,91 @@ mod tests {
             .is_err()
         );
     }
+
+    trait CommandReturnSize<Args> {
+        fn return_size(&self) -> usize;
+    }
+
+    impl<F, R> CommandReturnSize<()> for F
+    where
+        F: FnOnce() -> R,
+    {
+        fn return_size(&self) -> usize {
+            std::mem::size_of::<R>()
+        }
+    }
+
+    impl<F, A, R> CommandReturnSize<(A,)> for F
+    where
+        F: FnOnce(A) -> R,
+    {
+        fn return_size(&self) -> usize {
+            std::mem::size_of::<R>()
+        }
+    }
+
+    impl<F, A, B, R> CommandReturnSize<(A, B)> for F
+    where
+        F: FnOnce(A, B) -> R,
+    {
+        fn return_size(&self) -> usize {
+            std::mem::size_of::<R>()
+        }
+    }
+
+    impl<F, A, B, C, R> CommandReturnSize<(A, B, C)> for F
+    where
+        F: FnOnce(A, B, C) -> R,
+    {
+        fn return_size(&self) -> usize {
+            std::mem::size_of::<R>()
+        }
+    }
+
+    fn command_return_size<Args, F: CommandReturnSize<Args>>(f: F) -> usize {
+        f.return_size()
+    }
+
+    macro_rules! measure_command_returns {
+        ($($(#[$attr:meta])* $kind:ident $($module:ident)::+ => $name:ident ($($arg:ident : $ty:ty),* $(,)?)),* $(,)?) => {{
+            let mut sizes: Vec<(&'static str, usize)> = Vec::new();
+            $(
+                $(#[$attr])*
+                {
+                    sizes.push((
+                        concat!(stringify!($($module)::+), "::", stringify!($name)),
+                        command_return_size(crate::$($module)::+::$name),
+                    ));
+                }
+            )*
+            sizes
+        }};
+    }
+
+    /// Every `async` Tauri command's `Future` is wrapped in nested `async move`
+    /// state machines by `#[tauri::command]` and
+    /// `InvokeResolver::respond_async_serialized_inner` (~6x expansion in
+    /// release), then constructed inside `generate_handler!` and moved by value
+    /// through `tauri::async_runtime::spawn` -> `tokio::task::spawn` (~27x
+    /// total stack amplification). On Windows the main/UI thread has a 1 MiB
+    /// default stack, so a single ~35 KiB command future (`start_chat`) expands
+    /// to ~208 KiB and consumes > 1 MiB across those frames, causing an instant
+    /// `STATUS_STACK_OVERFLOW` (`0xc00000fd`) before the command body even
+    /// begins. Keep every command's return value (its `Future` state machine
+    /// for `async fn`) at or below 8 KiB by boxing heavy inner futures with
+    /// `Box::pin`.
+    #[test]
+    fn every_command_future_fits_on_the_main_thread_stack() {
+        const MAX_COMMAND_RETURN_BYTES: usize = 8 * 1024;
+        let mut sizes = with_all_commands!(measure_command_returns);
+        sizes.sort_by_key(|a| std::cmp::Reverse(a.1));
+        let oversized: Vec<_> = sizes
+            .into_iter()
+            .filter(|(_, bytes)| *bytes > MAX_COMMAND_RETURN_BYTES)
+            .collect();
+        assert!(
+            oversized.is_empty(),
+            "command futures exceed {MAX_COMMAND_RETURN_BYTES} bytes (box heavy inner futures with Box::pin): {oversized:#?}"
+        );
+    }
 }

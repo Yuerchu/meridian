@@ -315,19 +315,22 @@ pub async fn get_workspace_root(
     app: tauri::AppHandle,
     request: WorkspaceRootRequest,
 ) -> Result<WorkspaceRootResponse, String> {
-    let root = resolve_root(&app, request.conversation_id).await?;
-    match root {
-        WorkspaceRoot::Ok { root, .. } => {
-            let git_available = workspace::git::git_available().await;
-            let is_repo = git_available && workspace::git::is_repo(std::path::Path::new(&root)).await;
-            Ok(WorkspaceRootResponse::Ok {
-                root,
-                git_available,
-                is_repo,
-            })
+    Box::pin(async move {
+        let root = resolve_root(&app, request.conversation_id).await?;
+        match root {
+            WorkspaceRoot::Ok { root, .. } => {
+                let git_available = workspace::git::git_available().await;
+                let is_repo = git_available && workspace::git::is_repo(std::path::Path::new(&root)).await;
+                Ok(WorkspaceRootResponse::Ok {
+                    root,
+                    git_available,
+                    is_repo,
+                })
+            }
+            other => Ok(other.into()),
         }
-        other => Ok(other.into()),
-    }
+    })
+    .await
 }
 
 #[tauri::command]
@@ -426,8 +429,11 @@ pub async fn get_workspace_git_status(
     app: tauri::AppHandle,
     request: WorkspaceGitStatusRequest,
 ) -> Result<WorkspaceGitStatusResponse, String> {
-    let root = require_root(&app, request.conversation_id).await?;
-    workspace::git::status(&root).await.map(Into::into)
+    Box::pin(async move {
+        let root = require_root(&app, request.conversation_id).await?;
+        workspace::git::status(&root).await.map(Into::into)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -435,10 +441,13 @@ pub async fn get_workspace_git_diff(
     app: tauri::AppHandle,
     request: WorkspaceGitDiffRequest,
 ) -> Result<WorkspaceGitDiffResponse, String> {
-    let root = require_root(&app, request.conversation_id).await?;
-    workspace::git::diff(&root, request.rel_path.as_deref())
-        .await
-        .map(Into::into)
+    Box::pin(async move {
+        let root = require_root(&app, request.conversation_id).await?;
+        workspace::git::diff(&root, request.rel_path.as_deref())
+            .await
+            .map(Into::into)
+    })
+    .await
 }
 
 /// Launch the user's configured editor on a file.

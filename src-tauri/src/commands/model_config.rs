@@ -474,6 +474,13 @@ pub async fn set_model_config(
     app: tauri::AppHandle,
     request: ModelConfigUpsertRequest,
 ) -> Result<ModelConfigInfoResponse, String> {
+    Box::pin(set_model_config_inner(app, request)).await
+}
+
+async fn set_model_config_inner(
+    app: tauri::AppHandle,
+    request: ModelConfigUpsertRequest,
+) -> Result<ModelConfigInfoResponse, String> {
     let request = request.validate()?;
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the

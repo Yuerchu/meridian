@@ -694,7 +694,7 @@ impl meridian_core::services::StartTurn for DesktopTurns {
         let queued_context = db::sea::ops::queued_prompt_context_item::list_prepared(&self.0.db, &queued.id)
             .await
             .map_err(|e| e.to_string())?;
-        run_turn(
+        Box::pin(run_turn(
             self.0.clone(),
             conversation_id.to_string(),
             Some(queued.content.clone()),
@@ -722,12 +722,12 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             TurnOrigin::Desktop,
             false,
             false,
-        )
+        ))
         .await
     }
 
     async fn start_unprompted(&self, conversation_id: &str) -> Result<(), String> {
-        run_turn(
+        Box::pin(run_turn(
             self.0.clone(),
             conversation_id.to_string(),
             None,
@@ -750,7 +750,7 @@ impl meridian_core::services::StartTurn for DesktopTurns {
             TurnOrigin::Desktop,
             true,
             false,
-        )
+        ))
         .await
     }
 }
@@ -839,7 +839,11 @@ pub async fn start_chat(app: tauri::AppHandle, request: ChatStartRequest) -> Res
             .to_string(),
         None => uuid::Uuid::new_v4().to_string(),
     };
-    run_turn(
+    // Box the turn future: Tauri wraps every async command in nested
+    // `async move` state machines and moves it by value through
+    // `generate_handler!` -> `tauri::async_runtime::spawn` -> `tokio::task::spawn`,
+    // which multiplies the future size ~27x on the 1 MiB Windows main thread stack.
+    Box::pin(run_turn(
         app.services(),
         conversation_id,
         message,
@@ -860,7 +864,7 @@ pub async fn start_chat(app: tauri::AppHandle, request: ChatStartRequest) -> Res
         TurnOrigin::Desktop,
         false,
         false,
-    )
+    ))
     .await
 }
 
@@ -907,7 +911,7 @@ pub async fn run_turn(
 
         let recorded = Arc::new(AtomicBool::new(false));
 
-        let result = chat_inner(
+        let result = Box::pin(chat_inner(
             services.clone(),
             conversation_id.clone(),
             message.take(),
@@ -929,7 +933,7 @@ pub async fn run_turn(
             origin,
             wake,
             clear_context,
-        )
+        ))
         .await
         .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
 
@@ -1596,14 +1600,14 @@ async fn chat_inner(
                 &turn_id,
                 TurnPhase::Compacting,
                 None,
-                do_compact(
+                Box::pin(do_compact(
                     &services.db,
                     secrets,
                     &conversation_id,
                     assistant.as_ref(),
                     keep_recent,
                     None,
-                ),
+                )),
             )
             .await;
             match compaction {
@@ -1987,7 +1991,7 @@ async fn chat_inner(
     let steering = engine::Chain(vec![&interjections, &notices]);
     #[cfg(target_os = "android")]
     let steering = engine::Chain(vec![&interjections]);
-    let outcome = engine::run_turn(
+    let outcome = Box::pin(engine::run_turn(
         &engine::TurnServices {
             db: &services.db,
             tools: tool_registry,
@@ -2074,7 +2078,7 @@ async fn chat_inner(
             transitions: Some(&transitions),
             sub_agents: Some(&sub_agents),
         },
-    )
+    ))
     .await;
 
     // Before the error is propagated, which is the whole reason `run_turn` hands

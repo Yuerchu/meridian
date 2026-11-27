@@ -282,6 +282,13 @@ pub async fn invoke_user_command(
     app: tauri::AppHandle,
     request: UserCommandRunRequest,
 ) -> Result<UserCommandResultResponse, String> {
+    Box::pin(invoke_user_command_inner(app, request)).await
+}
+
+async fn invoke_user_command_inner(
+    app: tauri::AppHandle,
+    request: UserCommandRunRequest,
+) -> Result<UserCommandResultResponse, String> {
     let UserCommandRunRequest {
         conversation_id,
         turn_id,

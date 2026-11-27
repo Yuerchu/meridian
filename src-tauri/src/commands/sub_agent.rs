@@ -497,7 +497,7 @@ impl DesktopSubAgents {
             Err(error) => return engine::TurnOutcome::failed(error),
         };
 
-        engine::run_turn(
+        Box::pin(engine::run_turn(
             &engine::TurnServices {
                 db: &self.services.db,
                 tools: &self.registry,
@@ -565,7 +565,7 @@ impl DesktopSubAgents {
                 // to check for.
                 sub_agents: None,
             },
-        )
+        ))
         .await
     }
 
