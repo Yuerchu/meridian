@@ -293,6 +293,7 @@ export interface ProviderUpdateRequest {
   api_format?: ProviderApiFormat
   credential_kind?: ProviderCredentialKind
   transport_profile?: ProviderTransportProfile
+  catalog_id?: string | null
   /**
    * Which logo the provider draws.
    *
@@ -2236,11 +2237,17 @@ export type StoredThinkingLevel = Exclude<ThinkingLevel, 'default'>
 export type ThinkingStyle = 'none' | 'effort_only' | 'budget' | 'adaptive' | 'always_on' | 'toggle_off'
 
 export type ProviderApiFormat =
-  'chat_completions' | 'responses' | 'gemini_generate_content' | 'gemini_interactions' | 'gemma_tool' | 'litert_lm'
+  | 'chat_completions'
+  | 'responses'
+  | 'gemini_generate_content'
+  | 'gemini_interactions'
+  | 'gemma_tool'
+  | 'litert_lm'
+  | 'media_native'
 export type ProviderCredentialKind =
   'api_key' | 'google_vertex_service_account' | 'codex_cli' | 'chatgpt_oauth' | 'none'
 export type ProviderTransportProfile = 'standard' | 'chatgpt_codex' | 'local_native'
-export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google' | 'litert_lm'
+export type ProviderType = 'openai' | 'anthropic' | 'deepseek' | 'xai' | 'google' | 'litert_lm' | 'media'
 
 export type LocalInferenceBackend = 'auto' | 'cpu' | 'gpu' | 'npu'
 export type LocalModelBackend = 'cpu' | 'gpu' | 'npu'
@@ -2450,6 +2457,7 @@ export interface ProviderModelInfoResponse {
   name: string
   suggested_canonical_id: string | null
   suggested_protocol: string | null
+  suggested_domain: CapabilityDomain
 }
 
 export type ProviderModelListResponse = ProviderModelInfoResponse[]
@@ -3068,6 +3076,7 @@ export interface PriceTier {
 export interface ModelProfileUpsertRequest {
   id: string | null
   name: string
+  capability_domain: CapabilityDomain
   context_window: number
   compact_threshold: number
   max_output_tokens: number | null
@@ -3083,6 +3092,7 @@ export interface ModelConfigUpsertRequest {
   provider_id: string
   model_id: string
   profile: ModelProfileUpsertRequest
+  protocol_override: string | null
   /** With this off, every price field below must be null. */
   overrides_pricing: boolean
   input_price: DecimalString | null

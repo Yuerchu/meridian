@@ -79,6 +79,10 @@ async fn upsert_model_config_unless_plan_barrier(
 /// either insert or update it without re-deciding anything.
 struct ProfileWrite {
     name: String,
+    capability_domain: CapabilityDomain,
+    canonical_id: Option<String>,
+    family: Option<String>,
+    routing_policy: RoutingPolicy,
     context_window: i32,
     compact_threshold: i32,
     max_output_tokens: Option<i32>,
@@ -107,11 +111,11 @@ impl ProfileWrite {
             capability_overrides: self.capability_overrides,
             created_at: self.now,
             updated_at: self.now,
-            canonical_id: None,
-            capability_domain: CapabilityDomain::Chat,
-            family: None,
+            canonical_id: self.canonical_id,
+            capability_domain: self.capability_domain,
+            family: self.family,
             icon: None,
-            routing_policy: RoutingPolicy::StickyManual,
+            routing_policy: self.routing_policy,
             is_archived: SqlBool::FALSE,
         }
     }
@@ -119,6 +123,7 @@ impl ProfileWrite {
     fn into_changeset(self) -> ModelProfileChangeset {
         ModelProfileChangeset {
             name: self.name,
+            capability_domain: self.capability_domain,
             context_window: self.context_window,
             compact_threshold: self.compact_threshold,
             max_output_tokens: self.max_output_tokens,
@@ -252,6 +257,7 @@ where
 pub struct ModelProfileUpsertRequest {
     pub id: RequiredNullable<String>,
     pub name: String,
+    pub capability_domain: CapabilityDomain,
     pub context_window: i32,
     pub compact_threshold: i32,
     pub max_output_tokens: RequiredNullable<i32>,
@@ -270,6 +276,7 @@ pub struct ModelConfigUpsertRequest {
     pub provider_id: String,
     pub model_id: String,
     pub profile: ModelProfileUpsertRequest,
+    pub protocol_override: RequiredNullable<String>,
     pub overrides_pricing: bool,
     pub input_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
@@ -286,11 +293,15 @@ impl ModelProfileUpsertRequest {
         if self.name.trim().is_empty() {
             return Err("profile.name is required".into());
         }
-        if self.context_window <= 0 {
-            return Err("context_window must be positive".into());
-        }
-        if self.compact_threshold <= 0 || self.compact_threshold >= self.context_window {
-            return Err("compact_threshold must be positive and smaller than context_window".into());
+        if self.capability_domain == CapabilityDomain::Chat {
+            if self.context_window <= 0 {
+                return Err("context_window must be positive".into());
+            }
+            if self.compact_threshold <= 0 || self.compact_threshold >= self.context_window {
+                return Err("compact_threshold must be positive and smaller than context_window".into());
+            }
+        } else if self.context_window < 0 || self.compact_threshold < 0 {
+            return Err("context_window and compact_threshold must be non-negative".into());
         }
         if self.max_output_tokens.0.is_some_and(|value| value <= 0) {
             return Err("max_output_tokens must be positive".into());
@@ -324,6 +335,9 @@ impl ModelConfigUpsertRequest {
     fn validate(mut self) -> Result<Self, String> {
         if self.provider_id.trim().is_empty() || self.model_id.trim().is_empty() {
             return Err("provider_id and model_id are required".into());
+        }
+        if let Some(protocol) = self.protocol_override.0.as_deref() {
+            validate_protocol_id(protocol)?;
         }
         self.profile = self.profile.validate()?;
 
@@ -489,8 +503,17 @@ pub async fn set_model_config(
         .as_ref()
         .map(ProviderCapabilityOverrides::storage_json)
         .transpose()?;
+    let canonical_spec = meridian_core::provider::canonical_models::canonicalize_model_id(&request.model_id);
+    let routing_policy = match request.profile.capability_domain {
+        CapabilityDomain::ImageGen | CapabilityDomain::VideoGen => RoutingPolicy::AutoFailoverStateless,
+        _ => RoutingPolicy::StickyManual,
+    };
     let profile = ProfileWrite {
         name: request.profile.name.trim().to_owned(),
+        capability_domain: request.profile.capability_domain,
+        canonical_id: canonical_spec.as_ref().map(|s| s.canonical_id.clone()),
+        family: canonical_spec.as_ref().map(|s| s.family.clone()),
+        routing_policy,
         context_window: request.profile.context_window,
         compact_threshold: request.profile.compact_threshold,
         max_output_tokens: request.profile.max_output_tokens.0,
@@ -527,7 +550,7 @@ pub async fn set_model_config(
         server_tool_price: request.server_tool_price.0,
         created_at: now,
         updated_at: now,
-        protocol_override: None,
+        protocol_override: request.protocol_override.0,
         is_enabled: SqlBool::TRUE,
         priority: 100,
         capability_overrides: None,
@@ -633,15 +656,30 @@ fn build_deployment_response(
         .transpose()?;
     let effective_protocol = match row.protocol_override.as_deref() {
         Some(override_id) => override_id.to_owned(),
-        None => provider
-            .and_then(|p| {
-                meridian_core::provider::protocols::canonical_protocol_id(
-                    p.provider_type.as_str(),
-                    p.api_format.as_str(),
-                )
-            })
-            .unwrap_or("openai_chat")
-            .to_owned(),
+        None => match profile.capability_domain {
+            CapabilityDomain::ImageGen | CapabilityDomain::VideoGen => provider
+                .and_then(|p| {
+                    meridian_core::media::resolve_media_protocol(
+                        profile.capability_domain,
+                        None,
+                        p.provider_type.as_str(),
+                        p.catalog_id.as_deref(),
+                        &row.model_id,
+                    )
+                    .ok()
+                })
+                .unwrap_or("openai_images")
+                .to_owned(),
+            _ => provider
+                .and_then(|p| {
+                    meridian_core::provider::protocols::canonical_protocol_id(
+                        p.provider_type.as_str(),
+                        p.api_format.as_str(),
+                    )
+                })
+                .unwrap_or("openai_chat")
+                .to_owned(),
+        },
     };
     let canonical_key = profile.canonical_id.as_deref().unwrap_or(&row.model_id);
     let compliance =
@@ -742,11 +780,15 @@ impl LogicalModelCreateRequest {
         if self.name.trim().is_empty() {
             return Err("logical model name is required".into());
         }
-        if self.context_window <= 0 {
-            return Err("context_window must be positive".into());
-        }
-        if self.compact_threshold <= 0 || self.compact_threshold >= self.context_window {
-            return Err("compact_threshold must be positive and smaller than context_window".into());
+        if self.capability_domain == CapabilityDomain::Chat {
+            if self.context_window <= 0 {
+                return Err("context_window must be positive".into());
+            }
+            if self.compact_threshold <= 0 || self.compact_threshold >= self.context_window {
+                return Err("compact_threshold must be positive and smaller than context_window".into());
+            }
+        } else if self.context_window < 0 || self.compact_threshold < 0 {
+            return Err("context_window and compact_threshold must be non-negative".into());
         }
         if self.max_output_tokens.0.is_some_and(|v| v <= 0) {
             return Err("max_output_tokens must be positive".into());
@@ -985,20 +1027,32 @@ pub async fn attach_model_deployment(
             {
                 existing
             } else {
-                let model_caps = meridian_core::provider::capabilities::resolve(
-                    provider_row.provider_type.as_str(),
-                    Some(provider_row.api_format.as_str()),
-                    &request.model_id,
-                );
-                let Some(max_context) = model_caps.max_context_tokens else {
-                    return Ok(Err(format!(
-                        "model `{}` has no known context window in the catalog; open its configuration page to set one explicitly",
-                        request.model_id
-                    )));
+                let domain = canonical_spec
+                    .as_ref()
+                    .map(meridian_core::provider::canonical_models::CanonicalModelMatch::capability_domain)
+                    .unwrap_or(provider_row.capability_domain);
+                let (context_window, compact_threshold, max_output_tokens) = if domain == CapabilityDomain::Chat {
+                    let model_caps = meridian_core::provider::capabilities::resolve(
+                        provider_row.provider_type.as_str(),
+                        Some(provider_row.api_format.as_str()),
+                        &request.model_id,
+                    );
+                    let Some(max_context) = model_caps.max_context_tokens else {
+                        return Ok(Err(format!(
+                            "model `{}` has no known context window in the catalog; open its configuration page to set one explicitly",
+                            request.model_id
+                        )));
+                    };
+                    let cw = max_context as i32;
+                    let ct = (cw / 5 * 4).max(1).min(cw - 1);
+                    (cw, ct, model_caps.max_output_tokens.map(|v| v as i32))
+                } else {
+                    (0, 0, None)
                 };
-                let context_window = max_context as i32;
-                let compact_threshold = (context_window / 5 * 4).max(1).min(context_window - 1);
-                let max_output_tokens = model_caps.max_output_tokens.map(|v| v as i32);
+                let routing_policy = match domain {
+                    CapabilityDomain::ImageGen | CapabilityDomain::VideoGen => RoutingPolicy::AutoFailoverStateless,
+                    _ => RoutingPolicy::StickyManual,
+                };
                 let name = request
                     .display_name
                     .0
@@ -1023,14 +1077,32 @@ pub async fn attach_model_deployment(
                     created_at: now,
                     updated_at: now,
                     canonical_id: canonical_spec.as_ref().map(|s| s.canonical_id.clone()),
-                    capability_domain: CapabilityDomain::Chat,
+                    capability_domain: domain,
                     family: canonical_spec.as_ref().map(|s| s.family.clone()),
                     icon: None,
-                    routing_policy: RoutingPolicy::StickyManual,
+                    routing_policy,
                     is_archived: SqlBool::FALSE,
                 };
                 profile_ops::insert(tx, new_profile).await?
             };
+            let resolved_protocol_override = request.protocol_override.0.clone().or_else(|| {
+                if matches!(
+                    target_profile.capability_domain,
+                    CapabilityDomain::ImageGen | CapabilityDomain::VideoGen
+                ) {
+                    meridian_core::media::resolve_media_protocol(
+                        target_profile.capability_domain,
+                        None,
+                        provider_row.provider_type.as_str(),
+                        provider_row.catalog_id.as_deref(),
+                        &request.model_id,
+                    )
+                    .ok()
+                    .map(str::to_owned)
+                } else {
+                    None
+                }
+            });
             let deployment = model_config::Model {
                 id: uuid::Uuid::new_v4().to_string(),
                 provider_id: request.provider_id.clone(),
@@ -1046,7 +1118,7 @@ pub async fn attach_model_deployment(
                 server_tool_price: None,
                 created_at: now,
                 updated_at: now,
-                protocol_override: request.protocol_override.0.clone(),
+                protocol_override: resolved_protocol_override,
                 is_enabled: SqlBool::TRUE,
                 priority,
                 capability_overrides: None,
@@ -1285,6 +1357,10 @@ mod tests {
     fn profile_write() -> ProfileWrite {
         ProfileWrite {
             name: "Model".into(),
+            capability_domain: CapabilityDomain::Chat,
+            canonical_id: None,
+            family: None,
+            routing_policy: RoutingPolicy::StickyManual,
             context_window: 128_000,
             compact_threshold: 100_000,
             max_output_tokens: None,
@@ -1305,6 +1381,7 @@ mod tests {
             "profile": {
                 "id": null,
                 "name": "Model",
+                "capability_domain": "chat",
                 "context_window": 128000,
                 "compact_threshold": 100000,
                 "max_output_tokens": null,
@@ -1315,6 +1392,7 @@ mod tests {
                 "pricing_tiers": [],
                 "capability_overrides": null
             },
+            "protocol_override": null,
             "overrides_pricing": false,
             "input_price": null,
             "output_price": null,
@@ -1656,5 +1734,60 @@ mod tests {
         assert_eq!(r_official.compliance, ProtocolCompliance::Standard);
         assert_eq!(r_relay.effective_protocol, "openai_chat");
         assert!(matches!(r_relay.compliance, ProtocolCompliance::Degraded { .. }));
+    }
+
+    #[test]
+    fn media_domain_models_allow_zero_context_window_and_resolve_official_media_protocols() {
+        let mut req = request();
+        req["model_id"] = serde_json::json!("kling-3.0");
+        req["profile"]["capability_domain"] = serde_json::json!("video_gen");
+        req["profile"]["context_window"] = serde_json::json!(0);
+        req["profile"]["compact_threshold"] = serde_json::json!(0);
+        req["protocol_override"] = serde_json::json!("kling_video");
+        let parsed = serde_json::from_value::<ModelConfigUpsertRequest>(req)
+            .unwrap()
+            .validate()
+            .unwrap();
+        assert_eq!(parsed.profile.capability_domain, CapabilityDomain::VideoGen);
+        assert_eq!(parsed.protocol_override.0.as_deref(), Some("kling_video"));
+
+        let kling_provider = provider::Model {
+            id: "p-kling".into(),
+            name: "Kling AI".into(),
+            provider_type: meridian_core::provider::registry::ProviderType::Media,
+            base_url: "https://api-beijing.klingai.com".into(),
+            is_enabled: SqlBool::TRUE,
+            sort_order: 0,
+            created_at: 1,
+            updated_at: 1,
+            api_format: meridian_core::provider::registry::ApiFormat::MediaNative,
+            catalog_id: Some("kling".into()),
+            credential_kind: meridian_core::provider::registry::CredentialKind::ApiKey,
+            transport_profile: meridian_core::provider::registry::TransportProfile::Standard,
+            icon: None,
+            codex_request_shape: SqlBool::FALSE,
+            local_backend: None,
+            capability_domain: CapabilityDomain::VideoGen,
+            config_json: None,
+        };
+        let video_profile = model_profile::Model {
+            capability_domain: CapabilityDomain::VideoGen,
+            canonical_id: Some("kling/kling-3.0".into()),
+            context_window: 0,
+            compact_threshold: 0,
+            routing_policy: RoutingPolicy::AutoFailoverStateless,
+            ..profile_write().into_model("profile-kling".into())
+        };
+        let dep = model_config::Model {
+            id: "dep-kling".into(),
+            provider_id: "p-kling".into(),
+            model_id: "kling-3.0".into(),
+            profile_id: "profile-kling".into(),
+            protocol_override: None,
+            ..model_row()
+        };
+        let built = build_deployment_response(dep, &video_profile, Some(&kling_provider)).unwrap();
+        assert_eq!(built.effective_protocol, "kling_video");
+        assert_eq!(built.compliance, ProtocolCompliance::Standard);
     }
 }

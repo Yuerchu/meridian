@@ -124,11 +124,25 @@ function request<T = Rec>(args: DemoArgs): T {
 function demoProviderModels(
   state: DemoBackend['state'],
   id: string,
-): { id: string; name: string; suggested_canonical_id: string | null; suggested_protocol: string | null }[] {
+): {
+  id: string
+  name: string
+  suggested_canonical_id: string | null
+  suggested_protocol: string | null
+  suggested_domain: 'chat' | 'image_gen' | 'video_gen' | 'web_search' | 'tts' | 'embedding'
+}[] {
   const provider = state.providers.find((row) => row.id === id) ?? null
   if (provider !== null && provider.provider_type === 'litert_lm' && provider.local_backend !== null) {
     const info = demoLocalModel(provider.base_url, provider.local_backend)
-    return [{ id: info.file_name, name: info.file_name, suggested_canonical_id: null, suggested_protocol: null }]
+    return [
+      {
+        id: info.file_name,
+        name: info.file_name,
+        suggested_canonical_id: null,
+        suggested_protocol: null,
+        suggested_domain: 'chat',
+      },
+    ]
   }
   const configured = state.modelConfigs.filter((m) => m.provider_id === id).map((m) => m.model_id)
   const extra = id === 'demo-provider-anthropic' ? ['claude-opus-5', 'claude-sonnet-5-preview'] : []
@@ -137,6 +151,7 @@ function demoProviderModels(
     name: model,
     suggested_canonical_id: null,
     suggested_protocol: null,
+    suggested_domain: 'chat',
   }))
 }
 
@@ -234,10 +249,14 @@ function modelConfigFrom(backend: DemoBackend, req: ModelConfigUpsertRequest): M
     id: req.profile.id ?? mintId(backend.state, 'profile'),
     name: req.profile.name,
     canonical_id: existing?.profile.canonical_id ?? null,
-    capability_domain: existing?.profile.capability_domain ?? 'chat',
+    capability_domain: req.profile.capability_domain,
     family: existing?.profile.family ?? null,
     icon: existing?.profile.icon ?? null,
-    routing_policy: existing?.profile.routing_policy ?? 'sticky_manual',
+    routing_policy:
+      existing?.profile.routing_policy ??
+      (req.profile.capability_domain === 'image_gen' || req.profile.capability_domain === 'video_gen'
+        ? 'auto_failover_stateless'
+        : 'sticky_manual'),
     is_archived: false,
     context_window: req.profile.context_window,
     compact_threshold: req.profile.compact_threshold,
@@ -257,7 +276,7 @@ function modelConfigFrom(backend: DemoBackend, req: ModelConfigUpsertRequest): M
     provider_id: req.provider_id,
     model_id: req.model_id,
     profile,
-    protocol_override: existing?.protocol_override ?? null,
+    protocol_override: req.protocol_override,
     is_enabled: existing?.is_enabled ?? true,
     priority: existing?.priority ?? 100,
     capability_overrides: existing?.capability_overrides ?? null,
@@ -948,7 +967,7 @@ const providers: Record<string, DemoHandler> = {
       icon: null,
       codex_request_shape: false,
       local_backend: req.local_backend,
-      capability_domain: 'chat',
+      capability_domain: req.provider_type === 'media' ? 'image_gen' : 'chat',
       config_json: null,
     }
     state.providers.push(row)
@@ -960,7 +979,7 @@ const providers: Record<string, DemoHandler> = {
     if (!row) throw 'provider not found'
     const previousType = row.provider_type
     patch(row, req)
-    if (row.provider_type !== previousType) row.catalog_id = null
+    if (req.catalog_id === undefined && row.provider_type !== previousType) row.catalog_id = null
     row.updated_at = Date.now()
     return row
   },

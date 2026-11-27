@@ -76,6 +76,7 @@ export function entryByType(
 export function typeSelectOptions(
   catalog: ProviderCatalogEntryInfoResponse[],
   fallbackType: ProviderType,
+  mediaLabel?: string,
 ): { value: ProviderType; label: string }[] {
   if (catalog.length === 0) return [{ value: fallbackType, label: fallbackType }]
   const seen = new Set<ProviderType>()
@@ -83,9 +84,22 @@ export function typeSelectOptions(
   for (const entry of catalog) {
     if (seen.has(entry.provider_type)) continue
     seen.add(entry.provider_type)
-    options.push({ value: entry.provider_type, label: entry.name })
+    const label = entry.provider_type === 'media' && mediaLabel ? mediaLabel : entry.name
+    options.push({ value: entry.provider_type, label })
   }
   return options
+}
+
+/**
+ * Every catalog vendor sharing one adapter family (`provider_type`), in catalog
+ * order. Used to pick a concrete official vendor (e.g. Kling AI vs MiniMax vs
+ * Volcengine under `media`, or OpenRouter vs Moonshot under `openai`).
+ */
+export function vendorEntriesForType(
+  catalog: ProviderCatalogEntryInfoResponse[],
+  providerType: ProviderType,
+): ProviderCatalogEntryInfoResponse[] {
+  return catalog.filter((entry) => entry.provider_type === providerType)
 }
 
 /**
@@ -148,7 +162,15 @@ export function balanceEntry(
   return namedVendor(catalog, catalogId, providerType)
 }
 
-export const PROVIDER_TYPES = new Set<ProviderType>(['openai', 'anthropic', 'deepseek', 'xai', 'google', 'litert_lm'])
+export const PROVIDER_TYPES = new Set<ProviderType>([
+  'openai',
+  'anthropic',
+  'deepseek',
+  'xai',
+  'google',
+  'litert_lm',
+  'media',
+])
 
 export function requireProviderType(value: string): ProviderType {
   if (!PROVIDER_TYPES.has(value as ProviderType)) throw new Error(`unknown provider type ${JSON.stringify(value)}`)
@@ -211,6 +233,7 @@ export function parseProviderApiFormat(value: string): ProviderApiFormat {
     case 'gemini_interactions':
     case 'gemma_tool':
     case 'litert_lm':
+    case 'media_native':
       return value
     default:
       throw new Error(`unknown provider API format: ${value}`)
@@ -221,6 +244,7 @@ export const URL_PLACEHOLDERS: Record<string, string> = {
   gemini_generate_content: 'https://api.example.com',
   gemini_interactions: 'https://aiplatform.googleapis.com/v1beta1/locations/global',
   chat_completions: 'https://api.example.com/v1',
+  media_native: 'https://api.example.com',
 }
 
 /** Whether this row signs in with a ChatGPT session rather than a key. */

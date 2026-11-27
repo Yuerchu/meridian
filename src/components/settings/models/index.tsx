@@ -13,12 +13,24 @@ import { Switch } from '@/components/yuerchu-ui/components/switch/switch'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from '../primitives'
-import type { CapabilityDomain, LogicalModelInfoResponse, ModelDeploymentInfoResponse, RoutingPolicy } from '@/types'
+import type {
+  CapabilityDomain,
+  LogicalModelInfoResponse,
+  ModelDeploymentInfoResponse,
+  ProviderInfoResponse,
+  RoutingPolicy,
+} from '@/types'
 
 const ROUTING_POLICIES: RoutingPolicy[] = ['sticky_manual', 'auto_failover_stateless', 'user_opt_in_failover']
 const DOMAIN_FILTERS = ['all', 'chat', 'image_gen', 'video_gen'] as const
 type DomainFilter = (typeof DOMAIN_FILTERS)[number]
 const CREATABLE_DOMAINS: CapabilityDomain[] = ['chat', 'image_gen', 'video_gen']
+const AUTO_PROTOCOL = '__auto__'
+const PROTOCOLS_BY_DOMAIN: Record<string, readonly string[]> = {
+  chat: ['openai_chat', 'openai_responses', 'anthropic_messages', 'google_generate_content', 'google_interactions'],
+  image_gen: ['openai_images', 'google_image_gen', 'volcengine_seedream'],
+  video_gen: ['google_veo', 'volcengine_seedance', 'kling_video', 'minimax_video', 'vidu_video', 'bailian_wan_video'],
+}
 
 function formatCompactWindow(tokens: number, locale: string): string {
   return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(tokens)
@@ -120,6 +132,7 @@ export function ModelsSettings() {
   const locale = i18n.resolvedLanguage ?? i18n.language
   const { confirm, confirmDialog } = useConfirm()
   const [models, setModels] = useState<LogicalModelInfoResponse[]>([])
+  const [providers, setProviders] = useState<ProviderInfoResponse[]>([])
   const [domainFilter, setDomainFilter] = useState<DomainFilter>('all')
   const [defaultImageModelId, setDefaultImageModelId] = useState<string | null>(null)
   const [defaultVideoModelId, setDefaultVideoModelId] = useState<string | null>(null)
@@ -133,16 +146,23 @@ export function ModelsSettings() {
   const [newContextWindow, setNewContextWindow] = useState('128000')
   const [newPolicy, setNewPolicy] = useState<RoutingPolicy>('sticky_manual')
   const [submitting, setSubmitting] = useState(false)
+  const [attachTarget, setAttachTarget] = useState<LogicalModelInfoResponse | null>(null)
+  const [attachProviderId, setAttachProviderId] = useState('')
+  const [attachModelId, setAttachModelId] = useState('')
+  const [attachProtocol, setAttachProtocol] = useState<string>(AUTO_PROTOCOL)
+  const [attaching, setAttaching] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
       setError(null)
-      const [list, imgPref, vidPref] = await Promise.all([
+      const [list, providerList, imgPref, vidPref] = await Promise.all([
         api.logicalModels.list(),
+        api.providers?.list?.().catch(() => []) ?? Promise.resolve([]),
         api.preferences?.get?.({ key: 'media.default_image_model_id' }).catch(() => null) ?? Promise.resolve(null),
         api.preferences?.get?.({ key: 'media.default_video_model_id' }).catch(() => null) ?? Promise.resolve(null),
       ])
       setModels(list)
+      setProviders(providerList)
       setDefaultImageModelId(imgPref?.key === 'media.default_image_model_id' ? imgPref.value : null)
       setDefaultVideoModelId(vidPref?.key === 'media.default_video_model_id' ? vidPref.value : null)
     } catch (err) {
@@ -270,10 +290,45 @@ export function ModelsSettings() {
     [refresh],
   )
 
+  const openAttachDrawer = useCallback(
+    (item: LogicalModelInfoResponse) => {
+      setAttachTarget(item)
+      const firstProvider = providers.find((p) => p.is_enabled) ?? providers[0]
+      setAttachProviderId(firstProvider?.id ?? '')
+      const suggested = item.profile.canonical_id?.split('/').pop() ?? item.profile.name
+      setAttachModelId(suggested)
+      setAttachProtocol(AUTO_PROTOCOL)
+    },
+    [providers],
+  )
+
+  const handleAttachProvider = useCallback(async () => {
+    if (!attachTarget || !attachProviderId || !attachModelId.trim()) return
+    setAttaching(true)
+    try {
+      setError(null)
+      await api.modelDeployments.attach({
+        provider_id: attachProviderId,
+        model_id: attachModelId.trim(),
+        display_name: null,
+        profile_id: attachTarget.profile.id,
+        protocol_override: attachProtocol === AUTO_PROTOCOL ? null : attachProtocol,
+        priority: null,
+      })
+      setAttachTarget(null)
+      await refresh()
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setAttaching(false)
+    }
+  }, [attachTarget, attachProviderId, attachModelId, attachProtocol, refresh])
+
   const handleCreate = useCallback(async () => {
     const trimmedName = newName.trim()
-    const windowNum = newDomain === 'chat' ? Number.parseInt(newContextWindow, 10) : 128000
-    if (!trimmedName || Number.isNaN(windowNum) || windowNum <= 0) return
+    const isChat = newDomain === 'chat'
+    const windowNum = isChat ? Number.parseInt(newContextWindow, 10) : 0
+    if (!trimmedName || (isChat && (Number.isNaN(windowNum) || windowNum <= 0))) return
     setSubmitting(true)
     try {
       setError(null)
@@ -285,7 +340,7 @@ export function ModelsSettings() {
         icon: null,
         routing_policy: newPolicy,
         context_window: windowNum,
-        compact_threshold: Math.max(1, Math.min(windowNum - 1, Math.round(windowNum * 0.8))),
+        compact_threshold: isChat ? Math.max(1, Math.min(windowNum - 1, Math.round(windowNum * 0.8))) : 0,
         max_output_tokens: null,
         input_price: null,
         output_price: null,
@@ -402,6 +457,17 @@ export function ModelsSettings() {
                         options={policyOptions}
                         onChange={(next) => void handlePolicyChange(profile.id, next)}
                       />
+                      {providers.length > 0 && (
+                        <Button
+                          data-slot="logical-model-attach-btn"
+                          size="sm"
+                          variant="secondary"
+                          icon={<Plus />}
+                          onPress={() => openAttachDrawer({ profile, deployments })}
+                        >
+                          {t('settings.models.attachProvider')}
+                        </Button>
+                      )}
                       <Button
                         size="sm"
                         variant="destructive"
@@ -499,6 +565,63 @@ export function ModelsSettings() {
             value={newPolicy}
             options={policyOptions}
             onChange={(next) => setNewPolicy(next as RoutingPolicy)}
+          />
+        </div>
+      </Drawer>
+
+      <Drawer
+        isOpen={attachTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setAttachTarget(null)
+        }}
+        side="bottom"
+        size="sm"
+        heading={attachTarget ? `${t('settings.models.attachProvider')} · ${attachTarget.profile.name}` : ''}
+        footer={
+          <>
+            <Button variant="secondary" onPress={() => setAttachTarget(null)}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              isDisabled={!attachProviderId || !attachModelId.trim()}
+              isPending={attaching}
+              onPress={() => void handleAttachProvider()}
+            >
+              {t('common.confirm')}
+            </Button>
+          </>
+        }
+      >
+        <div className="m-models-settings__form">
+          <SettingsSelect
+            label={t('settings.models.selectProvider')}
+            value={attachProviderId}
+            options={providers.map((p) => ({
+              value: p.id,
+              label:
+                p.capability_domain !== 'chat'
+                  ? `${p.name} (${t(`settings.models.domain.${p.capability_domain}`)})`
+                  : p.name,
+            }))}
+            onChange={setAttachProviderId}
+          />
+          <TextField
+            label={t('settings.models.remoteModelId')}
+            name="attachRemoteModelId"
+            value={attachModelId}
+            placeholder={t('settings.models.remoteModelIdPlaceholder')}
+            onChange={setAttachModelId}
+          />
+          <SettingsSelect
+            label={t('settings.model.protocolOverride')}
+            value={attachProtocol}
+            options={[
+              { value: AUTO_PROTOCOL, label: t('settings.model.protocolAuto') },
+              ...(
+                PROTOCOLS_BY_DOMAIN[attachTarget?.profile.capability_domain ?? 'chat'] ?? PROTOCOLS_BY_DOMAIN.chat
+              ).map((proto) => ({ value: proto, label: proto })),
+            ]}
+            onChange={setAttachProtocol}
           />
         </div>
       </Drawer>

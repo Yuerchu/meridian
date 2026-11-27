@@ -212,6 +212,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         profile: {
           id: null,
           name: 'Claude Opus 5',
+          capability_domain: 'chat',
           context_window: 200_000,
           compact_threshold: 160_000,
           max_output_tokens: null,
@@ -222,6 +223,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
           pricing_tiers: [],
           capability_overrides: null,
         },
+        protocol_override: null,
         overrides_pricing: false,
         ...DECIMAL_ZERO_PRICE,
         pricing_tiers: [],
