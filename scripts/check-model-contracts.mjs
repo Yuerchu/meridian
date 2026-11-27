@@ -532,6 +532,7 @@ requireRustFields('src-tauri/src/commands/model_config.rs', 'PriceTierRequest', 
   output_price: /^(?:[\w:]+::)*Decimal$/,
   cache_read_price: /^RequiredNullable<(?:[\w:]+::)*Decimal>$/,
   cache_write_price: /^RequiredNullable<(?:[\w:]+::)*Decimal>$/,
+  cache_write_1h_price: /^RequiredNullable<(?:[\w:]+::)*Decimal>$/,
 })
 requireRustFields('src-tauri/src/commands/provider.rs', 'ProviderCreateRequest', {
   name: /^String$/,
@@ -2070,6 +2071,7 @@ const expectedPriceFields = [
   'output_price',
   'cache_read_price',
   'cache_write_price',
+  'cache_write_1h_price',
   'server_tool_price',
 ]
 if (prices) {
@@ -2607,8 +2609,13 @@ requireTypescriptFields(typesFile, 'PriceTier', {
   output_price: /^DecimalString$/,
   cache_read_price: /^DecimalString \| null$/,
   cache_write_price: /^DecimalString \| null$/,
+  cache_write_1h_price: /^DecimalString \| null$/,
 })
-requireTypescriptRequiredFields(typesFile, 'PriceTier', ['cache_read_price', 'cache_write_price'])
+requireTypescriptRequiredFields(typesFile, 'PriceTier', [
+  'cache_read_price',
+  'cache_write_price',
+  'cache_write_1h_price',
+])
 requireTypescriptFields(typesFile, 'McpServerInfoResponse', {
   args: /^string\[\] \| null$/,
   env: /^Record<string, string> \| null$/,
@@ -2702,13 +2709,13 @@ if (/body\.ok\s+as\s+T\b/.test(transportSource ?? '') || /return\s+body\.ok\b/.t
   add(transportFile, 'invoke response 禁止 generic cast / unknown passthrough')
 }
 if (
-  !/pub\(crate\) const API_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '') ||
-  !/pub\(crate\) const MIN_CLIENT_REV:\s*u32\s*=\s*4;/.test(remoteHttp ?? '')
+  !/pub\(crate\) const API_REV:\s*u32\s*=\s*5;/.test(remoteHttp ?? '') ||
+  !/pub\(crate\) const MIN_CLIENT_REV:\s*u32\s*=\s*5;/.test(remoteHttp ?? '')
 ) {
-  add(remoteHttpFile, 'Rust API_REV 与 MIN_CLIENT_REV 必须共同锁定为 4')
+  add(remoteHttpFile, 'Rust API_REV 与 MIN_CLIENT_REV 必须共同锁定为 5')
 }
-if (!/export const CLIENT_API_REV\s*=\s*4\b/.test(transportSource ?? '')) {
-  add(transportFile, 'TypeScript CLIENT_API_REV 必须与 Rust API_REV 共同锁定为 4')
+if (!/export const CLIENT_API_REV\s*=\s*5\b/.test(transportSource ?? '')) {
+  add(transportFile, 'TypeScript CLIENT_API_REV 必须与 Rust API_REV 共同锁定为 5')
 }
 
 // IPC standardization gate (`.claude/rules/ipc.md`):

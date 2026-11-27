@@ -30,6 +30,7 @@ import type {
   ModelProfileInfoResponse,
   LocalModelInfoResponse,
   PriceTier,
+  PromptCacheTtl,
   ProviderCapabilitiesInfoResponse,
   ProviderCapabilityOverrides,
   ReadableMime,
@@ -41,6 +42,7 @@ import { READABLE_MIMES } from '@/types'
 /** The option that creates a description rather than pointing at one. */
 const NEW_PROFILE = '__new__'
 const AUTO_PROTOCOL = '__auto__'
+const AUTO_CACHE_TTL = '__auto__'
 const EDITABLE_DOMAINS: CapabilityDomain[] = ['chat', 'image_gen', 'video_gen']
 const PROTOCOLS_BY_DOMAIN: Record<string, readonly string[]> = {
   chat: ['openai_chat', 'openai_responses', 'anthropic_messages', 'google_generate_content', 'google_interactions'],
@@ -215,6 +217,10 @@ function ModelConfigEditor({
   const [cacheWritePrice, setCacheWritePrice] = useState(
     profile?.cache_write_price == null ? '' : assertDecimal38_18(profile.cache_write_price),
   )
+  const [cacheWrite1hPrice, setCacheWrite1hPrice] = useState(
+    profile?.cache_write_1h_price == null ? '' : assertDecimal38_18(profile.cache_write_1h_price),
+  )
+  const [cacheTtl, setCacheTtl] = useState<PromptCacheTtl | null>(profile?.cache_ttl ?? null)
   const [initialTiers] = useState(() => {
     try {
       return { values: tiersFrom(profile?.pricing_tiers ?? []), error: null as string | null }
@@ -279,6 +285,9 @@ function ModelConfigEditor({
   const [overrideCacheWrite, setOverrideCacheWrite] = useState(
     existing?.cache_write_price == null ? '' : assertDecimal38_18(existing.cache_write_price),
   )
+  const [overrideCacheWrite1h, setOverrideCacheWrite1h] = useState(
+    existing?.cache_write_1h_price == null ? '' : assertDecimal38_18(existing.cache_write_1h_price),
+  )
   // Either stored tier table can be unreadable, and a decode failure is an
   // error rather than an empty table — the same rule the backend keeps. The
   // profile's is reported first because it is the one almost every row has.
@@ -292,11 +301,13 @@ function ModelConfigEditor({
     output: useRef<HTMLInputElement>(null),
     cache: useRef<HTMLInputElement>(null),
     cacheWrite: useRef<HTMLInputElement>(null),
+    cacheWrite1h: useRef<HTMLInputElement>(null),
     serverTool: useRef<HTMLInputElement>(null),
     overrideInput: useRef<HTMLInputElement>(null),
     overrideOutput: useRef<HTMLInputElement>(null),
     overrideCache: useRef<HTMLInputElement>(null),
     overrideCacheWrite: useRef<HTMLInputElement>(null),
+    overrideCacheWrite1h: useRef<HTMLInputElement>(null),
   } satisfies Record<PriceField, React.RefObject<HTMLInputElement | null>>
 
   // The page's own draft. Keyed by provider and model, so the same model on
@@ -402,6 +413,8 @@ function ModelConfigEditor({
     setOutputPrice(chosen.output_price ?? '')
     setCachePrice(chosen.cache_read_price ?? '')
     setCacheWritePrice(chosen.cache_write_price ?? '')
+    setCacheWrite1hPrice(chosen.cache_write_1h_price ?? '')
+    setCacheTtl(chosen.cache_ttl)
     setTiers(tiersFrom(chosen.pricing_tiers))
     setShowTiers(chosen.pricing_tiers.length > 0)
   }
@@ -453,11 +466,13 @@ function ModelConfigEditor({
       output: t('settings.model.outputPrice'),
       cache: t('settings.model.cachePrice'),
       cacheWrite: t('settings.model.cacheWritePrice'),
+      cacheWrite1h: t('settings.model.cacheWrite1hPrice'),
       serverTool: t('settings.model.serverToolPrice'),
       overrideInput: t('settings.model.inputPrice'),
       overrideOutput: t('settings.model.outputPrice'),
       overrideCache: t('settings.model.cachePrice'),
       overrideCacheWrite: t('settings.model.cacheWritePrice'),
+      overrideCacheWrite1h: t('settings.model.cacheWrite1hPrice'),
     }
     const limitLabels: Record<LimitField, string> = {
       contextWindow: t('settings.model.contextWindow'),
@@ -508,11 +523,13 @@ function ModelConfigEditor({
       ['output', outputPrice],
       ['cache', cachePrice],
       ['cacheWrite', cacheWritePrice],
+      ['cacheWrite1h', cacheWrite1hPrice],
       ['serverTool', serverToolPrice],
       ['overrideInput', overrideInput],
       ['overrideOutput', overrideOutput],
       ['overrideCache', overrideCache],
       ['overrideCacheWrite', overrideCacheWrite],
+      ['overrideCacheWrite1h', overrideCacheWrite1h],
     ] as const) {
       try {
         parsed[field] = optionalPrice(raw)
@@ -567,6 +584,8 @@ function ModelConfigEditor({
       output_price: output,
       cache_read_price: parsed.cache ?? null,
       cache_write_price: parsed.cacheWrite ?? null,
+      cache_write_1h_price: parsed.cacheWrite1h ?? null,
+      cache_ttl: cacheTtl,
       pricing_tiers: priceTiers,
     }
     setPriceError(null)
@@ -659,6 +678,7 @@ function ModelConfigEditor({
         output_price: overrideOut,
         cache_read_price: overridesPricing ? (parsed.overrideCache ?? null) : null,
         cache_write_price: overridesPricing ? (parsed.overrideCacheWrite ?? null) : null,
+        cache_write_1h_price: overridesPricing ? (parsed.overrideCacheWrite1h ?? null) : null,
         // Blank with the switch off, like the four rates above it. Overriding
         // takes the whole rate set rather than filling blanks in from the
         // profile, so a relay with its own long-context threshold has to be
@@ -838,7 +858,49 @@ function ModelConfigEditor({
           placeholder="—"
           description={t('settings.model.cacheWritePriceHint')}
         />
+        {((caps?.supported_cache_ttls?.includes('1h') ?? false) || cacheWrite1hPrice.trim() !== '') && (
+          <TextField
+            isInvalid={invalidPrices.has('cacheWrite1h')}
+            label={t('settings.model.cacheWrite1hPrice')}
+            ref={priceRefs.cacheWrite1h}
+            name={`modelCacheWrite1hPrice-${modelId}`}
+            inputMode="decimal"
+            value={cacheWrite1hPrice}
+            onChange={(e) => {
+              setCacheWrite1hPrice(e)
+              setDirty(true)
+            }}
+            placeholder="—"
+            description={t('settings.model.cacheWrite1hPriceHint')}
+          />
+        )}
       </div>
+      {isChatDomain && ((caps?.supported_cache_ttls?.length ?? 0) > 0 || cacheTtl !== null) && (
+        <SettingsRow label={t('settings.model.cacheTtl')} description={t('settings.model.cacheTtlHint')}>
+          <SettingsSelect
+            ariaLabel={t('settings.model.cacheTtl')}
+            value={cacheTtl === null ? AUTO_CACHE_TTL : cacheTtl}
+            options={[
+              {
+                value: AUTO_CACHE_TTL,
+                label: caps?.default_cache_ttl
+                  ? t('settings.model.cacheTtlAuto', { value: t(`settings.cacheTtl.${caps.default_cache_ttl}`) })
+                  : t('settings.model.cacheTtlAutoPlain'),
+              },
+              ...Array.from(
+                new Set<PromptCacheTtl>([
+                  ...(caps?.supported_cache_ttls ?? []),
+                  ...(cacheTtl !== null ? [cacheTtl] : []),
+                ]),
+              ).map((ttl) => ({ value: ttl, label: t(`settings.cacheTtl.${ttl}`) })),
+            ]}
+            onChange={(next) => {
+              setCacheTtl(next === AUTO_CACHE_TTL ? null : (next as PromptCacheTtl))
+              setDirty(true)
+            }}
+          />
+        </SettingsRow>
+      )}
       {/* Only where the model has any. Elsewhere this is not a switch that is
           off, it is a thing that does not exist — and an empty section reads as
           a feature that failed to load. */}
@@ -1049,6 +1111,16 @@ function ModelConfigEditor({
             ['overrideOutput', t('settings.model.outputPrice'), overrideOutput, setOverrideOutput],
             ['overrideCache', t('settings.model.cachePrice'), overrideCache, setOverrideCache],
             ['overrideCacheWrite', t('settings.model.cacheWritePrice'), overrideCacheWrite, setOverrideCacheWrite],
+            ...((caps?.supported_cache_ttls?.includes('1h') ?? false) || overrideCacheWrite1h.trim() !== ''
+              ? ([
+                  [
+                    'overrideCacheWrite1h',
+                    t('settings.model.cacheWrite1hPrice'),
+                    overrideCacheWrite1h,
+                    setOverrideCacheWrite1h,
+                  ],
+                ] as const)
+              : []),
           ] as const
         ).map(([field, label, value, setValue]) => (
           <SettingsRow key={field} label={label}>

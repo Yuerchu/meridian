@@ -22,6 +22,9 @@ function caps(supported: ThinkingEffort[] = []): ProviderCapabilitiesInfoRespons
     supports_verbosity: false,
     default_verbosity: null,
     server_tools: [],
+    supported_cache_ttls: [],
+    default_cache_ttl: null,
+    default_cache_ttl_secs: null,
   }
 }
 

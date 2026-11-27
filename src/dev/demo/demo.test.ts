@@ -15,7 +15,13 @@ import { PROVIDER } from './settings'
  * rather than turning up as a page that renders wrong.
  */
 
-const DECIMAL_ZERO_PRICE = { input_price: null, output_price: null, cache_read_price: null, cache_write_price: null }
+const DECIMAL_ZERO_PRICE = {
+  input_price: null,
+  output_price: null,
+  cache_read_price: null,
+  cache_write_price: null,
+  cache_write_1h_price: null,
+}
 
 /** One call per handler. `reject` marks a handler whose whole job is to refuse. */
 const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
@@ -220,12 +226,15 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
           output_price: '25',
           cache_read_price: null,
           cache_write_price: null,
+          cache_write_1h_price: null,
+          cache_ttl: null,
           pricing_tiers: [],
           capability_overrides: null,
         },
         protocol_override: null,
         overrides_pricing: false,
         ...DECIMAL_ZERO_PRICE,
+        cache_ttl: null,
         pricing_tiers: [],
         server_tools: null,
         server_tool_price: null,
@@ -247,6 +256,7 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         compact_threshold: 100_000,
         max_output_tokens: null,
         ...DECIMAL_ZERO_PRICE,
+        cache_ttl: null,
         pricing_tiers: [],
         capability_overrides: null,
       },

@@ -43,7 +43,7 @@ class FakeSocket {
   }
 
   /** What the server sends the moment it has accepted the token. */
-  ready(assetTicket = 'ticket-1', apiRev = 4) {
+  ready(assetTicket = 'ticket-1', apiRev = 5) {
     this.onmessage?.({ data: JSON.stringify({ channel: 'remote-ready', payload: { assetTicket, apiRev } }) })
   }
 }

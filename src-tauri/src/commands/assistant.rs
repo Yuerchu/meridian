@@ -167,6 +167,10 @@ pub async fn create_assistant(
         thinking_budget: None,
         tool_preset_id: None,
         auto_compact_enabled: SqlBool::FALSE,
+        cache_ttl: None,
+        cache_expiry_policy: meridian_core::agent::cache_warmer::CacheExpiryPolicy::Compact,
+        cache_max_warm_count: meridian_core::agent::cache_warmer::DEFAULT_CACHE_MAX_WARM_COUNT,
+        cache_compact_min_tokens: meridian_core::agent::cache_warmer::DEFAULT_CACHE_COMPACT_MIN_TOKENS,
         logical_model_id: None,
         deployment_id: None,
     };
@@ -199,6 +203,11 @@ pub struct AssistantUpdateRequest {
     #[serde(default, deserialize_with = "double_option")]
     tool_preset_id: Option<Option<String>>,
     auto_compact_enabled: Option<bool>,
+    #[serde(default, deserialize_with = "double_option")]
+    cache_ttl: Option<Option<meridian_core::provider::PromptCacheTtl>>,
+    cache_expiry_policy: Option<meridian_core::agent::cache_warmer::CacheExpiryPolicy>,
+    cache_max_warm_count: Option<i32>,
+    cache_compact_min_tokens: Option<i32>,
 }
 
 #[tauri::command]
@@ -206,6 +215,12 @@ pub async fn update_assistant(
     app: tauri::AppHandle,
     request: AssistantUpdateRequest,
 ) -> Result<AssistantInfoResponse, String> {
+    if request.cache_max_warm_count.is_some_and(|v| v < 0) {
+        return Err("cache_max_warm_count must be non-negative".into());
+    }
+    if request.cache_compact_min_tokens.is_some_and(|v| v < 0) {
+        return Err("cache_compact_min_tokens must be non-negative".into());
+    }
     let services = app.services();
     // pool-read-before-write: these ids only pick which turn leases to take; the
     // write re-reads them and refuses the mutation on any difference.
@@ -227,6 +242,10 @@ pub async fn update_assistant(
         thinking_budget: request.thinking_budget,
         tool_preset_id: request.tool_preset_id,
         auto_compact_enabled: request.auto_compact_enabled.map(SqlBool::from),
+        cache_ttl: request.cache_ttl,
+        cache_expiry_policy: request.cache_expiry_policy,
+        cache_max_warm_count: request.cache_max_warm_count,
+        cache_compact_min_tokens: request.cache_compact_min_tokens,
         updated_at: Some(now_ms()),
         ..Default::default()
     };
@@ -311,6 +330,10 @@ mod tests {
             thinking_budget: None,
             tool_preset_id: None,
             auto_compact_enabled: SqlBool::FALSE,
+            cache_ttl: None,
+            cache_expiry_policy: meridian_core::agent::cache_warmer::CacheExpiryPolicy::Compact,
+            cache_max_warm_count: meridian_core::agent::cache_warmer::DEFAULT_CACHE_MAX_WARM_COUNT,
+            cache_compact_min_tokens: meridian_core::agent::cache_warmer::DEFAULT_CACHE_COMPACT_MIN_TOKENS,
             logical_model_id: None,
             deployment_id: None,
         }

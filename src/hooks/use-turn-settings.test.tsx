@@ -52,6 +52,12 @@ const assistants: AssistantInfoResponse[] = [
     thinking_budget: null,
     tool_preset_id: null,
     auto_compact_enabled: true,
+    cache_ttl: null,
+    cache_expiry_policy: 'compact',
+    cache_max_warm_count: 3,
+    cache_compact_min_tokens: 40_000,
+    logical_model_id: null,
+    deployment_id: null,
   },
   {
     id: 'assistant-draft',
@@ -75,6 +81,12 @@ const assistants: AssistantInfoResponse[] = [
     thinking_budget: null,
     tool_preset_id: null,
     auto_compact_enabled: true,
+    cache_ttl: null,
+    cache_expiry_policy: 'compact',
+    cache_max_warm_count: 3,
+    cache_compact_min_tokens: 40_000,
+    logical_model_id: null,
+    deployment_id: null,
   },
 ]
 
@@ -127,6 +139,9 @@ const capabilities: ProviderCapabilitiesInfoResponse = {
   supports_verbosity: false,
   default_verbosity: null,
   server_tools: [],
+  supported_cache_ttls: [],
+  default_cache_ttl: null,
+  default_cache_ttl_secs: null,
 }
 
 const draft: DraftTurnSettings = {

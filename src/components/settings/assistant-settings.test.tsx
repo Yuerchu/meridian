@@ -65,6 +65,12 @@ const ASSISTANT: AssistantInfoResponse = {
   thinking_budget: null,
   tool_preset_id: null,
   auto_compact_enabled: true,
+  cache_ttl: null,
+  cache_expiry_policy: 'compact',
+  cache_max_warm_count: 3,
+  cache_compact_min_tokens: 40_000,
+  logical_model_id: null,
+  deployment_id: null,
 }
 
 const TOOL: McpToolInfoResponse = {
@@ -178,6 +184,9 @@ describe('AssistantSettings model lock', () => {
     mockApi.providers.getCapabilities.mockResolvedValue({
       supports_thinking: true,
       max_context_tokens: 128000,
+      supported_cache_ttls: ['5m', '1h'],
+      default_cache_ttl: '5m',
+      default_cache_ttl_secs: null,
     } as never)
     mockApi.assistants.update.mockResolvedValue(bound)
   })
@@ -225,6 +234,9 @@ describe('AssistantSettings model lock', () => {
     mockApi.providers.getCapabilities.mockResolvedValue({
       supports_thinking: false,
       max_context_tokens: 128000,
+      supported_cache_ttls: [],
+      default_cache_ttl: null,
+      default_cache_ttl_secs: null,
     } as never)
     const user = userEvent.setup()
     await openEditor(user)

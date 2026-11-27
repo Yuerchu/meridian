@@ -1538,6 +1538,7 @@ pub async fn switch_message_branch(app: tauri::AppHandle, request: MessageBranch
         .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
+    services.cache_lifecycle.cancel(&conversation_id);
     services
         .db
         .write(async |tx| switch_branch_unless_plan_barrier(tx, &conversation_id, &message_id).await)
@@ -1555,6 +1556,7 @@ pub async fn delete_message(app: tauri::AppHandle, request: MessageDeleteRequest
         .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
+    services.cache_lifecycle.cancel(&conversation_id);
     services
         .db
         .write(async |tx| delete_message_unless_plan_barrier(tx, &conversation_id, &id).await)
@@ -2371,6 +2373,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            cache_write_1h_tokens: None,
             server_tool_calls: None,
             provider_name: None,
             provider_state: None,

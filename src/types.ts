@@ -110,6 +110,10 @@ export interface AssistantUpdateRequest {
   thinking_budget?: number | null
   tool_preset_id?: string | null
   auto_compact_enabled?: boolean
+  cache_ttl?: PromptCacheTtl | null
+  cache_expiry_policy?: CacheExpiryPolicy
+  cache_max_warm_count?: number
+  cache_compact_min_tokens?: number
 }
 
 export interface AssistantDeleteRequest {
@@ -2221,9 +2225,19 @@ export interface AssistantInfoResponse {
   thinking_budget: number | null
   tool_preset_id: string | null
   auto_compact_enabled: boolean
+  cache_ttl: PromptCacheTtl | null
+  cache_expiry_policy: CacheExpiryPolicy
+  cache_max_warm_count: number
+  cache_compact_min_tokens: number
   logical_model_id: string | null
   deployment_id: string | null
 }
+
+/** Closed prompt-cache TTL/retention options supported by upstream providers. */
+export type PromptCacheTtl = '5m' | '1h' | 'in_memory' | '24h'
+
+/** What Meridian should do right before a conversation's prompt cache expires. */
+export type CacheExpiryPolicy = 'off' | 'warm' | 'compact' | 'warm_then_compact'
 
 /** Effort tiers a model can advertise, ascending. Mirrors EFFORT_LADDER in the Rust catalog. */
 export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
@@ -2822,6 +2836,12 @@ export interface ProviderCapabilitiesInfoResponse {
    * Empty on chat-completions, where no such thing exists.
    */
   server_tools: ServerToolKind[]
+  /** Prompt-cache TTL/retention values this model accepts on the wire. Empty when not configurable. */
+  supported_cache_ttls: PromptCacheTtl[]
+  /** Default configurable cache TTL for this model, if any. */
+  default_cache_ttl: PromptCacheTtl | null
+  /** Implicit server-side cache TTL in seconds when the upstream does not accept an explicit TTL parameter. */
+  default_cache_ttl_secs: number | null
 }
 
 export type CapabilityVerbosity = 'low' | 'medium' | 'high'
@@ -2874,6 +2894,9 @@ export interface ProviderCapabilityOverrides {
   max_context_tokens?: number | null
   max_output_tokens?: number | null
   max_temperature?: number | null
+  supported_cache_ttls?: PromptCacheTtl[]
+  default_cache_ttl?: PromptCacheTtl | null
+  default_cache_ttl_secs?: number | null
 }
 
 /**
@@ -2913,6 +2936,10 @@ export interface ModelProfileInfoResponse {
    * charges a premium, which is what null means.
    */
   cache_write_price: DecimalString | null
+  /** What a 1-hour TTL cache write costs (Anthropic 2x input). Null means unconfigured. */
+  cache_write_1h_price: DecimalString | null
+  /** Optional model-level default prompt cache TTL. Null follows catalog default. */
+  cache_ttl: PromptCacheTtl | null
   /**
    * Rates that take over above a prompt size. An empty array means one price at
    * every size. Crossing a threshold re-prices the *whole* request, not the
@@ -2940,6 +2967,7 @@ export interface ModelPricingInfoResponse {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
   pricing_tiers: PriceTier[]
   server_tool_price: DecimalString | null
 }
@@ -2965,6 +2993,7 @@ export interface ModelConfigInfoResponse {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
   pricing_tiers: PriceTier[]
   /**
    * Provider-side tools switched on for this model. Narrowed against the
@@ -3065,6 +3094,7 @@ export interface PriceTier {
   output_price: DecimalString
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
 }
 
 /**
@@ -3084,6 +3114,8 @@ export interface ModelProfileUpsertRequest {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
+  cache_ttl: PromptCacheTtl | null
   pricing_tiers: PriceTier[]
   capability_overrides: ProviderCapabilityOverrides | null
 }
@@ -3099,6 +3131,7 @@ export interface ModelConfigUpsertRequest {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
   pricing_tiers: PriceTier[]
   server_tools: ServerToolKind[] | null
   server_tool_price: DecimalString | null
@@ -3123,6 +3156,8 @@ export interface LogicalModelCreateRequest {
   output_price: DecimalString | null
   cache_read_price: DecimalString | null
   cache_write_price: DecimalString | null
+  cache_write_1h_price: DecimalString | null
+  cache_ttl: PromptCacheTtl | null
   pricing_tiers: PriceTier[]
   capability_overrides: ProviderCapabilityOverrides | null
 }

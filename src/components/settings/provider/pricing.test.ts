@@ -34,13 +34,22 @@ describe('tiersFrom', () => {
     output_price: decimal('12'),
     cache_read_price: null,
     cache_write_price: null,
+    cache_write_1h_price: null,
     ...over,
   })
 
   it('round-trips a stored tier into the form and back', () => {
     const drafts = tiersFrom([tier({ cache_read_price: decimal('1') })])
     expect(drafts).toEqual([
-      { id: expect.any(String), threshold: '200000', input: '4', output: '12', cacheRead: '1', cacheWrite: '' },
+      {
+        id: expect.any(String),
+        threshold: '200000',
+        input: '4',
+        output: '12',
+        cacheRead: '1',
+        cacheWrite: '',
+        cacheWrite1h: '',
+      },
     ])
     expect(tiersTo(drafts)).toEqual([tier({ cache_read_price: decimal('1') })])
   })
@@ -70,11 +79,13 @@ describe('tiersFrom', () => {
 
 describe('tiersTo', () => {
   const draft = (threshold: string) => ({
+    id: `t-${threshold}`,
     threshold,
     input: '4',
     output: '12',
     cacheRead: '',
     cacheWrite: '',
+    cacheWrite1h: '',
   })
 
   /** One canonical order for the backend, and the order a person reads back. */

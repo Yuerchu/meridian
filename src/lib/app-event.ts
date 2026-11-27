@@ -29,7 +29,7 @@ export interface BackgroundTasksUpdatedEvent {
   conversation_id: string
 }
 
-export type CompactTrigger = 'manual' | 'threshold' | 'api_error'
+export type CompactTrigger = 'manual' | 'threshold' | 'api_error' | 'cache_expiry'
 export type CompactOutcome = 'completed' | 'fallback' | 'failed'
 
 export interface CompactStartEvent {
@@ -191,7 +191,11 @@ export function parseCompactStartEvent(value: unknown): CompactStartEvent {
   return {
     conversation_id: stringValue(event.conversation_id, 'compact-start payload.conversation_id'),
     mid_turn: booleanValue(event.mid_turn, 'compact-start payload.mid_turn'),
-    trigger: enumValue(event.trigger, ['manual', 'threshold', 'api_error'] as const, 'compact-start payload.trigger'),
+    trigger: enumValue(
+      event.trigger,
+      ['manual', 'threshold', 'api_error', 'cache_expiry'] as const,
+      'compact-start payload.trigger',
+    ),
   }
 }
 
@@ -212,7 +216,11 @@ export function parseCompactDoneEvent(value: unknown): CompactDoneEvent {
   return {
     conversation_id: stringValue(event.conversation_id, 'compact-done payload.conversation_id'),
     mid_turn: booleanValue(event.mid_turn, 'compact-done payload.mid_turn'),
-    trigger: enumValue(event.trigger, ['manual', 'threshold', 'api_error'] as const, 'compact-done payload.trigger'),
+    trigger: enumValue(
+      event.trigger,
+      ['manual', 'threshold', 'api_error', 'cache_expiry'] as const,
+      'compact-done payload.trigger',
+    ),
     outcome,
     tokens_reclaimed: nullableInteger(event.tokens_reclaimed, 'compact-done payload.tokens_reclaimed', 0),
     error,
