@@ -40,14 +40,15 @@ use super::SharedState;
 /// Revision 4 standardized the full IPC surface to Verb-Noun names,
 /// single-`request` payloads, Rust-first `snake_case` wire fields, and
 /// consolidated resource commands.
-pub(crate) const API_REV: u32 = 4;
+/// Revision 5 adds configurable prompt cache TTL, 1h cache-write pricing,
+/// and per-assistant cache expiry lifecycle policies.
+pub(crate) const API_REV: u32 = 5;
 
 /// The oldest client this server will talk to.
 ///
-/// Revision 4 is a breaking contract change across command names and request/
-/// response wire fields. Old clients are rejected at the handshake instead of
-/// being interpreted through aliases or defaults.
-pub(crate) const MIN_CLIENT_REV: u32 = 4;
+/// Revision 5 extends closed model/pricing/assistant wire contracts with
+/// prompt cache TTL, 1h cache-write pricing, and cache expiry policy fields.
+pub(crate) const MIN_CLIENT_REV: u32 = 5;
 
 pub(crate) fn router(state: Arc<SharedState>) -> Router {
     Router::new()

@@ -154,7 +154,7 @@ export function writeRemoteConfig(config: RemoteConfig | null): void {
  * ignore. Kept here rather than in the settings panel because it is a fact
  * about this file's protocol.
  */
-export const CLIENT_API_REV = 4
+export const CLIENT_API_REV = 5
 
 /**
  * What `/healthz` said, reduced to the decision the user is waiting on.

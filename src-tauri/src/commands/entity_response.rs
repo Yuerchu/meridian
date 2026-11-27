@@ -221,6 +221,12 @@ pub struct ProviderCapabilityOverrides {
     max_output_tokens: OverrideField<Option<u32>>,
     #[serde(skip_serializing_if = "OverrideField::is_unset")]
     max_temperature: OverrideField<Option<f32>>,
+    #[serde(skip_serializing_if = "OverrideField::is_unset")]
+    supported_cache_ttls: OverrideField<Vec<meridian_core::provider::PromptCacheTtl>>,
+    #[serde(skip_serializing_if = "OverrideField::is_unset")]
+    default_cache_ttl: OverrideField<Option<meridian_core::provider::PromptCacheTtl>>,
+    #[serde(skip_serializing_if = "OverrideField::is_unset")]
+    default_cache_ttl_secs: OverrideField<Option<u32>>,
 }
 
 impl ProviderCapabilityOverrides {
@@ -277,6 +283,10 @@ pub struct AssistantInfoResponse {
     pub thinking_budget: Option<i32>,
     pub tool_preset_id: Option<String>,
     pub auto_compact_enabled: bool,
+    pub cache_ttl: Option<meridian_core::provider::PromptCacheTtl>,
+    pub cache_expiry_policy: meridian_core::agent::cache_warmer::CacheExpiryPolicy,
+    pub cache_max_warm_count: i32,
+    pub cache_compact_min_tokens: i32,
     pub logical_model_id: Option<String>,
     pub deployment_id: Option<String>,
 }
@@ -305,6 +315,10 @@ impl From<assistant::Model> for AssistantInfoResponse {
             thinking_budget: row.thinking_budget,
             tool_preset_id: row.tool_preset_id,
             auto_compact_enabled: row.auto_compact_enabled.get(),
+            cache_ttl: row.cache_ttl,
+            cache_expiry_policy: row.cache_expiry_policy,
+            cache_max_warm_count: row.cache_max_warm_count,
+            cache_compact_min_tokens: row.cache_compact_min_tokens,
             logical_model_id: row.logical_model_id,
             deployment_id: row.deployment_id,
         }
@@ -651,6 +665,8 @@ pub struct ModelProfileInfoResponse {
     pub output_price: Option<meridian_core::decimal::Decimal>,
     pub cache_read_price: Option<meridian_core::decimal::Decimal>,
     pub cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_ttl: Option<meridian_core::provider::PromptCacheTtl>,
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub capability_overrides: Option<ProviderCapabilityOverrides>,
     /// How many provider deployments point at this logical model (0 is valid:
@@ -685,6 +701,8 @@ impl ModelProfileInfoResponse {
             output_price: row.output_price,
             cache_read_price: row.cache_read_price,
             cache_write_price: row.cache_write_price,
+            cache_write_1h_price: row.cache_write_1h_price,
+            cache_ttl: row.cache_ttl,
             pricing_tiers,
             capability_overrides,
             model_count,
@@ -707,6 +725,7 @@ pub struct ModelPricingInfoResponse {
     pub output_price: Option<meridian_core::decimal::Decimal>,
     pub cache_read_price: Option<meridian_core::decimal::Decimal>,
     pub cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: Option<meridian_core::decimal::Decimal>,
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub server_tool_price: Option<meridian_core::decimal::Decimal>,
 }
@@ -724,12 +743,13 @@ pub struct ModelConfigInfoResponse {
     pub is_enabled: bool,
     pub priority: i32,
     pub capability_overrides: Option<ProviderCapabilityOverrides>,
-    /// Whether the five price fields below are read at all.
+    /// Whether the price fields below are read at all.
     pub overrides_pricing: bool,
     pub input_price: Option<meridian_core::decimal::Decimal>,
     pub output_price: Option<meridian_core::decimal::Decimal>,
     pub cache_read_price: Option<meridian_core::decimal::Decimal>,
     pub cache_write_price: Option<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: Option<meridian_core::decimal::Decimal>,
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub server_tools: Option<Vec<meridian_core::provider::ServerToolKind>>,
     pub server_tool_price: Option<meridian_core::decimal::Decimal>,
@@ -750,6 +770,7 @@ impl ModelConfigInfoResponse {
             output_price: resolved.output_price,
             cache_read_price: resolved.cache_read_price,
             cache_write_price: resolved.cache_write_price,
+            cache_write_1h_price: resolved.cache_write_1h_price,
             pricing_tiers: meridian_core::agent::pricing::parse_tiers(resolved.pricing_tiers.as_deref())
                 .map_err(|error| error.to_string())?,
             server_tool_price: resolved.server_tool_price,
@@ -776,6 +797,7 @@ impl ModelConfigInfoResponse {
             output_price: row.output_price,
             cache_read_price: row.cache_read_price,
             cache_write_price: row.cache_write_price,
+            cache_write_1h_price: row.cache_write_1h_price,
             pricing_tiers,
             server_tools,
             server_tool_price: row.server_tool_price,
@@ -1315,6 +1337,7 @@ mod tests {
             output_price: None,
             cache_read_price: None,
             cache_write_price: None,
+            cache_write_1h_price: None,
             pricing_tiers: None,
             server_tools: Some(r#"["web_search","x_search"]"#.into()),
             server_tool_price: None,
@@ -1338,6 +1361,8 @@ mod tests {
             output_price: None,
             cache_read_price: None,
             cache_write_price: None,
+            cache_write_1h_price: None,
+            cache_ttl: None,
             pricing_tiers: None,
             capability_overrides: Some(
                 r#"{"supports_thinking":true,"supported_efforts":["low","high"],"default_effort":null}"#.into(),

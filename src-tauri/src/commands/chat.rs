@@ -1169,6 +1169,10 @@ async fn chat_inner(
         .map_err(|e| e.to_string())??;
     let mut stored_context_items = load_message_context_items(&services.db, &ctx).await?;
 
+    // Cancel any pending idle warm / expiry compaction timer before this turn
+    // touches the conversation.
+    services.cache_lifecycle.cancel(&conversation_id);
+
     // Resolve provider config (with optional overrides).
     let resolved = meridian_core::agent::resolve_with_overrides(
         secrets,
@@ -1298,6 +1302,8 @@ async fn chat_inner(
     // later in the turn, and a mid-turn mode switch rebuilds the tool set — so
     // the list that suppresses the local `web_search` has to survive that.
     let turn_server_tools = turn_params.params.server_tools.clone();
+    let cache_ttl_duration = turn_params.cache_ttl_duration;
+    let resolved_compact_threshold = turn_params.compact_threshold;
     if !supports_tools {
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
@@ -1925,7 +1931,7 @@ async fn chat_inner(
         mcp: services.mcp.clone(),
         parent_conversation_id: conversation_id.clone(),
         parent_cancel: cancel.clone(),
-        assistant,
+        assistant: assistant.clone(),
         project_id: project_id.clone(),
         tool_context: tool_context.clone(),
         files_root: files_root.clone(),
@@ -1991,6 +1997,13 @@ async fn chat_inner(
     let steering = engine::Chain(vec![&interjections, &notices]);
     #[cfg(target_os = "android")]
     let steering = engine::Chain(vec![&interjections]);
+    let pricing = model_config
+        .as_ref()
+        .map(meridian_core::agent::pricing::TurnPricing::of)
+        .transpose()
+        .map_err(|error| error.to_string())?
+        .flatten();
+    let base_prices = pricing.as_ref().map(|p| p.base().clone());
     let outcome = Box::pin(engine::run_turn(
         &engine::TurnServices {
             db: &services.db,
@@ -2019,21 +2032,20 @@ async fn chat_inner(
             cancel: cancel.clone(),
             keep_recent,
             context_limit,
-            // Streaming lifecycle only: the timer dies with the turn. `ttl_for`
-            // returns `None` for an upstream whose entry lifetime nobody
-            // documents, and an unknown lifetime is not a licence to guess.
-            warm: meridian_core::agent::cache_warmer::ttl_for(&resolved.provider_type).map(|ttl| {
-                meridian_core::agent::cache_warmer::WarmSeed {
-                    provider: Arc::clone(&provider),
-                    db: services.db.clone(),
-                    ttl,
-                    prices: None,
-                    provider_id: Some(resolved.provider_id.clone()),
-                    provider_name: Some(resolved.provider_name.clone()),
-                    model_id: Some(resolved.model.clone()),
-                    conversation_id: conversation_id.clone(),
-                    turn_id: turn_id.clone(),
-                }
+            // Streaming lifecycle only: the timer dies with the turn.
+            // `cache_ttl_duration` is `None` for an upstream whose entry
+            // lifetime nobody documents, and an unknown lifetime is not a
+            // licence to guess.
+            warm: cache_ttl_duration.map(|ttl| meridian_core::agent::cache_warmer::WarmSeed {
+                provider: Arc::clone(&provider),
+                db: services.db.clone(),
+                ttl,
+                prices: base_prices.clone(),
+                provider_id: Some(resolved.provider_id.clone()),
+                provider_name: Some(resolved.provider_name.clone()),
+                model_id: Some(resolved.model.clone()),
+                conversation_id: conversation_id.clone(),
+                turn_id: turn_id.clone(),
             }),
             // Where the call would land decides whether to ask, and a standing
             // yes to project edits can answer it. The other runner asks on the
@@ -2056,12 +2068,7 @@ async fn chat_inner(
             // rates cannot be billed from the totals this loop leaves behind,
             // because the totals are a sum over requests that were each priced
             // on their own size.
-            pricing: model_config
-                .as_ref()
-                .map(meridian_core::agent::pricing::TurnPricing::of)
-                .transpose()
-                .map_err(|error| error.to_string())?
-                .flatten(),
+            pricing,
         },
         engine::TurnPorts {
             emit: Some(&emitter),
@@ -2091,6 +2098,7 @@ async fn chat_inner(
     let total_output_tokens = outcome.progress.output_tokens;
     let turn_aborted = outcome.progress.aborted;
     let clear_context_plan = outcome.progress.clear_context_plan.clone();
+    let last_round = outcome.progress.last_round.clone();
     let last_assistant_text = outcome.reply?;
 
     let (status, error) = if turn_aborted {
@@ -2120,6 +2128,28 @@ async fn chat_inner(
         output_tokens: total_output_tokens.value(),
     })?;
     stop_guard.disarm();
+
+    if stop_reason == ChatStopReason::EndTurn
+        && clear_context_plan.is_none()
+        && let (Some(ttl), Some(snapshot)) = (cache_ttl_duration, last_round)
+    {
+        let seed = meridian_core::agent::cache_lifecycle::IdleCacheSeed::from_turn(
+            assistant.as_ref(),
+            resolved_compact_threshold,
+            conversation_id.clone(),
+            turn_id.clone(),
+            Arc::clone(&provider),
+            Some(resolved.provider_id.clone()),
+            Some(resolved.provider_name.clone()),
+            model.clone(),
+            base_prices,
+            ttl,
+            keep_recent,
+            context_limit,
+            snapshot,
+        );
+        services.cache_lifecycle.arm(services.clone(), seed);
+    }
 
     let clear_context_follow_up = clear_context_plan.map(|clear_plan| ClearContextFollowUp {
         prompt: clear_plan.prompt,
@@ -2237,6 +2267,7 @@ async fn chat_inner(
                                     output_tokens: usage.completion_tokens,
                                     cache_read_tokens: usage.cache_read_tokens,
                                     cache_write_tokens: usage.cache_write_tokens,
+                                    cache_write_1h_tokens: usage.cache_write_1h_tokens,
                                     server_tool_calls: usage.billable_tool_calls,
                                 },
                                 peak_prompt_tokens: usage.prompt_tokens,

@@ -90,6 +90,8 @@ struct ProfileWrite {
     output_price: Option<meridian_core::decimal::Decimal>,
     cache_read_price: Option<meridian_core::decimal::Decimal>,
     cache_write_price: Option<meridian_core::decimal::Decimal>,
+    cache_write_1h_price: Option<meridian_core::decimal::Decimal>,
+    cache_ttl: Option<meridian_core::provider::PromptCacheTtl>,
     pricing_tiers: Option<String>,
     capability_overrides: Option<String>,
     now: i64,
@@ -107,6 +109,8 @@ impl ProfileWrite {
             output_price: self.output_price,
             cache_read_price: self.cache_read_price,
             cache_write_price: self.cache_write_price,
+            cache_write_1h_price: self.cache_write_1h_price,
+            cache_ttl: self.cache_ttl,
             pricing_tiers: self.pricing_tiers,
             capability_overrides: self.capability_overrides,
             created_at: self.now,
@@ -131,6 +135,8 @@ impl ProfileWrite {
             output_price: self.output_price,
             cache_read_price: self.cache_read_price,
             cache_write_price: self.cache_write_price,
+            cache_write_1h_price: self.cache_write_1h_price,
+            cache_ttl: self.cache_ttl,
             pricing_tiers: self.pricing_tiers,
             capability_overrides: self.capability_overrides,
             updated_at: self.now,
@@ -226,6 +232,7 @@ pub struct PriceTierRequest {
     pub output_price: meridian_core::decimal::Decimal,
     pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: RequiredNullable<meridian_core::decimal::Decimal>,
 }
 
 impl From<PriceTierRequest> for meridian_core::agent::pricing::PriceTier {
@@ -236,6 +243,7 @@ impl From<PriceTierRequest> for meridian_core::agent::pricing::PriceTier {
             output_price: value.output_price,
             cache_read_price: value.cache_read_price.0,
             cache_write_price: value.cache_write_price.0,
+            cache_write_1h_price: value.cache_write_1h_price.0,
         }
     }
 }
@@ -265,6 +273,8 @@ pub struct ModelProfileUpsertRequest {
     pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_ttl: RequiredNullable<meridian_core::provider::PromptCacheTtl>,
     #[serde(deserialize_with = "deserialize_price_tiers")]
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub capability_overrides: RequiredNullable<ProviderCapabilityOverrides>,
@@ -282,6 +292,7 @@ pub struct ModelConfigUpsertRequest {
     pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: RequiredNullable<meridian_core::decimal::Decimal>,
     #[serde(deserialize_with = "deserialize_price_tiers")]
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub server_tools: RequiredNullable<Vec<meridian_core::provider::ServerToolKind>>,
@@ -314,6 +325,7 @@ impl ModelProfileUpsertRequest {
             ("output_price", self.output_price.0.as_ref()),
             ("cache_read_price", self.cache_read_price.0.as_ref()),
             ("cache_write_price", self.cache_write_price.0.as_ref()),
+            ("cache_write_1h_price", self.cache_write_1h_price.0.as_ref()),
         ] {
             if value.is_some_and(meridian_core::decimal::Decimal::is_negative) {
                 return Err(format!("profile.{field} must be non-negative"));
@@ -350,6 +362,7 @@ impl ModelConfigUpsertRequest {
                 || self.output_price.0.is_some()
                 || self.cache_read_price.0.is_some()
                 || self.cache_write_price.0.is_some()
+                || self.cache_write_1h_price.0.is_some()
                 || !self.pricing_tiers.is_empty();
             if carried {
                 return Err("overrides_pricing is off, so the provider price fields must be null".into());
@@ -363,6 +376,7 @@ impl ModelConfigUpsertRequest {
             ("output_price", self.output_price.0.as_ref()),
             ("cache_read_price", self.cache_read_price.0.as_ref()),
             ("cache_write_price", self.cache_write_price.0.as_ref()),
+            ("cache_write_1h_price", self.cache_write_1h_price.0.as_ref()),
             ("server_tool_price", self.server_tool_price.0.as_ref()),
         ] {
             if value.is_some_and(meridian_core::decimal::Decimal::is_negative) {
@@ -528,6 +542,8 @@ async fn set_model_config_inner(
         output_price: request.profile.output_price.0,
         cache_read_price: request.profile.cache_read_price.0,
         cache_write_price: request.profile.cache_write_price.0,
+        cache_write_1h_price: request.profile.cache_write_1h_price.0,
+        cache_ttl: request.profile.cache_ttl.0,
         pricing_tiers: profile_tiers,
         capability_overrides,
         now,
@@ -552,6 +568,7 @@ async fn set_model_config_inner(
         output_price: request.output_price.0,
         cache_read_price: request.cache_read_price.0,
         cache_write_price: request.cache_write_price.0,
+        cache_write_1h_price: request.cache_write_1h_price.0,
         pricing_tiers,
         server_tools,
         server_tool_price: request.server_tool_price.0,
@@ -652,6 +669,7 @@ fn build_deployment_response(
         output_price: resolved.output_price,
         cache_read_price: resolved.cache_read_price,
         cache_write_price: resolved.cache_write_price,
+        cache_write_1h_price: resolved.cache_write_1h_price,
         pricing_tiers: meridian_core::agent::pricing::parse_tiers(resolved.pricing_tiers.as_deref())
             .map_err(|error| error.to_string())?,
         server_tool_price: resolved.server_tool_price,
@@ -777,6 +795,8 @@ pub struct LogicalModelCreateRequest {
     pub output_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_read_price: RequiredNullable<meridian_core::decimal::Decimal>,
     pub cache_write_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_write_1h_price: RequiredNullable<meridian_core::decimal::Decimal>,
+    pub cache_ttl: RequiredNullable<meridian_core::provider::PromptCacheTtl>,
     #[serde(deserialize_with = "deserialize_price_tiers")]
     pub pricing_tiers: Vec<meridian_core::agent::pricing::PriceTier>,
     pub capability_overrides: RequiredNullable<ProviderCapabilityOverrides>,
@@ -808,6 +828,7 @@ impl LogicalModelCreateRequest {
             ("output_price", self.output_price.0.as_ref()),
             ("cache_read_price", self.cache_read_price.0.as_ref()),
             ("cache_write_price", self.cache_write_price.0.as_ref()),
+            ("cache_write_1h_price", self.cache_write_1h_price.0.as_ref()),
         ] {
             if value.is_some_and(meridian_core::decimal::Decimal::is_negative) {
                 return Err(format!("{field} must be non-negative"));
@@ -850,6 +871,8 @@ pub async fn create_logical_model(
         output_price: request.output_price.0,
         cache_read_price: request.cache_read_price.0,
         cache_write_price: request.cache_write_price.0,
+        cache_write_1h_price: request.cache_write_1h_price.0,
+        cache_ttl: request.cache_ttl.0,
         pricing_tiers,
         capability_overrides,
         created_at: now,
@@ -1079,6 +1102,8 @@ pub async fn attach_model_deployment(
                     output_price: None,
                     cache_read_price: None,
                     cache_write_price: None,
+                    cache_write_1h_price: None,
+                    cache_ttl: None,
                     pricing_tiers: None,
                     capability_overrides: None,
                     created_at: now,
@@ -1120,6 +1145,7 @@ pub async fn attach_model_deployment(
                 output_price: None,
                 cache_read_price: None,
                 cache_write_price: None,
+                cache_write_1h_price: None,
                 pricing_tiers: None,
                 server_tools: None,
                 server_tool_price: None,
@@ -1349,6 +1375,7 @@ mod tests {
             output_price: None,
             cache_read_price: None,
             cache_write_price: None,
+            cache_write_1h_price: None,
             pricing_tiers: None,
             server_tools: None,
             server_tool_price: None,
@@ -1375,6 +1402,8 @@ mod tests {
             output_price: None,
             cache_read_price: None,
             cache_write_price: None,
+            cache_write_1h_price: None,
+            cache_ttl: None,
             pricing_tiers: None,
             capability_overrides: None,
             now: 4,
@@ -1396,6 +1425,8 @@ mod tests {
                 "output_price": null,
                 "cache_read_price": null,
                 "cache_write_price": null,
+                "cache_write_1h_price": null,
+                "cache_ttl": null,
                 "pricing_tiers": [],
                 "capability_overrides": null
             },
@@ -1405,6 +1436,7 @@ mod tests {
             "output_price": null,
             "cache_read_price": null,
             "cache_write_price": null,
+            "cache_write_1h_price": null,
             "pricing_tiers": [],
             "server_tools": null,
             "server_tool_price": null
@@ -1549,7 +1581,8 @@ mod tests {
             "input_price": "2",
             "output_price": "4",
             "cache_read_price": null,
-            "cache_write_price": null
+            "cache_write_price": null,
+            "cache_write_1h_price": null
         }]);
         assert!(serde_json::from_value::<ModelConfigUpsertRequest>(value.clone()).is_ok());
 

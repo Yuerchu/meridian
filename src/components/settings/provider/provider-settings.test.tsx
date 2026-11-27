@@ -183,6 +183,8 @@ function modelConfig(overrides: {
       output_price: output,
       cache_read_price: null,
       cache_write_price: null,
+      cache_write_1h_price: null,
+      cache_ttl: null,
       pricing_tiers: [],
       capability_overrides: overrides.capability_overrides ?? null,
       model_count: 1,
@@ -194,6 +196,7 @@ function modelConfig(overrides: {
     output_price: null,
     cache_read_price: null,
     cache_write_price: null,
+    cache_write_1h_price: null,
     pricing_tiers: [],
     server_tools: overrides.server_tools ?? null,
     server_tool_price: null,
@@ -202,6 +205,7 @@ function modelConfig(overrides: {
       output_price: output,
       cache_read_price: null,
       cache_write_price: null,
+      cache_write_1h_price: null,
       pricing_tiers: [],
       server_tool_price: null,
     },
@@ -670,6 +674,9 @@ describe('ProviderSettings list/detail navigation', () => {
       supports_verbosity: false,
       default_verbosity: null,
       server_tools: [],
+      supported_cache_ttls: [],
+      default_cache_ttl: null,
+      default_cache_ttl_secs: null,
     })
     mockApi.modelConfigs.listProfiles.mockResolvedValue([
       {
@@ -682,6 +689,8 @@ describe('ProviderSettings list/detail navigation', () => {
         output_price: decimal('15'),
         cache_read_price: null,
         cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_ttl: null,
         pricing_tiers: [],
         capability_overrides: { supports_thinking: false, supported_efforts: ['low'] },
         model_count: 3,
@@ -736,6 +745,8 @@ describe('ProviderSettings list/detail navigation', () => {
         output_price: decimal('15'),
         cache_read_price: null,
         cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_ttl: null,
         pricing_tiers: [],
         capability_overrides: null,
         model_count: 2,
@@ -1017,6 +1028,7 @@ describe('ProviderSettings list/detail navigation', () => {
             output_price: '2.5',
             cache_read_price: '0.125',
             cache_write_price: null,
+            cache_write_1h_price: null,
             pricing_tiers: [
               {
                 min_prompt_tokens: 200000,
@@ -1024,6 +1036,7 @@ describe('ProviderSettings list/detail navigation', () => {
                 output_price: '12.5',
                 cache_read_price: null,
                 cache_write_price: null,
+                cache_write_1h_price: null,
               },
             ],
           }),
@@ -1064,6 +1077,9 @@ describe('ProviderSettings list/detail navigation', () => {
       supports_verbosity: false,
       default_verbosity: null,
       server_tools: ['web_search'],
+      supported_cache_ttls: [],
+      default_cache_ttl: null,
+      default_cache_ttl_secs: null,
     })
     mockApi.modelConfigs.set.mockResolvedValue(undefined as never)
     render(<ProviderSettings />)

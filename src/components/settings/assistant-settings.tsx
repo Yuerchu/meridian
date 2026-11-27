@@ -24,9 +24,11 @@ import { AuxiliaryModelSettings } from './auxiliary-model-settings'
 import type {
   AssistantInfoResponse,
   AssistantUpdateRequest,
+  CacheExpiryPolicy,
   EmojiPackInfoResponse,
   ProviderInfoResponse,
   McpToolInfoResponse,
+  PromptCacheTtl,
   ProviderModelInfoResponse,
   SkillInfoResponse,
   ToolPresetInfoResponse,
@@ -63,11 +65,17 @@ function AssistantEditor({
   const [temperature, setTemperature] = useState(assistant.temperature?.toString() ?? '')
   const [contextLimit, setContextLimit] = useState(overrideText(assistant.context_limit))
   const [autoCompactEnabled, setAutoCompactEnabled] = useState(assistant.auto_compact_enabled)
+  const [cacheTtl, setCacheTtl] = useState<string>(assistant.cache_ttl ?? '_follow')
+  const [cacheExpiryPolicy, setCacheExpiryPolicy] = useState<CacheExpiryPolicy>(assistant.cache_expiry_policy)
+  const [cacheMaxWarmCount, setCacheMaxWarmCount] = useState(assistant.cache_max_warm_count.toString())
+  const [cacheCompactMinTokens, setCacheCompactMinTokens] = useState(assistant.cache_compact_min_tokens.toString())
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ProviderModelInfoResponse[]>([])
   const [boundWindow, setBoundWindow] = useState<number | null>(null)
   const [supportsThinking, setSupportsThinking] = useState<boolean | null>(null)
+  const [boundCacheTtls, setBoundCacheTtls] = useState<PromptCacheTtl[]>([])
+  const [boundModelCacheTtl, setBoundModelCacheTtl] = useState<PromptCacheTtl | null>(null)
   const [saved, markSaved] = useTemporaryFlag()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
@@ -94,6 +102,10 @@ function AssistantEditor({
       temperature: assistant.temperature?.toString() ?? '',
       contextLimit: overrideText(assistant.context_limit),
       autoCompactEnabled: assistant.auto_compact_enabled,
+      cacheTtl: assistant.cache_ttl ?? '_follow',
+      cacheExpiryPolicy: assistant.cache_expiry_policy,
+      cacheMaxWarmCount: assistant.cache_max_warm_count.toString(),
+      cacheCompactMinTokens: assistant.cache_compact_min_tokens.toString(),
       thinkingEnabled: assistant.thinking_enabled,
       thinkingBudget: assistant.thinking_budget?.toString() ?? '',
       selectedPresetId: assistant.tool_preset_id ?? '',
@@ -109,6 +121,10 @@ function AssistantEditor({
     temperature,
     contextLimit,
     autoCompactEnabled,
+    cacheTtl,
+    cacheExpiryPolicy,
+    cacheMaxWarmCount,
+    cacheCompactMinTokens,
     thinkingEnabled,
     thinkingBudget,
     selectedPresetId,
@@ -136,6 +152,8 @@ function AssistantEditor({
     if (!providerId || !modelId) {
       setBoundWindow(null)
       setSupportsThinking(null)
+      setBoundCacheTtls([])
+      setBoundModelCacheTtl(null)
       return
     }
     let cancelled = false
@@ -143,6 +161,8 @@ function AssistantEditor({
     // for a beat: a save that lands in that beat would be judged against it.
     setBoundWindow(null)
     setSupportsThinking(null)
+    setBoundCacheTtls([])
+    setBoundModelCacheTtl(null)
     // Two reads answer two different questions. The window comes from the
     // model's stored profile first; capabilities only decide thinking. A local
     // model's capability read fails whenever its file does, and that must not
@@ -158,6 +178,12 @@ function AssistantEditor({
           null,
       )
       setSupportsThinking(caps.status === 'fulfilled' ? caps.value.supports_thinking : null)
+      setBoundCacheTtls(caps.status === 'fulfilled' ? (caps.value.supported_cache_ttls ?? []) : [])
+      setBoundModelCacheTtl(
+        (config.status === 'fulfilled' ? config.value?.profile.cache_ttl : undefined) ??
+          (caps.status === 'fulfilled' ? caps.value.default_cache_ttl : undefined) ??
+          null,
+      )
     })
     return () => {
       cancelled = true
@@ -166,6 +192,10 @@ function AssistantEditor({
 
   const parsedContextLimit = contextLimit.trim() === '' ? 0 : Number.parseInt(contextLimit, 10)
   const draftContextLimit = Number.isFinite(parsedContextLimit) ? parsedContextLimit : 0
+  const parsedMaxWarm = cacheMaxWarmCount.trim() === '' ? 0 : Number.parseInt(cacheMaxWarmCount, 10)
+  const draftMaxWarm = Number.isFinite(parsedMaxWarm) ? Math.max(0, parsedMaxWarm) : null
+  const parsedCompactMin = cacheCompactMinTokens.trim() === '' ? 0 : Number.parseInt(cacheCompactMinTokens, 10)
+  const draftCompactMin = Number.isFinite(parsedCompactMin) ? Math.max(0, parsedCompactMin) : null
   const modelConflicts = boundAssistantConflicts({
     contextLimit: draftContextLimit,
     thinkingEnabled,
@@ -200,6 +230,10 @@ function AssistantEditor({
       setSaveError(t('settings.assistant.thinkingUnsupported'))
       return
     }
+    if (draftMaxWarm === null || draftCompactMin === null) {
+      setSaveError(t('settings.model.limitInvalidError', { field: t('settings.assistant.cacheExpiryPolicy') }))
+      return
+    }
     try {
       await onSave(assistant.id, {
         name,
@@ -216,6 +250,10 @@ function AssistantEditor({
         thinking_budget: thinkingBudget ? parseInt(thinkingBudget) : null,
         tool_preset_id: toolPresetId,
         auto_compact_enabled: autoCompactEnabled,
+        cache_ttl: cacheTtl === '_follow' ? null : (cacheTtl as PromptCacheTtl),
+        cache_expiry_policy: cacheExpiryPolicy,
+        cache_max_warm_count: draftMaxWarm,
+        cache_compact_min_tokens: draftCompactMin,
       })
     } catch (error) {
       // A plan review can hold the assistant; said nowhere, the button does
@@ -316,6 +354,85 @@ function AssistantEditor({
         <SettingsRow label={t('settings.assistant.autoCompact')} description={t('settings.assistant.autoCompactHint')}>
           <Switch isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled} />
         </SettingsRow>
+
+        {(boundCacheTtls.length > 0 || cacheTtl !== '_follow') && (
+          <SettingsRow label={t('settings.assistant.cacheTtl')} description={t('settings.assistant.cacheTtlHint')}>
+            <SettingsSelect
+              ariaLabel={t('settings.assistant.cacheTtl')}
+              value={cacheTtl}
+              options={[
+                {
+                  value: '_follow',
+                  label: boundModelCacheTtl
+                    ? t('settings.assistant.cacheTtlFollowModel', {
+                        value: t(`settings.cacheTtl.${boundModelCacheTtl}`),
+                      })
+                    : t('settings.assistant.cacheTtlFollowModelPlain'),
+                },
+                ...Array.from(
+                  new Set<PromptCacheTtl>([
+                    ...boundCacheTtls,
+                    ...(cacheTtl !== '_follow' ? [cacheTtl as PromptCacheTtl] : []),
+                  ]),
+                ).map((ttl) => ({ value: ttl, label: t(`settings.cacheTtl.${ttl}`) })),
+              ]}
+              onChange={setCacheTtl}
+            />
+          </SettingsRow>
+        )}
+
+        <SettingsRow
+          label={t('settings.assistant.cacheExpiryPolicy')}
+          description={t('settings.assistant.cacheExpiryPolicyHint')}
+        >
+          <SettingsSelect
+            ariaLabel={t('settings.assistant.cacheExpiryPolicy')}
+            value={cacheExpiryPolicy}
+            options={[
+              { value: 'off', label: t('settings.assistant.cacheExpiryPolicy.off') },
+              { value: 'warm', label: t('settings.assistant.cacheExpiryPolicy.warm') },
+              { value: 'compact', label: t('settings.assistant.cacheExpiryPolicy.compact') },
+              { value: 'warm_then_compact', label: t('settings.assistant.cacheExpiryPolicy.warm_then_compact') },
+            ]}
+            onChange={(value) => setCacheExpiryPolicy(value as CacheExpiryPolicy)}
+          />
+        </SettingsRow>
+
+        {(cacheExpiryPolicy === 'warm' || cacheExpiryPolicy === 'warm_then_compact') && (
+          <SettingsRow
+            label={t('settings.assistant.cacheMaxWarmCount')}
+            description={t('settings.assistant.cacheMaxWarmCountHint')}
+          >
+            <div className="m-assistant__compact-field">
+              <NumberField
+                name={`assistantCacheMaxWarmCount-${assistant.id}`}
+                value={draftToNumber(cacheMaxWarmCount)}
+                onChange={(value) => setCacheMaxWarmCount(numberToDraft(value))}
+                minValue={0}
+                maxValue={20}
+                formatOptions={{ maximumFractionDigits: 0 }}
+              />
+            </div>
+          </SettingsRow>
+        )}
+
+        {(cacheExpiryPolicy === 'compact' || cacheExpiryPolicy === 'warm_then_compact') && (
+          <SettingsRow
+            label={t('settings.assistant.cacheCompactMinTokens')}
+            description={t('settings.assistant.cacheCompactMinTokensHint')}
+          >
+            <div className="m-assistant__compact-field">
+              <NumberField
+                name={`assistantCacheCompactMinTokens-${assistant.id}`}
+                value={draftToNumber(cacheCompactMinTokens)}
+                onChange={(value) => setCacheCompactMinTokens(numberToDraft(value))}
+                minValue={0}
+                step={5000}
+                formatOptions={{ maximumFractionDigits: 0 }}
+              />
+            </div>
+          </SettingsRow>
+        )}
 
         <SettingsRow label={t('settings.assistant.thinking')} description={t('settings.assistant.thinkingEnabled')}>
           <Switch isSelected={thinkingEnabled} onChange={setThinkingEnabled} />

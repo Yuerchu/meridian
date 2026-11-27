@@ -91,6 +91,14 @@ export function PriceTierEditor({
               onChange={(e) => patch(index, 'cacheWrite', e)}
               placeholder="—"
             />
+            <TextField
+              label={t('settings.model.cacheWrite1hPrice')}
+              name={`${namePrefix}TierCacheWrite1hPrice-${index}`}
+              inputMode="decimal"
+              value={tier.cacheWrite1h}
+              onChange={(e) => patch(index, 'cacheWrite1h', e)}
+              placeholder="—"
+            />
           </div>
         </div>
       ))}

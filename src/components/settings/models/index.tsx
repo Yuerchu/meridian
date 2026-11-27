@@ -346,6 +346,8 @@ export function ModelsSettings() {
         output_price: null,
         cache_read_price: null,
         cache_write_price: null,
+        cache_write_1h_price: null,
+        cache_ttl: null,
         pricing_tiers: [],
         capability_overrides: null,
       })

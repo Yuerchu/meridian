@@ -181,6 +181,8 @@ function profile(
     output_price: prices ? decimal(prices[1]) : null,
     cache_read_price: prices?.[2] ? decimal(prices[2]) : null,
     cache_write_price: prices?.[3] ? decimal(prices[3]) : null,
+    cache_write_1h_price: null,
+    cache_ttl: null,
     pricing_tiers: [],
     capability_overrides: null,
     model_count: 1,
@@ -210,6 +212,7 @@ export function buildModelConfigs(now: number): ModelConfigInfoResponse[] {
     output_price: override ? decimal(override[1]) : null,
     cache_read_price: null,
     cache_write_price: null,
+    cache_write_1h_price: null,
     pricing_tiers: [],
     server_tools: null,
     server_tool_price: null,
@@ -218,6 +221,7 @@ export function buildModelConfigs(now: number): ModelConfigInfoResponse[] {
       output_price: override ? decimal(override[1]) : p.output_price,
       cache_read_price: override ? null : p.cache_read_price,
       cache_write_price: override ? null : p.cache_write_price,
+      cache_write_1h_price: override ? null : p.cache_write_1h_price,
       pricing_tiers: p.pricing_tiers,
       server_tool_price: null,
     },
@@ -256,6 +260,9 @@ export const CAPABILITIES: ProviderCapabilitiesInfoResponse = {
   supports_verbosity: false,
   default_verbosity: null,
   server_tools: ['web_search'],
+  supported_cache_ttls: ['5m', '1h'],
+  default_cache_ttl: '5m',
+  default_cache_ttl_secs: null,
 }
 
 export function buildAssistants(now: number): AssistantInfoResponse[] {
@@ -274,6 +281,10 @@ export function buildAssistants(now: number): AssistantInfoResponse[] {
     thinking_budget: null,
     tool_preset_id: null,
     auto_compact_enabled: true,
+    cache_ttl: null,
+    cache_expiry_policy: 'compact' as const,
+    cache_max_warm_count: 3,
+    cache_compact_min_tokens: 40_000,
     logical_model_id: null,
     deployment_id: null,
   }

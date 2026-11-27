@@ -44,6 +44,7 @@ pub async fn invoke_conversation_compaction(
         .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
+    services.cache_lifecycle.cancel(&conversation_id);
     let secrets = services.secrets.clone();
 
     let (assistant, keep_recent) = services
@@ -385,6 +386,7 @@ pub(crate) async fn delete_conversation_tree(
     id: &str,
 ) -> Result<(), String> {
     let id = id.to_owned();
+    services.cache_lifecycle.cancel(&id);
     let coordinator = services.turns.clone();
     let sea = services.db.clone();
 
@@ -1037,6 +1039,10 @@ mod tests {
             thinking_budget: None,
             tool_preset_id: None,
             auto_compact_enabled: db::types::SqlBool::FALSE,
+            cache_ttl: None,
+            cache_expiry_policy: meridian_core::agent::cache_warmer::CacheExpiryPolicy::Compact,
+            cache_max_warm_count: meridian_core::agent::cache_warmer::DEFAULT_CACHE_MAX_WARM_COUNT,
+            cache_compact_min_tokens: meridian_core::agent::cache_warmer::DEFAULT_CACHE_COMPACT_MIN_TOKENS,
             logical_model_id: None,
             deployment_id: None,
         }
@@ -1071,6 +1077,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            cache_write_1h_tokens: None,
             server_tool_calls: None,
             provider_name: None,
             provider_state: None,

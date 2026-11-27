@@ -399,6 +399,9 @@ pub struct ProviderCapabilitiesInfoResponse {
     pub supports_verbosity: bool,
     pub default_verbosity: Option<ProviderCapabilityVerbosity>,
     pub server_tools: Vec<ServerToolKind>,
+    pub supported_cache_ttls: Vec<meridian_core::provider::PromptCacheTtl>,
+    pub default_cache_ttl: Option<meridian_core::provider::PromptCacheTtl>,
+    pub default_cache_ttl_secs: Option<u32>,
 }
 
 impl TryFrom<meridian_core::provider::ProviderCapabilities> for ProviderCapabilitiesInfoResponse {
@@ -435,6 +438,9 @@ impl TryFrom<meridian_core::provider::ProviderCapabilities> for ProviderCapabili
                 .map(ProviderCapabilityVerbosity::parse)
                 .transpose()?,
             server_tools: value.server_tools,
+            supported_cache_ttls: value.supported_cache_ttls,
+            default_cache_ttl: value.default_cache_ttl,
+            default_cache_ttl_secs: value.default_cache_ttl_secs,
         })
     }
 }

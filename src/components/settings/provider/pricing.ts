@@ -27,6 +27,7 @@ export type TierDraft = {
   output: string
   cacheRead: string
   cacheWrite: string
+  cacheWrite1h: string
 }
 
 let lastTierId = 0
@@ -37,7 +38,7 @@ function tierId(): string {
 /**
  * Every price box on the model page, named so a refusal can point at one.
  *
- * The first five are the model's own; the `override*` four are what this one
+ * The first six are the model's own; the `override*` five are what this one
  * provider charges instead, and exist separately because a refusal has to say
  * which of the two sets it is about.
  */
@@ -46,14 +47,16 @@ export type PriceField =
   | 'output'
   | 'cache'
   | 'cacheWrite'
+  | 'cacheWrite1h'
   | 'serverTool'
   | 'overrideInput'
   | 'overrideOutput'
   | 'overrideCache'
   | 'overrideCacheWrite'
+  | 'overrideCacheWrite1h'
 
 export function blankTier(): TierDraft {
-  return { id: tierId(), threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
+  return { id: tierId(), threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '', cacheWrite1h: '' }
 }
 
 export const ZERO_DECIMAL = decimal('0')
@@ -94,7 +97,14 @@ export function tiersFrom(raw: PriceTier[]): TierDraft[] {
     }
     const unknownKey = Object.keys(tier).find(
       (key) =>
-        !['min_prompt_tokens', 'input_price', 'output_price', 'cache_read_price', 'cache_write_price'].includes(key),
+        ![
+          'min_prompt_tokens',
+          'input_price',
+          'output_price',
+          'cache_read_price',
+          'cache_write_price',
+          'cache_write_1h_price',
+        ].includes(key),
     )
     if (unknownKey) throw new TypeError(`Price tier ${index + 1} has unknown field ${unknownKey}`)
     return {
@@ -104,6 +114,8 @@ export function tiersFrom(raw: PriceTier[]): TierDraft[] {
       output: tierRate(tier.output_price, 'output_price'),
       cacheRead: tier.cache_read_price == null ? '' : tierRate(tier.cache_read_price, 'cache_read_price'),
       cacheWrite: tier.cache_write_price == null ? '' : tierRate(tier.cache_write_price, 'cache_write_price'),
+      cacheWrite1h:
+        tier.cache_write_1h_price == null ? '' : tierRate(tier.cache_write_1h_price, 'cache_write_1h_price'),
     }
   })
 }
@@ -131,6 +143,7 @@ export function tiersTo(drafts: TierDraft[]): PriceTier[] {
       output_price: decimal38_18(draft.output.trim()),
       cache_read_price: optionalPrice(draft.cacheRead),
       cache_write_price: optionalPrice(draft.cacheWrite),
+      cache_write_1h_price: optionalPrice(draft.cacheWrite1h),
     }
   })
   tiers.sort((a, b) => a.min_prompt_tokens - b.min_prompt_tokens)
