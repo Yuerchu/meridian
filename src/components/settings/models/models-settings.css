@@ -8,8 +8,8 @@
   }
 
   .m-models-settings__list {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-4);
   }
 
@@ -19,8 +19,9 @@
     gap: var(--space-3);
     padding: var(--space-4);
     border: 1px solid var(--border);
-    border-radius: var(--radius-card);
+    border-radius: var(--radius-panel);
     background: var(--surface);
+    box-shadow: var(--shadow-resting);
   }
 
   .m-models-settings__card-header {
@@ -87,7 +88,7 @@
     padding: var(--space-2) var(--space-3);
     border: 1px solid var(--border);
     border-radius: var(--radius-control);
-    background: var(--surface-subtle);
+    background: var(--surface-muted);
     flex-wrap: wrap;
   }
 
@@ -131,12 +132,12 @@
   }
 
   .m-models-settings__compliance[data-status='degraded'] {
-    background: var(--warning-soft);
-    color: var(--warning);
+    background: var(--warning-bg);
+    color: var(--warning-fg);
   }
 
   .m-models-settings__degraded-hint {
-    color: var(--warning);
+    color: var(--warning-fg);
     font: var(--text-caption);
   }
 
@@ -160,5 +161,12 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+  }
+
+  @container pane (width >= 960px) {
+    .m-models-settings__list {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: start;
+    }
   }
 }

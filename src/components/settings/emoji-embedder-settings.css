@@ -16,8 +16,8 @@
   }
 
   .m-emoji-embedder__path {
+    flex: 1;
     min-width: 0;
-    max-width: 16rem;
     overflow: hidden;
     color: var(--text-secondary);
     font: var(--text-small);

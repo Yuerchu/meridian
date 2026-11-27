@@ -27,9 +27,13 @@
     --ui-safe-bottom: var(--safe-bottom);
     --ui-safe-left: var(--safe-left);
 
-    /* The one width every settings page has: moving between sections must not
-       move the column under the reader. */
-    --content-settings: 33.25rem;
+    /* Two settings widths plus one chat width, in px so they match Yuerchu UI's
+       `--content-*` scale instead of shrinking under the 14px root body font.
+       Form/toggle pages stay comfortable at `--content-settings`; dashboards,
+       tables and split-pane workspaces expand to `--content-settings-wide`. */
+    --content-settings: 780px;
+    --content-settings-wide: 1400px;
+    --content-chat: 920px;
   }
 }
 

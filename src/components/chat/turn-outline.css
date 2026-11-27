@@ -2,7 +2,7 @@
   .m-turn-outline {
     position: absolute;
     inset-block: 0;
-    inset-inline-end: 0;
+    inset-inline-end: max(var(--space-2), calc((100% - var(--content-chat)) / 2 - 44px));
     z-index: 10;
     display: none;
     align-items: center;

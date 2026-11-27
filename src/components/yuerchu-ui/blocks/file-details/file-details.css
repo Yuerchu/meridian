@@ -1,0 +1,31 @@
+@layer components {
+  .ui-block-file-details {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-block-file-details__tabs,
+  .ui-block-file-details__stack {
+    display: grid;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  /* 和面板边缘留出间距 */
+  .ui-block-file-details__tabs {
+    padding: var(--space-3);
+  }
+
+  .ui-block-file-details__preview {
+    display: flex;
+    justify-content: center;
+  }
+
+  .ui-block-file-details__person,
+  .ui-block-file-details__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+}

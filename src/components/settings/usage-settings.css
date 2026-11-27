@@ -50,7 +50,8 @@
   }
 
   .m-usage-settings__filters {
-    gap: var(--space-3) var(--space-6);
+    gap: var(--space-3) var(--space-5);
+    align-items: flex-end;
   }
 
   .m-usage-settings__legend {
@@ -80,6 +81,7 @@
   }
 
   .m-usage-settings__kpis,
+  .m-usage-settings__insights,
   .m-usage-settings__misses,
   .m-usage-settings__charts,
   .m-usage-settings__parts,
@@ -87,6 +89,15 @@
   .m-usage-settings__skeleton-charts {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+
+  .m-usage-settings__insights:empty {
+    display: none;
+  }
+
+  .m-usage-settings__misses {
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
     gap: var(--space-3);
   }
 
@@ -106,13 +117,23 @@
 
   .m-usage-settings__kpi,
   .m-usage-settings__card {
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
     border-radius: var(--radius-panel);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+  }
+
+  .m-usage-settings__misses .m-usage-settings__kpi {
+    padding: var(--space-3) var(--space-4);
+    border-color: transparent;
+    border-radius: var(--radius-item);
     background: var(--surface-muted);
+    box-shadow: none;
   }
 
   .m-usage-settings__card {
-    --ui-chart-bg: var(--surface-muted);
+    --ui-chart-bg: var(--surface);
 
     gap: var(--space-3);
   }
@@ -124,11 +145,12 @@
 
   .m-usage-settings__card-title {
     flex: 1;
+    color: var(--text);
     font: var(--text-body-medium);
   }
 
   .m-usage-settings__kpi-title {
-    font: var(--text-body-medium);
+    font: var(--text-small);
   }
 
   .m-usage-settings__value,
@@ -141,7 +163,13 @@
 
   .m-usage-settings__value {
     display: block;
+    font: var(--text-title-2);
+    letter-spacing: var(--tracking-tight);
+  }
+
+  .m-usage-settings__misses .m-usage-settings__value {
     font: var(--text-title-3);
+    letter-spacing: normal;
   }
 
   .m-usage-settings__kpi-body,
@@ -336,21 +364,15 @@
     gap: var(--space-6);
   }
 
-  @container pane (width >= 24rem) {
+  @container pane (width >= 480px) {
     .m-usage-settings__kpis,
     .m-usage-settings__skeleton-kpis,
     .m-usage-settings__parts {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
-    .m-usage-settings__misses {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
   }
 
-  @container pane (width >= 42rem) {
-    .m-usage-settings__kpis,
-    .m-usage-settings__skeleton-kpis,
+  @container pane (width >= 760px) {
     .m-usage-settings__parts {
       grid-template-columns: repeat(4, minmax(0, 1fr));
     }
@@ -358,6 +380,22 @@
     .m-usage-settings__charts,
     .m-usage-settings__skeleton-charts {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container pane (width >= 900px) {
+    .m-usage-settings__kpis,
+    .m-usage-settings__skeleton-kpis {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .m-usage-settings__insights {
+      grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .m-usage-settings__insights:has(> :only-child) {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 }

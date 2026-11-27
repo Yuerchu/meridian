@@ -1,0 +1,64 @@
+@layer components {
+  .ui-template-file-manager {
+    container-type: inline-size;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .ui-template-file-manager:not([data-embedded]) {
+    min-height: 100dvh;
+  }
+
+  .ui-template-file-manager__main {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+    box-sizing: border-box;
+    width: 100%;
+    padding: var(--space-6) var(--page-gutter);
+  }
+
+  .ui-template-file-manager__header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: flex-end;
+    justify-content: space-between;
+  }
+
+  .ui-template-file-manager__titles {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+  }
+
+  .ui-template-file-manager__heading,
+  .ui-template-file-manager__description {
+    margin: 0;
+  }
+
+  .ui-template-file-manager__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .ui-template-file-manager__body,
+  .ui-template-file-manager__files {
+    display: grid;
+    gap: var(--space-4);
+    align-items: start;
+    min-width: 0;
+  }
+
+  /* 宽时文件区和详情并排，详情固定宽度；窄时详情（FileDetails 自己变成对话框）不占位置 */
+  @container (width >= 760px) {
+    .ui-template-file-manager__body[data-has-details] {
+      grid-template-columns: minmax(0, 1fr) 22rem;
+    }
+  }
+
+  .ui-template-file-manager__details {
+    min-width: 0;
+  }
+}

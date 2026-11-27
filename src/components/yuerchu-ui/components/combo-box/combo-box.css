@@ -1,0 +1,90 @@
+@layer components {
+  /* 尺寸、输入框沿用 .ui-text-field / .ui-input（text-field.css），弹层和列表沿用 Popover、ListBox */
+  .ui-combo-box {
+    --ui-combo-button-inset: var(--space-1);
+    --ui-combo-button-size: calc(var(--ui-input-height) - 2 * var(--ui-combo-button-inset));
+  }
+
+  /* 右侧的加载图标、清除按钮、箭头按钮排成一行，叠在输入框上；输入框按它的宽度留出位置 */
+  .ui-combo-box .ui-input {
+    padding-inline-end: var(--ui-combo-end-width, calc(var(--ui-combo-button-size) + var(--ui-combo-button-inset) + var(--space-1)));
+  }
+
+  .ui-combo-box__end {
+    position: absolute;
+    inset-inline-end: var(--ui-combo-button-inset);
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .ui-combo-box:has(.ui-combo-box__end > :nth-child(2)) {
+    --ui-combo-end-width: calc(2 * var(--ui-combo-button-size) + var(--ui-combo-button-inset) + var(--space-2));
+  }
+
+  .ui-combo-box:has(.ui-combo-box__end > :nth-child(3)) {
+    --ui-combo-end-width: calc(3 * var(--ui-combo-button-size) + var(--ui-combo-button-inset) + var(--space-3));
+  }
+
+  .ui-combo-box__end .ui-spinner {
+    display: inline-grid;
+    place-items: center;
+    width: var(--ui-combo-button-size);
+  }
+
+  .ui-combo-box__end .ui-combo-box__clear {
+    width: var(--ui-combo-button-size);
+    height: var(--ui-combo-button-size);
+  }
+
+  .ui-combo-box__button {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: var(--ui-combo-button-size);
+    height: var(--ui-combo-button-size);
+    padding: 0;
+    margin: 0;
+    border: 1px solid transparent;
+    border-radius: calc(var(--ui-input-radius) - var(--ui-combo-button-inset));
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
+  }
+
+  .ui-combo-box__button svg {
+    width: var(--icon-size);
+    height: var(--icon-size);
+    transition: rotate var(--dur-standard) var(--ease-standard);
+  }
+
+  .ui-combo-box__button[data-hovered]:not([data-disabled]) {
+    background: var(--surface-muted);
+    color: var(--text);
+  }
+
+  .ui-combo-box__button[data-disabled] {
+    color: var(--text-muted);
+    cursor: not-allowed;
+  }
+
+  .ui-combo-box[data-open] .ui-combo-box__button svg {
+    rotate: 180deg;
+  }
+
+  /* 弹层里放列表：内边距改小，列表项圆角按它算同心（DESIGN.md §6.2.1：只设变量） */
+  .ui-combo-box__popover {
+    --ui-popover-padding: var(--space-1);
+  }
+
+  /* 滚到底加载更多：列表最后一行，加载时转圈 */
+  .ui-combo-box__more {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-2);
+  }
+}

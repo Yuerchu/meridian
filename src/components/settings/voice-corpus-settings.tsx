@@ -134,7 +134,7 @@ export function VoiceCorpusSettings() {
     })
 
   return (
-    <SettingsPane>
+    <SettingsPane width="wide">
       <SettingsHeader title={t('settings.voiceCorpus.title')} subtitle={t('settings.voiceCorpus.description')} />
 
       {error && (

@@ -198,7 +198,7 @@ export function MemorySettings() {
           )}
 
           {browser.loading ? (
-            <SettingsSkeleton rows={3} />
+            <SettingsSkeleton rows={3} width="wide" />
           ) : browser.error ? (
             <Alert
               shouldAnnounce

@@ -282,11 +282,11 @@ export function SkillSettings() {
   }, [])
 
   if (loading) {
-    return <SettingsSkeleton data-slot="skill-settings-loading" />
+    return <SettingsSkeleton width="wide" data-slot="skill-settings-loading" />
   }
 
   return (
-    <SettingsPane>
+    <SettingsPane width="wide">
       <SettingsHeader
         title={t('settings.skills.title')}
         subtitle={t('settings.skills.subtitle')}

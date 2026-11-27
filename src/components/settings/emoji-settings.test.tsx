@@ -68,10 +68,12 @@ function makeEmoji(over: Partial<EmojiInfoResponse> & Pick<EmojiInfoResponse, 'i
   }
 }
 
-async function openPack(user: ReturnType<typeof userEvent.setup>) {
-  await waitFor(() => expect(screen.getByRole('button', { name: /Collected/ })).toBeInTheDocument())
-  await user.click(screen.getByRole('button', { name: /Collected/ }))
-  await waitFor(() => expect(screen.getByRole('grid')).toBeInTheDocument())
+async function openPack() {
+  await waitFor(() => expect(screen.getByRole('region', { name: /Stickers in Collected/ })).toBeInTheDocument())
+}
+
+function shownCardNames(): string[] {
+  return Array.from(document.querySelectorAll('[data-slot="sticker-name"]')).map((node) => node.textContent ?? '')
 }
 
 describe('EmojiSettings', () => {
@@ -109,20 +111,20 @@ describe('EmojiSettings', () => {
   })
 
   /**
-   * `confirm_sticker_semantics` writes name *and* tags, so a partial edit has
-   * to carry the half it is not changing. The grid only ever edits one cell at
-   * a time, which is exactly the shape that loses the other one.
+   * `confirm_sticker_semantics` writes name *and* tags, so a partial edit in
+   * the `FileDetails` inspector has to carry the half it is not changing.
    */
-  it('keeps the tags when only the name is edited', async () => {
+  it('keeps the tags when only the name is edited in the inspector', async () => {
     const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat,angry', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
+    await user.click(screen.getByRole('button', { name: 'Inspect and edit old name' }))
+    await user.click(await screen.findByRole('button', { name: /Edit meaning/ }))
     const field = screen.getByRole('textbox', { name: 'Edit meaning' })
-    expect(field.closest('[role=gridcell], [role=rowheader]')).not.toBeNull()
     expect(field).toHaveValue('old name')
     await user.clear(field)
     await user.type(field, 'new name{Enter}')
@@ -135,18 +137,17 @@ describe('EmojiSettings', () => {
     )
   })
 
-  it('keeps the name when only the tags are edited', async () => {
+  it('keeps the name when tags are edited in the inspector', async () => {
     const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
-    const field = screen.getByRole('textbox', { name: 'Edit tags' })
-    expect(field).toHaveValue('cat')
-    await user.clear(field)
-    await user.type(field, 'cat,angry{Enter}')
+    await user.click(screen.getByRole('button', { name: 'Inspect and edit old name' }))
+    const tagInput = await screen.findByRole('combobox')
+    await user.type(tagInput, 'angry{Enter}')
 
     await waitFor(() =>
       expect(mockApi.emojis.update).toHaveBeenCalledWith({
@@ -161,7 +162,7 @@ describe('EmojiSettings', () => {
    * it was collected under, so accepting it is one press rather than retyping
    * it. Confirming without editing has to send that guess, not the row.
    */
-  it('offers the suggestion, and confirms it as typed', async () => {
+  it('offers the suggestion, and confirms it directly from the card', async () => {
     const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([
       makeEmoji({
@@ -173,9 +174,9 @@ describe('EmojiSettings', () => {
       }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
-    expect(screen.getByRole('textbox', { name: 'Edit meaning' })).toHaveValue('shyly hiding')
+    expect(shownCardNames()).toEqual(['shyly hiding'])
     await user.click(screen.getByRole('button', { name: 'Confirm' }))
 
     await waitFor(() =>
@@ -186,42 +187,57 @@ describe('EmojiSettings', () => {
     )
   })
 
-  it('Escape puts the saved value back and commits nothing', async () => {
+  it('Escape in the inspector puts the saved value back and commits nothing', async () => {
     const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'old name', tags: 'cat', semantic_status: 'confirmed' }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
+    await user.click(screen.getByRole('button', { name: 'Inspect and edit old name' }))
+    await user.click(await screen.findByRole('button', { name: /Edit meaning/ }))
     const field = screen.getByRole('textbox', { name: 'Edit meaning' })
-    await user.click(field)
     await user.clear(field)
     await user.type(field, 'discarded{Escape}')
 
-    expect(field).toHaveValue('old name')
-    expect(field).not.toHaveFocus()
+    expect(screen.queryByRole('textbox', { name: 'Edit meaning' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Edit meaning/ })).toHaveTextContent('old name')
     expect(mockApi.emojis.update).not.toHaveBeenCalled()
   })
 
   /** Unreviewed first, whatever the pack's own order says. */
   it('puts the stickers awaiting review at the top', async () => {
-    const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([
       makeEmoji({ id: 'e1', name: 'confirmed one', semantic_status: 'confirmed', sort_order: 0 }),
       makeEmoji({ id: 'e2', name: 'waiting', semantic_status: 'pending', sort_order: 1 }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
-    const names = screen.getAllByRole('textbox', { name: 'Edit meaning' })
-    expect(names[0]).toHaveValue('waiting')
-    expect(names[1]).toHaveValue('confirmed one')
+    expect(shownCardNames()).toEqual(['waiting', 'confirmed one'])
+  })
+
+  it('filters stickers by review status and search query', async () => {
+    const user = userEvent.setup()
+    mockApi.emojis.list.mockResolvedValue([
+      makeEmoji({ id: 'e1', name: 'happy cat', tags: 'cute,cat', semantic_status: 'confirmed' }),
+      makeEmoji({ id: 'e2', name: 'waiting dog', tags: 'dog', semantic_status: 'pending' }),
+    ])
+    render(<EmojiSettings />)
+    await openPack()
+
+    await user.click(screen.getByRole('radio', { name: /Pending/ }))
+    expect(shownCardNames()).toEqual(['waiting dog'])
+
+    await user.click(screen.getByRole('radio', { name: /All/ }))
+    await user.type(screen.getByRole('searchbox', { name: 'Search meaning or tags…' }), 'cute')
+    expect(shownCardNames()).toEqual(['happy cat'])
   })
 
   describe('pages', () => {
     const COUNT = STICKERS_PER_PAGE * 2 + 5
-    // Confirmed, in pack order, seen least by the first: sorting by "Seen"
+    // Confirmed, in pack order, seen least by the first: sorting by "Least seen"
     // reverses the pack.
     const MANY = Array.from({ length: COUNT }, (_, i) =>
       makeEmoji({
@@ -235,7 +251,7 @@ describe('EmojiSettings', () => {
     let io: IntersectionControl
 
     beforeEach(() => {
-      // Every row is on screen as soon as it is drawn: what is fetched is
+      // Every card is on screen as soon as it is drawn: what is fetched is
       // then decided by what is drawn, which is the page.
       io = installIntersectionObserver(() => true)
       mockApi.emojis.list.mockResolvedValue(MANY)
@@ -247,23 +263,21 @@ describe('EmojiSettings', () => {
 
     afterEach(() => io.restore())
 
-    const shownNames = () =>
-      screen.getAllByRole('textbox', { name: 'Edit meaning' }).map((field) => (field as HTMLInputElement).value)
     const requested = () => new Set(mockApi.emojis.getFileUrl.mock.calls.map(([req]) => req.emoji_id))
 
     it('draws one page and asks only for the files on it', async () => {
       const user = userEvent.setup()
       render(<EmojiSettings />)
-      await openPack(user)
+      await openPack()
 
-      expect(shownNames()).toEqual(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `sticker ${i}`))
+      expect(shownCardNames()).toEqual(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `sticker ${i}`))
       const firstPage = new Set(Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${i}`))
       await waitFor(() => expect(requested()).toEqual(firstPage))
       // Nothing about the settings page asks for every file up front any more.
       expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE)
 
       await user.click(screen.getByRole('button', { name: 'Page 2' }))
-      expect(shownNames()[0]).toBe(`sticker ${STICKERS_PER_PAGE}`)
+      expect(shownCardNames()[0]).toBe(`sticker ${STICKERS_PER_PAGE}`)
       const secondPage = Array.from({ length: STICKERS_PER_PAGE }, (_, i) => `e${STICKERS_PER_PAGE + i}`)
       await waitFor(() => expect(requested()).toEqual(new Set([...firstPage, ...secondPage])))
       expect(mockApi.emojis.getFileUrl).toHaveBeenCalledTimes(STICKERS_PER_PAGE * 2)
@@ -273,18 +287,19 @@ describe('EmojiSettings', () => {
     it('sorts the whole pack, not the page on screen', async () => {
       const user = userEvent.setup()
       render(<EmojiSettings />)
-      await openPack(user)
+      await openPack()
 
-      await user.click(screen.getByRole('columnheader', { name: /Seen/ }))
+      await user.click(screen.getByRole('button', { name: /Sort order/ }))
+      await user.click(await screen.findByRole('option', { name: 'Least seen' }))
       // Least seen first: that is the last sticker of the pack, which was on
       // the last page — not the least seen of the twenty that were showing.
-      expect(shownNames()[0]).toBe(`sticker ${COUNT - 1}`)
+      expect(shownCardNames()[0]).toBe(`sticker ${COUNT - 1}`)
     })
 
     it('selects all of the page, not all of the pack', async () => {
       const user = userEvent.setup()
       render(<EmojiSettings />)
-      await openPack(user)
+      await openPack()
 
       await user.click(screen.getByRole('checkbox', { name: /select all/i }))
       // Scoped to the visible count: SelectionBar also announces it into the
@@ -299,7 +314,7 @@ describe('EmojiSettings', () => {
     const user = userEvent.setup()
     mockApi.emojis.list.mockResolvedValue([makeEmoji({ id: 'e1', semantic_status: 'confirmed' })])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
     await user.click(screen.getByRole('checkbox', { name: /select all/i }))
     const count = { selector: '.ui-selection-bar__count' }
@@ -317,7 +332,7 @@ describe('EmojiSettings', () => {
       makeEmoji({ id: 'nofile', name: 'pending-c', semantic_status: 'pending', file_name: '' }),
     ])
     render(<EmojiSettings />)
-    await openPack(user)
+    await openPack()
 
     await user.click(screen.getByRole('checkbox', { name: /select all/i }))
     await user.click(await screen.findByRole('button', { name: 'Generate suggestions' }))

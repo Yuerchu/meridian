@@ -1518,20 +1518,20 @@ export function ProviderPage({
     void refresh().finally(() => setLoading(false))
   }, [refresh])
 
-  if (loading) return <SettingsSkeleton />
+  if (loading) return <SettingsSkeleton width="wide" />
 
   // Deleted in another window, or from a second client. The page says so rather
   // than rendering an editor over nothing.
   if (!provider) {
     return (
-      <SettingsPage title={t('settings.provider.title')}>
+      <SettingsPage width="wide" title={t('settings.provider.title')}>
         <Alert tone="warning" shouldAnnounce heading={t('settings.provider.selectProvider')} />
       </SettingsPage>
     )
   }
 
   return (
-    <SettingsPage title={provider.name}>
+    <SettingsPage width="wide" title={provider.name}>
       <ProviderEditor
         key={provider.id}
         provider={provider}

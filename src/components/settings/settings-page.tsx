@@ -2,7 +2,7 @@ import './settings-page.css'
 import { useTranslation } from 'react-i18next'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { ArrowLeft } from '@keyline-icons/react/two-tone'
-import { SettingsHeader } from './primitives'
+import { SettingsHeader, type SettingsWidth } from './primitives'
 import { useSettingsLevel } from './settings-stack'
 
 /**
@@ -27,6 +27,7 @@ export function SettingsPage({
   subtitle,
   actions,
   footer,
+  width = 'default',
   className,
   children,
   ...props
@@ -36,11 +37,17 @@ export function SettingsPage({
   actions?: React.ReactNode
   /** Draft-and-save pages only: the action row after the form. */
   footer?: React.ReactNode
+  width?: SettingsWidth
 }) {
   const { t } = useTranslation()
   const { index, pop } = useSettingsLevel()
   return (
-    <div data-slot="settings-page" className={['m-settings-page', className].filter(Boolean).join(' ')} {...props}>
+    <div
+      data-slot="settings-page"
+      data-width={width === 'wide' ? 'wide' : undefined}
+      className={['m-settings-page', className].filter(Boolean).join(' ')}
+      {...props}
+    >
       {index > 0 && (
         <div data-slot="settings-page-bar" className="m-settings-page__bar">
           <Button

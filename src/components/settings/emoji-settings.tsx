@@ -1,71 +1,67 @@
 import './emoji-settings.css'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { Key } from 'react-aria-components'
 import { useTranslation } from 'react-i18next'
-import { Bin, Check, ChevronRight, Plus, Sparkles, StickyNote, Upload } from '@keyline-icons/react/two-tone'
-import { Button as AriaButton, Disclosure, DisclosurePanel, Heading } from 'react-aria-components'
+import {
+  Bin,
+  Check,
+  FolderOpen,
+  Plus,
+  SlidersHorizontal,
+  Sparkles,
+  StickyNote,
+  Upload,
+} from '@keyline-icons/react/two-tone'
+import { Button as AriaButton } from 'react-aria-components'
+import { FileDetails } from '@/components/yuerchu-ui/blocks/file-details/file-details'
+import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
+import { Button } from '@/components/yuerchu-ui/components/button/button'
+import { Checkbox } from '@/components/yuerchu-ui/components/checkbox/checkbox'
+import { Dialog, DialogFooter } from '@/components/yuerchu-ui/components/dialog/dialog'
+import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
+import { ImageViewer, type ImageViewerImage } from '@/components/yuerchu-ui/components/image-viewer/image-viewer'
+import { PathBar, type PathSegment } from '@/components/yuerchu-ui/components/path-bar/path-bar'
+import { SearchField } from '@/components/yuerchu-ui/components/search-field/search-field'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
+import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
 import { TextField } from '@/components/yuerchu-ui/components/text-field/text-field'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
-import { Button } from '@/components/yuerchu-ui/components/button/button'
-import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
-import { DataTable, type DataTableColumn } from '@/components/yuerchu-ui/components/data-table/data-table'
-import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
-import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
-import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { FileManager } from '@/components/yuerchu-ui/templates/file-manager/file-manager'
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { forgetStickerUrl, useStickerUrl } from '@/lib/sticker-urls'
+import { isRemote } from '@/lib/transport'
+import { titleIfTruncated } from '@/lib/truncation'
 import { usePointerPlay, useStickerPlayback } from '@/components/chat/sticker-playback'
 import { StickerThumb } from '@/components/chat/sticker-thumb'
-import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { EmojiEmbedderSettings } from './emoji-embedder-settings'
 import { EmojiSuggestSettings } from './emoji-suggest-settings'
-import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
+import { SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { EmojiInfoResponse, EmojiPackInfoResponse } from '@/types'
-import { titleIfTruncated } from '@/lib/truncation'
 
 interface PackDetail {
   pack: EmojiPackInfoResponse
   emojis: EmojiInfoResponse[]
 }
 
+type StatusFilter = 'all' | 'pending' | 'confirmed'
+type SortOrder = 'review' | 'seenDesc' | 'seenAsc' | 'name'
+
+const ROOT_PATH_ID = '__packs_root__'
+
 /**
- * Rows per page of a pack's table. A collected pack grows without anyone
- * asking, and every row is a React Aria collection item holding two text
- * fields and a picture — the table used to hold all of them, and the page
- * asked for every sticker's file up front besides.
+ * Stickers per page inside a pack. A collected pack grows without anyone
+ * asking, and paging keeps DOM size and IPC file reads bounded to the page
+ * on screen.
  */
 export const STICKERS_PER_PAGE = 20
 
-/** Stable identity, so a table whose pack holds no selection never re-renders for it. */
-const NO_SELECTION: ReadonlySet<Key> = new Set<Key>()
+const EMPTY_SELECTION: ReadonlySet<string> = new Set()
 
-/**
- * Unconfirmed first, and within that in the order the pack already carries.
- *
- * A OneBot pack collects on its own and grows without anyone asking, so the
- * rows that need a person are the ones that must not be scrolled to. This is
- * the initial order only: clicking a column header hands sorting to the grid.
- */
 const REVIEW_ORDER: Record<EmojiInfoResponse['semantic_status'], number> = { pending: 0, suggested: 1, confirmed: 2 }
 
-function orderForReview(emojis: EmojiInfoResponse[]): EmojiInfoResponse[] {
-  return [...emojis].sort(
-    (a, b) => REVIEW_ORDER[a.semantic_status] - REVIEW_ORDER[b.semantic_status] || a.sort_order - b.sort_order,
-  )
-}
-
-/**
- * What a sticker is called and tagged, before anyone has confirmed it.
- *
- * A pending sticker's `name` is whatever the file was called and its `tags` are
- * empty; the model's guess lands in the `suggested_*` pair and is what should
- * be shown, so accepting it is one click rather than retyping it. Confirmation
- * moves the guess into the real columns and clears the pair, so past that point
- * the two agree.
- */
 function shownName(emoji: EmojiInfoResponse): string {
   return emoji.semantic_status === 'confirmed' ? emoji.name : (emoji.suggested_name ?? emoji.name)
 }
@@ -74,109 +70,40 @@ function shownTags(emoji: EmojiInfoResponse): string {
   return (emoji.semantic_status === 'confirmed' ? emoji.tags : (emoji.suggested_tags ?? emoji.tags)) ?? ''
 }
 
-/**
- * One field of one row, edited in place.
- *
- * Deliberately its own component holding its own draft: the cell renderers live
- * in a `columns` array, and a draft kept in the grid would rebuild that array —
- * and with it the whole RAC collection — on every keystroke. Here a keystroke
- * touches one cell.
- *
- * The cell *is* the base `Input` — the registry field, in its own tertiary
- * well on the grid's secondary surface — rather than text that swaps itself
- * for a field when pressed. Pressing it is editing it; Enter commits by
- * blurring, Escape puts the saved value back and blurs without committing.
- * The caller keys it by `value`, so a save that comes back from the backend
- * remounts it with the new text instead of leaving a stale draft behind.
- */
-function EditableCell({
-  value,
-  placeholder,
-  ariaLabel,
-  onSave,
-}: {
-  value: string
-  placeholder: string
-  ariaLabel: string
-  onSave: (next: string) => void
-}) {
-  const [draft, setDraft] = useState(value)
-  // Escape reverts the draft and blurs in the same tick, before the reset
-  // state has landed — the blur handler reads this instead of the draft.
-  const cancelled = useRef(false)
-
-  return (
-    <div className="m-emoji__field">
-      <TextField
-        aria-label={ariaLabel}
-        value={draft}
-        placeholder={placeholder}
-        size="sm"
-        onChange={setDraft}
-        onBlur={() => {
-          if (cancelled.current) {
-            cancelled.current = false
-            return
-          }
-          const next = draft.trim()
-          if (next !== value.trim()) onSave(next)
-        }}
-        // The table is a React Aria table and reads keys off the row: Space
-        // toggles its selection, Enter actions it, Left/Right walk between
-        // cells. Inside a text field all of those are text, so none of them may
-        // reach the row — a name with a space in it came out without one, and
-        // selected the row on the way. Up and Down mean nothing to a one-line
-        // field and are how the keyboard leaves it for the next row.
-        onKeyUp={(event) => {
-          if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') event.stopPropagation()
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowUp' || event.key === 'ArrowDown') return
-          event.stopPropagation()
-          if (event.nativeEvent.isComposing) return
-          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
-          if (event.key === 'Escape') {
-            cancelled.current = true
-            setDraft(value)
-            ;(event.target as HTMLInputElement).blur()
-          }
-        }}
-      />
-    </div>
-  )
+function parseTagList(raw: string): string[] {
+  return raw
+    .split(/[,，、]/)
+    .map((part) => part.trim())
+    .filter(Boolean)
 }
 
-/**
- * A row's picture: its file is asked for once the row is near the viewport
- * (so only the page on screen is ever fetched), painted still, and played
- * while a pointer rests on it — the same still-until-pointed-at sticker the
- * picker draws.
- */
-function StickerThumbnail({ id }: { id: string }) {
-  const box = useRef<HTMLSpanElement>(null)
-  const [pointed, pointer] = usePointerPlay()
-  const { near, playing } = useStickerPlayback(box, { autoplay: false, explicit: pointed })
-  const url = useStickerUrl(near ? id : null)
-  return (
-    <span ref={box} data-slot="sticker-thumbnail" data-url-state={url.status} className="m-emoji__thumb" {...pointer}>
-      {url.status === 'loaded' && <StickerThumb src={url.url} near={near} playing={playing} fallback={null} />}
-    </span>
-  )
+function sortEmojis(emojis: EmojiInfoResponse[], order: SortOrder): EmojiInfoResponse[] {
+  const list = [...emojis]
+  switch (order) {
+    case 'review':
+      return list.sort(
+        (a, b) => REVIEW_ORDER[a.semantic_status] - REVIEW_ORDER[b.semantic_status] || a.sort_order - b.sort_order,
+      )
+    case 'seenDesc':
+      return list.sort((a, b) => b.seen_count - a.seen_count || a.sort_order - b.sort_order)
+    case 'seenAsc':
+      return list.sort((a, b) => a.seen_count - b.seen_count || a.sort_order - b.sort_order)
+    case 'name':
+      return list.sort((a, b) => shownName(a).localeCompare(shownName(b)) || a.sort_order - b.sort_order)
+  }
 }
 
-/**
- * Per row, so the two long-running actions can say they are running without the
- * grid holding a map of row ids to booleans.
- */
-function RowActions({
+function StickerActions({
   emoji,
   canDelete,
+  labelled = false,
   onSuggest,
   onConfirm,
   onDelete,
 }: {
   emoji: EmojiInfoResponse
   canDelete: boolean
+  labelled?: boolean
   onSuggest: (id: string) => Promise<void>
   onConfirm: (emoji: EmojiInfoResponse) => Promise<void>
   onDelete: (id: string) => void
@@ -185,12 +112,49 @@ function RowActions({
   const [busy, setBusy] = useState<'suggest' | 'confirm' | null>(null)
   const unconfirmed = emoji.semantic_status !== 'confirmed'
 
+  if (labelled) {
+    return (
+      <div data-slot="sticker-inspector-actions" className="m-emoji__inspector-actions">
+        {unconfirmed && (
+          <>
+            <Button
+              icon={<Sparkles />}
+              size="sm"
+              variant="secondary"
+              isPending={busy === 'suggest'}
+              isDisabled={busy !== null || !emoji.file_name}
+              onPress={() => {
+                setBusy('suggest')
+                void onSuggest(emoji.id).finally(() => setBusy(null))
+              }}
+            >
+              {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
+            </Button>
+            <Button
+              icon={<Check />}
+              size="sm"
+              isPending={busy === 'confirm'}
+              isDisabled={busy !== null || !shownName(emoji).trim()}
+              onPress={() => {
+                setBusy('confirm')
+                void onConfirm(emoji).finally(() => setBusy(null))
+              }}
+            >
+              {t('settings.emoji.confirmSemantic')}
+            </Button>
+          </>
+        )}
+        {canDelete && (
+          <Button icon={<Bin />} size="sm" variant="destructive" onPress={() => onDelete(emoji.id)}>
+            {t('common.delete')}
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div data-slot="sticker-row-actions" className="m-emoji__row-actions">
-      {/* Icon actions, as the registry's file table has them (settings-storage
-          `RowActionButton`): two labelled buttons beside a delete needed a
-          column wider than the whole settings width can spare. The label is the
-          accessible name and the tooltip. */}
+    <div data-slot="sticker-row-actions" className="m-emoji__tile-actions">
       {unconfirmed && (
         <>
           <TooltipTrigger>
@@ -242,244 +206,158 @@ function RowActions({
 }
 
 /**
- * The stickers of one pack, as rows.
- *
- * This used to be two views of the same table — a thumbnail grid for confirmed
- * stickers and a stack of cards for the ones awaiting a meaning — which hid
- * everything the pack actually knows: tags were invisible once confirmed, and
- * how often a sticker had been seen was shown only while it was still pending.
- * Both are columns now, and there is one row per sticker whatever its state.
+ * Large preview stage inside `FileDetails`, clicking opens the full-screen
+ * `ImageViewer` lightbox.
  */
-function StickerGrid({
-  detail,
-  selectedKeys,
-  onSelectionChange,
-  onSaveSemantics,
+function InspectorPreview({
+  emoji,
+  canDelete,
   onSuggest,
-  onDeleteEmoji,
+  onConfirm,
+  onDelete,
+  onPreview,
 }: {
-  detail: PackDetail
-  selectedKeys: Iterable<Key>
-  onSelectionChange: (keys: Set<Key>) => void
-  onSaveSemantics: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
-  onSuggest: (id: string) => Promise<EmojiInfoResponse>
-  onDeleteEmoji: (id: string) => void
+  emoji: EmojiInfoResponse
+  canDelete: boolean
+  onSuggest: (id: string) => Promise<void>
+  onConfirm: (emoji: EmojiInfoResponse) => Promise<void>
+  onDelete: (id: string) => void
+  onPreview: (image: ImageViewerImage) => void
 }) {
   const { t } = useTranslation()
-  const [error, setError] = useState<string | null>(null)
-  const canDelete = !detail.pack.is_builtin
-
-  // A cell has nowhere to put a failure, so both writes report here instead.
-  const save = useCallback(
-    (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => {
-      setError(null)
-      return onSaveSemantics(emoji, patch).catch((reason: unknown) => setError(String(reason)))
-    },
-    [onSaveSemantics],
-  )
-
-  const suggest = useCallback(
-    (id: string) => {
-      setError(null)
-      return onSuggest(id).then(
-        () => undefined,
-        (reason: unknown) => setError(String(reason)),
-      )
-    },
-    [onSuggest],
-  )
-
-  const columns = useMemo<DataTableColumn<EmojiInfoResponse>[]>(
-    () => [
-      {
-        id: 'sticker',
-        header: t('settings.emoji.stickerColumn'),
-        isRowHeader: true,
-        sortValue: (emoji) => shownName(emoji),
-        // The tags are the name's second line rather than a column of their
-        // own: at the settings width (532px) a fourth column left the name two
-        // words wide, and the two are read together anyway — what the sticker
-        // is called, and what else it answers to.
-        cell: (emoji) => (
-          <div data-slot="sticker-cell" className="m-emoji__cell">
-            <StickerThumbnail id={emoji.id} />
-            <div data-slot="sticker-cell-fields" className="m-emoji__fields">
-              <div data-slot="sticker-cell-name" className="m-emoji__name-row">
-                <EditableCell
-                  key={shownName(emoji)}
-                  value={shownName(emoji)}
-                  placeholder={t('settings.emoji.semanticName')}
-                  ariaLabel={t('settings.emoji.editName')}
-                  onSave={(name) => void save(emoji, { name })}
-                />
-                {emoji.semantic_status !== 'confirmed' && <Badge tone="warning">{t('settings.emoji.pending')}</Badge>}
-              </div>
-              <EditableCell
-                key={shownTags(emoji)}
-                value={shownTags(emoji)}
-                placeholder={t('settings.emoji.noTags')}
-                ariaLabel={t('settings.emoji.editTags')}
-                onSave={(tags) => void save(emoji, { tags })}
-              />
-            </div>
-          </div>
-        ),
-      },
-      {
-        id: 'seen',
-        header: t('settings.emoji.seenColumn'),
-        align: 'end',
-        width: 96,
-        sortValue: (emoji) => emoji.seen_count,
-        cell: (emoji) => <span className="m-emoji__seen">{emoji.seen_count}</span>,
-      },
-      {
-        id: 'actions',
-        header: t('settings.emoji.actionsColumn'),
-        align: 'end',
-        width: 128,
-        cell: (emoji) => (
-          <RowActions
-            emoji={emoji}
-            canDelete={canDelete}
-            onSuggest={suggest}
-            onConfirm={(target) => save(target, {})}
-            onDelete={onDeleteEmoji}
-          />
-        ),
-      },
-    ],
-    [t, canDelete, save, suggest, onDeleteEmoji],
-  )
-
-  const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
+  const box = useRef<HTMLDivElement>(null)
+  const [pointed, pointer] = usePointerPlay()
+  const { near, playing } = useStickerPlayback(box, { autoplay: true, explicit: pointed })
+  const url = useStickerUrl(emoji.id)
+  const label = shownName(emoji)
 
   return (
-    <div data-slot="sticker-grid" className="m-emoji__grid">
-      <DataTable<EmojiInfoResponse>
-        aria-label={t('settings.emoji.gridLabel', { pack: detail.pack.name })}
-        columns={columns}
-        rows={rows}
-        getRowId={(emoji) => emoji.id}
-        // A builtin pack's stickers cannot be deleted, and deletion is the only
-        // thing a selection is for here.
-        selectionMode={canDelete ? 'multiple' : 'none'}
-        selectedKeys={selectedKeys}
-        onSelectionChange={onSelectionChange}
-        pageSize={STICKERS_PER_PAGE}
-        // A collected pack has no ceiling, so the table keeps its own scroller
-        // instead of making the settings page arbitrarily long.
-        maxHeight={384}
-        renderEmptyState={() => <EmptyState heading={t('settings.emoji.noStickers')} headingLevel={3} size="sm" />}
+    <div className="m-emoji__inspector-preview">
+      <div ref={box} className="m-emoji__inspector-stage" {...pointer}>
+        <AriaButton
+          className="m-emoji__preview-btn"
+          aria-label={t('settings.emoji.previewSticker', { name: label })}
+          isDisabled={url.status !== 'loaded'}
+          onPress={() => {
+            if (url.status === 'loaded') {
+              onPreview({ id: emoji.id, src: url.url, alt: label, title: label })
+            }
+          }}
+        >
+          <span className="m-emoji__inspector-thumb">
+            {url.status === 'loaded' && <StickerThumb src={url.url} near={near} playing={playing} fallback={null} />}
+          </span>
+        </AriaButton>
+      </div>
+      <StickerActions
+        emoji={emoji}
+        canDelete={canDelete}
+        labelled
+        onSuggest={onSuggest}
+        onConfirm={onConfirm}
+        onDelete={onDelete}
       />
-      {error && (
-        <Alert data-slot="sticker-grid-error" tone="danger" shouldAnnounce>
-          {error}
-        </Alert>
-      )}
     </div>
   )
 }
 
-function PackCard({
-  detail,
-  selectedKeys,
-  onSelectionChange,
-  onDelete,
-  onImport,
-  onDeleteEmoji,
-  onSaveSemantics,
+/**
+ * Clean gallery tile for one sticker: large readable artwork with hover
+ * playback, lightweight caption, and click-to-inspect into `FileDetails`.
+ */
+function StickerTile({
+  emoji,
+  canDelete,
+  selected,
+  inspected,
+  onToggleSelected,
+  onInspect,
+  onSave,
   onSuggest,
+  onDelete,
 }: {
-  detail: PackDetail
-  selectedKeys: Iterable<Key>
-  onSelectionChange: (keys: Set<Key>) => void
-  onDelete?: () => void
-  onImport?: () => void
-  onDeleteEmoji: (id: string) => void
-  onSaveSemantics: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
-  onSuggest: (id: string) => Promise<EmojiInfoResponse>
+  emoji: EmojiInfoResponse
+  canDelete: boolean
+  selected: boolean
+  inspected: boolean
+  onToggleSelected: (checked: boolean) => void
+  onInspect: () => void
+  onSave: (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => Promise<void>
+  onSuggest: (id: string) => Promise<void>
+  onDelete: (id: string) => void
 }) {
   const { t } = useTranslation()
-  const pending = detail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed').length
+  const box = useRef<HTMLDivElement>(null)
+  const [pointed, pointer] = usePointerPlay()
+  const { near, playing } = useStickerPlayback(box, { autoplay: false, explicit: pointed })
+  const url = useStickerUrl(near ? emoji.id : null)
+  const label = shownName(emoji)
+  const tags = shownTags(emoji)
+  const unconfirmed = emoji.semantic_status !== 'confirmed'
 
   return (
-    // Render prop rather than a controlled `isExpanded`: the open state is only
-    // read one level down, so the card keeps its own uncontrolled state and no
-    // caller has to hold it.
-    <Disclosure className="m-emoji__fold">
-      {({ isExpanded }) => (
-        <>
-          <Heading>
-            {/* `text-align: start` undoes the button element's centred UA default. */}
-            <AriaButton slot="trigger" className="m-emoji__trigger">
-              <StickyNote size={14} aria-hidden className="m-emoji__glyph" />
-              <span data-slot="pack-name" onPointerEnter={titleIfTruncated} className="m-emoji__name">
-                {detail.pack.name}
-              </span>
-              <span data-slot="pack-count" className="m-emoji__count">
-                {detail.emojis.length}
-              </span>
-              {pending > 0 && <Badge tone="warning">{t('settings.emoji.pendingCount', { count: pending })}</Badge>}
-              {detail.pack.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
-              <ChevronRight size={14} aria-hidden className="m-emoji__chevron" />
-            </AriaButton>
-          </Heading>
+    <article
+      data-slot="sticker-card"
+      data-selected={selected || undefined}
+      data-inspected={inspected || undefined}
+      data-pending={unconfirmed || undefined}
+      className="m-emoji__tile"
+    >
+      <div
+        ref={box}
+        data-slot="sticker-thumbnail"
+        data-url-state={url.status}
+        className="m-emoji__tile-stage"
+        {...pointer}
+      >
+        {canDelete && (
+          <div className="m-emoji__tile-check">
+            <Checkbox
+              aria-label={t('settings.emoji.selectSticker', { name: label })}
+              isSelected={selected}
+              onChange={onToggleSelected}
+            />
+          </div>
+        )}
+        {unconfirmed && (
+          <div className="m-emoji__tile-badges">
+            <Badge tone="warning">{t('settings.emoji.pending')}</Badge>
+          </div>
+        )}
+        <AriaButton
+          className="m-emoji__preview-btn"
+          aria-label={t('settings.emoji.inspectSticker', { name: label })}
+          aria-pressed={inspected}
+          onPress={onInspect}
+        >
+          <span className="m-emoji__thumb">
+            {url.status === 'loaded' && <StickerThumb src={url.url} near={near} playing={playing} fallback={null} />}
+          </span>
+        </AriaButton>
+      </div>
 
-          {/* `min-height: 0` is load-bearing: the card is a flex column, and a flex
-              item's default `min-height: auto` floors it at its content height. */}
-          <DisclosurePanel className="m-emoji__panel">
-            <div className="m-emoji__body">
-              {/* A collapsed panel is only hidden, not unmounted, so the grid
-                  has to be gated: every pack's images — GIF and APNG among them
-                  — would otherwise be decoded and held as bitmaps on every
-                  visit to this page, open or not. The cost is that collapsing
-                  drops the content in the same frame as the height animation. */}
-              {isExpanded && (
-                <>
-                  {detail.pack.description && (
-                    <p data-slot="pack-description" className="m-emoji__desc">
-                      {detail.pack.description}
-                    </p>
-                  )}
+      <div className="m-emoji__tile-body">
+        <AriaButton className="m-emoji__tile-title-btn" onPress={onInspect}>
+          <span data-slot="sticker-name" onPointerEnter={titleIfTruncated} className="m-emoji__tile-title">
+            {label}
+          </span>
+        </AriaButton>
+        <span onPointerEnter={titleIfTruncated} className="m-emoji__tile-tags">
+          {tags || t('settings.emoji.noTags')}
+        </span>
+      </div>
 
-                  <StickerGrid
-                    detail={detail}
-                    selectedKeys={selectedKeys}
-                    onSelectionChange={onSelectionChange}
-                    onSaveSemantics={onSaveSemantics}
-                    onSuggest={onSuggest}
-                    onDeleteEmoji={onDeleteEmoji}
-                  />
-
-                  <div data-slot="pack-actions" className="m-emoji__actions">
-                    {onImport && (
-                      // The picker returns paths on this device and the import
-                      // is read by whichever machine the backend is on.
-                      <Button icon={<Upload />} variant="secondary" onPress={onImport} isDisabled={!can.importFromDisk}>
-                        {t('settings.emoji.import')}
-                      </Button>
-                    )}
-                    {onDelete && !detail.pack.is_builtin && (
-                      <span className="m-emoji__aside">
-                        <Button icon={<Bin />} variant="destructive" onPress={onDelete}>
-                          {t('common.delete')}
-                        </Button>
-                      </span>
-                    )}
-                  </div>
-                  {onImport && !can.importFromDisk && (
-                    <p data-slot="pack-import-note" className="m-emoji__note">
-                      {t('capability.importFromDisk')}
-                    </p>
-                  )}
-                </>
-              )}
-            </div>
-          </DisclosurePanel>
-        </>
-      )}
-    </Disclosure>
+      <div className="m-emoji__tile-footer">
+        <span className="m-emoji__seen">{t('settings.emoji.seenCount', { count: emoji.seen_count })}</span>
+        <StickerActions
+          emoji={emoji}
+          canDelete={canDelete}
+          onSuggest={onSuggest}
+          onConfirm={(target) => onSave(target, {})}
+          onDelete={onDelete}
+        />
+      </div>
+    </article>
   )
 }
 
@@ -487,57 +365,154 @@ export function EmojiSettings() {
   const { t } = useTranslation()
   const [details, setDetails] = useState<PackDetail[]>([])
   const [loading, setLoading] = useState(true)
+  const [activePackId, setActivePackId] = useState<string | null>(null)
+  const [inspectedId, setInspectedId] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const [search, setSearch] = useState('')
+  const [sortOrder, setSortOrder] = useState<SortOrder>('review')
+  const [page, setPage] = useState(1)
+  const [showModelConfig, setShowModelConfig] = useState(false)
+  const [createOpen, setCreateOpen] = useState(false)
   const [newPackName, setNewPackName] = useState('')
-  // One selection for the page, not one per pack: the bulk bar is fixed to the
-  // viewport, and two packs holding selections would stack two of them there.
-  const [selection, setSelection] = useState<{ packId: string; keys: Set<Key> } | null>(null)
+  const [selection, setSelection] = useState<{ packId: string; keys: Set<string> } | null>(null)
   const [bulkSuggest, setBulkSuggest] = useState<{ done: number; total: number } | null>(null)
-  const [suggestError, setSuggestError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [preview, setPreview] = useState<ImageViewerImage | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const packs = await api.emojis.listPacks({ assistant_id: null })
     const result = await Promise.all(
       packs.map(async (pack) => {
-        // What the stickers are, not their files: a row asks for its picture
-        // once it is on screen (`StickerThumbnail`). Asking here was one IPC
-        // round trip — and one whole file as base64 — per sticker in every
-        // pack, on every visit and after every edit.
         const emojis = await api.emojis.list({ filter: { kind: 'pack', pack_id: pack.id } })
         return { pack, emojis }
       }),
     )
     setDetails(result)
+    setActivePackId((current) => {
+      if (current === ROOT_PATH_ID) return ROOT_PATH_ID
+      if (current && result.some((item) => item.pack.id === current)) return current
+      const withPending = result.find((item) => item.emojis.some((emoji) => emoji.semantic_status !== 'confirmed'))
+      return (withPending ?? result[0])?.pack.id ?? ROOT_PATH_ID
+    })
   }, [])
 
   useEffect(() => {
     refresh().then(() => setLoading(false))
   }, [refresh])
 
-  const selectedIds = useMemo(() => {
-    if (!selection) return []
-    const detail = details.find((d) => d.pack.id === selection.packId)
-    if (!detail) return []
-    return [...selection.keys].map(String)
-  }, [selection, details])
+  const activeDetail = useMemo(
+    () =>
+      activePackId && activePackId !== ROOT_PATH_ID ? (details.find((d) => d.pack.id === activePackId) ?? null) : null,
+    [details, activePackId],
+  )
+
+  const openPack = useCallback((packId: string | null) => {
+    setActivePackId(packId ?? ROOT_PATH_ID)
+    setInspectedId(null)
+    setSelection(null)
+    setStatusFilter('all')
+    setSearch('')
+    setPage(1)
+  }, [])
+
+  const pendingCount = useMemo(
+    () => (activeDetail ? activeDetail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed').length : 0),
+    [activeDetail],
+  )
+  const confirmedCount = activeDetail ? activeDetail.emojis.length - pendingCount : 0
+
+  const filtered = useMemo(() => {
+    if (!activeDetail) return []
+    const query = search.trim().toLowerCase()
+    const matches = activeDetail.emojis.filter((emoji) => {
+      if (statusFilter === 'pending' && emoji.semantic_status === 'confirmed') return false
+      if (statusFilter === 'confirmed' && emoji.semantic_status !== 'confirmed') return false
+      if (!query) return true
+      const name = shownName(emoji).toLowerCase()
+      const tags = shownTags(emoji).toLowerCase()
+      return name.includes(query) || tags.includes(query)
+    })
+    return sortEmojis(matches, sortOrder)
+  }, [activeDetail, statusFilter, search, sortOrder])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / STICKERS_PER_PAGE))
+  const currentPage = Math.min(page, totalPages)
+  const pageItems = useMemo(() => {
+    const start = (currentPage - 1) * STICKERS_PER_PAGE
+    return filtered.slice(start, start + STICKERS_PER_PAGE)
+  }, [filtered, currentPage])
+
+  const packTagOptions = useMemo(() => {
+    if (!activeDetail) return []
+    const set = new Set<string>()
+    for (const emoji of activeDetail.emojis) {
+      for (const tag of parseTagList(shownTags(emoji))) set.add(tag)
+    }
+    return [...set].sort((a, b) => a.localeCompare(b))
+  }, [activeDetail])
+
+  const inspectedEmoji = useMemo(
+    () => (activeDetail && inspectedId ? (activeDetail.emojis.find((e) => e.id === inspectedId) ?? null) : null),
+    [activeDetail, inspectedId],
+  )
+
+  const activeSelection =
+    selection && activeDetail && selection.packId === activeDetail.pack.id ? selection.keys : EMPTY_SELECTION
+  const selectedIds = useMemo(() => [...activeSelection], [activeSelection])
+  const selectedOnPage = useMemo(
+    () => pageItems.filter((emoji) => activeSelection.has(emoji.id)).length,
+    [pageItems, activeSelection],
+  )
+  const allOnPageSelected = pageItems.length > 0 && selectedOnPage === pageItems.length
+  const someOnPageSelected = selectedOnPage > 0 && selectedOnPage < pageItems.length
 
   const suggestableSelected = useMemo(() => {
-    if (!selection) return []
-    const detail = details.find((d) => d.pack.id === selection.packId)
-    if (!detail) return []
-    return detail.emojis.filter(
+    if (!activeDetail || selectedIds.length === 0) return []
+    return activeDetail.emojis.filter(
       (emoji) => selectedIds.includes(emoji.id) && emoji.semantic_status !== 'confirmed' && emoji.file_name,
     )
-  }, [selection, details, selectedIds])
+  }, [activeDetail, selectedIds])
+
+  const updateSelection = useCallback(
+    (next: Set<string>) => {
+      if (!activeDetail) return
+      setSelection(next.size > 0 ? { packId: activeDetail.pack.id, keys: next } : null)
+    },
+    [activeDetail],
+  )
+
+  const toggleSelectPage = (checked: boolean) => {
+    const next = new Set(activeSelection)
+    if (checked) {
+      for (const emoji of pageItems) next.add(emoji.id)
+    } else {
+      for (const emoji of pageItems) next.delete(emoji.id)
+    }
+    updateSelection(next)
+  }
+
+  const toggleSelectOne = useCallback(
+    (id: string, checked: boolean) => {
+      const next = new Set(activeSelection)
+      if (checked) next.add(id)
+      else next.delete(id)
+      updateSelection(next)
+    },
+    [activeSelection, updateSelection],
+  )
 
   const handleCreate = useCallback(async () => {
-    if (!newPackName.trim()) return
-    await api.emojis.createPack({ name: newPackName.trim(), description: null })
+    const trimmed = newPackName.trim()
+    if (!trimmed) return
+    const created = await api.emojis.createPack({ name: trimmed, description: null })
     setNewPackName('')
+    setCreateOpen(false)
+    openPack(created.id)
     await refresh()
-  }, [newPackName, refresh])
+  }, [newPackName, openPack, refresh])
 
-  const handleDelete = useCallback(
+  const handleDeletePack = useCallback(
     async (id: string) => {
       if (
         !(await confirm({
@@ -549,6 +524,8 @@ export function EmojiSettings() {
         return
       await api.emojis.deletePack({ id })
       setSelection(null)
+      setInspectedId(null)
+      setActivePackId(null)
       await refresh()
     },
     [confirm, t, refresh],
@@ -556,7 +533,6 @@ export function EmojiSettings() {
 
   const handleImport = useCallback(
     async (packId: string) => {
-      // Cancelling the picker rejects on Android instead of resolving to null.
       const files = await dialogOpen({
         multiple: true,
         filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'jpg', 'jpeg', 'bmp', 'json'] }],
@@ -582,9 +558,16 @@ export function EmojiSettings() {
         return
       await api.emojis.delete({ id })
       forgetStickerUrl(id)
+      if (inspectedId === id) setInspectedId(null)
+      setSelection((current) => {
+        if (!current || !current.keys.has(id)) return current
+        const next = new Set(current.keys)
+        next.delete(id)
+        return next.size > 0 ? { packId: current.packId, keys: next } : null
+      })
       await refresh()
     },
-    [confirm, t, refresh],
+    [confirm, inspectedId, t, refresh],
   )
 
   const handleDeleteSelected = useCallback(async () => {
@@ -597,52 +580,50 @@ export function EmojiSettings() {
       }))
     )
       return
-    // One at a time: each delete unlinks a file as well as a row, and the
-    // backend takes a pooled connection per call.
     for (const id of selectedIds) {
       await api.emojis.delete({ id })
       forgetStickerUrl(id)
     }
+    if (inspectedId && selectedIds.includes(inspectedId)) setInspectedId(null)
     setSelection(null)
     await refresh()
-  }, [selectedIds, confirm, t, refresh])
+  }, [selectedIds, inspectedId, confirm, t, refresh])
 
-  /**
-   * The one write path for what a sticker means.
-   *
-   * `confirm_semantics` sets name and tags together and is idempotent,
-   * so it serves an edit to a confirmed sticker as well as the first
-   * confirmation of a pending one — which is what makes "type a name and press
-   * Enter" the same act as accepting the model's guess. `rename` would
-   * only move half of it and leave the row unconfirmed.
-   */
   const handleSaveSemantics = useCallback(
     async (emoji: EmojiInfoResponse, patch: { name?: string; tags?: string }) => {
+      setActionError(null)
       const name = (patch.name ?? shownName(emoji)).trim()
       if (!name) return
       const tags = (patch.tags ?? shownTags(emoji)).trim()
-      await api.emojis.update({
-        id: emoji.id,
-        action: { kind: 'confirm_semantics', name, tags: tags || null },
-      })
-      await refresh()
+      try {
+        await api.emojis.update({
+          id: emoji.id,
+          action: { kind: 'confirm_semantics', name, tags: tags || null },
+        })
+        await refresh()
+      } catch (reason) {
+        setActionError(String(reason))
+      }
     },
     [refresh],
   )
 
   const handleSuggest = useCallback(
     async (id: string) => {
-      setSuggestError(null)
-      const updated = await api.emojis.suggestSemantics({ id })
-      await refresh()
-      return updated
+      setActionError(null)
+      try {
+        await api.emojis.suggestSemantics({ id })
+        await refresh()
+      } catch (reason) {
+        setActionError(String(reason))
+      }
     },
     [refresh],
   )
 
   const handleSuggestSelected = useCallback(async () => {
     if (suggestableSelected.length === 0 || bulkSuggest) return
-    setSuggestError(null)
+    setActionError(null)
     const ids = suggestableSelected.map((emoji) => emoji.id)
     setBulkSuggest({ done: 0, total: ids.length })
     const failures: string[] = []
@@ -657,64 +638,328 @@ export function EmojiSettings() {
     await refresh()
     setBulkSuggest(null)
     if (failures.length > 0) {
-      setSuggestError(t('settings.emoji.suggestSelectedFailed', { count: failures.length, error: failures[0] }))
+      setActionError(t('settings.emoji.suggestSelectedFailed', { count: failures.length, error: failures[0] }))
     }
   }, [suggestableSelected, bulkSuggest, refresh, t])
 
+  const pathSegments = useMemo<PathSegment[]>(() => {
+    const root: PathSegment = {
+      id: ROOT_PATH_ID,
+      label: t('settings.emoji.packsTitle'),
+      icon: <FolderOpen size={14} />,
+    }
+    if (!activeDetail) return [root]
+    return [root, { id: activeDetail.pack.id, label: activeDetail.pack.name, icon: <StickyNote size={14} /> }]
+  }, [activeDetail, t])
+
+  const getPathChildren = useCallback(
+    (id: string): PathSegment[] => {
+      if (id !== ROOT_PATH_ID) return []
+      return details.map((d) => ({ id: d.pack.id, label: d.pack.name, icon: <StickyNote size={14} /> }))
+    },
+    [details],
+  )
+
+  const sortOptions = useMemo(
+    () =>
+      [
+        { value: 'review', label: t('settings.emoji.sort.review') },
+        { value: 'seenDesc', label: t('settings.emoji.sort.seenDesc') },
+        { value: 'seenAsc', label: t('settings.emoji.sort.seenAsc') },
+        { value: 'name', label: t('settings.emoji.sort.name') },
+      ] as const,
+    [t],
+  )
+
   if (loading) {
-    return <SettingsSkeleton />
+    return <SettingsSkeleton width="wide" />
   }
 
+  const canDeleteActivePack = Boolean(activeDetail && !activeDetail.pack.is_builtin)
+
+  const notice =
+    (!isRemote && showModelConfig) || actionError ? (
+      <div className="m-emoji__notice-stack">
+        {!isRemote && showModelConfig && (
+          <div data-slot="emoji-config-grid" className="m-emoji__config-grid">
+            <EmojiSuggestSettings />
+            <EmojiEmbedderSettings />
+          </div>
+        )}
+        {actionError && (
+          <Alert data-slot="sticker-grid-error" tone="danger" shouldAnnounce>
+            {actionError}
+          </Alert>
+        )}
+      </div>
+    ) : undefined
+
+  const detailsPanel =
+    activeDetail && inspectedEmoji ? (
+      <FileDetails
+        key={inspectedEmoji.id}
+        heading={shownName(inspectedEmoji)}
+        onOpenChange={(open) => {
+          if (!open) setInspectedId(null)
+        }}
+        preview={
+          <InspectorPreview
+            emoji={inspectedEmoji}
+            canDelete={canDeleteActivePack}
+            onSuggest={handleSuggest}
+            onConfirm={(target) => handleSaveSemantics(target, {})}
+            onDelete={(id) => void handleDeleteEmoji(id)}
+            onPreview={setPreview}
+          />
+        }
+        properties={[
+          {
+            id: 'name',
+            label: t('settings.emoji.editName'),
+            type: 'text',
+            value: shownName(inspectedEmoji),
+          },
+        ]}
+        onPropertyChange={(id, value) => {
+          if (id === 'name' && typeof value === 'string') {
+            return handleSaveSemantics(inspectedEmoji, { name: value })
+          }
+        }}
+        tags={parseTagList(shownTags(inspectedEmoji))}
+        tagOptions={packTagOptions}
+        onTagsChange={(nextTags) => void handleSaveSemantics(inspectedEmoji, { tags: nextTags.join(',') })}
+        info={[
+          {
+            label: t('settings.emoji.statusLabel'),
+            value:
+              inspectedEmoji.semantic_status === 'confirmed' ? (
+                <Badge tone="success">{t('settings.emoji.confirmed')}</Badge>
+              ) : (
+                <Badge tone="warning">{t('settings.emoji.pending')}</Badge>
+              ),
+          },
+          {
+            label: t('settings.emoji.seenColumn'),
+            value: t('settings.emoji.seenCount', { count: inspectedEmoji.seen_count }),
+          },
+          {
+            label: t('settings.emoji.formatLabel'),
+            value: inspectedEmoji.file_format.toUpperCase(),
+          },
+          {
+            label: t('settings.emoji.packLabel'),
+            value: activeDetail.pack.name,
+          },
+        ]}
+      />
+    ) : undefined
+
   return (
-    <SettingsPane>
-      <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
-
-      <EmojiSuggestSettings />
-      <EmojiEmbedderSettings />
-
-      <SettingsGroup>
-        <SettingsRow layout="stacked" label={t('settings.emoji.newPack')}>
-          <div data-slot="pack-create" className="m-emoji__create">
-            <div className="m-emoji__field">
-              <TextField
-                value={newPackName}
-                onChange={(e) => setNewPackName(e)}
-                placeholder={t('settings.emoji.packName')}
-                onKeyDown={(e) => {
-                  if (e.nativeEvent.isComposing) return
-                  if (e.key === 'Enter') handleCreate()
-                }}
-              />
-            </div>
-            <Button icon={<Plus />} variant="secondary" onPress={handleCreate} isDisabled={!newPackName.trim()}>
+    <SettingsPane width="wide" className="m-emoji__pane">
+      <FileManager
+        embedded
+        headingLevel={2}
+        heading={t('settings.emoji.title')}
+        description={t('settings.emoji.subtitle')}
+        notice={notice}
+        page={activeDetail ? currentPage : undefined}
+        totalPages={activeDetail ? totalPages : undefined}
+        onPageChange={setPage}
+        details={detailsPanel}
+        actions={
+          <>
+            {!isRemote && (
+              <Button
+                size="sm"
+                variant="secondary"
+                icon={<SlidersHorizontal />}
+                aria-expanded={showModelConfig}
+                onPress={() => setShowModelConfig((open) => !open)}
+              >
+                {t('settings.emoji.modelSettings')}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" icon={<Plus />} onPress={() => setCreateOpen(true)}>
               {t('settings.emoji.newPack')}
             </Button>
-          </div>
-        </SettingsRow>
-      </SettingsGroup>
-
-      <SettingsGroup>
-        <div data-slot="pack-list" className="m-emoji__list">
-          {details.map((d) => (
-            <PackCard
-              key={d.pack.id}
-              detail={d}
-              selectedKeys={selection?.packId === d.pack.id ? selection.keys : NO_SELECTION}
-              onSelectionChange={(keys) => setSelection(keys.size > 0 ? { packId: d.pack.id, keys } : null)}
-              onDelete={() => handleDelete(d.pack.id)}
-              onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
-              onDeleteEmoji={handleDeleteEmoji}
-              onSaveSemantics={handleSaveSemantics}
-              onSuggest={handleSuggest}
+            {activeDetail?.pack.kind === 'manual' && (
+              <Button
+                size="sm"
+                icon={<Upload />}
+                onPress={() => void handleImport(activeDetail.pack.id)}
+                isDisabled={!can.importFromDisk}
+              >
+                {t('settings.emoji.import')}
+              </Button>
+            )}
+            {canDeleteActivePack && activeDetail && (
+              <Button
+                size="sm"
+                variant="destructive"
+                icon={<Bin />}
+                onPress={() => void handleDeletePack(activeDetail.pack.id)}
+              >
+                {t('common.delete')}
+              </Button>
+            )}
+          </>
+        }
+      >
+        {/* Row 1: PathBar (with pack-switcher dropdown) + review status filter */}
+        <div className="m-emoji__nav-row">
+          <div className="m-emoji__path">
+            <PathBar
+              segments={pathSegments}
+              getChildren={getPathChildren}
+              onNavigate={(id) => openPack(id === ROOT_PATH_ID ? null : id)}
+              aria-label={t('settings.emoji.packsTitle')}
             />
-          ))}
-          {details.length === 0 && <EmptyState heading={t('settings.emoji.noPacks')} headingLevel={3} size="sm" />}
+          </div>
+          {activeDetail && activeDetail.emojis.length > 0 && (
+            <SegmentedControl
+              size="sm"
+              aria-label={t('settings.emoji.stickerColumn')}
+              selectedKey={statusFilter}
+              onSelectionChange={(key) => {
+                setStatusFilter(String(key) as StatusFilter)
+                setPage(1)
+              }}
+            >
+              <Segment id="all">
+                {t('settings.emoji.filter.all')} ({activeDetail.emojis.length})
+              </Segment>
+              <Segment id="pending">
+                {t('settings.emoji.filter.pending')} ({pendingCount})
+              </Segment>
+              <Segment id="confirmed">
+                {t('settings.emoji.filter.confirmed')} ({confirmedCount})
+              </Segment>
+            </SegmentedControl>
+          )}
         </div>
-      </SettingsGroup>
 
-      {/* The library's bulk bar, not a hand-fixed one: it keeps its own height in
-          the flow, so it needs no portal out of this query container, and it
-          announces the count and returns focus to the grid when it closes. */}
+        {!activeDetail ? (
+          /* Root view: all emoji packs as clean folder tiles */
+          details.length === 0 ? (
+            <EmptyState heading={t('settings.emoji.noPacks')} headingLevel={3} size="sm" />
+          ) : (
+            <div data-slot="pack-list" className="m-emoji__folder-grid">
+              {details.map((d) => {
+                const pending = d.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed').length
+                return (
+                  <AriaButton
+                    key={d.pack.id}
+                    data-slot="pack-item"
+                    className="m-emoji__folder-card"
+                    onPress={() => openPack(d.pack.id)}
+                  >
+                    <span className="m-emoji__folder-icon">
+                      <StickyNote size={22} aria-hidden />
+                    </span>
+                    <span className="m-emoji__folder-meta">
+                      <span onPointerEnter={titleIfTruncated} className="m-emoji__name">
+                        {d.pack.name}
+                      </span>
+                      <span className="m-emoji__folder-sub">
+                        <span>{t('settings.emoji.totalCount', { count: d.emojis.length })}</span>
+                        {pending > 0 && (
+                          <Badge tone="warning">{t('settings.emoji.pendingCount', { count: pending })}</Badge>
+                        )}
+                        {d.pack.is_builtin && <Badge>{t('settings.template.builtin')}</Badge>}
+                      </span>
+                    </span>
+                  </AriaButton>
+                )
+              })}
+            </div>
+          )
+        ) : (
+          <section
+            data-slot="sticker-grid"
+            className="m-emoji__explorer"
+            aria-label={t('settings.emoji.gridLabel', { pack: activeDetail.pack.name })}
+          >
+            {activeDetail.pack.description && (
+              <p data-slot="pack-description" className="m-emoji__desc">
+                {activeDetail.pack.description}
+              </p>
+            )}
+            {activeDetail.pack.kind === 'manual' && !can.importFromDisk && (
+              <p data-slot="pack-import-note" className="m-emoji__note">
+                {t('capability.importFromDisk')}
+              </p>
+            )}
+
+            {/* Row 2: Search + Sort + Select-page + Total — all on one clean horizontal baseline */}
+            {activeDetail.emojis.length > 0 && (
+              <div data-slot="sticker-toolbar" className="m-emoji__controls">
+                <div className="m-emoji__controls-start">
+                  <SearchField
+                    size="sm"
+                    aria-label={t('settings.emoji.searchPlaceholder')}
+                    placeholder={t('settings.emoji.searchPlaceholder')}
+                    value={search}
+                    onChange={(value) => {
+                      setSearch(value)
+                      setPage(1)
+                    }}
+                    className="m-emoji__search"
+                  />
+                  <div className="m-emoji__sort">
+                    <SettingsSelect
+                      size="sm"
+                      ariaLabel={t('settings.emoji.sortLabel')}
+                      value={sortOrder}
+                      options={sortOptions}
+                      onChange={(next) => {
+                        setSortOrder(next)
+                        setPage(1)
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="m-emoji__controls-end">
+                  <span className="m-emoji__count">{t('settings.emoji.totalCount', { count: filtered.length })}</span>
+                  {canDeleteActivePack && pageItems.length > 0 && (
+                    <Checkbox
+                      isSelected={allOnPageSelected}
+                      isIndeterminate={someOnPageSelected}
+                      onChange={toggleSelectPage}
+                    >
+                      {t('settings.emoji.selectPage')}
+                    </Checkbox>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeDetail.emojis.length === 0 ? (
+              <EmptyState heading={t('settings.emoji.noStickers')} headingLevel={4} size="sm" />
+            ) : filtered.length === 0 ? (
+              <EmptyState heading={t('settings.emoji.noMatches')} headingLevel={4} size="sm" />
+            ) : (
+              <div data-slot="sticker-cards" className="m-emoji__cards">
+                {pageItems.map((emoji) => (
+                  <StickerTile
+                    key={emoji.id}
+                    emoji={emoji}
+                    canDelete={canDeleteActivePack}
+                    selected={activeSelection.has(emoji.id)}
+                    inspected={inspectedId === emoji.id}
+                    onToggleSelected={(checked) => toggleSelectOne(emoji.id, checked)}
+                    onInspect={() => setInspectedId(emoji.id)}
+                    onSave={handleSaveSemantics}
+                    onSuggest={handleSuggest}
+                    onDelete={(id) => void handleDeleteEmoji(id)}
+                  />
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+      </FileManager>
+
       <SelectionBar selectedCount={selectedIds.length} onClear={() => setSelection(null)}>
         <Button
           size="sm"
@@ -730,17 +975,53 @@ export function EmojiSettings() {
           size="sm"
           icon={<Bin />}
           variant="destructive"
-          onPress={handleDeleteSelected}
+          onPress={() => void handleDeleteSelected()}
           isDisabled={bulkSuggest !== null}
         >
           {t('settings.emoji.deleteSelected')}
         </Button>
       </SelectionBar>
-      {suggestError && (
-        <Alert data-slot="emoji-suggest-batch-error" tone="danger" shouldAnnounce>
-          {suggestError}
-        </Alert>
-      )}
+
+      <Dialog
+        isOpen={createOpen}
+        size="sm"
+        heading={t('settings.emoji.newPack')}
+        onOpenChange={(open) => {
+          setCreateOpen(open)
+          if (!open) setNewPackName('')
+        }}
+      >
+        <form
+          onSubmit={(event) => {
+            event.preventDefault()
+            void handleCreate()
+          }}
+        >
+          <TextField
+            label={t('settings.emoji.packName')}
+            value={newPackName}
+            onChange={setNewPackName}
+            placeholder={t('settings.emoji.packName')}
+            autoFocus
+          />
+          <DialogFooter>
+            <Button variant="secondary" onPress={() => setCreateOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" isDisabled={!newPackName.trim()}>
+              {t('settings.emoji.newPack')}
+            </Button>
+          </DialogFooter>
+        </form>
+      </Dialog>
+
+      <ImageViewer
+        isOpen={preview !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null)
+        }}
+        images={preview ? [preview] : []}
+      />
       {confirmDialog}
     </SettingsPane>
   )

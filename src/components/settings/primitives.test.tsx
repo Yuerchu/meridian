@@ -154,9 +154,9 @@ describe('SettingsSelect', () => {
   })
 })
 
-// One width for every page, the registry settings-modal's content pane. The
-// pages used to pick from three (lg, 3xl, 4xl), so moving between sections
-// moved the column under the reader.
+// Tiered desktop widths: form/toggle settings sit at `--content-settings`
+// (780px), dashboards/tables/workspaces opt into `--content-settings-wide`
+// (1400px), and every shell plus its skeleton shares both tokens.
 describe('the settings width', () => {
   it('names the loading region once and hides its placeholder shapes', () => {
     const { container } = render(<SettingsSkeleton rows={3} />)
@@ -169,9 +169,11 @@ describe('the settings width', () => {
     for (const shape of shapes) expect(shape).toHaveAttribute('aria-hidden', 'true')
   })
 
-  it('is the registry settings-modal content pane, 532px', () => {
+  it('defines default and wide settings widths in px alongside the chat width', () => {
     const css = readFileSync(resolve(__dirname, '../../styles/meridian.css'), 'utf8')
-    expect(css).toMatch(/--content-settings:\s*33\.25rem;/)
+    expect(css).toMatch(/--content-settings:\s*780px;/)
+    expect(css).toMatch(/--content-settings-wide:\s*1400px;/)
+    expect(css).toMatch(/--content-chat:\s*920px;/)
   })
 
   it('is the width of every page shell, and of the skeleton that stands in for one', () => {
@@ -180,6 +182,9 @@ describe('the settings width', () => {
         <SettingsPane />
         <SettingsSkeleton />
         <SettingsPage title="Page" />
+        <SettingsPane width="wide" />
+        <SettingsSkeleton width="wide" />
+        <SettingsPage width="wide" title="Wide Page" />
       </>,
     )
     const shells = [
@@ -188,10 +193,14 @@ describe('the settings width', () => {
       { slot: 'settings-page', className: 'm-settings-page', stylesheet: 'settings-page.css' },
     ]
     for (const { slot, className, stylesheet } of shells) {
-      const el = container.querySelector(`[data-slot="${slot}"]`)
-      expect(el, slot).toHaveClass(className)
+      const nodes = container.querySelectorAll(`[data-slot="${slot}"]`)
+      expect(nodes, slot).toHaveLength(2)
+      expect(nodes[0], slot).toHaveClass(className)
+      expect(nodes[0], slot).not.toHaveAttribute('data-width')
+      expect(nodes[1], `${slot} wide`).toHaveAttribute('data-width', 'wide')
       const css = readFileSync(resolve(__dirname, stylesheet), 'utf8')
       expect(css, slot).toMatch(/max-width:\s*var\(--content-settings\)/)
+      expect(css, `${slot} wide`).toMatch(/max-width:\s*var\(--content-settings-wide\)/)
     }
   })
 })

@@ -1,144 +1,385 @@
 @layer components {
-  .m-emoji__field {
-    min-width: 0;
-    flex: 1;
+  /* FileManager provides its own header, grid, pagination and inset rhythm;
+     cancel the outer settings-shell gap so it sits flush inside the pane. */
+  .m-emoji__pane {
+    gap: 0;
   }
 
-  .m-emoji__thumb {
-    display: flex;
-    flex-shrink: 0;
-    width: 2.25rem;
-    height: 2.25rem;
-    overflow: hidden;
-    border-radius: var(--radius-control);
-    background: var(--surface-muted);
-  }
-
-  .m-emoji__row-actions,
-  .m-emoji__cell,
-  .m-emoji__name-row,
-  .m-emoji__actions,
-  .m-emoji__create,
-  .m-emoji__trigger {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-  }
-
-  .m-emoji__row-actions {
-    justify-content: flex-end;
-  }
-
-  .m-emoji__cell,
-  .m-emoji__fields,
-  .m-emoji__name,
-  .m-emoji__name-row {
-    min-width: 0;
-  }
-
-  .m-emoji__fields,
-  .m-emoji__grid,
-  .m-emoji__body {
+  .m-emoji__notice-stack {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
-  }
-
-  .m-emoji__list {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .m-emoji__fields,
-  .m-emoji__name {
-    flex: 1;
-  }
-
-  .m-emoji__name,
-  .m-emoji__count {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .m-emoji__grid {
     gap: var(--space-3);
   }
 
-  .m-emoji__seen {
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+  .m-emoji__config-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: start;
   }
 
-  .m-emoji__fold,
-  .m-emoji__create {
-    overflow: hidden;
+  .m-emoji__config-grid:empty {
+    display: none;
   }
 
-  .m-emoji__fold {
+  /* Row 1: PathBar on the left, review-status SegmentedControl on the right. */
+  .m-emoji__nav-row {
     display: flex;
-    flex-direction: column;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-width: 0;
   }
 
-  .m-emoji__fold + .m-emoji__fold {
-    border-block-start: 1px solid var(--border);
+  .m-emoji__path {
+    flex: 1 1 14rem;
+    min-width: 0;
   }
 
-  .m-emoji__trigger {
+  /* Root view: emoji packs rendered as folder cards. */
+  .m-emoji__folder-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .m-emoji__folder-card {
+    display: flex;
     box-sizing: border-box;
     width: 100%;
+    align-items: center;
+    gap: var(--space-3);
     margin: 0;
-    padding: var(--space-3) var(--space-4);
-    border: 0;
-    background: transparent;
+    padding: var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
     color: var(--text);
-    font: var(--text-body);
     text-align: start;
     cursor: pointer;
+    box-shadow: var(--shadow-resting);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      background-color var(--dur-fast) var(--ease-standard);
   }
 
-  .m-emoji__trigger[data-hovered]:not([data-disabled]) {
+  .m-emoji__folder-card[data-hovered] {
+    border-color: var(--border-strong);
     background: var(--surface-muted);
   }
 
-  .m-emoji__glyph,
-  .m-emoji__chevron {
+  .m-emoji__folder-card[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  .m-emoji__folder-icon {
+    display: flex;
+    width: 44px;
+    height: 44px;
     flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-item);
+    background: var(--surface-muted);
     color: var(--text-secondary);
   }
 
-  .m-emoji__chevron {
-    transition: transform var(--dur-standard) var(--ease-standard);
+  .m-emoji__folder-meta {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
-  .m-emoji__fold[data-expanded] .m-emoji__chevron {
-    transform: rotate(90deg);
+  .m-emoji__name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font: var(--text-body-medium);
   }
 
-  .m-emoji__count,
+  .m-emoji__folder-sub {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Pack gallery section */
+  .m-emoji__explorer {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
   .m-emoji__desc,
-  .m-emoji__note {
+  .m-emoji__note,
+  .m-emoji__count {
     margin: 0;
     color: var(--text-secondary);
     font: var(--text-caption);
   }
 
-  .m-emoji__panel {
-    width: 100%;
-    min-height: 0;
+  .m-emoji__count {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
-  .m-emoji__body {
-    gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-  }
-
-  .m-emoji__aside {
-    margin-inline-start: auto;
-  }
-
-  .m-emoji__create {
+  /* Row 2: Search + Sort on the left, count + Select-all cleanly right-aligned on one baseline. */
+  .m-emoji__controls {
+    display: flex;
+    flex-wrap: wrap;
     align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2) var(--space-4);
+    min-width: 0;
+  }
+
+  .m-emoji__controls-start,
+  .m-emoji__controls-end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-3);
+    min-width: 0;
+  }
+
+  .m-emoji__controls-start {
+    flex: 1 1 18rem;
+  }
+
+  .m-emoji__controls-end {
+    flex-shrink: 0;
+  }
+
+  .m-emoji__search {
+    flex: 1 1 12rem;
+    max-width: 18rem;
+  }
+
+  .m-emoji__sort {
+    flex-shrink: 0;
+    min-width: 9rem;
+  }
+
+  /* Gallery cards */
+  .m-emoji__cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+    gap: var(--space-3);
+    min-width: 0;
+  }
+
+  .m-emoji__tile {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface);
+    box-shadow: var(--shadow-resting);
+    transition:
+      border-color var(--dur-fast) var(--ease-standard),
+      box-shadow var(--dur-fast) var(--ease-standard);
+  }
+
+  .m-emoji__tile:hover {
+    border-color: var(--border-strong);
+  }
+
+  .m-emoji__tile[data-inspected] {
+    border-color: var(--ink);
+    box-shadow: 0 0 0 1px var(--ink);
+  }
+
+  .m-emoji__tile[data-selected] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .m-emoji__tile-stage {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 140px;
+    padding: var(--space-3);
+    border-block-end: 1px solid var(--border);
+    background: var(--surface-sunken);
+  }
+
+  .m-emoji__tile-check {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-start: var(--space-2);
+    z-index: 2;
+  }
+
+  .m-emoji__tile-badges {
+    position: absolute;
+    inset-block-start: var(--space-2);
+    inset-inline-end: var(--space-2);
+    z-index: 2;
+    pointer-events: none;
+  }
+
+  .m-emoji__preview-btn {
+    display: flex;
     width: 100%;
+    height: 100%;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--radius-item);
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .m-emoji__preview-btn[data-disabled] {
+    cursor: default;
+  }
+
+  .m-emoji__preview-btn[data-focus-visible] {
+    outline: var(--focus-ring);
+    outline-offset: calc(-1 * var(--focus-ring-width));
+  }
+
+  .m-emoji__thumb {
+    display: flex;
+    width: 112px;
+    height: 112px;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-item);
+  }
+
+  .m-emoji__tile-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: var(--space-2) var(--space-3);
+    min-width: 0;
+  }
+
+  .m-emoji__tile-title-btn {
+    display: block;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .m-emoji__tile-title-btn[data-focus-visible] {
+    outline: var(--focus-ring);
+    border-radius: var(--radius-item);
+  }
+
+  .m-emoji__tile-title {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font: var(--text-small-medium);
+  }
+
+  .m-emoji__tile-tags {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-emoji__tile-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-1);
+    margin-block-start: auto;
+    padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+    border-block-start: 1px solid var(--border);
+    background: var(--surface-sunken);
+  }
+
+  .m-emoji__seen {
+    color: var(--text-secondary);
+    font: var(--text-caption);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .m-emoji__tile-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* FileDetails inspector preview & actions */
+  .m-emoji__inspector-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+  }
+
+  .m-emoji__inspector-stage {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 196px;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--surface-sunken);
+  }
+
+  .m-emoji__inspector-stage .m-emoji__preview-btn {
+    cursor: zoom-in;
+  }
+
+  .m-emoji__inspector-thumb {
+    display: flex;
+    width: 164px;
+    height: 164px;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    border-radius: var(--radius-item);
+  }
+
+  .m-emoji__inspector-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+  }
+
+  @container pane (width >= 820px) {
+    .m-emoji__config-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .m-emoji__config-grid:has(> :only-child) {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 }
