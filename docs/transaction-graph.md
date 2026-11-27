@@ -284,7 +284,7 @@
 | `src-tauri/src/commands/model_config.rs` › `list_logical_models` | sea-read | model_profile, provider |
 | `src-tauri/src/commands/model_config.rs` › `list_model_configs` | sea-read | model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `list_model_profiles` | sea-read | model_profile |
-| `src-tauri/src/commands/model_config.rs` › `set_model_config` | sea-write | conversation, model_config, model_profile |
+| `src-tauri/src/commands/model_config.rs` › `set_model_config_inner` | sea-write | conversation, model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `switch_model_deployment_profile` | sea-write | model_config, model_profile |
 | `src-tauri/src/commands/model_config.rs` › `update_logical_model` | sea-write | model_profile |
 | `src-tauri/src/commands/model_config.rs` › `update_model_deployment` | sea-write | model_config, model_profile |
@@ -297,9 +297,9 @@
 | `src-tauri/src/commands/plan_review.rs` › `resolve_plan_file_conflict` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `set_plan_review_draft` | sea-write | plan_review |
 | `src-tauri/src/commands/plan_review.rs` › `spawn_acp_clear_context_implementation` | sea-write | acp_session |
-| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision` | sea-read | plan_review |
-| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision` | sea-write | conversation, plan_review |
-| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision` | sea-write | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision_inner` | sea-read | plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision_inner` | sea-write | conversation, plan_review |
+| `src-tauri/src/commands/plan_review.rs` › `submit_plan_review_decision_inner` | sea-write | plan_review |
 | `src-tauri/src/commands/preference.rs` › `set_preference` | sea-write | preference |
 | `src-tauri/src/commands/project.rs` › `create_project` | sea-write | project |
 | `src-tauri/src/commands/project.rs` › `delete_project` | sea-write | board_task, conversation, memory, project |

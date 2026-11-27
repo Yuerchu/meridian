@@ -215,7 +215,8 @@ pub async fn start_board_task(
     app: tauri::AppHandle,
     request: BoardTaskStartRequest,
 ) -> Result<BoardTaskStartResponse, String> {
-    start(&app.services(), request).await
+    let services = app.services();
+    Box::pin(start(&services, request)).await
 }
 
 fn started<'a>(
@@ -367,7 +368,8 @@ pub async fn delete_board_task_worktree(
     app: tauri::AppHandle,
     request: BoardTaskWorktreeDeleteRequest,
 ) -> Result<BoardTaskInfoResponse, String> {
-    remove_worktree(&app.services(), &request.id).await
+    let services = app.services();
+    Box::pin(remove_worktree(&services, &request.id)).await
 }
 
 /// A person removing a card's worktree. Refused while the agent is working,
@@ -411,7 +413,8 @@ pub(crate) async fn remove_worktree(services: &Services, id: &str) -> Result<Boa
 
 #[tauri::command]
 pub async fn delete_board_task(app: tauri::AppHandle, request: BoardTaskDeleteRequest) -> Result<(), String> {
-    delete(&app.services(), &request.id).await
+    let services = app.services();
+    Box::pin(delete(&services, &request.id)).await
 }
 
 /// A card that never started goes alone. A started one goes with its

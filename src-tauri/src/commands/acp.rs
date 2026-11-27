@@ -253,7 +253,8 @@ pub async fn open_acp_session(app: tauri::AppHandle, request: AcpSessionOpenRequ
     if !std::path::Path::new(cwd).is_dir() {
         return Err(format!("`{cwd}` is not a folder"));
     }
-    acp::open_session(&app.services(), cwd).await
+    let services = app.services();
+    Box::pin(acp::open_session(&services, cwd)).await
 }
 
 /// Send one prompt and run the turn to completion.
@@ -264,73 +265,76 @@ pub async fn open_acp_session(app: tauri::AppHandle, request: AcpSessionOpenRequ
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn send_acp_prompt(app: tauri::AppHandle, request: AcpPromptSendRequest) -> Result<(), String> {
-    let AcpPromptSendRequest {
-        conversation_id,
-        message,
-        turn_id,
-        context_refs,
-        conversation_refs,
-    } = request;
-    let turn_id = turn_id.0;
-    let services = app.services();
-    // First, before anything slow: from here on a stop has somewhere to land.
-    let pending = services.acp.begin_send(&conversation_id);
-    let parsed = meridian_core::workspace::reference::parse_message_references(&message);
-    let references =
-        meridian_core::workspace::reference::reconcile_references(context_refs.0.unwrap_or_default(), parsed)?;
-    let context = if references.is_empty() {
-        Vec::new()
-    } else {
-        let cwd = meridian_core::db::sea::ops::acp_session::get(&services.db, &conversation_id)
-            .await
-            .map_err(|e| e.to_string())?
-            .map(|row| row.cwd)
-            .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())?;
-        let file_access = meridian_core::agent::build_file_access(&services.db).await?;
-        let tool_context = meridian_core::tools::ToolContext {
-            working_directory: Some(cwd),
-            shell: meridian_core::tools::ShellType::default_for_platform(),
-            file_access,
-            project_id: None,
-            conversation_id: Some(conversation_id.clone()),
-            turn_id: turn_id.clone(),
-            assistant_id: None,
-            db: Some(services.db.clone()),
-            sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
-            #[cfg(not(target_os = "android"))]
-            background: None,
-            tool_secrets: Default::default(),
-            cancel: tokio_util::sync::CancellationToken::new(),
-            journal: None,
+    Box::pin(async move {
+        let AcpPromptSendRequest {
+            conversation_id,
+            message,
+            turn_id,
+            context_refs,
+            conversation_refs,
+        } = request;
+        let turn_id = turn_id.0;
+        let services = app.services();
+        // First, before anything slow: from here on a stop has somewhere to land.
+        let pending = services.acp.begin_send(&conversation_id);
+        let parsed = meridian_core::workspace::reference::parse_message_references(&message);
+        let references =
+            meridian_core::workspace::reference::reconcile_references(context_refs.0.unwrap_or_default(), parsed)?;
+        let context = if references.is_empty() {
+            Vec::new()
+        } else {
+            let cwd = meridian_core::db::sea::ops::acp_session::get(&services.db, &conversation_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .map(|row| row.cwd)
+                .ok_or_else(|| "this conversation has no Claude Code working directory".to_string())?;
+            let file_access = meridian_core::agent::build_file_access(&services.db).await?;
+            let tool_context = meridian_core::tools::ToolContext {
+                working_directory: Some(cwd),
+                shell: meridian_core::tools::ShellType::default_for_platform(),
+                file_access,
+                project_id: None,
+                conversation_id: Some(conversation_id.clone()),
+                turn_id: turn_id.clone(),
+                assistant_id: None,
+                db: Some(services.db.clone()),
+                sandbox_policy: meridian_core::sandbox::CommandSandbox::UNCONFINED,
+                #[cfg(not(target_os = "android"))]
+                background: None,
+                tool_secrets: Default::default(),
+                cancel: tokio_util::sync::CancellationToken::new(),
+                journal: None,
+            };
+            let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
+            meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, None).await?
         };
-        let counter = meridian_core::agent::TokenCounter::new(meridian_core::agent::TokenizerKind::Cl100kBase);
-        meridian_core::workspace::reference::prepare_references(&tool_context, &references, &counter, None).await?
-    };
-    // Dragged-in conversations, through the same freeze the native turn uses,
-    // against what the workspace references left of the same budget.
-    let conv_refs = conversation_refs.0.unwrap_or_default();
-    let context = if conv_refs.is_empty() {
-        context
-    } else {
-        let mut context = context;
-        let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
-        let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
-        let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
-            &services.db,
-            &conversation_id,
-            &conv_refs,
-            budget_left,
-        )
-        .await?;
-        context.extend(frozen);
-        context
-    };
-    // Reopens a conversation whose adapter died with the last run of the app.
-    // The transcript is still here; the agent's memory of it is not.
-    let session = acp::reopen_session(&services, &conversation_id).await?;
-    session
-        .prompt_with_context(&services, &message, turn_id, context, pending.token())
-        .await
+        // Dragged-in conversations, through the same freeze the native turn uses,
+        // against what the workspace references left of the same budget.
+        let conv_refs = conversation_refs.0.unwrap_or_default();
+        let context = if conv_refs.is_empty() {
+            context
+        } else {
+            let mut context = context;
+            let spent: usize = context.iter().map(|item| item.token_count.max(0) as usize).sum();
+            let budget_left = meridian_core::workspace::reference::turn_context_token_limit(None).saturating_sub(spent);
+            let frozen = meridian_core::agent::conversation_excerpt::freeze_conversation_refs(
+                &services.db,
+                &conversation_id,
+                &conv_refs,
+                budget_left,
+            )
+            .await?;
+            context.extend(frozen);
+            context
+        };
+        // Reopens a conversation whose adapter died with the last run of the app.
+        // The transcript is still here; the agent's memory of it is not.
+        let session = acp::reopen_session(&services, &conversation_id).await?;
+        session
+            .prompt_with_context(&services, &message, turn_id, context, pending.token())
+            .await
+    })
+    .await
 }
 
 /// Every Claude Code session on this machine, with the ones a conversation here
@@ -370,7 +374,8 @@ pub async fn import_acp_session(
     request: AcpImportSessionRequest,
 ) -> Result<AcpImportSessionResponse, String> {
     let session = request.into();
-    acp::import::import(&app.services(), &session).await.map(Into::into)
+    let services = app.services();
+    Box::pin(acp::import::import(&services, &session)).await.map(Into::into)
 }
 
 /// Point an existing conversation at a session on disk.
@@ -383,7 +388,13 @@ pub async fn import_acp_session(
 #[tauri::command]
 pub async fn attach_acp_session(app: tauri::AppHandle, request: AcpSessionAttachRequest) -> Result<(), String> {
     let services = app.services();
-    acp::import::attach(&services, &request.conversation_id, &request.session_id, &request.cwd).await
+    Box::pin(acp::import::attach(
+        &services,
+        &request.conversation_id,
+        &request.session_id,
+        &request.cwd,
+    ))
+    .await
 }
 
 /// Which agent session a conversation follows, and where it works.
@@ -425,7 +436,8 @@ pub async fn stop_acp_turn(app: tauri::AppHandle, request: AcpTurnStopRequest) -
     // Reaches a send that has no turn yet as well as the turn itself: the
     // reopen and the reference preparation before it are long enough to press
     // stop in, and a stop that found nothing there used to be ignored.
-    app.services().acp.stop(&request.conversation_id).await;
+    let services = app.services();
+    Box::pin(services.acp.stop(&request.conversation_id)).await;
     Ok(())
 }
 
@@ -433,7 +445,8 @@ pub async fn stop_acp_turn(app: tauri::AppHandle, request: AcpTurnStopRequest) -
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn close_acp_session(app: tauri::AppHandle, request: AcpSessionCloseRequest) -> Result<(), String> {
-    app.services().acp.close(&request.conversation_id).await;
+    let services = app.services();
+    Box::pin(services.acp.close(&request.conversation_id)).await;
     Ok(())
 }
 
