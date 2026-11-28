@@ -4,7 +4,6 @@ import {
   parseAppEventPayload,
   parseCompactDoneEvent,
   parseCompactStartEvent,
-  parseEmojiEmbedderUpdatedEvent,
   parseLaunchRequestEvent,
   parseConversationUpdatedEvent,
   parseQueueUpdatedEvent,
@@ -213,41 +212,6 @@ describe('closed first-party event contracts', () => {
         notice: { ...failed, detail: { ...failed.detail, failures: [{ name: 'x' }] } },
       }),
     ).toThrow('must contain exactly')
-
-    const indexing = {
-      id: 'n-2',
-      started_at: 1_700_000_000_000,
-      finished_at: null,
-      detail: {
-        kind: 'emoji_embedding_index' as const,
-        state: 'indexing' as const,
-        vision: true,
-        indexed: 12,
-        total: 100,
-        error: null,
-      },
-    }
-    expect(parseAppEventPayload('system-notice', { type: 'upsert', notice: indexing })).toEqual({
-      type: 'upsert',
-      notice: indexing,
-    })
-    expect(() =>
-      parseSystemNoticeEvent({
-        type: 'upsert',
-        notice: { ...indexing, detail: { ...indexing.detail, extra: true } },
-      }),
-    ).toThrow('must contain exactly')
-
-    const embedStatus = {
-      state: 'indexing' as const,
-      vision: true,
-      indexed: 12,
-      total: 100,
-      error: null,
-    }
-    expect(parseEmojiEmbedderUpdatedEvent(embedStatus)).toEqual(embedStatus)
-    expect(parseAppEventPayload('emoji-embedder-updated', embedStatus)).toEqual(embedStatus)
-    expect(() => parseEmojiEmbedderUpdatedEvent({ ...embedStatus, state: 'paused' })).toThrow('state must be one of')
   })
 
   it('keeps plan-review events as exact invalidations', () => {

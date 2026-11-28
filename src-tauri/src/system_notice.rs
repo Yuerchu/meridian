@@ -57,6 +57,7 @@ impl SystemNotices {
 
     /// Starts a notice already stamped finished (for single-shot failures that
     /// did not go through a running state first).
+    #[allow(dead_code)]
     pub fn start_finished(&self, detail: SystemNoticeDetail) -> String {
         let now = now_ms();
         let notice = SystemNoticeInfoResponse {
@@ -84,6 +85,7 @@ impl SystemNotices {
 
     /// Removes a notice unconditionally (used when a background run is
     /// cancelled or disabled before finishing).
+    #[allow(dead_code)]
     pub fn remove(&self, id: &str) {
         let removed = {
             let mut notices = self.lock();

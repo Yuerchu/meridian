@@ -4,7 +4,7 @@ import { DropZone } from 'react-aria-components'
 import type { DropItem } from 'react-aria-components'
 import { TagGroup, Tag } from '@/components/yuerchu-ui/components/tag-group/tag-group'
 import './chat-view.css'
-import { Messages } from '@keyline-icons/react/two-tone'
+import { Info, Messages } from '@keyline-icons/react/two-tone'
 import { acceptsConversationDrop, CONVERSATION_DRAG_TYPE } from '@/components/layout/sidebar-dnd'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { api } from '@/api'
@@ -17,11 +17,10 @@ import { AcpNoticeActionsContext, type AcpNoticeActions } from './acp-notice-act
 import { placeNotices } from '@/lib/acp-notices'
 import { useTurns } from '@/hooks/use-turns'
 import { useTranscriptHotkeys } from '@/hooks/use-transcript-hotkeys'
-import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
+import { InputBar, type AttachedFile } from './input-bar'
 import { PromptQueue } from './prompt-queue'
 import { usePromptQueue } from '@/hooks/use-prompt-queue'
 import { useBackgroundTasks } from '@/hooks/use-background-tasks'
-import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useSendMessage } from '@/hooks/use-send-message'
@@ -84,13 +83,13 @@ function ChatViewInner({
   const storeBeginShellCommand = useConversationStore((s) => s.beginShellCommand)
   const storeAbortShellCommand = useConversationStore((s) => s.abortShellCommand)
   const storeFinishShellCommand = useConversationStore((s) => s.finishShellCommand)
-  const isOneBot = useConversationStore((s) => {
+  const isArchivedChannel = useConversationStore((s) => {
     const conv = s.conversations.find((c) => c.id === conversationId)
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
-    return project?.source_type.startsWith('onebot') ?? false
+    return project?.source_type === 'channel_direct' || project?.source_type === 'channel_group'
   })
   // A local project with a folder is the only kind `workspace_git_status`
-  // answers for; a OneBot project has no folder and a plain chat no project.
+  // answers for; an archived channel project has no folder and a plain chat no project.
   // The folder itself, not whether there is one: moving the conversation to
   // another project keeps its id and changes the repository.
   const projectFolder = useConversationStore((s) => {
@@ -127,38 +126,31 @@ function ChatViewInner({
   // restoring or manually retyping the exact command cannot mint a new turn.
   const shellRetriesRef = useRef<ShellSubmission[]>([])
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   /** Conversations dragged in from the sidebar, pending on the next message. */
   const [conversationRefs, setConversationRefs] = useState<ComposerConversationRef[]>([])
-  // The four above are the draft, kept in the database so a switch of
+  // The draft fields above are kept in the database so a switch of
   // conversation or a crash does not take it. Every send path empties the
   // text, which is what writes the cleared draft at once.
   const restoreDraft = useCallback((restored: ComposerDraftState) => {
     setInput(restored.text)
     setAttachedFiles(restored.attachedFiles)
-    setPendingSticker(restored.pendingSticker)
     setConversationRefs(restored.conversationRefs)
   }, [])
-  const composerDraft = useComposerDraft(
-    conversationId,
-    { text: input, attachedFiles, pendingSticker, conversationRefs },
-    restoreDraft,
-  )
+  const composerDraft = useComposerDraft(conversationId, { text: input, attachedFiles, conversationRefs }, restoreDraft)
   const settings = useTurnSettings(conversationId, initialDraft?.settings)
   const probeReference = useReferenceProbe(conversationId)
   const platform = usePlatform()
-  const emojiMap = useEmojiMap(settings.selectedAssistantId)
-  // Only a OneBot conversation has more than one speaker; a desktop row has no
-  // sender id to look up. Keyed on who is actually in the transcript so a
-  // newcomer's first message fetches their nickname, and nothing else does.
+  // Only an archived channel conversation has more than one speaker; a desktop
+  // row has no sender id to look up. Keyed on who is actually in the transcript
+  // so a newcomer's first message fetches their nickname, and nothing else does.
   const speakerKey = useMemo(() => {
-    if (!isOneBot) return null
+    if (!isArchivedChannel) return null
     const ids = new Set<number>()
     for (const m of messages) {
       if (m.sender_id != null) ids.add(m.sender_id)
     }
     return [...ids].sort((a, b) => a - b).join(',')
-  }, [isOneBot, messages])
+  }, [isArchivedChannel, messages])
   const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
@@ -672,12 +664,11 @@ function ChatViewInner({
     if (initialDraft.remainingComposer) {
       setInput(initialDraft.remainingComposer.text)
       setAttachedFiles(initialDraft.remainingComposer.attachedFiles)
-      setPendingSticker(initialDraft.remainingComposer.pendingSticker)
     }
     onInitialDraftConsumed?.()
 
     const intent = parseComposerIntent(initialDraft.text)
-    const hasPayload = initialDraft.voice || initialDraft.attachedFiles.length > 0 || !!initialDraft.pendingSticker
+    const hasPayload = initialDraft.voice || initialDraft.attachedFiles.length > 0
     if (!hasPayload && intent.kind === 'slash') {
       setInput(initialDraft.text)
       void executeSlashCommand(intent.name, intent.args, initialDraft.text).catch((error) =>
@@ -692,20 +683,13 @@ function ChatViewInner({
     }
 
     const text = intent.kind === 'prompt' ? intent.text : initialDraft.text
-    const sticker = initialDraft.pendingSticker
-      ? {
-          type: 'sticker' as const,
-          sticker_id: initialDraft.pendingSticker.emoji.id,
-          name: initialDraft.pendingSticker.emoji.name,
-        }
-      : undefined
     const files = initialDraft.attachedFiles.length > 0 ? initialDraft.attachedFiles : undefined
     // The same question the composer asks, on the draft that opened this
     // conversation: a mention the workspace does not hold is prose.
     const references = intent.kind === 'prompt' ? intent.references : []
     void selectExistingReferences(references, probeReference)
       .then((firstReferences) =>
-        sendMessage(text, true, files, undefined, initialDraft.voice || undefined, sticker, firstReferences),
+        sendMessage(text, true, files, undefined, initialDraft.voice || undefined, firstReferences),
       )
       .catch((error) => storeSetError(conversationId, String(error)))
   }, [
@@ -756,19 +740,15 @@ function ChatViewInner({
       // cleared only once the row exists, so a refusal is not the user paying
       // for it by retyping.
       if (queueing) {
-        // The attachments and the sticker go with the text, uploaded now so the
-        // queued copy is the one the person saw. They used to stay behind in
-        // the composer and ride along with whatever was sent next.
+        // The attachments go with the text, uploaded now so the queued copy is
+        // the one the person saw. They used to stay behind in the composer and
+        // ride along with whatever was sent next.
         const files = [...attachedFiles]
-        const queuedSticker = pendingSticker
-        const sticker = queuedSticker
-          ? { type: 'sticker' as const, sticker_id: queuedSticker.emoji.id, name: queuedSticker.emoji.name }
-          : undefined
-        if (!text && !sticker && files.length === 0) return
+        if (!text && files.length === 0) return
         // Always a follow-up: an interjection cuts into work already going,
         // which is not a thing to do by accident, so it is chosen on the row
         // afterwards (`PromptQueue`'s steer action).
-        void buildMessageContent(conversationId, text, files, sticker)
+        void buildMessageContent(conversationId, text, files)
           .then((content) => queue.enqueue(content, 'follow_up', references, refIds))
           .then(() => {
             setInput('')
@@ -776,7 +756,6 @@ function ChatViewInner({
             // Only what was queued: anything attached while the upload ran
             // belongs to the next message.
             setAttachedFiles((prev) => prev.filter((file) => !files.includes(file)))
-            setPendingSticker((prev) => (prev === queuedSticker ? null : prev))
           })
           .catch((error) => storeSetError(conversationId, String(error)))
         return
@@ -790,7 +769,7 @@ function ChatViewInner({
         // A steer is text; refused rather than sent without them, which used
         // to leave them in the composer to ride along with the next message.
         // Ahead of the empty check, so a file on its own says why too.
-        if (attachedFiles.length > 0 || pendingSticker) {
+        if (attachedFiles.length > 0) {
           storeSetError(conversationId, t('chat.attachmentFollowUpOnly'))
           return
         }
@@ -808,28 +787,14 @@ function ChatViewInner({
       const files = [...attachedFiles]
       setInput('')
       setAttachedFiles([])
-      const sticker = pendingSticker
-        ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
-        : undefined
-      setPendingSticker(null)
       setConversationRefs([])
-      sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker, references, refIds)
+      sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, references, refIds)
     },
-    [
-      sendMessage,
-      attachedFiles,
-      pendingSticker,
-      storeSetError,
-      conversationId,
-      steering,
-      steerMessage,
-      queueing,
-      queue,
-      t,
-    ],
+    [sendMessage, attachedFiles, storeSetError, conversationId, steering, steerMessage, queueing, queue, t],
   )
 
   const handleSubmit = useCallback(() => {
+    if (isArchivedChannel) return
     if (commandPendingRef.current) {
       storeSetError(conversationId, t('chat.command.busy'))
       return
@@ -841,7 +806,7 @@ function ChatViewInner({
     const intent = parseComposerIntent(input)
     const text = intent.kind === 'prompt' ? intent.text.trim() : input.trim()
     const refIds = conversationRefs.map((ref) => ref.id)
-    if (!text && !pendingSticker && attachedFiles.length === 0) return
+    if (!text && attachedFiles.length === 0) return
     // A restored draft can point at a file or a conversation that has since
     // gone. They are shown as such; sending them would fail halfway.
     if (attachedFiles.some((file) => file.missing) || conversationRefs.some((ref) => ref.missing)) {
@@ -853,13 +818,13 @@ function ChatViewInner({
     // typo cannot become a delayed model prompt and an idle-only command never
     // claims to have been queued. A pending conversation reference keeps them
     // out too — a slash command starts no turn the reference could ride.
-    if (intent.kind === 'slash' && !pendingSticker && attachedFiles.length === 0 && refIds.length === 0) {
+    if (intent.kind === 'slash' && attachedFiles.length === 0 && refIds.length === 0) {
       void executeSlashCommand(intent.name, intent.args, input).catch((err) =>
         storeSetError(conversationId, String(err)),
       )
       return
     }
-    if (intent.kind === 'shell' && !pendingSticker && attachedFiles.length === 0 && refIds.length === 0) {
+    if (intent.kind === 'shell' && attachedFiles.length === 0 && refIds.length === 0) {
       void executeShellCommand(intent.command, input)
       return
     }
@@ -884,9 +849,9 @@ function ChatViewInner({
     }
     submitPrompt(text, [], refIds)
   }, [
+    isArchivedChannel,
     input,
     attachedFiles,
-    pendingSticker,
     conversationRefs,
     executeSlashCommand,
     executeShellCommand,
@@ -907,8 +872,10 @@ function ChatViewInner({
         are not conversations are refused and never highlight it. */}
       <DropZone
         aria-label={t('chat.convRef.dropLabel')}
-        getDropOperation={(types) => (acceptsConversationDrop(types) ? 'copy' : 'cancel')}
-        onDrop={(e) => void handleConversationDrop(e.items)}
+        getDropOperation={(types) => (!isArchivedChannel && acceptsConversationDrop(types) ? 'copy' : 'cancel')}
+        onDrop={(e) => {
+          if (!isArchivedChannel) void handleConversationDrop(e.items)
+        }}
         className="m-chat-view"
       >
         <AcpNoticeActionsContext.Provider value={acpNoticeActions}>
@@ -917,21 +884,15 @@ function ChatViewInner({
             noticesByTurn={placedNotices.byTurn}
             conversationId={conversationId}
             streaming={streaming}
-            onDelete={handleDelete}
-            // Regenerate and edit are withheld on a hosted session. Both re-ask
-            // from a point in the history, and a hosted session's history lives in
-            // the adapter's process — `useSendMessage` refuses them for exactly
-            // that reason, so leaving the buttons up offers an action whose only
-            // outcome is an error message. The refusal stays as the backstop; this
-            // is the affordance agreeing with it. Delete is still offered: it does
-            // what it says, removing rows from *this* app's copy.
-            onRegenerate={isHostedAgent ? undefined : handleRegenerate}
-            onContinue={isHostedAgent ? undefined : handleContinue}
-            onEdit={isHostedAgent ? undefined : handleEdit}
-            onRate={handleRate}
-            isOneBot={isOneBot}
+            onDelete={isArchivedChannel ? undefined : handleDelete}
+            // Regenerate and edit are withheld on hosted sessions (history lives
+            // in the adapter process) and archived channel conversations (read-only).
+            onRegenerate={isHostedAgent || isArchivedChannel ? undefined : handleRegenerate}
+            onContinue={isHostedAgent || isArchivedChannel ? undefined : handleContinue}
+            onEdit={isHostedAgent || isArchivedChannel ? undefined : handleEdit}
+            onRate={isArchivedChannel ? undefined : handleRate}
+            isChannel={isArchivedChannel}
             isHosted={isHostedAgent}
-            emojiMap={emojiMap}
             senderNames={senderNames}
             assistantAvatar={settings.selectedAssistant?.avatar}
             leading={
@@ -940,9 +901,8 @@ function ChatViewInner({
                 conversationId={conversationId}
                 compactedCount={compactedCount}
                 compactSummary={compactSummary}
-                onDelete={handleDelete}
-                isOneBot={isOneBot}
-                emojiMap={emojiMap}
+                onDelete={isArchivedChannel ? undefined : handleDelete}
+                isChannel={isArchivedChannel}
                 senderNames={senderNames}
                 assistantAvatar={settings.selectedAssistant?.avatar}
               />
@@ -1051,61 +1011,65 @@ function ChatViewInner({
           </div>
         )}
 
-        <InputBar
-          conversationId={conversationId}
-          isHosted={isHostedAgent}
-          value={input}
-          onChange={setInput}
-          onSubmit={handleSubmit}
-          onVoiceSend={handleVoiceSend}
-          onStop={handleStop}
-          disabled={streaming || !!shellTurnId || commandPending}
-          streaming={streaming || !!shellTurnId}
-          steerable={shellTurnId ? false : steerable}
-          queueing={queueing}
-          todos={activeTodos}
-          backgroundTasks={runningTasks}
-          onStopBackgroundTask={(id) => void background.stop(id)}
-          queue={
-            <PromptQueue
-              items={queue.items}
-              currentTodos={queue.items.length > 0 ? activeTodos : null}
-              streaming={streaming}
-              held={queue.held}
-              onRemove={(id) => void queue.remove(id)}
-              onReorder={(next) => void queue.reorder(next)}
-              onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
-              onRelease={() => void queue.release()}
-            />
-          }
-          assistants={settings.assistants}
-          providers={settings.providers}
-          currentAssistantId={settings.selectedAssistantId}
-          currentModelId={settings.selectedModelId}
-          currentProviderId={settings.selectedProviderId}
-          onSelectAssistant={settings.onSelectAssistant}
-          onSelectModel={settings.onSelectModel}
-          thinkingLevel={settings.thinkingLevel}
-          onSelectThinkingLevel={settings.onSelectThinkingLevel}
-          fastMode={settings.fastMode}
-          onToggleFast={settings.onToggleFast}
-          mode={settings.mode}
-          onSelectMode={settings.onSelectMode}
-          acceptEdits={settings.acceptEdits}
-          onToggleAcceptEdits={settings.onToggleAcceptEdits}
-          capabilities={settings.capabilities}
-          contextInfo={contextInfo}
-          branch={branch}
-          compacting={compacting}
-          onCompact={() => handleCompact()}
-          attachedFiles={attachedFiles}
-          onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
-          onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
-          onReorderFiles={setAttachedFiles}
-          pendingSticker={pendingSticker}
-          onSelectSticker={setPendingSticker}
-          onRemoveSticker={() => setPendingSticker(null)}
-        />
+        {isArchivedChannel ? (
+          <div data-slot="archived-channel-notice" role="status" className="m-chat-view__archive-notice">
+            <Info className="m-chat-view__archive-icon" aria-hidden />
+            <span>{t('chat.archivedChannelNotice')}</span>
+          </div>
+        ) : (
+          <InputBar
+            conversationId={conversationId}
+            isHosted={isHostedAgent}
+            value={input}
+            onChange={setInput}
+            onSubmit={handleSubmit}
+            onVoiceSend={handleVoiceSend}
+            onStop={handleStop}
+            disabled={streaming || !!shellTurnId || commandPending}
+            streaming={streaming || !!shellTurnId}
+            steerable={shellTurnId ? false : steerable}
+            queueing={queueing}
+            todos={activeTodos}
+            backgroundTasks={runningTasks}
+            onStopBackgroundTask={(id) => void background.stop(id)}
+            queue={
+              <PromptQueue
+                items={queue.items}
+                currentTodos={queue.items.length > 0 ? activeTodos : null}
+                streaming={streaming}
+                held={queue.held}
+                onRemove={(id) => void queue.remove(id)}
+                onReorder={(next) => void queue.reorder(next)}
+                onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
+                onRelease={() => void queue.release()}
+              />
+            }
+            assistants={settings.assistants}
+            providers={settings.providers}
+            currentAssistantId={settings.selectedAssistantId}
+            currentModelId={settings.selectedModelId}
+            currentProviderId={settings.selectedProviderId}
+            onSelectAssistant={settings.onSelectAssistant}
+            onSelectModel={settings.onSelectModel}
+            thinkingLevel={settings.thinkingLevel}
+            onSelectThinkingLevel={settings.onSelectThinkingLevel}
+            fastMode={settings.fastMode}
+            onToggleFast={settings.onToggleFast}
+            mode={settings.mode}
+            onSelectMode={settings.onSelectMode}
+            acceptEdits={settings.acceptEdits}
+            onToggleAcceptEdits={settings.onToggleAcceptEdits}
+            capabilities={settings.capabilities}
+            contextInfo={contextInfo}
+            branch={branch}
+            compacting={compacting}
+            onCompact={() => handleCompact()}
+            attachedFiles={attachedFiles}
+            onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
+            onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+            onReorderFiles={setAttachedFiles}
+          />
+        )}
         {confirmDialog}
       </DropZone>
     </SubAgentSheetProvider>

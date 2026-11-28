@@ -1,7 +1,6 @@
 import { parseChatStreamEvent } from '@/lib/chat-stream-event'
 import type {
   ChatStreamEvent,
-  EmojiEmbedderStatusResponse,
   PlanReviewStatus,
   SandboxBackend,
   SystemNoticeInfoResponse,
@@ -103,7 +102,6 @@ export interface AppEventPayloadMap {
   'remote-resync': RemoteResyncEvent
   'launch-request': LaunchRequestEvent
   'system-notice': SystemNoticeEvent
-  'emoji-embedder-updated': EmojiEmbedderStatusResponse
   'plan-review-requested': PlanReviewEvent
   'plan-review-updated': PlanReviewEvent
   'media-generation-updated': MediaGenerationUpdatedEvent
@@ -365,7 +363,7 @@ function parseSystemNotice(value: unknown, label: string): SystemNoticeInfoRespo
   }
   const kind = enumValue(
     (notice.detail as Record<string, unknown>).kind,
-    ['ime_dictionary_upgrade', 'emoji_embedding_index'] as const,
+    ['ime_dictionary_upgrade'] as const,
     `${label}.detail.kind`,
   )
   const base = {
@@ -373,57 +371,28 @@ function parseSystemNotice(value: unknown, label: string): SystemNoticeInfoRespo
     started_at: integerValue(notice.started_at, `${label}.started_at`, 0),
     finished_at: nullableInteger(notice.finished_at, `${label}.finished_at`, 0),
   }
-  if (kind === 'ime_dictionary_upgrade') {
-    const detail = exactObject(
-      notice.detail,
-      ['kind', 'state', 'dictionaries', 'upgraded', 'failures'],
-      `${label}.detail`,
-    )
-    if (!Array.isArray(detail.dictionaries)) throw new Error(`${label}.detail.dictionaries must be an array`)
-    if (!Array.isArray(detail.failures)) throw new Error(`${label}.detail.failures must be an array`)
-    return {
-      ...base,
-      detail: {
-        kind,
-        state: enumValue(detail.state, ['running', 'succeeded', 'failed'] as const, `${label}.detail.state`),
-        dictionaries: detail.dictionaries.map((name, i) => stringValue(name, `${label}.detail.dictionaries[${i}]`)),
-        upgraded: integerValue(detail.upgraded, `${label}.detail.upgraded`, 0),
-        failures: detail.failures.map((failure, i) => {
-          const f = exactObject(failure, ['name', 'error'], `${label}.detail.failures[${i}]`)
-          return {
-            name: stringValue(f.name, `${label}.detail.failures[${i}].name`),
-            error: stringValue(f.error, `${label}.detail.failures[${i}].error`),
-          }
-        }),
-      },
-    }
-  }
-  const detail = exactObject(notice.detail, ['kind', 'state', 'vision', 'indexed', 'total', 'error'], `${label}.detail`)
+  const detail = exactObject(
+    notice.detail,
+    ['kind', 'state', 'dictionaries', 'upgraded', 'failures'],
+    `${label}.detail`,
+  )
+  if (!Array.isArray(detail.dictionaries)) throw new Error(`${label}.detail.dictionaries must be an array`)
+  if (!Array.isArray(detail.failures)) throw new Error(`${label}.detail.failures must be an array`)
   return {
     ...base,
     detail: {
       kind,
-      state: enumValue(detail.state, ['indexing', 'succeeded', 'failed'] as const, `${label}.detail.state`),
-      vision: booleanValue(detail.vision, `${label}.detail.vision`),
-      indexed: integerValue(detail.indexed, `${label}.detail.indexed`, 0),
-      total: integerValue(detail.total, `${label}.detail.total`, 0),
-      error: nullableString(detail.error, `${label}.detail.error`),
+      state: enumValue(detail.state, ['running', 'succeeded', 'failed'] as const, `${label}.detail.state`),
+      dictionaries: detail.dictionaries.map((name, i) => stringValue(name, `${label}.detail.dictionaries[${i}]`)),
+      upgraded: integerValue(detail.upgraded, `${label}.detail.upgraded`, 0),
+      failures: detail.failures.map((failure, i) => {
+        const f = exactObject(failure, ['name', 'error'], `${label}.detail.failures[${i}]`)
+        return {
+          name: stringValue(f.name, `${label}.detail.failures[${i}].name`),
+          error: stringValue(f.error, `${label}.detail.failures[${i}].error`),
+        }
+      }),
     },
-  }
-}
-
-export function parseEmojiEmbedderUpdatedEvent(value: unknown): EmojiEmbedderStatusResponse {
-  const event = exactObject(value, ['state', 'vision', 'indexed', 'total', 'error'], 'emoji-embedder-updated payload')
-  return {
-    state: enumValue(
-      event.state,
-      ['disabled', 'loading', 'indexing', 'ready', 'error'] as const,
-      'emoji-embedder-updated payload.state',
-    ),
-    vision: booleanValue(event.vision, 'emoji-embedder-updated payload.vision'),
-    indexed: integerValue(event.indexed, 'emoji-embedder-updated payload.indexed', 0),
-    total: integerValue(event.total, 'emoji-embedder-updated payload.total', 0),
-    error: nullableString(event.error, 'emoji-embedder-updated payload.error'),
   }
 }
 
@@ -535,8 +504,6 @@ export function parseAppEventPayload(channel: string, value: unknown): unknown {
       return parseLaunchRequestEvent(value)
     case 'system-notice':
       return parseSystemNoticeEvent(value)
-    case 'emoji-embedder-updated':
-      return parseEmojiEmbedderUpdatedEvent(value)
     case 'plan-review-requested':
     case 'plan-review-updated':
       return parsePlanReviewEvent(value, channel)

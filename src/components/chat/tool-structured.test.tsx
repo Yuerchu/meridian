@@ -128,10 +128,10 @@ describe('structured tool display', () => {
   it('draws a JSON result of a built-in tool as fields', async () => {
     const { container } = open(
       <ToolCallBlock
-        data={call('list_stickers', {}, { result: JSON.stringify([{ sticker_id: 's1', name: 'wave', tags: ['hi'] }]) })}
+        data={call('read_plan', {}, { result: JSON.stringify([{ plan_id: 'p1', title: 'wave', tags: ['hi'] }]) })}
       />,
     )
-    await userEvent.click(screen.getByRole('button', { name: /sticker/i }))
+    await userEvent.click(screen.getByRole('button', { name: /plan/i }))
     expect(screen.getByText('wave')).toBeInTheDocument()
     expect(container.textContent).not.toMatch(JSON_SOURCE)
   })

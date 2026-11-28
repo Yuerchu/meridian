@@ -4,7 +4,12 @@ import { api } from '@/api'
 /** Platform id → the last nickname seen for it. */
 export type SenderNames = Record<number, string>
 
-const ONEBOT_SCOPE_PREFIX = 'onebot:'
+function parseNumericSubjectId(scopeId: string): number | null {
+  const sep = scopeId.indexOf(':')
+  if (sep <= 0) return null
+  const id = Number(scopeId.slice(sep + 1))
+  return Number.isFinite(id) ? id : null
+}
 
 /**
  * Nicknames for the people in a multi-speaker conversation.
@@ -38,9 +43,9 @@ export function useSenderNames(speakers: string | null): SenderNames {
         if (cancelled) return
         const next: SenderNames = {}
         for (const s of subjects) {
-          if (!s.display_name || !s.scope_id.startsWith(ONEBOT_SCOPE_PREFIX)) continue
-          const id = Number(s.scope_id.slice(ONEBOT_SCOPE_PREFIX.length))
-          if (Number.isFinite(id)) next[id] = s.display_name
+          if (!s.display_name) continue
+          const id = parseNumericSubjectId(s.scope_id)
+          if (id !== null) next[id] = s.display_name
         }
         setNames(next)
       })

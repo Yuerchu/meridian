@@ -19,23 +19,23 @@ describe('AttachSheet', () => {
 
   it('lists what can be added, and nothing about the turn', async () => {
     const user = userEvent.setup()
-    render(<AttachSheet {...props({ onPickFile: vi.fn(), onOpenStickers: vi.fn() })} />)
+    render(<AttachSheet {...props({ onPickFile: vi.fn() })} />)
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
 
     const menu = await screen.findByRole('menu', { name: 'Options and attachments' })
     const names = within(menu)
       .getAllByRole('menuitem')
       .map((item) => item.textContent)
-    expect(names).toEqual(['Take Photo', 'Choose from Gallery', 'Attach File', 'Emoji'])
+    expect(names).toEqual(['Take Photo', 'Choose from Gallery', 'Attach File'])
   })
 
   it('runs the chosen action and closes', async () => {
     const user = userEvent.setup()
-    const onOpenStickers = vi.fn()
-    render(<AttachSheet {...props({ onOpenStickers })} />)
+    const onPickFile = vi.fn()
+    render(<AttachSheet {...props({ onPickFile })} />)
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
-    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
-    expect(onOpenStickers).toHaveBeenCalled()
+    await user.click(await screen.findByRole('menuitem', { name: 'Attach File' }))
+    expect(onPickFile).toHaveBeenCalled()
   })
 
   it('is not drawn with nothing to add', () => {

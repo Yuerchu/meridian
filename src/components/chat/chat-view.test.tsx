@@ -167,7 +167,6 @@ vi.mock('@/hooks/use-prompt-queue', () => ({
 }))
 vi.mock('@/hooks/use-sender-names', () => ({ useSenderNames: () => ({}) }))
 vi.mock('@/lib/upload', () => ({ uploadAttachment: mocks.uploadAttachment }))
-vi.mock('./emoji-renderer', () => ({ useEmojiMap: () => ({}) }))
 
 vi.mock('./chat-transcript', () => ({
   ChatTranscript: ({ emptyState, trailing }: { emptyState?: React.ReactNode; trailing?: React.ReactNode }) => (
@@ -266,13 +265,6 @@ describe('ChatView initial draft', () => {
     const draft: InitialTurnDraft = {
       text: 'Inspect this image',
       attachedFiles: files,
-      pendingSticker: {
-        emoji: {
-          id: 'sticker-1',
-          name: 'Wave',
-        },
-        url: 'asset://wave.png',
-      } as InitialTurnDraft['pendingSticker'],
       voice: false,
       remainingComposer: null,
       settings: {
@@ -291,19 +283,7 @@ describe('ChatView initial draft', () => {
     )
 
     await waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledTimes(1))
-    expect(mocks.sendMessage).toHaveBeenCalledWith(
-      'Inspect this image',
-      true,
-      files,
-      undefined,
-      undefined,
-      {
-        type: 'sticker',
-        sticker_id: 'sticker-1',
-        name: 'Wave',
-      },
-      [],
-    )
+    expect(mocks.sendMessage).toHaveBeenCalledWith('Inspect this image', true, files, undefined, undefined, [])
     expect(onInitialDraftConsumed).toHaveBeenCalledTimes(1)
     expect(mocks.useTurnSettings).toHaveBeenCalledWith('conversation-1', draft.settings)
     expect(mocks.useSendMessage).toHaveBeenCalledWith('conversation-1', {
@@ -335,15 +315,10 @@ describe('ChatView initial draft', () => {
     const draft: InitialTurnDraft = {
       text: 'This was dictated',
       attachedFiles: [],
-      pendingSticker: null,
       voice: true,
       remainingComposer: {
         text: 'Typed remainder',
         attachedFiles: [{ path: 'C:\\tmp\\later.txt', name: 'later.txt' }],
-        pendingSticker: {
-          emoji: { id: 'later-sticker', name: 'Later' },
-          url: 'asset://later.png',
-        } as InitialTurnDraft['pendingSticker'],
       },
       settings: {
         selectedAssistantId: 'assistant-draft',
@@ -362,16 +337,13 @@ describe('ChatView initial draft', () => {
     )
 
     await waitFor(() => expect(mocks.sendMessage).toHaveBeenCalledTimes(1))
-    expect(mocks.sendMessage).toHaveBeenCalledWith('This was dictated', true, undefined, undefined, true, undefined, [])
+    expect(mocks.sendMessage).toHaveBeenCalledWith('This was dictated', true, undefined, undefined, true, [])
     expect(onInitialDraftConsumed).toHaveBeenCalledTimes(1)
     await waitFor(() =>
       expect(mocks.inputBarProps).toHaveBeenLastCalledWith(
         expect.objectContaining({
           value: 'Typed remainder',
           attachedFiles: [{ path: 'C:\\tmp\\later.txt', name: 'later.txt' }],
-          pendingSticker: expect.objectContaining({
-            emoji: expect.objectContaining({ id: 'later-sticker', name: 'Later' }),
-          }),
         }),
       ),
     )
@@ -395,7 +367,7 @@ describe('ChatView composer dispatch', () => {
     await waitFor(() => expect(latestInputBar().value).toBe('\\@literal'))
     act(() => latestInputBar().onSubmit())
 
-    expect(mocks.sendMessage).toHaveBeenCalledWith('@literal', true, undefined, undefined, undefined, undefined, [], [])
+    expect(mocks.sendMessage).toHaveBeenCalledWith('@literal', true, undefined, undefined, undefined, [], [])
   })
 
   it('forwards frozen references when queueing a prompt', async () => {
@@ -437,7 +409,6 @@ describe('ChatView composer dispatch', () => {
       expect(mocks.sendMessage).toHaveBeenCalledWith(
         draft,
         true,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -501,7 +472,6 @@ describe('ChatView composer dispatch', () => {
       '',
       true,
       [{ name: 'a.png', path: 'C:/shots/a.png' }],
-      undefined,
       undefined,
       undefined,
       [],
@@ -703,7 +673,6 @@ describe('ChatView composer draft', () => {
           { id: 'ref-b', title: 'Same title', exists: true },
           { id: 'ref-c', title: 'Last reference', exists: true },
         ],
-        sticker: null,
         revision: 4,
         updated_at: 0,
       })
@@ -733,7 +702,6 @@ describe('ChatView composer draft', () => {
         { id: 'ref-a', title: 'First', exists: true },
         { id: 'ref-b', title: 'Second', exists: true },
       ],
-      sticker: null,
       revision: 4,
       updated_at: 0,
     })
@@ -761,7 +729,6 @@ describe('ChatView composer draft', () => {
       body: 'where I left off',
       attachments: [{ path: '/work/gone.txt', name: 'gone.txt', exists: false }],
       conversation_refs: [],
-      sticker: null,
       revision: 4,
       updated_at: 0,
     })

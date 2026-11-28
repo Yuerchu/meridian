@@ -31,7 +31,7 @@ src-tauri/
       src/
         agent/engine/       # the turn loop, and the ports the runners plug into
         db/ provider/ tools/ mcp/ secrets/ …
-        onebot/ hooks/      # the two non-desktop runners
+        hooks/              # loopback review gates
         acp/                # hosting another coding agent, as its client
         services.rs         # every long-lived thing, in one value
         events.rs           # EventBus: where an event goes once it has happened
@@ -84,7 +84,6 @@ A new decision about one subsystem goes into that subsystem's file.
 | [`frontend.md`](.claude/rules/frontend.md) | the composer, transcript, scroller, links, settings pages, app shell, approval notifications / inbox | `@` `/` `!` prefixes, assistant links, the scroller, settings stack and rows, one shell, the attention queue, chart colours |
 | [`ui-conventions.md`](.claude/rules/ui-conventions.md) | any UI, styling, `components/base/`, `boardui.json`, the lint rules | BoardUI as constitution, tokens, bubbles and tool blocks, sub-agent groups, radius/type/motion, icons, fonts, lint gates, playgrounds |
 | [`providers-and-billing.md`](.claude/rules/providers-and-billing.md) | `provider/`, `agent::pricing`, audit/usage, model configs and profiles | side-request billing, model profiles, output ceilings, pricing and tiers, reasoning tokens, provider-side tools, wire DTOs, `phase`, tool `description`, balances, cache keys |
-| [`onebot.md`](.claude/rules/onebot.md) | `onebot/`, QQ tools, voice capture, `send_voice` | per-session tool prefix, quoted messages, the voice corpus, `send_voice` readiness, directed calls |
 | [`approvals.md`](.claude/rules/approvals.md) | `agent/auto_review/`, `crate::approval`, `agent::denied`, `agent::call_identity` | automatic approval review, how long a question stands and who may end it |
 | [`acp.md`](.claude/rules/acp.md) | `acp/` | hosting Claude Code, elicitation, sessions and resume, import, the tool bridge |
 | [`prompt-queue.md`](.claude/rules/prompt-queue.md) | `queued_prompts`, `agent::queue`, steering | follow-up vs interject, claims, holds, in-doubt delivery |
@@ -183,7 +182,7 @@ A new decision about one subsystem goes into that subsystem's file.
 
 - **`EventBus` is a sink registry, not a broadcast channel, and that is load-bearing.** The desktop's events *are* its answer: a window that missed one is showing a transcript that never catches up, so the turn producing it has to fail. A `broadcast` makes every send infallible from the sender's side and cannot express that. So delivery is synchronous and a sink is registered `critical` or not — `WindowSink` is, and that registration is where the rule now lives.
 
-  The opposite case is just as deliberate. OneBot, the hook reviewer and sub-agents each emit to a window that may not be looking, and for them a failed send costs nothing; their `Emit` implementations swallow it and return `Ok`. Handing those three `BusEmit` would quietly turn "the window is closed" into "the sub-agent's turn failed". If you add a runner, decide which of the two it is before wiring the bus in.
+  The opposite case is just as deliberate. External channel runners, the hook reviewer and sub-agents each emit to a window that may not be looking, and for them a failed send costs nothing; their `Emit` implementations swallow it and return `Ok`. Handing those `BusEmit` would quietly turn "the window is closed" into "the sub-agent's turn failed". If you add a runner, decide which of the two it is before wiring the bus in.
 - **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::sea::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
 - **What was sent is never dropped or rewritten.** Every request's `system`, `tools`
@@ -196,13 +195,11 @@ A new decision about one subsystem goes into that subsystem's file.
   never send `thinking.block_binding.prefix_mismatch_behavior: "drop_block"`,
   never strip thinking to make a request pass. A rendering must therefore be a
   pure function of what was stored when the row was written: nothing may depend
-  on which message is current, on a sticker's later label, on the machine's
+  on which message is current, on a mutable label looked up later, on the machine's
   zone, or on a file read again. When something already in the context changes
   later, say so by appending a notice at the end (a frozen `role="context"` row,
   as memory and the checklist do), never by editing the row that mentioned it.
-  Stickers are the worked example: `agent::freeze_sticker_parts` records what
-  each one was known as when its message entered the backend, and rendering
-  reads only that. Known violators, to be removed rather than copied:
+  Known violators, to be removed rather than copied:
   `trim_to_context_limit`, `cap_user_provided_context`, and `<sent_at>` rendered
   in today's local zone. (`microcompact` was removed in 2026-10;
   `trim_to_context_limit` now runs only as the emergency floor beneath

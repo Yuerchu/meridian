@@ -998,7 +998,7 @@ it('lists the incomplete replies and opens the conversation one is in', async ()
         role: 'assistant',
         provider_name: 'BigModel',
         model_id: 'glm-5.3-flash',
-        source_type: 'onebot_group',
+        source_type: 'channel_group',
         billing_mode: 'metered',
         content_chars: 0,
         missing_input: true,

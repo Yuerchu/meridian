@@ -12,14 +12,13 @@
 //! means switching device picks it up where it was left.
 
 use crate::ServicesExt;
-use crate::commands::entity_response::EmojiInfoResponse;
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::db::entity::composer_draft::DraftAttachment;
 use meridian_core::db::sea::DbErr;
 use meridian_core::db::sea::cap::{Db, Snapshot};
 use meridian_core::db::sea::ops::composer_draft as ops;
 use meridian_core::db::sea::ops::composer_draft::{ComposerDraftContent, DraftSlot, DraftWriteOutcome};
-use meridian_core::db::sea::ops::{conversation, emoji};
+use meridian_core::db::sea::ops::conversation;
 use meridian_core::util::now_ms;
 
 #[derive(Debug, serde::Deserialize)]
@@ -44,7 +43,6 @@ pub struct ComposerDraftUpsertRequest {
     body: String,
     attachments: Vec<ComposerDraftAttachmentRequest>,
     conversation_refs: Vec<String>,
-    sticker_id: RequiredNullable<String>,
     /// Chosen by the writer, strictly increasing per composer.
     revision: i64,
 }
@@ -80,7 +78,6 @@ pub struct ComposerDraftInfoResponse {
     pub body: String,
     pub attachments: Vec<ComposerDraftAttachmentInfoResponse>,
     pub conversation_refs: Vec<ComposerDraftConversationRefInfoResponse>,
-    pub sticker: Option<EmojiInfoResponse>,
     pub revision: i64,
     pub updated_at: i64,
 }
@@ -147,7 +144,6 @@ struct StoredDraft {
     updated_at: i64,
     content: ComposerDraftContent,
     conversation_refs: Vec<ComposerDraftConversationRefInfoResponse>,
-    sticker: Option<EmojiInfoResponse>,
 }
 
 /// Several statements whose answers are put together, so a snapshot: on the
@@ -170,25 +166,12 @@ async fn read_stored(db: &impl Snapshot, slot: &DraftSlot) -> Result<Option<Stor
         });
     }
 
-    let sticker = match &content.sticker_id {
-        // The foreign key clears this when the sticker goes, so a dangling id
-        // is not a state to tolerate.
-        Some(id) => Some(
-            emoji::get(db, id)
-                .await?
-                .ok_or_else(|| DbErr::RecordNotFound(format!("sticker `{id}` on a composer draft")))?
-                .into(),
-        ),
-        None => None,
-    };
-
     Ok(Some(StoredDraft {
         conversation_id,
         revision,
         updated_at,
         content,
         conversation_refs,
-        sticker,
     }))
 }
 
@@ -216,7 +199,6 @@ async fn read_draft(db: &Db, slot: &DraftSlot) -> Result<Option<ComposerDraftInf
         body: stored.content.body,
         attachments,
         conversation_refs: stored.conversation_refs,
-        sticker: stored.sticker,
         revision: stored.revision,
         updated_at: stored.updated_at,
     }))
@@ -232,7 +214,6 @@ async fn write_draft(
         body,
         attachments,
         conversation_refs,
-        sticker_id: RequiredNullable(sticker_id),
         revision,
     } = request;
     validate_revision(revision)?;
@@ -241,7 +222,7 @@ async fn write_draft(
         body,
         attachments: stored_attachments(attachments)?,
         conversation_refs,
-        sticker_id,
+        sticker_id: None,
     };
     let outcome = db
         .write(async |tx| ops::save(tx, &slot, &content, revision, now).await)
@@ -307,7 +288,6 @@ mod tests {
             "body": body,
             "attachments": [],
             "conversation_refs": [],
-            "sticker_id": null,
             "revision": revision,
         }))
         .unwrap()
@@ -317,10 +297,10 @@ mod tests {
     fn requests_are_strict() {
         let complete = serde_json::json!({
             "conversation_id": null, "body": "x", "attachments": [], "conversation_refs": [],
-            "sticker_id": null, "revision": 1,
+            "revision": 1,
         });
         assert!(serde_json::from_value::<ComposerDraftUpsertRequest>(complete.clone()).is_ok());
-        for key in ["conversation_id", "sticker_id"] {
+        for key in ["conversation_id"] {
             let mut missing = complete.clone();
             missing.as_object_mut().unwrap().remove(key);
             assert!(

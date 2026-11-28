@@ -3,8 +3,6 @@ import type {
   AppInfoResponse,
   AssistantInfoResponse,
   CustomToolInfoResponse,
-  EmojiInfoResponse,
-  EmojiPackInfoResponse,
   HookConfigInfoResponse,
   ImeConfigInfoResponse,
   ImeDictionaryInfoResponse,
@@ -19,7 +17,6 @@ import type {
   MemorySubjectInfoResponse,
   ModelConfigInfoResponse,
   ModelProfileInfoResponse,
-  OneBotConfigInfoResponse,
   PreferenceInfoValueByKey,
   ProviderCapabilitiesInfoResponse,
   ProviderCatalogEntryInfoResponse,
@@ -31,10 +28,9 @@ import type {
   UsageBucketInfoResponse,
   UsageCacheMissInfoResponse,
   UsageDimension,
-  VoiceCorpusSessionInfoResponse,
 } from '@/types'
-import { CONV, PROJECT_MERIDIAN, STICKERS } from './conversations'
-import { ago, stickerSvg } from './factories'
+import { CONV, PROJECT_MERIDIAN } from './conversations'
+import { ago } from './factories'
 
 /** Everything the settings pages read, as one value the handlers mutate. */
 
@@ -327,6 +323,9 @@ export function buildMcpServers(now: number): McpServerInfoResponse[] {
       url: null,
       headers: null,
       is_enabled: true,
+      default_policy: null,
+      tool_policies: null,
+      approved_always_tools: null,
       sort_order: 0,
       created_at: ago(60 * 24 * 20, now),
       updated_at: ago(60 * 24 * 2, now),
@@ -341,6 +340,9 @@ export function buildMcpServers(now: number): McpServerInfoResponse[] {
       url: 'https://api.githubcopilot.com/mcp/',
       headers: { Authorization: 'Bearer ••••••••' },
       is_enabled: true,
+      default_policy: null,
+      tool_policies: null,
+      approved_always_tools: null,
       sort_order: 1,
       created_at: ago(60 * 24 * 10, now),
       updated_at: ago(60 * 24, now),
@@ -355,6 +357,9 @@ export function buildMcpServers(now: number): McpServerInfoResponse[] {
       url: null,
       headers: null,
       is_enabled: false,
+      default_policy: null,
+      tool_policies: null,
+      approved_always_tools: null,
       sort_order: 2,
       created_at: ago(60 * 24 * 5, now),
       updated_at: ago(60 * 24 * 5, now),
@@ -378,6 +383,12 @@ export function buildMcpTools(): McpServerToolInfoResponse[] {
     input_schema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
     enabled: true,
     definition_tokens: tokens,
+    resolved_policy: {
+      scope: 'local_only',
+      loading: 'deferred',
+      approval: 'request_approve',
+      needs_always_reapproval: false,
+    },
   })
   return [
     tool('demo-mcp-filesystem', 'filesystem', 'read_text_file', 'Read a text file from the allowed directories.', 420),
@@ -566,8 +577,8 @@ export function buildMemories(now: number): MemoryInfoResponse[] {
     memory('demo-mem-5', 'client_global', 'client', 'language', '回复使用中文。', 'preference', 'desktop', 20000),
     memory(
       'demo-mem-6',
-      'onebot_global',
-      'onebot',
+      'channel_global',
+      'channel',
       'group-rules',
       '群里不讨论政治话题。',
       'instruction',
@@ -576,19 +587,19 @@ export function buildMemories(now: number): MemoryInfoResponse[] {
     ),
     memory(
       'demo-mem-7',
-      'onebot_user',
-      'onebot:10001',
+      'external_subject',
+      'qq:10001',
       'nickname',
       '喜欢被叫作"小丘"。',
       'relationship',
       'private',
       800,
       {
-        subject_scope_id: 'onebot:10001',
+        subject_scope_id: 'qq:10001',
       },
     ),
-    memory('demo-mem-8', 'onebot_user', 'onebot:10002', 'hobby', '在做 ESP32 的键盘固件。', 'fact', 'group', 400, {
-      subject_scope_id: 'onebot:10002',
+    memory('demo-mem-8', 'external_subject', 'qq:10002', 'hobby', '在做 ESP32 的键盘固件。', 'fact', 'group', 400, {
+      subject_scope_id: 'qq:10002',
       visibility: 'owner_only',
     }),
   ]
@@ -618,7 +629,7 @@ export function buildMemoryTrash(now: number): MemoryInfoResponse[] {
 export function buildMemorySubjects(now: number): MemorySubjectInfoResponse[] {
   return [
     {
-      scope_id: 'onebot:10001',
+      scope_id: 'qq:10001',
       display_name: '小丘',
       last_seen_at: ago(30, now),
       created_at: ago(90000, now),
@@ -627,7 +638,7 @@ export function buildMemorySubjects(now: number): MemorySubjectInfoResponse[] {
       opted_out: false,
     },
     {
-      scope_id: 'onebot:10002',
+      scope_id: 'qq:10002',
       display_name: '阿木',
       last_seen_at: ago(400, now),
       created_at: ago(40000, now),
@@ -799,59 +810,6 @@ export function buildLogs(now: number): LogEntryInfoResponse[] {
     .reverse()
 }
 
-export function buildOneBotConfig(): OneBotConfigInfoResponse {
-  return {
-    enabled: true,
-    host: '127.0.0.1',
-    port: 6700,
-    access_token: 'demo-onebot-token',
-    assistant_id: 'demo-assistant-default',
-    admin_users: [10001],
-    ack_emoji_id: '124',
-    private_media_origins: [],
-    voice_capture_sessions: ['10000@group:123456'],
-    voice_send_enabled: true,
-    voice_send_groups: ['123456'],
-    voice_tts_model: 's2.1-pro',
-    voice_tts_reference_id: 'demo-voice-ref',
-    replies: {
-      empty_reply: [],
-      busy: [],
-      server_error: [],
-      ack_approved: [],
-      ack_denied: [],
-    },
-    reply_seeds: {
-      empty_reply: '没搞明白你在说什么。',
-      busy: '这个对话正在电脑端处理，请等它结束后再发。',
-      server_error: '这边出了点问题。',
-      ack_approved: '已批准执行。',
-      ack_denied: '已拒绝，你写的理由会一并转达。',
-    },
-  }
-}
-
-export function buildVoiceCorpus(now: number): VoiceCorpusSessionInfoResponse[] {
-  return [
-    {
-      handle: 'g-7f3a91',
-      kind: 'group',
-      clips: 128,
-      bytes: 18_400_000,
-      untranscribed: 3,
-      last_captured_at: ago(45, now),
-    },
-    {
-      handle: 'p-02bc44',
-      kind: 'private',
-      clips: 12,
-      bytes: 1_600_000,
-      untranscribed: 0,
-      last_captured_at: ago(3000, now),
-    },
-  ]
-}
-
 export function buildHooksConfig(): HookConfigInfoResponse {
   return {
     enabled: true,
@@ -925,55 +883,6 @@ export const IME_DICTIONARIES: ImeDictionaryInfoResponse[] = [
   },
 ]
 
-export function buildEmojiPacks(now: number): EmojiPackInfoResponse[] {
-  return [
-    {
-      id: 'demo-pack-daily',
-      name: '日常',
-      description: '常用表情',
-      cover_image: null,
-      is_builtin: false,
-      sort_order: 0,
-      created_at: ago(9000, now),
-      updated_at: ago(300, now),
-      kind: 'manual',
-      source_account_id: null,
-    },
-  ]
-}
-
-export const STICKER_IMAGES: Record<string, string> = {
-  [STICKERS.thumbs]: stickerSvg('👍', 45),
-  [STICKERS.cat]: stickerSvg('🐱', 200),
-  [STICKERS.party]: stickerSvg('🎉', 320),
-}
-
-export function buildEmojis(now: number): EmojiInfoResponse[] {
-  const names: Record<string, string> = {
-    [STICKERS.thumbs]: '点赞',
-    [STICKERS.cat]: '猫猫探头',
-    [STICKERS.party]: '撒花',
-  }
-  return Object.keys(STICKER_IMAGES).map((id, index) => ({
-    id,
-    pack_id: 'demo-pack-daily',
-    name: names[id],
-    tags: index === 1 ? '可爱,好奇' : null,
-    file_name: `${id}.svg`,
-    file_format: 'svg',
-    sort_order: index,
-    created_at: ago(9000, now),
-    source: 'local',
-    source_key: null,
-    semantic_status: index === 2 ? 'suggested' : 'confirmed',
-    suggested_name: index === 2 ? '庆祝' : null,
-    suggested_tags: null,
-    file_size: 1200,
-    seen_count: 4 - index,
-    last_seen_at: ago(60 * index, now),
-  }))
-}
-
 export const APP_INFO: AppInfoResponse = {
   version: '0.3.0-demo',
   tauri_version: '2.x',
@@ -1001,9 +910,8 @@ export function buildPreferences(): { [K in keyof PreferenceInfoValueByKey]: Pre
     'sub_agent.explore.model': { provider_id: PROVIDER.anthropic, model_id: 'claude-haiku-5' },
     'sub_agent.agent.model': null,
     'codex.client_version': null,
-    'emoji.embedder': null,
-    'emoji.suggest.model': null,
     'media.default_image_model_id': null,
     'media.default_video_model_id': null,
+    'tools.anthropic_search_strategy': 'server_bm25',
   }
 }

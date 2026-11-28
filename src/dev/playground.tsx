@@ -12,7 +12,6 @@ import { Spinner } from '@/components/yuerchu-ui/components/spinner/spinner'
 import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
 import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
-import StickerLab from './sticker-lab'
 import WebViewLab from './webview-lab'
 import { GROUPS, type GroupId } from './gallery/groups'
 import { GalleryFrame, GalleryIndex } from './gallery/shell'
@@ -53,8 +52,6 @@ export default function Playground() {
   if (hash === '#playground/scroll') return <ScrollLab />
   if (hash === '#playground/webview') return <WebViewLab />
   if (hash === '#playground/schema') return <SchemaLab />
-  if (hash === '#playground/stickers') return <StickerLab legacy={false} />
-  if (hash === '#playground/stickers-legacy') return <StickerLab legacy />
   // One route, two sides: the harness and the frame it drives are the same
   // document loaded twice, told apart by a query parameter rather than a second
   // hash — the checks above are `===`, and a frame carrying its own hash suffix

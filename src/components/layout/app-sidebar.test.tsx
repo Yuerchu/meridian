@@ -63,7 +63,7 @@ function conversation(id: string, title: string, projectId: string | null): Conv
   }
 }
 
-const PROJECTS = [project('p-code', 'Meridian'), project('p-qq', 'QQ 群', 'onebot_group'), project('p-new', '空项目')]
+const PROJECTS = [project('p-code', 'Meridian'), project('p-qq', 'QQ 群', 'channel_group'), project('p-new', '空项目')]
 
 const CONVERSATIONS = [
   conversation('c-1', '侧边栏重构', 'p-code'),

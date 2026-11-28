@@ -1,7 +1,7 @@
 import './attach-sheet.css'
 import { useState, useCallback, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Camera, FaceSmile, Image, Paperclip, Plus } from '@keyline-icons/react/two-tone'
+import { Camera, Image, Paperclip, Plus } from '@keyline-icons/react/two-tone'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Drawer } from '@/components/yuerchu-ui/components/drawer/drawer'
 import { Menu, MenuItem } from '@/components/yuerchu-ui/components/menu/menu'
@@ -14,32 +14,11 @@ export interface AttachSheetProps {
   /** Absent hides the entry, the way `ComposerMenu` already treats it. */
   onPickFile?: () => void
   supportsImages: boolean
-  /** Opens the sticker picker, which anchors itself to `triggerRef`. Absent hides the row. */
-  onOpenStickers?: () => void
   /** The sheet's `+`, for what has to be drawn beside it once the sheet is gone. */
   triggerRef?: Ref<HTMLButtonElement>
 }
 
-/**
- * The phone's `+`: a bottom sheet of what can be added to the message — a
- * photo, a picture from the gallery, a file, a sticker.
- *
- * It used to carry the model, the effort, the assistant, the mode and two
- * toggles as well, in panels; those are the mode chip and the model panel on
- * the toolbar now, on a phone as on a desktop. A sheet is still the right
- * shape for what is left: four actions a thumb reaches, rather than a popover
- * from a 36px button.
- *
- * With nothing to add there is no sheet.
- */
-export function AttachSheet({
-  onTakePhoto,
-  onPickGallery,
-  onPickFile,
-  supportsImages,
-  onOpenStickers,
-  triggerRef,
-}: AttachSheetProps) {
+export function AttachSheet({ onTakePhoto, onPickGallery, onPickFile, supportsImages, triggerRef }: AttachSheetProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   useHistoryLevel(open, () => setOpen(false))
@@ -49,7 +28,7 @@ export function AttachSheet({
     action()
   }, [])
 
-  if (!supportsImages && !onPickFile && !onOpenStickers) return null
+  if (!supportsImages && !onPickFile) return null
 
   return (
     <>
@@ -98,16 +77,6 @@ export function AttachSheet({
                 onAction={() => handleAction(onPickFile)}
               >
                 <span data-slot="attach-sheet-label">{t('chat.attachFile')}</span>
-              </MenuItem>
-            ) : null}
-            {onOpenStickers ? (
-              <MenuItem
-                id="stickers"
-                icon={<FaceSmile aria-hidden />}
-                textValue={t('chat.emoji')}
-                onAction={() => handleAction(onOpenStickers)}
-              >
-                <span data-slot="attach-sheet-label">{t('chat.emoji')}</span>
               </MenuItem>
             ) : null}
           </Menu>

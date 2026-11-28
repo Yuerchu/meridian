@@ -73,21 +73,14 @@ import type {
   CustomToolInfoResponse,
   CustomToolListResponse,
   CustomToolUpdateRequest,
-  EmojiDeleteRequest,
-  EmojiEmbedderStatusResponse,
-  EmojiFileUrlReadRequest,
-  EmojiImportRequest,
-  EmojiInfoResponse,
-  EmojiListRequest,
-  EmojiListResponse,
-  EmojiPackAssignmentUpdateRequest,
-  EmojiPackCreateRequest,
-  EmojiPackDeleteRequest,
-  EmojiPackInfoResponse,
-  EmojiPackListRequest,
-  EmojiPackListResponse,
-  EmojiSemanticsSuggestRequest,
-  EmojiUpdateRequest,
+  DreamConfigInfoResponse,
+  DreamConfigUpdateRequest,
+  DreamRunInfoResponse,
+  DreamRunListRequest,
+  DreamRunListResponse,
+  DreamRunRestoreInfoResponse,
+  DreamRunRestoreRequest,
+  DreamRunStartRequest,
   FileNameResolveRequest,
   FontFamilyListResponse,
   HookConfigInfoResponse,
@@ -137,17 +130,22 @@ import type {
   LogicalModelListResponse,
   LogicalModelUpdateRequest,
   McpConnectionStatusListResponse,
+  McpDefaultPolicyInfoResponse,
+  McpDefaultPolicyUpdateRequest,
+  McpServerApproveAlwaysToolsRequest,
   McpServerConnectRequest,
   McpServerCreateRequest,
   McpServerDeleteRequest,
   McpServerDisconnectRequest,
   McpServerInfoResponse,
   McpServerListResponse,
+  McpServerPolicyUpdateRequest,
   McpServerToolListResponse,
   McpServerUpdateRequest,
   McpToolEnabledUpdateRequest,
   McpToolListRequest,
   McpToolListResponse,
+  McpToolPolicyUpdateRequest,
   MediaGenerationCancelRequest,
   MediaGenerationCreateRequest,
   MediaGenerationDeleteRequest,
@@ -187,9 +185,6 @@ import type {
   ModelDeploymentUpdateRequest,
   ModelProfileInfoResponse,
   ModelProfileListResponse,
-  OneBotConfigInfoResponse,
-  OneBotConfigUpdateRequest,
-  OneBotStatusInfoResponse,
   PendingApprovalListResponse,
   PlanDocumentInfoResponse,
   PlanFileConflictResolveRequest,
@@ -276,20 +271,11 @@ import type {
   UserCommandResultReadRequest,
   UserCommandResultResponse,
   UserCommandRunRequest,
-  VoiceCorpusDeleteRequest,
-  VoiceCorpusDeleteResponse,
-  VoiceCorpusExportRequest,
-  VoiceCorpusExportResponse,
-  VoiceCorpusForgetRequest,
-  VoiceCorpusForgetResponse,
-  VoiceCorpusOptoutUpdateRequest,
-  VoiceCorpusSessionListResponse,
   VoiceModelDownloadRequest,
   VoiceModelImportRequest,
   VoiceModelStatusInfoResponse,
   VoicePcmTranscriptionRequest,
   VoiceProbeEchoRequest,
-  VoiceSendReadinessInfoResponse,
   VoiceTranscriptResponse,
   WindowInsetsInfoResponse,
   WorkspaceEditorOpenRequest,
@@ -482,6 +468,15 @@ export const api = {
     getEnums: () => invoke<MemoryEnumsResponse>('get_memory_enums'),
   },
 
+  dream: {
+    getConfig: () => invoke<DreamConfigInfoResponse>('get_dream_config'),
+    setConfig: (request: DreamConfigUpdateRequest) => invoke<DreamConfigInfoResponse>('set_dream_config', { request }),
+    listRuns: (request: DreamRunListRequest) => invoke<DreamRunListResponse>('list_dream_runs', { request }),
+    startRun: (request: DreamRunStartRequest) => invoke<DreamRunInfoResponse>('start_dream_run', { request }),
+    restoreRun: (request: DreamRunRestoreRequest) =>
+      invoke<DreamRunRestoreInfoResponse>('restore_dream_run', { request }),
+  },
+
   todos: {
     get: (request: TodoListReadRequest) => invoke<TodoInfoResponse | null>('get_todo_list', { request }),
   },
@@ -508,6 +503,15 @@ export const api = {
     disconnectServer: (request: McpServerDisconnectRequest) => invoke<void>('disconnect_mcp_server', { request }),
     setToolEnabled: (request: McpToolEnabledUpdateRequest) =>
       invoke<McpServerInfoResponse>('set_mcp_tool_enabled', { request }),
+    getDefaultPolicy: () => invoke<McpDefaultPolicyInfoResponse>('get_mcp_default_policy'),
+    setDefaultPolicy: (request: McpDefaultPolicyUpdateRequest) =>
+      invoke<McpDefaultPolicyInfoResponse>('set_mcp_default_policy', { request }),
+    setServerPolicy: (request: McpServerPolicyUpdateRequest) =>
+      invoke<McpServerInfoResponse>('set_mcp_server_policy', { request }),
+    setToolPolicy: (request: McpToolPolicyUpdateRequest) =>
+      invoke<McpServerInfoResponse>('set_mcp_tool_policy', { request }),
+    approveAlwaysTools: (request: McpServerApproveAlwaysToolsRequest) =>
+      invoke<McpServerInfoResponse>('set_mcp_approved_always_tools', { request }),
     listServerTools: (request: McpToolListRequest) => invoke<McpServerToolListResponse>('list_mcp_tools', { request }),
     listConnectionStatuses: () => invoke<McpConnectionStatusListResponse>('list_mcp_connection_statuses'),
     listAllTools: () => invoke<McpToolListResponse>('list_tools'),
@@ -536,16 +540,6 @@ export const api = {
     selectGalleryImage: () => invoke<string | null>('select_gallery_image'),
     resolveFileName: (request: FileNameResolveRequest) => invoke<string>('resolve_file_name', { request }),
     getAppInfo: () => invoke<AppInfoResponse>('get_app_info'),
-  },
-
-  onebot: {
-    getStatus: () => invoke<OneBotStatusInfoResponse>('get_onebot_status'),
-    getConfig: () => invoke<OneBotConfigInfoResponse>('get_onebot_config'),
-    setConfig: (request: OneBotConfigUpdateRequest) =>
-      invoke<OneBotConfigInfoResponse>('set_onebot_config', { request }),
-    getVoiceReadiness: () => invoke<VoiceSendReadinessInfoResponse>('get_onebot_voice_readiness'),
-    start: () => invoke<void>('start_onebot'),
-    stop: () => invoke<void>('stop_onebot'),
   },
 
   hooks: {
@@ -685,14 +679,6 @@ export const api = {
     cancelRecording: () => invoke<void>('cancel_voice_recording'),
     transcribePcm: (request: VoicePcmTranscriptionRequest) =>
       invoke<VoiceTranscriptResponse>('invoke_voice_transcription', { request }),
-    listCorpus: () => invoke<VoiceCorpusSessionListResponse>('list_voice_corpus'),
-    deleteCorpus: (request: VoiceCorpusDeleteRequest) =>
-      invoke<VoiceCorpusDeleteResponse>('delete_voice_corpus', { request }),
-    setOptout: (request: VoiceCorpusOptoutUpdateRequest) => invoke<void>('set_voice_optout', { request }),
-    deleteSender: (request: VoiceCorpusForgetRequest) =>
-      invoke<VoiceCorpusForgetResponse>('delete_voice_sender', { request }),
-    exportCorpus: (request: VoiceCorpusExportRequest) =>
-      invoke<VoiceCorpusExportResponse>('export_voice_corpus', { request }),
   },
 
   skills: {
@@ -714,22 +700,6 @@ export const api = {
     getSettings: () => invoke<LogSettingsResponse>('get_log_settings'),
     setLevel: (request: LogLevelUpdateRequest) => invoke<void>('set_log_level', { request }),
     export: (request: LogExportRequest) => invoke<LogExportResponse>('export_logs', { request }),
-  },
-
-  emojis: {
-    listPacks: (request: EmojiPackListRequest) => invoke<EmojiPackListResponse>('list_emoji_packs', { request }),
-    createPack: (request: EmojiPackCreateRequest) => invoke<EmojiPackInfoResponse>('create_emoji_pack', { request }),
-    deletePack: (request: EmojiPackDeleteRequest) => invoke<void>('delete_emoji_pack', { request }),
-    list: (request: EmojiListRequest) => invoke<EmojiListResponse>('list_emojis', { request }),
-    import: (request: EmojiImportRequest) => invoke<EmojiListResponse>('import_emojis', { request }),
-    delete: (request: EmojiDeleteRequest) => invoke<void>('delete_emoji', { request }),
-    update: (request: EmojiUpdateRequest) => invoke<EmojiInfoResponse>('update_emoji', { request }),
-    suggestSemantics: (request: EmojiSemanticsSuggestRequest) =>
-      invoke<EmojiInfoResponse>('invoke_emoji_semantics_suggestion', { request }),
-    setPackAssignment: (request: EmojiPackAssignmentUpdateRequest) =>
-      invoke<void>('set_emoji_pack_assignment', { request }),
-    getFileUrl: (request: EmojiFileUrlReadRequest) => invoke<string>('get_emoji_file_url', { request }),
-    getEmbedderStatus: () => invoke<EmojiEmbedderStatusResponse>('get_emoji_embedder_status'),
   },
 
   tools: {

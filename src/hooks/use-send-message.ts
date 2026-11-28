@@ -4,7 +4,7 @@ import i18n from '@/i18n'
 import { useConversationStore } from '@/stores/conversation-store'
 import { buildMessageContent } from '@/lib/message-content'
 import type { AttachedFile } from '@/components/chat/input-bar'
-import type { ChatMode, MessageViewModel, StickerContentPart, ThinkingLevel } from '@/types'
+import type { ChatMode, MessageViewModel, ThinkingLevel } from '@/types'
 import type { WorkspaceReferenceRequest } from '@/types'
 import { extractComposerReferences, selectExistingReferences } from '@/lib/composer-intent'
 import { useReferenceProbe } from '@/hooks/use-reference-probe'
@@ -32,7 +32,6 @@ export interface SendMessage {
     files?: AttachedFile[],
     replaces?: string,
     voice?: boolean,
-    sticker?: StickerContentPart,
     contextRefs?: WorkspaceReferenceRequest[],
     conversationRefs?: string[],
   ) => Promise<void>
@@ -141,13 +140,12 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       files?: AttachedFile[],
       replaces?: string,
       voice?: boolean,
-      sticker?: StickerContentPart,
       contextRefs: WorkspaceReferenceRequest[] = [],
       conversationRefs: string[] = [],
     ) => {
       // A null message asks again without new words: with `replaces` it
       // regenerates that answer, without it it continues from the head.
-      const nothing = text !== null && !text.trim() && !sticker && !files?.length
+      const nothing = text !== null && !text.trim() && !files?.length
       if (nothing || streaming || submittingRef.current) return
       // Regenerating and editing rewrite history and ask again from a point in
       // it. A hosted session's history lives in the adapter's process, not
@@ -168,9 +166,9 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       const now = Date.now()
 
       let messageContent = text
-      if (text !== null && ((files && files.length > 0) || sticker)) {
+      if (text !== null && files && files.length > 0) {
         try {
-          messageContent = await buildMessageContent(conversationId, text, files, sticker)
+          messageContent = await buildMessageContent(conversationId, text, files)
         } catch (err) {
           storeAbortTurn(conversationId, turnId, String(err))
           submittingRef.current = false
@@ -342,7 +340,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       // the workspace again rather than copied: the edit may have added one,
       // and a token that is only prose must not become a path here either.
       void selectExistingReferences(extractComposerReferences(content), probeReference)
-        .then((refs) => sendMessage(content, true, undefined, id, undefined, undefined, refs))
+        .then((refs) => sendMessage(content, true, undefined, id, undefined, refs))
         .catch((error) => storeSetError(conversationId, String(error)))
     },
     [conversationId, probeReference, sendMessage, storeSetError],

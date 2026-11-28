@@ -44,7 +44,7 @@ function ComposerMenuCase({
         data-slot="composer-menu-case-frame"
         className="flex items-center rounded-lg border border-border-button-default px-2 py-1"
       >
-        <ComposerMenu onPickFile={() => {}} onOpenStickers={() => {}} />
+        <ComposerMenu onPickFile={() => {}} />
         <ModeChip mode={mode} acceptEdits={acceptEdits} onSelectMode={setMode} onToggleAcceptEdits={setAcceptEdits} />
         <span className="ms-auto" />
         <ModelPanel

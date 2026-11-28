@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { invokeResponseSchemaDocument } from '@/lib/invoke-response-schema.generated'
 import { hydrateBlocks } from '@/stores/conversation-store'
 import type { ConversationSnapshotResponse, PreferenceKey, UsageDimension } from '@/types'
-import { APPROVAL, CONV, PLAN_REVIEW_ID, PROJECT_MERIDIAN, STICKERS } from './conversations'
+import { APPROVAL, CONV, PLAN_REVIEW_ID, PROJECT_MERIDIAN } from './conversations'
 import { createDemoBackend, type DemoArgs } from './index'
 import { DEMO_HANDLERS } from './handlers'
 import { PROVIDER } from './settings'
@@ -94,7 +94,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
         body: 'draft',
         attachments: [],
         conversation_refs: [CONV.pinned],
-        sticker_id: STICKERS.cat,
         revision: 1,
       },
     },
@@ -377,6 +376,42 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   set_mcp_tool_enabled: {
     args: { request: { server_id: 'demo-mcp-github', tool_name: 'create_pull_request', enabled: false } },
   },
+  get_mcp_default_policy: {},
+  set_mcp_default_policy: {
+    args: { request: { scope: 'local_only', loading: 'deferred', approval: 'request_approve' } },
+  },
+  set_mcp_server_policy: {
+    args: { request: { server_id: 'demo-mcp-github', scope: 'shared_room', loading: null, approval: 'always' } },
+  },
+  set_mcp_tool_policy: {
+    args: {
+      request: {
+        server_id: 'demo-mcp-github',
+        tool_name: 'get_issue',
+        scope: null,
+        loading: 'eager',
+        approval: 'always',
+      },
+    },
+  },
+  set_mcp_approved_always_tools: {
+    args: { request: { server_id: 'demo-mcp-github', tool_names: ['get_issue'] } },
+  },
+  get_dream_config: {},
+  set_dream_config: {
+    args: {
+      request: {
+        enabled: true,
+        model: null,
+        cooldown_hours: 12,
+        min_turns: 5,
+        daily_budget_usd: '0.5',
+      },
+    },
+  },
+  list_dream_runs: { args: { request: { scope: null, scope_id: null, limit: 10 } } },
+  start_dream_run: { args: { request: { scope: 'project', scope_id: PROJECT_MERIDIAN } } },
+  restore_dream_run: { args: { request: { run_id: 'demo-dream-run-1' } } },
   disconnect_mcp_server: { args: { request: { id: 'demo-mcp-github' } } },
   list_mcp_tools: { args: { request: { server_id: null } } },
   list_mcp_connection_statuses: {},
@@ -399,9 +434,9 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   update_memory: { args: { request: { id: 'demo-mem-1', content: 'changed' } } },
   delete_memories: { args: { request: { ids: ['demo-mem-1'], permanent: false } } },
   restore_memories: { args: { request: { ids: ['demo-mem-trash-1'] } } },
-  delete_memory_subject: { args: { request: { subject_scope_id: 'onebot:10002' } } },
+  delete_memory_subject: { args: { request: { subject_scope_id: 'qq:10002' } } },
   update_memory_subject: {
-    args: { request: { subject_scope_id: 'onebot:10002', is_pinned: true, opted_out: null } },
+    args: { request: { subject_scope_id: 'qq:10002', is_pinned: true, opted_out: null } },
   },
   get_platform: {},
   list_system_fonts: {},
@@ -430,38 +465,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   get_log_settings: {},
   set_log_level: { args: { request: { level: 'debug' } } },
   export_logs: { args: { request: { output_path: 'x' } } },
-  get_onebot_config: {},
-  set_onebot_config: {
-    args: {
-      request: {
-        enabled: false,
-        host: '127.0.0.1',
-        port: 6700,
-        access_token: null,
-        assistant_id: null,
-        admin_users: [],
-        ack_emoji_id: '124',
-        private_media_origins: [],
-        voice_capture_sessions: [],
-        voice_send_enabled: false,
-        voice_send_groups: [],
-        voice_tts_model: '',
-        voice_tts_reference_id: '',
-        replies: {
-          empty_reply: [],
-          busy: [],
-          server_error: [],
-          ack_approved: [],
-          ack_denied: [],
-        },
-      },
-    },
-  },
-  get_onebot_status: {},
-  start_onebot: {},
-  stop_onebot: {},
-  get_onebot_voice_readiness: {},
-  list_voice_corpus: {},
   get_voice_model_status: {},
   get_hooks_config: {},
   set_hooks_config: {
@@ -515,14 +518,6 @@ const SAMPLES: Record<string, { args?: DemoArgs; reject?: true }> = {
   get_ime_lm_status: {},
   invoke_ime_memory_hints_refresh: {},
   get_acp_config: {},
-  list_emoji_packs: { args: { request: { assistant_id: null } } },
-  set_emoji_pack_assignment: {
-    args: { request: { assistant_id: 'demo-assistant-default', pack_id: 'demo-pack-daily', assigned: true } },
-  },
-  list_emojis: { args: { request: { filter: { kind: 'pack', pack_id: 'demo-pack-daily' } } } },
-  get_emoji_file_url: { args: { request: { emoji_id: STICKERS.cat } } },
-  get_emoji_embedder_status: {},
-  update_emoji: { args: { request: { id: STICKERS.cat, action: { kind: 'rename', name: '猫' } } } },
 }
 
 describe('demo fixtures', () => {

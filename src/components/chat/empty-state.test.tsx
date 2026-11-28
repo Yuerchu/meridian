@@ -5,19 +5,6 @@ import i18n from '@/i18n'
 import { EmptyState, StarterPrompts } from './empty-state'
 
 const mocks = vi.hoisted(() => ({
-  listPacks: vi.fn(() => Promise.resolve([{ id: 'pack-1', name: 'Pack One' }])),
-  listEmojis: vi.fn(() =>
-    Promise.resolve([
-      {
-        id: 'emoji-1',
-        name: 'Wave',
-        tags: 'hello greeting',
-        semantic_status: 'confirmed',
-        file_format: 'png',
-      },
-    ]),
-  ),
-  fileUrl: vi.fn(() => Promise.resolve('asset://wave.png')),
   workspaceSuggestRefs: vi.fn(() => Promise.resolve([])),
   voiceOnSend: null as ((text: string) => void) | null,
   platform: 'windows' as string | null,
@@ -60,11 +47,6 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/api', () => ({
   api: {
-    emojis: {
-      listPacks: mocks.listPacks,
-      list: mocks.listEmojis,
-      getFileUrl: mocks.fileUrl,
-    },
     workspace: {
       searchRefs: mocks.workspaceSuggestRefs,
     },
@@ -135,7 +117,7 @@ describe('EmptyState welcome composer', () => {
     return { ...view, onSubmit, onCreate, onOpenSettingsTab }
   }
 
-  it('renders the same options, attachments, emoji and voice controls as a conversation composer', async () => {
+  it('renders the same options, attachments and voice controls as a conversation composer', async () => {
     const user = userEvent.setup()
     renderWelcome()
 
@@ -148,7 +130,6 @@ describe('EmptyState welcome composer', () => {
     await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
     expect(await screen.findByRole('menu', { name: 'Options and attachments' })).toBeVisible()
     expect(await screen.findByRole('menuitem', { name: 'Attach File' })).toBeInTheDocument()
-    expect(screen.getByRole('menuitem', { name: 'Emoji' })).toBeInTheDocument()
     await user.keyboard('{Escape}')
 
     // The permission mode is its own chip beside the `+`, showing its value.
@@ -185,7 +166,6 @@ describe('EmptyState welcome composer', () => {
       expect(onSubmit).toHaveBeenCalledWith({
         text: 'First question',
         attachedFiles: [],
-        pendingSticker: null,
         voice: false,
         remainingComposer: null,
         settings: {
@@ -241,46 +221,12 @@ describe('EmptyState welcome composer', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'Send' })).toBeEnabled())
   })
 
-  it('carries a selected sticker through the initial-turn draft', async () => {
+  it('marks a dictated first turn without consuming typed-composer text', async () => {
     const onSubmit = vi.fn(() => Promise.resolve())
     const user = userEvent.setup()
     renderWelcome({ onSubmit })
 
-    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
-    await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
-    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
-    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
-    await user.click(await screen.findByRole('button', { name: 'Wave' }))
-
-    expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Send' }))
-
-    await waitFor(() =>
-      expect(onSubmit).toHaveBeenCalledWith(
-        expect.objectContaining({
-          text: '',
-          attachedFiles: [],
-          pendingSticker: expect.objectContaining({
-            emoji: expect.objectContaining({ id: 'emoji-1', name: 'Wave' }),
-            url: 'asset://wave.png',
-          }),
-        }),
-      ),
-    )
-  })
-
-  it('marks a dictated first turn without consuming typed-composer rich input', async () => {
-    const onSubmit = vi.fn(() => Promise.resolve())
-    const user = userEvent.setup()
-    renderWelcome({ onSubmit })
-
-    await waitFor(() => expect(mocks.listEmojis).toHaveBeenCalled())
     await user.type(screen.getByRole('combobox', { name: 'Send a message...' }), 'Typed remainder')
-    await user.click(screen.getByRole('button', { name: 'Options and attachments' }))
-    await user.click(await screen.findByRole('menuitem', { name: 'Emoji' }))
-    await user.click(await screen.findByRole('button', { name: 'Pack One' }))
-    await user.click(await screen.findByRole('button', { name: 'Wave' }))
-    expect(await screen.findByRole('img', { name: 'Wave' })).toBeInTheDocument()
 
     act(() => mocks.voiceOnSend?.('  Dictated opening  '))
 
@@ -289,15 +235,10 @@ describe('EmptyState welcome composer', () => {
         expect.objectContaining({
           text: 'Dictated opening',
           attachedFiles: [],
-          pendingSticker: null,
           voice: true,
           remainingComposer: {
             text: 'Typed remainder',
             attachedFiles: [],
-            pendingSticker: expect.objectContaining({
-              emoji: expect.objectContaining({ id: 'emoji-1', name: 'Wave' }),
-              url: 'asset://wave.png',
-            }),
           },
         }),
       ),

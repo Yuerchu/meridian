@@ -2,7 +2,7 @@ import './composer-menu.css'
 import { useState, type Ref } from 'react'
 import { useTranslation } from 'react-i18next'
 import { type Key } from 'react-aria-components'
-import { Cpu, FaceSmile, Paperclip, Plus, Zap } from '@keyline-icons/react/two-tone'
+import { Cpu, Paperclip, Plus, Zap } from '@keyline-icons/react/two-tone'
 
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { Menu, MenuItem, MenuTrigger, SubmenuTrigger } from '@/components/yuerchu-ui/components/menu/menu'
@@ -32,8 +32,6 @@ import type { AcpConfigOptionInfoResponse } from '@/types'
 
 export interface ComposerMenuProps {
   onPickFile?: () => void
-  /** Opens the sticker picker, which anchors itself to `triggerRef`. Absent hides the row. */
-  onOpenStickers?: () => void
   /** The `+` itself, for what is drawn beside it once the menu has closed. */
   triggerRef?: Ref<HTMLButtonElement>
   /** A hosted agent's remaining knobs, each a row of its own. */
@@ -113,18 +111,11 @@ function KnobSubmenu({
   )
 }
 
-/** Toolbar `+` menu for attachments, stickers, and extra hosted-agent knobs. */
-export function ComposerMenu({
-  onPickFile,
-  onOpenStickers,
-  triggerRef,
-  knobs = [],
-  onSetKnob,
-  knobsBusy,
-}: ComposerMenuProps) {
+/** Toolbar `+` menu for attachments and extra hosted-agent knobs. */
+export function ComposerMenu({ onPickFile, triggerRef, knobs = [], onSetKnob, knobsBusy }: ComposerMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
-  if (!onPickFile && !onOpenStickers && knobs.length === 0) return null
+  if (!onPickFile && knobs.length === 0) return null
 
   return (
     <span className="m-composer-menu" data-open={open || undefined}>
@@ -155,22 +146,6 @@ export function ComposerMenu({
                 className="m-composer-menu__item-label"
               >
                 {t('chat.attachFile')}
-              </span>
-            </MenuItem>
-          ) : null}
-          {onOpenStickers ? (
-            <MenuItem
-              id="stickers"
-              icon={<FaceSmile aria-hidden />}
-              textValue={t('chat.emoji')}
-              onAction={onOpenStickers}
-            >
-              <span
-                data-slot="composer-menu-item-label"
-                onPointerEnter={titleIfTruncated}
-                className="m-composer-menu__item-label"
-              >
-                {t('chat.emoji')}
               </span>
             </MenuItem>
           ) : null}

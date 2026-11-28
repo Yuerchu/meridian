@@ -141,13 +141,6 @@ fn sanitize_remote_output(cmd: &str, mut value: serde_json::Value) -> serde_json
                 obj.insert("token".into(), serde_json::Value::Null);
             }
         }
-        "get_onebot_config" => {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("access_token".into(), serde_json::Value::Null);
-                obj.insert("admin_users".into(), serde_json::Value::Array(Vec::new()));
-                obj.insert("private_media_origins".into(), serde_json::Value::Array(Vec::new()));
-            }
-        }
         "list_mcp_servers" => {
             if let Some(arr) = value.as_array_mut() {
                 for row in arr {
@@ -459,19 +452,6 @@ mod tests {
         assert_eq!(hooks["token"], serde_json::Value::Null);
         assert_eq!(hooks["host"], "127.0.0.1");
 
-        let onebot = sanitize_remote_output(
-            "get_onebot_config",
-            serde_json::json!({
-                "enabled": true,
-                "access_token": "sekrit",
-                "admin_users": [123],
-                "private_media_origins": [{"origin": "http://adapter.lan:8080", "ip": "192.168.1.2"}]
-            }),
-        );
-        assert_eq!(onebot["access_token"], serde_json::Value::Null);
-        assert_eq!(onebot["admin_users"], serde_json::json!([]));
-        assert_eq!(onebot["private_media_origins"], serde_json::json!([]));
-
         let mcp = sanitize_remote_output(
             "list_mcp_servers",
             serde_json::json!([{ "name": "fs", "env": "{\"TOKEN\":\"x\"}", "headers": "a: b" }]),
@@ -539,12 +519,7 @@ mod tests {
             "export_message_media",
             "test_local_model",
             "export_logs",
-            "import_emojis",
             "import_voice_model",
-            // Writes a bundle to an arbitrary local path, and what it writes is
-            // the voice corpus itself. Listing and deleting stay reachable:
-            // deleting is *the* action someone asks for from their phone.
-            "export_voice_corpus",
             // Reconfiguring the server that is answering the request. A remote
             // caller turning off remote access cuts the branch it is sitting on.
             "set_remote_config",
@@ -555,19 +530,6 @@ mod tests {
             "start_hooks",
             "stop_hooks",
             "reset_hooks_token",
-            "set_onebot_config",
-            "start_onebot",
-            "stop_onebot",
-            // These two are `local` for what they *return*, not for what they
-            // do — the only pair in this list that is. `OneBotConfig` carries
-            // `access_token`, which is another server's credential and the same
-            // key `guard_preference` refuses to let a remote caller write;
-            // reading it back undoes that guard from the other side. It also
-            // carries `admin_users` and the voice allowlists, whose private-chat
-            // entries are a person's own QQ number. The readiness beside it is
-            // derived from the same row.
-            "get_onebot_config",
-            "get_onebot_voice_readiness",
             // A step beyond the rest of this group. `acp.command` names a
             // binary this app will execute, so writing it from a socket is
             // arbitrary code execution here — not the self-lockout the others
@@ -595,6 +557,13 @@ mod tests {
             "update_mcp_server",
             "connect_mcp_server",
             "set_mcp_tool_enabled",
+            "set_mcp_default_policy",
+            "set_mcp_server_policy",
+            "set_mcp_tool_policy",
+            "set_mcp_approved_always_tools",
+            "set_dream_config",
+            "start_dream_run",
+            "restore_dream_run",
             "create_custom_tool",
             "update_custom_tool",
             // Arbitrary URL, up to 1 GB written to disk.
@@ -641,7 +610,6 @@ mod tests {
             // a remote client's business.
             "list_system_notices",
             "delete_system_notice",
-            "get_emoji_embedder_status",
             "set_ime_dictionary_enabled",
             "delete_ime_dictionary",
             "get_ime_learning",

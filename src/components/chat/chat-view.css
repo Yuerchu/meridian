@@ -51,6 +51,25 @@
     padding: var(--space-2) var(--space-4) 0;
   }
 
+  .m-chat-view__archive-notice {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border-top: 1px solid var(--border);
+    background: var(--surface-muted);
+    color: var(--text-secondary);
+    font: var(--text-caption);
+  }
+
+  .m-chat-view__archive-icon {
+    width: var(--icon-sm);
+    height: var(--icon-sm);
+    flex-shrink: 0;
+  }
+
   .m-chat-view__retry,
   .m-chat-view__retry-list {
     display: flex;

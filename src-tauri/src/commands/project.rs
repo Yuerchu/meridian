@@ -143,6 +143,7 @@ pub async fn create_project(
         path: request.path.0,
         source_type: request.source_type,
         source_id: request.source_id.0,
+        channel_kind: None,
         assistant_id: request.assistant_id.0,
         description: request.description.0,
         created_at: now,
@@ -165,6 +166,7 @@ pub async fn update_project(
     let changeset = ProjectChangeset {
         name: request.name,
         path: request.path.map(Some),
+        channel_kind: None,
         assistant_id: request.assistant_id.map(Some),
         description: request.description.map(Some),
         updated_at: Some(now_ms()),
@@ -237,6 +239,7 @@ mod tests {
             path: Some("A".into()),
             source_type: ProjectSource::Local,
             source_id: None,
+            channel_kind: None,
             assistant_id: None,
             description: None,
             created_at: 1,

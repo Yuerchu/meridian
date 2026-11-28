@@ -30,9 +30,8 @@ describe('ComposerMenu', () => {
   it('offers what can be added to the message', async () => {
     const user = userEvent.setup()
     const onPickFile = vi.fn()
-    render(<ComposerMenu onPickFile={onPickFile} onOpenStickers={() => {}} />)
+    render(<ComposerMenu onPickFile={onPickFile} />)
     const menu = await openMenu(user)
-    expect(within(menu).getByRole('menuitem', { name: 'Emoji' })).toBeInTheDocument()
     await user.click(within(menu).getByRole('menuitem', { name: 'Attach File' }))
     expect(onPickFile).toHaveBeenCalled()
   })
@@ -45,20 +44,6 @@ describe('ComposerMenu', () => {
       expect(within(menu).queryByRole('menuitem', { name })).toBeNull()
     }
     expect(within(menu).queryByRole('menuitemcheckbox')).toBeNull()
-  })
-
-  it('offers stickers only when given a way to open them', async () => {
-    const user = userEvent.setup()
-    const onOpenStickers = vi.fn()
-    const { unmount } = render(<ComposerMenu onPickFile={() => {}} />)
-    await openMenu(user)
-    expect(screen.queryByRole('menuitem', { name: 'Emoji' })).toBeNull()
-    unmount()
-
-    render(<ComposerMenu onOpenStickers={onOpenStickers} />)
-    await openMenu(user)
-    await user.click(screen.getByRole('menuitem', { name: 'Emoji' }))
-    expect(onOpenStickers).toHaveBeenCalled()
   })
 
   it('draws an agent knob as a submenu of its values, ArrowRight in', async () => {

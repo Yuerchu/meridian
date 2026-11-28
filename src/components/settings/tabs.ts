@@ -1,10 +1,8 @@
 import {
   Bot,
-  Broadcast,
   ChartColumn,
   Cloud,
   Cpu,
-  FaceSmile,
   FlaskConical,
   Info,
   Keyboard,
@@ -21,7 +19,6 @@ import {
 } from '@keyline-icons/react/two-tone'
 
 import { can } from '@/lib/capabilities'
-import { isRemote } from '@/lib/transport'
 
 /**
  * The settings sections, and which of them a given platform can reach.
@@ -37,15 +34,12 @@ export type SettingsTab =
   | 'models'
   | 'usage'
   | 'assistants'
-  | 'emoji'
   | 'tools'
   | 'autoreview'
   | 'skills'
   | 'mcp'
   | 'memories'
   | 'voice'
-  | 'voiceCorpus'
-  | 'onebot'
   | 'hooks'
   | 'acp'
   | 'remote'
@@ -66,15 +60,12 @@ const TAB_DEFS: Record<SettingsTab, Omit<SettingsTabDef, 'id'>> = {
   models: { labelKey: 'settings.models', icon: Cpu },
   usage: { labelKey: 'settings.usage', icon: ChartColumn },
   assistants: { labelKey: 'settings.assistants', icon: Bot },
-  emoji: { labelKey: 'settings.emoji', icon: FaceSmile },
   tools: { labelKey: 'settings.toolsTab', icon: Wrench },
   autoreview: { labelKey: 'settings.autoReview', icon: ShieldCheck },
   skills: { labelKey: 'settings.skillsTab', icon: Sparkles },
   mcp: { labelKey: 'settings.mcp', icon: Plug },
   memories: { labelKey: 'settings.memories', icon: Lightbulb },
   voice: { labelKey: 'settings.voice', icon: Mic },
-  voiceCorpus: { labelKey: 'settings.voiceCorpus', icon: Mic },
-  onebot: { labelKey: 'settings.onebot', icon: Broadcast },
   hooks: { labelKey: 'settings.hooks', icon: Link },
   acp: { labelKey: 'settings.acp', icon: Terminal },
   remote: { labelKey: 'settings.remote', icon: Smartphone },
@@ -127,17 +118,14 @@ export const settingsTabGroups: readonly SettingsTabGroupDef[] = [
     // `autoreview` beside the tools rather than beside the servers: what it
     // configures is who answers a tool's approval, and the row above is where
     // the user just decided which tools exist.
-    tabs: ['tools', 'autoreview', 'skills', 'mcp', 'memories', 'emoji'],
+    tabs: ['tools', 'autoreview', 'skills', 'mcp', 'memories'],
   },
   {
     id: 'integrations',
     labelKey: 'settings.group.integrations',
-    // OneBot, the hook endpoint and remote access are the same decision made
-    // three times; somebody asking "what is this machine serving" should find
-    // them together. `acp` serves nothing but belongs beside the hook gates,
-    // which are about the same other coding agent. `ime` sits by voice: both
-    // are ways of typing, and the input method is a service outside this window.
-    tabs: ['voice', 'voiceCorpus', 'ime', 'onebot', 'hooks', 'acp', 'remote'],
+    // Hook endpoint and remote access are local listening servers; `acp` runs a
+    // local coding-agent child process; `ime` sits by voice as an input surface.
+    tabs: ['voice', 'ime', 'hooks', 'acp', 'remote'],
   },
   { id: 'app', labelKey: 'settings.group.app', tabs: ['general', 'developer', 'about'] },
 ]
@@ -147,59 +135,17 @@ const settingsTabs: SettingsTabDef[] = settingsTabGroups.flatMap((group) =>
 )
 
 /**
- * Panels for things Android cannot run: three listening sockets, and one child
- * process. `acp` is the odd one out mechanically — it serves nothing — but it
- * lands in the same place for the same two reasons: the command is compiled out
- * on Android, and what it configures is a binary on the machine the *backend* is
- * on, which is not the one a remote client is holding.
+ * Panels for things Android cannot run: local listening sockets and child
+ * processes. `acp` lands here because the command is compiled out on Android
+ * and configures a binary on the host machine rather than a remote client.
  */
-const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
-
-/**
- * Android has no OneBot connection and nothing to serve the hook endpoint to,
- * so both panels would open onto nothing there. Remote access is the same
- * answer for a different reason: the phone is the client in that arrangement —
- * it is what connects to a desktop, not what another device connects to — so
- * serving from it is backwards even where the socket would bind. Voice input is
- * not in the same position: recording happens in the WebView, and the model has
- * to be downloaded from this screen before anything can be transcribed.
- *
- * `can.manageServers` removes the same three, and it is the same three by
- * construction — it is exactly "the servers this app runs, including the one
- * answering". These are hidden rather than disabled because there is nothing
- * partial to show: every control on all three panels would be inert, and the
- * one a remote client would actually reach for is the address it is already
- * connected to, which it can read in General.
- *
- * `platform` is null for the first frame — `usePlatform` resolves over IPC — and
- * that frame shows the full list. Filtering on an unknown platform would hide a
- * row and then pop it back in, which reads worse than one frame of a list
- * nobody has looked at yet. `can` carries no such delay: it is decided at
- * startup, so it filters from the first frame.
- */
-/**
- * Hidden on a standalone Android app and nowhere else.
- *
- * The voice corpus only exists where a OneBot connection does, and that is not
- * Android. But unlike the panels above it stays visible to a *remote* client on
- * purpose: what it offers is listing and deleting, and deleting is precisely
- * the thing somebody asks for while holding their phone. Export is withheld
- * separately, by `can.exportToDisk` inside the panel — it writes a bundle to a
- * path on whichever machine is answering.
- *
- * So the test is where the *backend* runs, not what is in the hand: an Android
- * phone in remote mode is a window onto a desktop that does have a corpus, and
- * `platform` alone — which still says `android` there — hides the one panel
- * that workflow is for.
- */
-const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
+const DESKTOP_ONLY: SettingsTab[] = ['hooks', 'acp', 'remote']
 
 /**
  * The input method exists on Windows (a text service) and Android (the
  * keyboard in this APK); there is nothing to show for it anywhere else, and a
  * remote client is looking at a desktop whose keyboard is not the one in its
- * hand. `platform` is null for the first frame and that frame shows the row,
- * for the reason given above.
+ * hand. `platform` is null for the first frame and that frame shows the row.
  */
 const INPUT_METHOD: SettingsTab[] = ['ime']
 const INPUT_METHOD_PLATFORMS = ['windows', 'android']
@@ -207,7 +153,6 @@ const INPUT_METHOD_PLATFORMS = ['windows', 'android']
 function hiddenTabs(platform: string | null): Set<SettingsTab> {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
-  if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
   if ((platform !== null && !INPUT_METHOD_PLATFORMS.includes(platform)) || !can.manageServers) {
     INPUT_METHOD.forEach((id) => hidden.add(id))
   }

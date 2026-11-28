@@ -27,18 +27,13 @@ interface CatalogTool {
 interface Catalog {
   bridge_prefix: string
   native: CatalogTool[]
-  onebot: { name: string; effect: string }[]
 }
 const catalog = JSON.parse(readFileSync('src-tauri/crates/core/tool-catalog.json', 'utf8')) as Catalog
 
-/** Every tool core defines, with its effect and argument keys. A QQ tool has
- *  no schema in the catalog, so it may name no argument here. */
+/** Every tool core defines, with its effect and argument keys. */
 const core = new Map<string, { effect: string; keys: Set<string> | null }>()
 for (const tool of catalog.native) {
   core.set(tool.name, { effect: tool.spec.effect, keys: new Set(Object.keys(tool.parameters.properties ?? {})) })
-}
-for (const tool of catalog.onebot) {
-  if (!core.has(tool.name)) core.set(tool.name, { effect: tool.effect, keys: null })
 }
 
 const entries = Object.entries(TOOLS)
@@ -64,7 +59,7 @@ function keysRead(ui: ToolUi): Array<[string, string]> {
 describe('tool catalog', () => {
   it('reads the generated catalog', () => {
     // A floor, so a moved file or a renamed field cannot make this a gate over nothing.
-    expect(core.size).toBeGreaterThanOrEqual(45)
+    expect(core.size).toBeGreaterThanOrEqual(25)
   })
 
   it('has an entry for every tool core defines, and none it does not', () => {

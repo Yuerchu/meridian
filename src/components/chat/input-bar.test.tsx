@@ -33,7 +33,6 @@ vi.mock('@/hooks/use-voice-recorder', () => ({
 vi.mock('@/hooks/use-android-voice-recorder', () => ({
   useAndroidVoiceRecorder: () => ({ attachField: vi.fn(), isActive: false, cancel: vi.fn() }),
 }))
-vi.mock('./emoji-picker', () => ({ EmojiPicker: () => null }))
 const composerMenu = vi.hoisted(() => ({ props: vi.fn() }))
 vi.mock('./composer-menu', () => ({
   ComposerMenu: (props: unknown) => {

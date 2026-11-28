@@ -56,6 +56,8 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
         return t('settings.memory.trash.deletedBy.self')
       case 'lru':
         return t('settings.memory.trash.deletedBy.lru')
+      case 'dream':
+        return t('settings.memory.trash.deletedBy.dream')
       default:
         return t('settings.memory.trash.deletedBy.admin')
     }

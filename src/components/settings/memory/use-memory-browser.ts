@@ -70,7 +70,7 @@ export function useMemoryBrowser() {
         rows = rows.filter((m) => m.scope_type === 'client_global')
         break
       case 'global':
-        rows = rows.filter((m) => m.scope_type === 'onebot_global')
+        rows = rows.filter((m) => m.scope_type === 'channel_global')
         break
       case 'chats':
         rows = rows.filter((m) => m.scope_type === 'project')
@@ -79,7 +79,7 @@ export function useMemoryBrowser() {
         rows = rows.filter((m) => m.scope_id === filter.projectId)
         break
       case 'people':
-        rows = rows.filter((m) => m.scope_type === 'onebot_user')
+        rows = rows.filter((m) => m.scope_type === 'external_subject')
         break
       case 'person':
         rows = rows.filter((m) => m.scope_id === filter.scopeId)
@@ -101,9 +101,9 @@ export function useMemoryBrowser() {
     () => ({
       all: memories.length,
       clientGlobal: memories.filter((m) => m.scope_type === 'client_global').length,
-      global: memories.filter((m) => m.scope_type === 'onebot_global').length,
+      global: memories.filter((m) => m.scope_type === 'channel_global').length,
       chats: memories.filter((m) => m.scope_type === 'project').length,
-      people: memories.filter((m) => m.scope_type === 'onebot_user').length,
+      people: memories.filter((m) => m.scope_type === 'external_subject').length,
     }),
     [memories],
   )

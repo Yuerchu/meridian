@@ -4,14 +4,11 @@
 //! lists explicit: adding a column to a persistence row must not silently expand
 //! the desktop or remote API.
 
-use meridian_core::db::entity::emoji::{EmojiSemanticStatus, EmojiSource};
-use meridian_core::db::entity::emoji_pack::EmojiPackKind;
 use meridian_core::db::entity::memory::{DeletedBy, MemoryScope, MemoryType, Origin, Visibility};
 use meridian_core::db::entity::skill::SkillSource;
 use meridian_core::db::entity::{
-    assistant, conversation, custom_tool, emoji, emoji_pack, journal_version, mcp_server, memory, memory_subject,
-    model_config, model_profile, project, provider, queued_prompt, skill, todo_item, todo_list, tool_category,
-    tool_preset,
+    assistant, conversation, custom_tool, journal_version, mcp_server, memory, memory_subject, model_config,
+    model_profile, project, provider, queued_prompt, skill, todo_item, todo_list, tool_category, tool_preset,
 };
 use meridian_core::db::sea::ops::todo::TodoListView;
 use meridian_core::db::types::Json;
@@ -409,84 +406,6 @@ impl TryFrom<conversation::Model> for ConversationInfoResponse {
 pub type ConversationListResponse = Vec<ConversationInfoResponse>;
 
 #[derive(Debug, Clone, serde::Serialize)]
-pub struct EmojiPackInfoResponse {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub cover_image: Option<String>,
-    pub sort_order: i32,
-    pub created_at: i64,
-    pub updated_at: i64,
-    pub kind: EmojiPackKind,
-    pub source_account_id: Option<String>,
-    pub is_builtin: bool,
-}
-
-impl From<emoji_pack::Model> for EmojiPackInfoResponse {
-    fn from(row: emoji_pack::Model) -> Self {
-        Self {
-            id: row.id,
-            name: row.name,
-            description: row.description,
-            cover_image: row.cover_image,
-            sort_order: row.sort_order,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            kind: row.kind,
-            source_account_id: row.source_account_id,
-            is_builtin: row.is_builtin.get(),
-        }
-    }
-}
-
-pub type EmojiPackListResponse = Vec<EmojiPackInfoResponse>;
-
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct EmojiInfoResponse {
-    pub id: String,
-    pub pack_id: String,
-    pub name: String,
-    pub tags: Option<String>,
-    pub file_name: String,
-    pub file_format: String,
-    pub sort_order: i32,
-    pub created_at: i64,
-    pub source: EmojiSource,
-    pub source_key: Option<String>,
-    pub semantic_status: EmojiSemanticStatus,
-    pub suggested_name: Option<String>,
-    pub suggested_tags: Option<String>,
-    pub file_size: i64,
-    pub seen_count: i32,
-    pub last_seen_at: Option<i64>,
-}
-
-impl From<emoji::Model> for EmojiInfoResponse {
-    fn from(row: emoji::Model) -> Self {
-        Self {
-            id: row.id,
-            pack_id: row.pack_id,
-            name: row.name,
-            tags: row.tags,
-            file_name: row.file_name,
-            file_format: row.file_format,
-            sort_order: row.sort_order,
-            created_at: row.created_at,
-            source: row.source,
-            source_key: row.source_key,
-            semantic_status: row.semantic_status,
-            suggested_name: row.suggested_name,
-            suggested_tags: row.suggested_tags,
-            file_size: row.file_size,
-            seen_count: row.seen_count,
-            last_seen_at: row.last_seen_at,
-        }
-    }
-}
-
-pub type EmojiListResponse = Vec<EmojiInfoResponse>;
-
-#[derive(Debug, Clone, serde::Serialize)]
 pub struct JournalVersionInfoResponse {
     pub id: String,
     pub file_id: String,
@@ -539,6 +458,23 @@ impl TryFrom<journal_version::Model> for JournalVersionInfoResponse {
 pub type JournalVersionListResponse = Vec<JournalVersionInfoResponse>;
 
 #[derive(Debug, Clone, serde::Serialize)]
+pub struct McpToolPolicyOverrideResponse {
+    pub scope: Option<meridian_core::agent::hooks::ToolScope>,
+    pub loading: Option<meridian_core::agent::hooks::ToolLoading>,
+    pub approval: Option<meridian_core::agent::hooks::ToolApprovalPolicy>,
+}
+
+impl From<meridian_core::mcp::policy::McpToolPolicyOverride> for McpToolPolicyOverrideResponse {
+    fn from(value: meridian_core::mcp::policy::McpToolPolicyOverride) -> Self {
+        Self {
+            scope: value.scope,
+            loading: value.loading,
+            approval: value.approval,
+        }
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct McpServerInfoResponse {
     pub id: String,
     pub name: String,
@@ -548,6 +484,9 @@ pub struct McpServerInfoResponse {
     pub env: Option<BTreeMap<String, String>>,
     pub url: Option<String>,
     pub is_enabled: bool,
+    pub default_policy: Option<McpToolPolicyOverrideResponse>,
+    pub tool_policies: Option<BTreeMap<String, McpToolPolicyOverrideResponse>>,
+    pub approved_always_tools: Option<Vec<String>>,
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
@@ -565,6 +504,11 @@ impl From<mcp_server::Model> for McpServerInfoResponse {
             env: row.env.map(Json::into_inner),
             url: row.url,
             is_enabled: row.is_enabled.get(),
+            default_policy: row.default_policy_json.map(|j| j.into_inner().into()),
+            tool_policies: row
+                .tool_policies_json
+                .map(|j| j.into_inner().into_iter().map(|(k, v)| (k, v.into())).collect()),
+            approved_always_tools: row.approved_always_tools_json.map(Json::into_inner),
             sort_order: row.sort_order,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -850,6 +794,7 @@ pub struct ProjectInfoResponse {
     pub path: Option<String>,
     pub source_type: project::ProjectSource,
     pub source_id: Option<String>,
+    pub channel_kind: Option<String>,
     pub assistant_id: Option<String>,
     pub description: Option<String>,
     pub created_at: i64,
@@ -864,6 +809,7 @@ impl From<project::Model> for ProjectInfoResponse {
             path: row.path,
             source_type: row.source_type,
             source_id: row.source_id,
+            channel_kind: row.channel_kind,
             assistant_id: row.assistant_id,
             description: row.description,
             created_at: row.created_at,

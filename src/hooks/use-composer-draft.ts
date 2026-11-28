@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
-import type { AttachedFile, PendingSticker } from '@/components/chat/input-bar'
+import type { AttachedFile } from '@/components/chat/input-bar'
 import {
   draftKey,
   EMPTY_PERSISTED_DRAFT,
@@ -11,7 +11,6 @@ import {
   writeComposerDraft,
   type PersistedComposerDraft,
 } from '@/lib/composer-draft-sync'
-import { loadStickerUrl } from '@/lib/sticker-urls'
 import i18n from '@/i18n'
 import { errorMessage } from '@/lib/error-message'
 import type { ComposerDraftInfoResponse } from '@/types'
@@ -38,7 +37,6 @@ export interface ComposerConversationRef {
 export interface ComposerDraftState {
   text: string
   attachedFiles: AttachedFile[]
-  pendingSticker: PendingSticker | null
   conversationRefs: ComposerConversationRef[]
 }
 
@@ -52,12 +50,10 @@ function persistedOf(state: ComposerDraftState): PersistedComposerDraft {
       !file.file && file.path && isPersistablePath(file.path) ? [{ path: file.path, name: file.name }] : [],
     ),
     conversationRefs: state.conversationRefs.map((ref) => ref.id),
-    stickerId: state.pendingSticker?.emoji.id ?? null,
   }
 }
 
 async function stateFromResponse(row: ComposerDraftInfoResponse): Promise<ComposerDraftState> {
-  const sticker = row.sticker
   return {
     text: row.body,
     attachedFiles: row.attachments.map((a) => ({
@@ -65,7 +61,6 @@ async function stateFromResponse(row: ComposerDraftInfoResponse): Promise<Compos
       name: a.name,
       ...(a.exists ? {} : { missing: true }),
     })),
-    pendingSticker: sticker ? { emoji: sticker, url: await loadStickerUrl(sticker.id).catch(() => '') } : null,
     conversationRefs: row.conversation_refs.map((ref) => ({
       id: ref.id,
       title: ref.title ?? '',
@@ -124,10 +119,10 @@ export function useComposerDraft(
 ): ComposerDraftControls {
   const [error, setError] = useState<ComposerDraftError | null>(null)
 
-  const { text, attachedFiles, pendingSticker, conversationRefs } = state
+  const { text, attachedFiles, conversationRefs } = state
   const persisted = useMemo(
-    () => persistedOf({ text, attachedFiles, pendingSticker, conversationRefs }),
-    [text, attachedFiles, pendingSticker, conversationRefs],
+    () => persistedOf({ text, attachedFiles, conversationRefs }),
+    [text, attachedFiles, conversationRefs],
   )
   const key = useMemo(() => draftKey(persisted), [persisted])
 

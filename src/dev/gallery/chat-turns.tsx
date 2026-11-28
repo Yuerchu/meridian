@@ -27,7 +27,7 @@ function TurnItemCase({
   rows,
   streaming = false,
   crashed = false,
-  oneBot = false,
+  channel = false,
   hosted = false,
   question = '把审批矩阵那一节补完，然后我们定稿。',
   previousTurnEndedAt = PG_NOW - 60_000,
@@ -42,7 +42,7 @@ function TurnItemCase({
   rows?: { blocks: ContentBlock[]; modelId?: string }[]
   streaming?: boolean
   crashed?: boolean
-  oneBot?: boolean
+  channel?: boolean
   hosted?: boolean
   question?: string | null
   /** Null draws the date separator above the turn. */
@@ -90,7 +90,7 @@ function TurnItemCase({
           conversationId="pg"
           isLastTurn={streaming}
           streaming={streaming}
-          isOneBot={oneBot}
+          isChannel={channel}
           isHosted={hosted}
           previousTurnEndedAt={previousTurnEndedAt}
           onRegenerate={noop}
@@ -363,8 +363,8 @@ export default function ChatTurns() {
             ]}
           />
           <TurnItemCase
-            label="OneBot · 一条回复切成多个气泡"
-            oneBot
+            label="渠道归档 · 一条回复切成多个气泡"
+            channel
             blocks={[{ type: 'text', text: '收到。\n---\n我看看。\n---\n这个可以改，稍等。' }]}
           />
           <TurnItemCase

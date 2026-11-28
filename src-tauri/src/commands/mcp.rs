@@ -11,6 +11,42 @@ use meridian_core::db::types::{Json, SqlBool};
 use meridian_core::mcp;
 use meridian_core::util::{double_option, now_ms};
 
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct McpResolvedToolPolicyInfoResponse {
+    pub scope: meridian_core::agent::hooks::ToolScope,
+    pub loading: meridian_core::agent::hooks::ToolLoading,
+    pub approval: meridian_core::agent::hooks::ToolApprovalPolicy,
+    pub needs_always_reapproval: bool,
+}
+
+impl From<mcp::policy::ResolvedMcpToolPolicy> for McpResolvedToolPolicyInfoResponse {
+    fn from(value: mcp::policy::ResolvedMcpToolPolicy) -> Self {
+        Self {
+            scope: value.scope,
+            loading: value.loading,
+            approval: value.approval,
+            needs_always_reapproval: value.needs_always_reapproval,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub struct McpDefaultPolicyInfoResponse {
+    pub scope: meridian_core::agent::hooks::ToolScope,
+    pub loading: meridian_core::agent::hooks::ToolLoading,
+    pub approval: meridian_core::agent::hooks::ToolApprovalPolicy,
+}
+
+impl From<mcp::policy::McpToolPolicy> for McpDefaultPolicyInfoResponse {
+    fn from(value: mcp::policy::McpToolPolicy) -> Self {
+        Self {
+            scope: value.scope,
+            loading: value.loading,
+            approval: value.approval,
+        }
+    }
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct McpServerToolInfoResponse {
     pub server_id: String,
@@ -21,9 +57,14 @@ pub struct McpServerToolInfoResponse {
     pub input_schema: serde_json::Value,
     pub enabled: bool,
     pub definition_tokens: usize,
+    pub resolved_policy: McpResolvedToolPolicyInfoResponse,
 }
 
-fn tool_response(value: mcp::McpToolDef, enabled: bool) -> McpServerToolInfoResponse {
+fn tool_response(
+    value: mcp::McpToolDef,
+    enabled: bool,
+    resolved_policy: mcp::policy::ResolvedMcpToolPolicy,
+) -> McpServerToolInfoResponse {
     let definition_tokens = mcp::definition_tokens(&value.qualified_name, &value.description, &value.input_schema);
     McpServerToolInfoResponse {
         server_id: value.server_id,
@@ -34,6 +75,7 @@ fn tool_response(value: mcp::McpToolDef, enabled: bool) -> McpServerToolInfoResp
         input_schema: value.input_schema,
         enabled,
         definition_tokens,
+        resolved_policy: resolved_policy.into(),
     }
 }
 
@@ -81,7 +123,6 @@ pub type McpConnectionStatusListResponse = Vec<McpConnectionStatusInfoResponse>;
 pub enum McpToolSource {
     Builtin,
     Mcp,
-    Onebot,
 }
 
 #[derive(Debug, Clone, Copy, serde::Deserialize, serde::Serialize)]
@@ -189,6 +230,9 @@ pub async fn create_mcp_server(
         // user turns it on once they know the configuration works.
         is_enabled: SqlBool::FALSE,
         disabled_tools: Json(Vec::new()),
+        default_policy_json: None,
+        tool_policies_json: None,
+        approved_always_tools_json: None,
         sort_order: 0,
         created_at: now,
         updated_at: now,
@@ -217,6 +261,9 @@ pub async fn update_mcp_server(
         headers: request.headers.map(|headers| headers.map(Json)),
         is_enabled: request.is_enabled.map(SqlBool::from),
         disabled_tools: None,
+        default_policy_json: None,
+        tool_policies_json: None,
+        approved_always_tools_json: None,
         updated_at: Some(now_ms()),
     };
     let row = services
@@ -273,13 +320,262 @@ pub async fn list_mcp_tools(
         Some(sid) => registry.tools_for_server(&sid),
         None => registry.tools().as_ref().clone(),
     };
+    let (global_default, servers) = services
+        .db
+        .read(async |tx| {
+            let global = match mcp::policy::read_global_default(tx).await {
+                Ok(policy) => policy,
+                Err(error) => return Ok::<_, DbErr>(Err(error)),
+            };
+            let rows = mcp_server_ops::list(tx).await?;
+            Ok(Ok((global, rows)))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    let by_id: std::collections::HashMap<&str, &mcp_server::Model> =
+        servers.iter().map(|s| (s.id.as_str(), s)).collect();
     Ok(tools
         .into_iter()
         .map(|tool| {
             let enabled = registry.is_tool_enabled(&tool.server_id, &tool.name);
-            tool_response(tool, enabled)
+            let server_row = by_id.get(tool.server_id.as_str()).copied();
+            let resolved = mcp::policy::resolve_tool_policy(
+                global_default,
+                server_row.and_then(|s| s.default_policy_json.as_ref().map(|j| &j.0)),
+                server_row
+                    .and_then(|s| s.tool_policies_json.as_ref())
+                    .and_then(|j| j.0.get(&tool.name)),
+                server_row
+                    .and_then(|s| s.approved_always_tools_json.as_ref())
+                    .map(|j| j.0.as_slice()),
+                &tool.name,
+            );
+            tool_response(tool, enabled, resolved)
         })
         .collect())
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpDefaultPolicyUpdateRequest {
+    scope: meridian_core::agent::hooks::ToolScope,
+    loading: meridian_core::agent::hooks::ToolLoading,
+    approval: meridian_core::agent::hooks::ToolApprovalPolicy,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerPolicyUpdateRequest {
+    server_id: String,
+    scope: RequiredNullable<meridian_core::agent::hooks::ToolScope>,
+    loading: RequiredNullable<meridian_core::agent::hooks::ToolLoading>,
+    approval: RequiredNullable<meridian_core::agent::hooks::ToolApprovalPolicy>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpToolPolicyUpdateRequest {
+    server_id: String,
+    tool_name: String,
+    scope: RequiredNullable<meridian_core::agent::hooks::ToolScope>,
+    loading: RequiredNullable<meridian_core::agent::hooks::ToolLoading>,
+    approval: RequiredNullable<meridian_core::agent::hooks::ToolApprovalPolicy>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpServerApproveAlwaysToolsRequest {
+    server_id: String,
+    tool_names: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_mcp_default_policy(app: tauri::AppHandle) -> Result<McpDefaultPolicyInfoResponse, String> {
+    let services = app.services();
+    let policy = mcp::policy::read_global_default(&services.db).await?;
+    Ok(policy.into())
+}
+
+#[tauri::command]
+pub async fn set_mcp_default_policy(
+    app: tauri::AppHandle,
+    request: McpDefaultPolicyUpdateRequest,
+) -> Result<McpDefaultPolicyInfoResponse, String> {
+    let services = app.services();
+    let policy = mcp::policy::McpToolPolicy {
+        scope: request.scope,
+        loading: request.loading,
+        approval: request.approval,
+    };
+    let now = now_ms();
+    services
+        .db
+        .write(
+            async |tx| match mcp::policy::write_global_default(tx, policy, now).await {
+                Ok(()) => Ok::<_, DbErr>(Ok(())),
+                Err(error) => Ok(Err(error)),
+            },
+        )
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(policy.into())
+}
+
+/// Set or clear server-level MCP policy overrides.
+///
+/// When `approval` is explicitly set to `always`, snapshots the server's
+/// currently connected tool names into `approved_always_tools_json` so
+/// existing tools can run automatically while any unseen tools introduced by a
+/// future upstream MCP upgrade fall back to `request_approve`.
+#[tauri::command]
+pub async fn set_mcp_server_policy(
+    app: tauri::AppHandle,
+    request: McpServerPolicyUpdateRequest,
+) -> Result<McpServerInfoResponse, String> {
+    let services = app.services();
+    let override_policy = mcp::policy::McpToolPolicyOverride {
+        scope: request.scope.0,
+        loading: request.loading.0,
+        approval: request.approval.0,
+    };
+    let connected_tool_names: Vec<String> = services
+        .mcp
+        .tools_for_server(&request.server_id)
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
+    let row = services
+        .db
+        .write(async |tx| {
+            let server = mcp_server_ops::get(tx, &request.server_id)
+                .await?
+                .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
+            let approved_always =
+                if override_policy.approval == Some(meridian_core::agent::hooks::ToolApprovalPolicy::Always) {
+                    let mut approved = server
+                        .approved_always_tools_json
+                        .map(Json::into_inner)
+                        .unwrap_or_default();
+                    for name in &connected_tool_names {
+                        if !approved.iter().any(|existing| existing == name) {
+                            approved.push(name.clone());
+                        }
+                    }
+                    approved.sort();
+                    Some(Some(Json(approved)))
+                } else {
+                    None
+                };
+            let default_policy_json = if override_policy.is_empty() {
+                Some(None)
+            } else {
+                Some(Some(Json(override_policy)))
+            };
+            mcp_server_ops::update(
+                tx,
+                &request.server_id,
+                McpServerChangeset {
+                    default_policy_json,
+                    approved_always_tools_json: approved_always,
+                    updated_at: Some(now_ms()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.into())
+}
+
+/// Set or clear a per-tool MCP policy override keyed by the server-native tool name.
+#[tauri::command]
+pub async fn set_mcp_tool_policy(
+    app: tauri::AppHandle,
+    request: McpToolPolicyUpdateRequest,
+) -> Result<McpServerInfoResponse, String> {
+    if request.tool_name.is_empty() {
+        return Err("tool name is empty".into());
+    }
+    let services = app.services();
+    let override_policy = mcp::policy::McpToolPolicyOverride {
+        scope: request.scope.0,
+        loading: request.loading.0,
+        approval: request.approval.0,
+    };
+    let row = services
+        .db
+        .write(async |tx| {
+            let server = mcp_server_ops::get(tx, &request.server_id)
+                .await?
+                .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
+            let mut map = server.tool_policies_json.map(Json::into_inner).unwrap_or_default();
+            if override_policy.is_empty() {
+                map.remove(&request.tool_name);
+            } else {
+                map.insert(request.tool_name.clone(), override_policy);
+            }
+            let tool_policies_json = if map.is_empty() {
+                Some(None)
+            } else {
+                Some(Some(Json(map)))
+            };
+            mcp_server_ops::update(
+                tx,
+                &request.server_id,
+                McpServerChangeset {
+                    tool_policies_json,
+                    updated_at: Some(now_ms()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.into())
+}
+
+/// Explicitly acknowledge newly appeared tool names under an `always` server/global policy.
+#[tauri::command]
+pub async fn set_mcp_approved_always_tools(
+    app: tauri::AppHandle,
+    request: McpServerApproveAlwaysToolsRequest,
+) -> Result<McpServerInfoResponse, String> {
+    if request.tool_names.iter().any(|name| name.is_empty()) {
+        return Err("tool name is empty".into());
+    }
+    let services = app.services();
+    let row = services
+        .db
+        .write(async |tx| {
+            let server = mcp_server_ops::get(tx, &request.server_id)
+                .await?
+                .ok_or_else(|| DbErr::RecordNotFound(format!("MCP server `{}`", request.server_id)))?;
+            let mut approved = server
+                .approved_always_tools_json
+                .map(Json::into_inner)
+                .unwrap_or_default();
+            for name in &request.tool_names {
+                if !approved.iter().any(|existing| existing == name) {
+                    approved.push(name.clone());
+                }
+            }
+            approved.sort();
+            mcp_server_ops::update(
+                tx,
+                &request.server_id,
+                McpServerChangeset {
+                    approved_always_tools_json: Some(Some(Json(approved))),
+                    updated_at: Some(now_ms()),
+                    ..Default::default()
+                },
+            )
+            .await
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(row.into())
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -388,16 +684,6 @@ pub async fn list_tools(app: tauri::AppHandle) -> Result<McpToolListResponse, St
         });
     }
 
-    // Session-scoped QQ tools (OneBot is desktop-only); listed for visibility,
-    // they are offered to the model only inside OneBot sessions.
-    #[cfg(not(target_os = "android"))]
-    for tool in meridian_core::onebot::qq_tool_catalog() {
-        result.push(
-            serde_json::from_value(tool)
-                .map_err(|error| format!("invalid built-in OneBot tool catalog entry: {error}"))?,
-        );
-    }
-
     Ok(result)
 }
 
@@ -408,12 +694,12 @@ mod response_contract_tests {
     #[test]
     fn tool_response_is_closed_and_complete() {
         let valid = serde_json::json!({
-            "name": "qq_get_group_info",
+            "name": "read_file",
             "description": "",
-            "source": "onebot",
+            "source": "builtin",
             "admin_only": false,
             "needs_approval": false,
-            "scope": "group"
+            "scope": "any"
         });
         let response: McpToolInfoResponse = serde_json::from_value(valid).unwrap();
         let serialized = serde_json::to_value(response).unwrap();

@@ -22,9 +22,6 @@ vi.mock('@/api', () => ({
     mcp: {
       listAllTools: vi.fn(),
     },
-    emojis: {
-      listPacks: vi.fn(),
-    },
     tools: {
       listPresets: vi.fn(),
     },
@@ -105,7 +102,6 @@ describe('AssistantSettings tool mode segment', () => {
     mockApi.assistants.list.mockResolvedValue([ASSISTANT])
     mockApi.providers.list.mockResolvedValue([])
     mockApi.mcp.listAllTools.mockResolvedValue([TOOL])
-    mockApi.emojis.listPacks.mockResolvedValue([])
     mockApi.tools.listPresets.mockResolvedValue([PRESET])
     mockApi.skills.list.mockResolvedValue([])
     mockApi.skills.listBindings.mockResolvedValue([])
@@ -172,7 +168,6 @@ describe('AssistantSettings model lock', () => {
     mockApi.assistants.list.mockResolvedValue([bound])
     mockApi.providers.list.mockResolvedValue([{ id: 'p1', name: 'Gemma' } as never])
     mockApi.mcp.listAllTools.mockResolvedValue([TOOL])
-    mockApi.emojis.listPacks.mockResolvedValue([])
     mockApi.tools.listPresets.mockResolvedValue([])
     mockApi.skills.list.mockResolvedValue([])
     mockApi.skills.listBindings.mockResolvedValue([])

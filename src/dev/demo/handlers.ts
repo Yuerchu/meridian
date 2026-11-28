@@ -24,19 +24,24 @@ import type {
   CustomToolCreateRequest,
   CustomToolInfoResponse,
   CustomToolUpdateRequest,
-  EmojiListRequest,
-  EmojiPackAssignmentUpdateRequest,
-  EmojiPackListRequest,
-  EmojiUpdateRequest,
+  DreamConfigUpdateRequest,
+  DreamRunInfoResponse,
+  DreamRunListRequest,
+  DreamRunRestoreRequest,
+  DreamRunStartRequest,
   LocalModelInspectRequest,
   LogicalModelCreateRequest,
   LogicalModelDeleteRequest,
   LogicalModelInfoResponse,
   LogicalModelUpdateRequest,
+  McpDefaultPolicyUpdateRequest,
+  McpServerApproveAlwaysToolsRequest,
   McpServerCreateRequest,
+  McpServerPolicyUpdateRequest,
   McpServerUpdateRequest,
   McpToolEnabledUpdateRequest,
   McpToolListRequest,
+  McpToolPolicyUpdateRequest,
   MediaGenerationCancelRequest,
   MediaGenerationCreateRequest,
   MediaGenerationDeleteRequest,
@@ -59,7 +64,6 @@ import type {
   ModelDeploymentProfileSwitchRequest,
   ModelDeploymentUpdateRequest,
   ModelProfileInfoResponse,
-  OneBotConfigUpdateRequest,
   PendingApprovalInfoResponse,
   PreferenceKey,
   ProviderCreateRequest,
@@ -88,7 +92,6 @@ import {
   CAPABILITIES,
   IME_LM_STATUS,
   IME_STATUS,
-  STICKER_IMAGES,
   SKILL_BODY,
   buildCatalog,
   buildMcpTools,
@@ -597,7 +600,6 @@ const chat: Record<string, DemoHandler> = {
         title: state.conversations.find((c) => c.id === id)?.title ?? null,
         exists: state.conversations.some((c) => c.id === id),
       })),
-      sticker: state.emojis.find((e) => e.id === req.sticker_id) ?? null,
       revision: req.revision,
       updated_at: Date.now(),
     }
@@ -848,6 +850,7 @@ const projects: Record<string, DemoHandler> = {
       path: req.path,
       source_type: 'local' as const,
       source_id: null,
+      channel_kind: null,
       assistant_id: null,
       description: req.description,
       created_at: now,
@@ -1361,6 +1364,9 @@ const mcp: Record<string, DemoHandler> = {
       url: req.url,
       headers: req.headers,
       is_enabled: true,
+      default_policy: null,
+      tool_policies: null,
+      approved_always_tools: null,
       sort_order: state.mcpServers.length,
       created_at: now,
       updated_at: now,
@@ -1414,6 +1420,47 @@ const mcp: Record<string, DemoHandler> = {
     row.updated_at = Date.now()
     return row
   },
+  get_mcp_default_policy: (_args, { state }) => state.mcpDefaultPolicy,
+  set_mcp_default_policy: (args, { state }) => {
+    const req = request<McpDefaultPolicyUpdateRequest>(args)
+    state.mcpDefaultPolicy = { scope: req.scope, loading: req.loading, approval: req.approval }
+    return state.mcpDefaultPolicy
+  },
+  set_mcp_server_policy: (args, { state }) => {
+    const req = request<McpServerPolicyUpdateRequest>(args)
+    const row = state.mcpServers.find((s) => s.id === req.server_id)
+    if (!row) throw 'server not found'
+    const empty = req.scope === null && req.loading === null && req.approval === null
+    row.default_policy = empty ? null : { scope: req.scope, loading: req.loading, approval: req.approval }
+    if (req.approval === 'always') {
+      const names = buildMcpTools()
+        .filter((t) => t.server_id === row.id)
+        .map((t) => t.name)
+      row.approved_always_tools = [...new Set([...(row.approved_always_tools ?? []), ...names])].sort()
+    }
+    row.updated_at = Date.now()
+    return row
+  },
+  set_mcp_tool_policy: (args, { state }) => {
+    const req = request<McpToolPolicyUpdateRequest>(args)
+    const row = state.mcpServers.find((s) => s.id === req.server_id)
+    if (!row) throw 'server not found'
+    const map = { ...(row.tool_policies ?? {}) }
+    const empty = req.scope === null && req.loading === null && req.approval === null
+    if (empty) delete map[req.tool_name]
+    else map[req.tool_name] = { scope: req.scope, loading: req.loading, approval: req.approval }
+    row.tool_policies = Object.keys(map).length > 0 ? map : null
+    row.updated_at = Date.now()
+    return row
+  },
+  set_mcp_approved_always_tools: (args, { state }) => {
+    const req = request<McpServerApproveAlwaysToolsRequest>(args)
+    const row = state.mcpServers.find((s) => s.id === req.server_id)
+    if (!row) throw 'server not found'
+    row.approved_always_tools = [...new Set([...(row.approved_always_tools ?? []), ...req.tool_names])].sort()
+    row.updated_at = Date.now()
+    return row
+  },
   list_mcp_connection_statuses: (_args, { state }) =>
     state.mcpServers
       .filter((s) => s.is_enabled)
@@ -1436,7 +1483,7 @@ const memories: Record<string, DemoHandler> = {
   },
   list_memory_subjects: (_args, { state }) => state.memorySubjects,
   get_memory_enums: () => ({
-    scopes: ['project', 'client_global', 'onebot_global', 'onebot_user'],
+    scopes: ['project', 'client_global', 'channel_global', 'external_subject'],
     origins: ['private', 'group', 'admin', 'desktop', 'legacy'],
     visibilities: ['normal', 'owner_only'],
     memory_types: ['general', 'preference', 'fact', 'instruction', 'relationship'],
@@ -1450,11 +1497,11 @@ const memories: Record<string, DemoHandler> = {
       scope_id:
         req.scope === 'project'
           ? (req.project_id ?? '')
-          : req.scope === 'onebot_user'
+          : req.scope === 'external_subject'
             ? (req.subject_scope_id ?? '')
             : req.scope === 'client_global'
               ? 'client'
-              : 'onebot',
+              : 'channel',
       key: req.key,
       content: req.content,
       memory_type: req.memory_type ?? 'general',
@@ -1514,6 +1561,60 @@ const memories: Record<string, DemoHandler> = {
     if (row && req.is_pinned !== null) row.is_pinned = req.is_pinned
     if (row && req.opted_out !== null) row.opted_out = req.opted_out
     return null
+  },
+  get_dream_config: (_args, { state }) => state.dreamConfig,
+  set_dream_config: (args, { state }) => {
+    const req = request<DreamConfigUpdateRequest>(args)
+    state.dreamConfig = {
+      enabled: req.enabled,
+      model: req.model,
+      cooldown_hours: req.cooldown_hours,
+      min_turns: req.min_turns,
+      daily_budget_usd: req.daily_budget_usd,
+    }
+    return state.dreamConfig
+  },
+  list_dream_runs: (args, { state }) => {
+    const req = request<DreamRunListRequest>(args)
+    let items = state.dreamRuns
+    if (req.scope !== null) {
+      items = items.filter((r) => r.scope_type === req.scope && (req.scope_id === null || r.scope_id === req.scope_id))
+    }
+    return req.limit !== null ? items.slice(0, req.limit) : items
+  },
+  start_dream_run: (args, { state }) => {
+    const req = request<DreamRunStartRequest>(args)
+    const now = Date.now()
+    const run: DreamRunInfoResponse = {
+      id: mintId(state, 'dream'),
+      scope_type: req.scope,
+      scope_id: req.scope_id,
+      status: 'skipped',
+      trigger: 'manual',
+      model_id: state.dreamConfig.model?.model_id ?? 'claude-haiku-5',
+      started_at: now,
+      finished_at: now,
+      turns_reviewed: 0,
+      memories_created: 0,
+      memories_updated: 0,
+      memories_pruned: 0,
+      proposals_created: 0,
+      pruned_memory_ids: [],
+      summary: 'No new conversation signal since the last consolidation.',
+      error: null,
+    }
+    state.dreamRuns.unshift(run)
+    return run
+  },
+  restore_dream_run: (args, { state }) => {
+    const req = request<DreamRunRestoreRequest>(args)
+    const run = state.dreamRuns.find((r) => r.id === req.run_id)
+    if (!run) throw 'dream run not found'
+    const ids = new Set(run.pruned_memory_ids)
+    const restored = state.memoryTrash.filter((m) => ids.has(m.id))
+    state.memoryTrash = state.memoryTrash.filter((m) => !ids.has(m.id))
+    state.memories.unshift(...restored.map((m) => ({ ...m, deleted_at: null, deleted_by: null })))
+    return { run_id: req.run_id, restored_count: restored.length }
   },
 }
 
@@ -1578,35 +1679,6 @@ const system: Record<string, DemoHandler> = {
 }
 
 const integrations: Record<string, DemoHandler> = {
-  get_onebot_config: (_args, { state }) => state.onebot,
-  set_onebot_config: (args, { state }) => {
-    const body = request<OneBotConfigUpdateRequest>(args)
-    state.onebot = { ...body, reply_seeds: state.onebot.reply_seeds }
-    return state.onebot
-  },
-  get_onebot_status: (_args, { state }) => ({
-    enabled: state.onebot.enabled,
-    running: state.onebotRunning,
-    connected_clients: state.onebotRunning ? 1 : 0,
-    host: state.onebot.host,
-    port: state.onebot.port,
-  }),
-  start_onebot: (_args, { state }) => {
-    state.onebotRunning = true
-    return null
-  },
-  stop_onebot: (_args, { state }) => {
-    state.onebotRunning = false
-    return null
-  },
-  get_onebot_voice_readiness: () => ({
-    enabled: true,
-    has_model: true,
-    has_reference_id: true,
-    has_api_key: false,
-    ready: false,
-  }),
-  list_voice_corpus: (_args, { state }) => state.voiceCorpus,
   get_voice_model_status: () => ({
     installed: true,
     path: 'C:\\Users\\demo\\AppData\\Roaming\\Meridian\\models\\sense-voice',
@@ -1693,49 +1765,6 @@ const integrations: Record<string, DemoHandler> = {
     path: `${IME_STATUS.data_dir}\\context\\memory-hints.json`,
   }),
   get_acp_config: () => ({ command: 'npx', args: ['-y', '@agentclientprotocol/claude-agent-acp@0.84.0'] }),
-}
-
-const emoji: Record<string, DemoHandler> = {
-  list_emoji_packs: (args, { state }) => {
-    request<EmojiPackListRequest>(args)
-    return state.emojiPacks
-  },
-  set_emoji_pack_assignment: (args) => {
-    request<EmojiPackAssignmentUpdateRequest>(args)
-    return null
-  },
-  list_emojis: (args, { state }) => {
-    const req = request<EmojiListRequest>(args)
-    if (req.filter.kind === 'pack') {
-      const packId = req.filter.pack_id
-      return state.emojis.filter((e) => e.pack_id === packId)
-    }
-    const query = req.filter.query.toLowerCase()
-    return state.emojis.filter((e) => e.name.toLowerCase().includes(query) || (e.tags ?? '').includes(query))
-  },
-  get_emoji_file_url: (args) => {
-    const url = STICKER_IMAGES[request<{ emoji_id: string }>(args).emoji_id]
-    if (!url) throw 'sticker not found'
-    return url
-  },
-  get_emoji_embedder_status: () => ({
-    state: 'disabled',
-    vision: false,
-    indexed: 0,
-    total: 0,
-    error: null,
-  }),
-  update_emoji: (args, { state }) => {
-    const req = request<EmojiUpdateRequest>(args)
-    const row = state.emojis.find((e) => e.id === req.id)
-    if (!row) throw 'sticker not found'
-    row.name = req.action.name
-    if (req.action.kind === 'confirm_semantics') {
-      row.tags = req.action.tags
-      row.semantic_status = 'confirmed'
-    }
-    return row
-  },
 }
 
 const media: Record<string, DemoHandler> = {
@@ -1848,5 +1877,4 @@ export const DEMO_HANDLERS: Record<string, DemoHandler> = {
   ...memories,
   ...system,
   ...integrations,
-  ...emoji,
 }

@@ -47,23 +47,6 @@ pub enum SystemNoticeDetail {
         upgraded: u32,
         failures: Vec<ImeDictionaryUpgradeFailureInfoResponse>,
     },
-    /// Background on-device embedding index for confirmed stickers
-    /// (`StickerEmbedIndex`).
-    EmojiEmbeddingIndex {
-        state: EmojiEmbeddingIndexNoticeState,
-        vision: bool,
-        indexed: u64,
-        total: u64,
-        error: Option<String>,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EmojiEmbeddingIndexNoticeState {
-    Indexing,
-    Succeeded,
-    Failed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

@@ -24,5 +24,4 @@ export const LABS = [
   { hash: '#playground/responsive', title: '断点', description: '在 iframe 里量真实宽度' },
   { hash: '#playground/webview', title: 'WebView 探针', description: '逐项检查 CSS 支持' },
   { hash: '#playground/schema', title: '数据库画布', description: '表与外键' },
-  { hash: '#playground/stickers', title: '贴纸', description: '动图暂停与播放' },
 ] as const

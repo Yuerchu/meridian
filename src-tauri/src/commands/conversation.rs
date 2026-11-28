@@ -573,7 +573,7 @@ async fn assemble_system_prompt(
 ) -> Result<(String, String, String), String> {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
-    let mcp_defs = app.services().mcp.tool_definitions().as_ref().clone();
+    let mcp_registry = app.services().mcp.clone();
     let registry = app.services().tools.clone();
     let instruction_block = {
         let budget = instruction_budget(context_limit);
@@ -598,12 +598,23 @@ async fn assemble_system_prompt(
     ];
     let memory_block = load_memory_estimate(sea, project_id, active_path).await?;
     let (persona, todo_block) = load_persona_and_todo(sea, conversation_id, assistant, active_path).await?;
+    let plugin_mixins = app.services().snapshot_plugin_mixins();
     let turn = sea
         .read(async |tx| {
             let sub_agents = match meridian_core::agent::sub_agents::catalog(tx).await {
                 Ok(catalog) => catalog,
                 Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
             };
+            let global_policy = match meridian_core::mcp::policy::read_global_default(tx).await {
+                Ok(policy) => policy,
+                Err(error) => return Ok(Err(error)),
+            };
+            let mcp_servers = db::sea::ops::mcp_server::list(tx).await?;
+            let mcp_tools = mcp_registry.declared_tools(
+                &mcp_servers,
+                global_policy,
+                meridian_core::agent::hooks::ToolScope::LocalOnly,
+            );
             // The shell line the chat loop puts in the base prompt, decided from
             // the settings alone — `CommandSettings::command_shell` says why that
             // is the same answer the loop's resolved policy gives. Not on
@@ -615,31 +626,33 @@ async fn assemble_system_prompt(
             };
             #[cfg(target_os = "android")]
             let command_shell = None;
+            let character = crate::character::DesktopCharacter::assemble(crate::character::DesktopCharacterSpec {
+                persona,
+                context_blocks,
+                // The estimate has to count the prompt the chat loop will
+                // actually send, transitions included.
+                mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                supports_tools: true,
+                // The estimate has to count the prompt the chat loop will
+                // send, and a provider-side tool takes the local one out of it.
+                server_tools,
+                // And for the same reason it has to answer this the way the
+                // chat loop does. `run_agent` carries a roster of models in
+                // its description, which is not a small number of tokens to
+                // be wrong about.
+                sub_agents: Some(sub_agents),
+                mcp_tools,
+                command_shell,
+                plugin_mixins,
+            });
             Ok(meridian_core::agent::turn_config::resolve(
                 tx,
                 &registry,
                 meridian_core::agent::turn_config::TurnConfigResolveRequest {
                     assistant: assistant.cloned(),
                     conversation_id: conversation_id.to_string(),
-                    // The estimate has to count the prompt the chat loop will
-                    // send, and a provider-side tool takes the local one out of it.
-                    server_tools,
                     project_id: project_id.map(str::to_string),
-                    // The estimate has to count the prompt the chat loop will
-                    // actually send, transitions included.
-                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
-                    // And for the same reason it has to answer this the way the
-                    // chat loop does. `run_agent` carries a roster of models in
-                    // its description, which is not a small number of tokens to
-                    // be wrong about.
-                    sub_agents: Some(sub_agents),
-                    mcp_defs,
-                    exposure: meridian_core::agent::turn_config::ToolExposure::All,
-                    persona,
-                    context_blocks,
-                    session_tools: None,
-                    command_shell,
-                    forbidden_effects: &[],
+                    character,
                 },
             )
             .await)
@@ -841,6 +854,7 @@ mod tests {
                         path: Some(path.into()),
                         source_type: ProjectSource::Local,
                         source_id: None,
+                        channel_kind: None,
                         assistant_id: None,
                         description: None,
                         created_at: 1,

@@ -315,6 +315,20 @@ macro_rules! with_all_commands {
                 request: $crate::commands::memory::MemoryDeleteRequest,
             ),
 
+            async commands::dream => get_dream_config(),
+            local commands::dream => set_dream_config(
+                request: $crate::commands::dream::DreamConfigUpdateRequest,
+            ),
+            async commands::dream => list_dream_runs(
+                request: $crate::commands::dream::DreamRunListRequest,
+            ),
+            local commands::dream => start_dream_run(
+                request: $crate::commands::dream::DreamRunStartRequest,
+            ),
+            local commands::dream => restore_dream_run(
+                request: $crate::commands::dream::DreamRunRestoreRequest,
+            ),
+
             async commands::todo => get_todo_list(
                 request: $crate::commands::todo::TodoListReadRequest,
             ),
@@ -368,6 +382,19 @@ macro_rules! with_all_commands {
             local commands::mcp => set_mcp_tool_enabled(
                 request: $crate::commands::mcp::McpToolEnabledUpdateRequest,
             ),
+            async commands::mcp => get_mcp_default_policy(),
+            local commands::mcp => set_mcp_default_policy(
+                request: $crate::commands::mcp::McpDefaultPolicyUpdateRequest,
+            ),
+            local commands::mcp => set_mcp_server_policy(
+                request: $crate::commands::mcp::McpServerPolicyUpdateRequest,
+            ),
+            local commands::mcp => set_mcp_tool_policy(
+                request: $crate::commands::mcp::McpToolPolicyUpdateRequest,
+            ),
+            local commands::mcp => set_mcp_approved_always_tools(
+                request: $crate::commands::mcp::McpServerApproveAlwaysToolsRequest,
+            ),
             async commands::mcp => disconnect_mcp_server(
                 request: $crate::commands::mcp::McpServerDisconnectRequest,
             ),
@@ -407,29 +434,6 @@ macro_rules! with_all_commands {
             local platform => resolve_file_name(
                 request: $crate::platform::FileNameResolveRequest,
             ),
-
-            #[cfg(not(target_os = "android"))]
-            async commands::onebot => get_onebot_status(),
-            // `local` for what it *returns*, not for what it does. `OneBotConfigInfoResponse`
-            // carries `access_token` — another server's credential, the same one
-            // `guard_preference` refuses to let a remote caller write — plus
-            // `admin_users`, and the voice lists, whose private-chat entries are
-            // a person's own QQ number. Reading them back over the remote
-            // transport undoes the write guard from the other side. Nothing
-            // legitimate asks: the panel is hidden whenever `can.manageServers`
-            // is false, which is exactly the remote case.
-            #[cfg(not(target_os = "android"))]
-            local commands::onebot => get_onebot_config(),
-            #[cfg(not(target_os = "android"))]
-            local commands::onebot => set_onebot_config(
-                request: $crate::commands::onebot::OneBotConfigUpdateRequest,
-            ),
-            #[cfg(not(target_os = "android"))]
-            local commands::onebot => get_onebot_voice_readiness(),
-            #[cfg(not(target_os = "android"))]
-            local commands::onebot => start_onebot(),
-            #[cfg(not(target_os = "android"))]
-            local commands::onebot => stop_onebot(),
 
             // All `local`, and for a reason that is not self-lockout. The URL
             // decides where an alert — which names a provider and an amount of
@@ -739,26 +743,6 @@ macro_rules! with_all_commands {
                 request: $crate::commands::voice::VoicePcmTranscriptionRequest,
             ),
 
-            // 语料管理。五个命令的远程可见性是分开决定的:
-            //
-            // 导出是 `local`——它写本机任意路径,而写出去的内容就是声纹语料
-            // 本身。列表和删除保持可远程,因为删除**正是那个需要在手机上做的**
-            // 隐私动作:有人说"把我的声音删掉"时,你手上多半不是那台电脑。
-            // 列表只回答"占了多少地方",会话用的还是假名。
-            async commands::voice_corpus => list_voice_corpus(),
-            async commands::voice_corpus => delete_voice_corpus(
-                request: $crate::commands::voice_corpus::VoiceCorpusDeleteRequest,
-            ),
-            async commands::voice_corpus => set_voice_optout(
-                request: $crate::commands::voice_corpus::VoiceCorpusOptoutUpdateRequest,
-            ),
-            async commands::voice_corpus => delete_voice_sender(
-                request: $crate::commands::voice_corpus::VoiceCorpusForgetRequest,
-            ),
-            local commands::voice_corpus => export_voice_corpus(
-                request: $crate::commands::voice_corpus::VoiceCorpusExportRequest,
-            ),
-
             async commands::skill => list_skills(),
             async commands::skill => invoke_skill_rescan(),
             sync commands::skill => read_skill_body(
@@ -802,38 +786,6 @@ macro_rules! with_all_commands {
             local commands::logs => export_logs(
                 request: $crate::commands::logs::LogExportRequest,
             ),
-
-            async commands::emoji => list_emoji_packs(
-                request: $crate::commands::emoji::EmojiPackListRequest,
-            ),
-            async commands::emoji => create_emoji_pack(
-                request: $crate::commands::emoji::EmojiPackCreateRequest,
-            ),
-            async commands::emoji => delete_emoji_pack(
-                request: $crate::commands::emoji::EmojiPackDeleteRequest,
-            ),
-            async commands::emoji => list_emojis(
-                request: $crate::commands::emoji::EmojiListRequest,
-            ),
-            local commands::emoji => import_emojis(
-                request: $crate::commands::emoji::EmojiImportRequest,
-            ),
-            async commands::emoji => delete_emoji(
-                request: $crate::commands::emoji::EmojiDeleteRequest,
-            ),
-            async commands::emoji => update_emoji(
-                request: $crate::commands::emoji::EmojiUpdateRequest,
-            ),
-            async commands::emoji => invoke_emoji_semantics_suggestion(
-                request: $crate::commands::emoji::EmojiSemanticsSuggestRequest,
-            ),
-            async commands::emoji => set_emoji_pack_assignment(
-                request: $crate::commands::emoji::EmojiPackAssignmentUpdateRequest,
-            ),
-            async commands::emoji => get_emoji_file_url(
-                request: $crate::commands::emoji::EmojiFileUrlReadRequest,
-            ),
-            local commands::emoji => get_emoji_embedder_status(),
 
             async commands::tool_system => list_tool_categories(),
             async commands::tool_system => list_custom_tools(),
@@ -955,9 +907,6 @@ mod tests {
         rejects_unknown::<crate::commands::assistant::AssistantUpdateRequest>(serde_json::json!({
             "id": "assistant-1", "future_field": true
         }));
-        rejects_unknown::<crate::commands::emoji::EmojiPackCreateRequest>(serde_json::json!({
-            "name": "Pack", "description": null, "future_field": true
-        }));
         rejects_unknown::<crate::commands::mcp::McpServerCreateRequest>(serde_json::json!({
             "name": "Server", "transport_type": "stdio", "command": null, "args": null,
             "env": null, "url": null, "headers": null, "future_field": true
@@ -1028,10 +977,6 @@ mod tests {
                 "temperature": null, "top_p": null, "max_tokens": null
             }),
             &["model_id", "temperature", "top_p", "max_tokens"],
-        );
-        requires_nullable_keys::<crate::commands::emoji::EmojiPackCreateRequest>(
-            serde_json::json!({ "name": "Pack", "description": null }),
-            &["description"],
         );
         requires_nullable_keys::<crate::commands::mcp::McpServerCreateRequest>(
             serde_json::json!({

@@ -14,7 +14,6 @@ import { isDifferentDay, useDateLabel } from '@/hooks/use-clock-time'
 import { useConversationStore } from '@/stores/conversation-store'
 import { answerAnchorId, turnStartedAt, type Turn } from '@/lib/turns'
 import { awaitingModel, buildAssistantGroups, turnCopyText, type BubblePosition } from '@/lib/message-groups'
-import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { MessageRating } from '@/types'
 
@@ -35,10 +34,9 @@ export interface TurnItemProps {
   onContinue?: () => void
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: MessageRating | null) => void
-  isOneBot?: boolean
+  isChannel?: boolean
   /** A hosted Claude Code session: the assistant answering is not this app's. */
   isHosted?: boolean
-  emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
   assistantAvatar?: string | null
@@ -73,9 +71,8 @@ export const TurnItem = React.memo(function TurnItem({
   onContinue,
   onEdit,
   onRate,
-  isOneBot,
+  isChannel,
   isHosted,
-  emojiMap,
   senderNames,
   assistantAvatar,
   previousTurnEndedAt = null,
@@ -163,7 +160,7 @@ export const TurnItem = React.memo(function TurnItem({
   // one — the same turn `buildTurns` gave the streaming status to.
   const retry = useConversationStore((s) => s.sessions[conversationId]?.retry ?? null)
 
-  const groups = useMemo(() => buildAssistantGroups(turn, { oneBot: isOneBot }), [turn, isOneBot])
+  const groups = useMemo(() => buildAssistantGroups(turn, { channel: isChannel }), [turn, isChannel])
   const footerCopyText = useMemo(() => turnCopyText(turn, groups), [turn, groups])
 
   // Panels close on their own as their tools finish. In a turn the reader has
@@ -188,8 +185,7 @@ export const TurnItem = React.memo(function TurnItem({
           position={questionPosition}
           onDelete={onDeleteTurn}
           onEdit={!streaming ? onEdit : undefined}
-          isOneBot={isOneBot}
-          emojiMap={emojiMap}
+          isChannel={isChannel}
           senderNames={senderNames}
         />
       </ErrorBoundary>
@@ -273,9 +269,8 @@ export const TurnItem = React.memo(function TurnItem({
               onDelete={onDeleteTurn}
               onRegenerate={onRegenerateTurn}
               onRate={onRate}
-              isOneBot={isOneBot}
+              isChannel={isChannel}
               isHosted={isHosted}
-              emojiMap={emojiMap}
               assistantAvatar={assistantAvatar}
             />
           </ErrorBoundary>

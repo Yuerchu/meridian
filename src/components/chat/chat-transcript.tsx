@@ -21,7 +21,6 @@ import {
 import { TurnItem } from './turn-item'
 import { TurnOutline } from './turn-outline'
 import { FilePreviewProvider } from './file-preview'
-import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, questionPositionOf, turnEndedAt, type Turn } from '@/lib/turns'
 import type { AcpSessionNoticeInfoResponse, MessageRating } from '@/types'
@@ -113,10 +112,9 @@ export interface ChatTranscriptProps {
   onContinue?: () => void
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: MessageRating | null) => void
-  isOneBot?: boolean
+  isChannel?: boolean
   /** A hosted Claude Code session: the assistant answering is not this app's. */
   isHosted?: boolean
-  emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
   assistantAvatar?: string | null
@@ -280,9 +278,8 @@ function TranscriptTurns({
   onContinue,
   onEdit,
   onRate,
-  isOneBot,
+  isChannel,
   isHosted,
-  emojiMap,
   senderNames,
   assistantAvatar,
   noticesByTurn,
@@ -308,9 +305,8 @@ function TranscriptTurns({
               onContinue={isLastTurn ? onContinue : undefined}
               onEdit={onEdit}
               onRate={onRate}
-              isOneBot={isOneBot}
+              isChannel={isChannel}
               isHosted={isHosted}
-              emojiMap={emojiMap}
               senderNames={senderNames}
               assistantAvatar={assistantAvatar}
               notices={turn.turnId === null ? undefined : noticesByTurn?.get(turn.turnId)}
@@ -360,9 +356,8 @@ export function ChatTranscript({
   onContinue,
   onEdit,
   onRate,
-  isOneBot,
+  isChannel,
   isHosted,
-  emojiMap,
   senderNames,
   assistantAvatar,
   leading,
@@ -467,9 +462,8 @@ export function ChatTranscript({
                       onContinue={onContinue}
                       onEdit={onEdit}
                       onRate={onRate}
-                      isOneBot={isOneBot}
+                      isChannel={isChannel}
                       isHosted={isHosted}
-                      emojiMap={emojiMap}
                       senderNames={senderNames}
                       assistantAvatar={assistantAvatar}
                       noticesByTurn={noticesByTurn}

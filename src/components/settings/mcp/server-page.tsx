@@ -11,7 +11,15 @@ import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/se
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { parseStringArrayText } from '@/lib/strict-json'
 import { api } from '@/api'
-import type { McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
+import type {
+  McpServerInfoResponse,
+  McpServerToolInfoResponse,
+  McpToolPolicyOverrideResponse,
+  ToolApprovalPolicy,
+  ToolLoading,
+  ToolScope,
+} from '@/types'
+import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SavedHint, SettingsSkeleton } from '../primitives'
 import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
 import { formatDefinitionTokens } from './format'
@@ -102,6 +110,12 @@ function McpServerEditor({
   const [connecting, setConnecting] = useState(false)
   /** Whether this one comes up on its own at launch — `is_enabled` in the row. */
   const [autoConnect, setAutoConnect] = useState(server.is_enabled)
+  const [serverPolicy, setServerPolicy] = useState<McpToolPolicyOverrideResponse>(
+    server.default_policy ?? { scope: null, loading: null, approval: null },
+  )
+  const [toolPolicies, setToolPolicies] = useState<Record<string, McpToolPolicyOverrideResponse>>(
+    server.tool_policies ?? {},
+  )
   const [tools, setTools] = useState<McpServerToolInfoResponse[]>([])
   const [error, setError] = useState<string | null>(null)
   const [statusLoading, setStatusLoading] = useState(true)
@@ -275,6 +289,67 @@ function McpServerEditor({
     },
     [server.id, tools],
   )
+  const handleUpdateServerPolicy = useCallback(
+    async (patch: Partial<McpToolPolicyOverrideResponse>) => {
+      const previous = serverPolicy
+      const next: McpToolPolicyOverrideResponse = { ...serverPolicy, ...patch }
+      setServerPolicy(next)
+      setError(null)
+      try {
+        const updated = await api.mcp.setServerPolicy({
+          server_id: server.id,
+          scope: next.scope,
+          loading: next.loading,
+          approval: next.approval,
+        })
+        setServerPolicy(updated.default_policy ?? { scope: null, loading: null, approval: null })
+        setTools(await api.mcp.listServerTools({ server_id: server.id }))
+        onSaved()
+      } catch (reason) {
+        setServerPolicy(previous)
+        setError(String(reason))
+      }
+    },
+    [server.id, serverPolicy, onSaved],
+  )
+  const handleUpdateToolPolicy = useCallback(
+    async (toolName: string, patch: Partial<McpToolPolicyOverrideResponse>) => {
+      const previous = toolPolicies
+      const current = toolPolicies[toolName] ?? { scope: null, loading: null, approval: null }
+      const next: McpToolPolicyOverrideResponse = { ...current, ...patch }
+      setToolPolicies({ ...toolPolicies, [toolName]: next })
+      setError(null)
+      try {
+        const updated = await api.mcp.setToolPolicy({
+          server_id: server.id,
+          tool_name: toolName,
+          scope: next.scope,
+          loading: next.loading,
+          approval: next.approval,
+        })
+        setToolPolicies(updated.tool_policies ?? {})
+        setTools(await api.mcp.listServerTools({ server_id: server.id }))
+        onSaved()
+      } catch (reason) {
+        setToolPolicies(previous)
+        setError(String(reason))
+      }
+    },
+    [server.id, toolPolicies, onSaved],
+  )
+  const handleApproveDriftedTools = useCallback(
+    async (toolNames: string[]) => {
+      setError(null)
+      try {
+        await api.mcp.approveAlwaysTools({ server_id: server.id, tool_names: toolNames })
+        setTools(await api.mcp.listServerTools({ server_id: server.id }))
+        onSaved()
+      } catch (reason) {
+        setError(String(reason))
+      }
+    },
+    [server.id, onSaved],
+  )
   const handleDelete = useCallback(async () => {
     if (
       !(await confirm({
@@ -421,6 +496,76 @@ function McpServerEditor({
           <Switch isSelected={autoConnect} onChange={(next) => void handleToggleAutoConnect(next)} />
         </SettingsRow>
       </SettingsGroup>
+      <SettingsGroup headingLevel={3} heading={t('settings.mcp.policy.serverTitle')}>
+        <SettingsRow label={t('settings.mcp.policy.scope')} description={t('settings.mcp.policy.scopeHint')}>
+          <SegmentedControl
+            size="sm"
+            selectedKey={serverPolicy.scope ?? 'inherit'}
+            onSelectionChange={(key) =>
+              void handleUpdateServerPolicy({ scope: key === 'inherit' ? null : (key as ToolScope) })
+            }
+          >
+            <Segment id="inherit">{t('settings.mcp.policy.inherit')}</Segment>
+            <Segment id="local_only">{t('settings.mcp.policy.scope.local_only')}</Segment>
+            <Segment id="operator_only">{t('settings.mcp.policy.scope.operator_only')}</Segment>
+            <Segment id="shared_room">{t('settings.mcp.policy.scope.shared_room')}</Segment>
+          </SegmentedControl>
+        </SettingsRow>
+        <SettingsRow label={t('settings.mcp.policy.loading')} description={t('settings.mcp.policy.loadingHint')}>
+          <SegmentedControl
+            size="sm"
+            selectedKey={serverPolicy.loading ?? 'inherit'}
+            onSelectionChange={(key) =>
+              void handleUpdateServerPolicy({ loading: key === 'inherit' ? null : (key as ToolLoading) })
+            }
+          >
+            <Segment id="inherit">{t('settings.mcp.policy.inherit')}</Segment>
+            <Segment id="deferred">{t('settings.mcp.policy.loading.deferred')}</Segment>
+            <Segment id="eager">{t('settings.mcp.policy.loading.eager')}</Segment>
+          </SegmentedControl>
+        </SettingsRow>
+        <SettingsRow label={t('settings.mcp.policy.approval')} description={t('settings.mcp.policy.approvalHint')}>
+          <SegmentedControl
+            size="sm"
+            selectedKey={serverPolicy.approval ?? 'inherit'}
+            onSelectionChange={(key) =>
+              void handleUpdateServerPolicy({ approval: key === 'inherit' ? null : (key as ToolApprovalPolicy) })
+            }
+          >
+            <Segment id="inherit">{t('settings.mcp.policy.inherit')}</Segment>
+            <Segment id="always">{t('settings.mcp.policy.approval.always')}</Segment>
+            <Segment id="auto_review">{t('settings.mcp.policy.approval.auto_review')}</Segment>
+            <Segment id="request_approve">{t('settings.mcp.policy.approval.request_approve')}</Segment>
+            <Segment id="never">{t('settings.mcp.policy.approval.never')}</Segment>
+          </SegmentedControl>
+        </SettingsRow>
+      </SettingsGroup>
+      {tools.some((tool) => tool.resolved_policy.needs_always_reapproval) && (
+        <Alert
+          tone="warning"
+          shouldAnnounce
+          actions={
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={() =>
+                void handleApproveDriftedTools(
+                  tools.filter((tool) => tool.resolved_policy.needs_always_reapproval).map((tool) => tool.name),
+                )
+              }
+            >
+              {t('settings.mcp.policy.approveDrifted')}
+            </Button>
+          }
+        >
+          {t('settings.mcp.policy.driftAlert', {
+            tools: tools
+              .filter((tool) => tool.resolved_policy.needs_always_reapproval)
+              .map((tool) => tool.name)
+              .join(', '),
+          })}
+        </Alert>
+      )}
       {error && (
         <Alert tone="danger" shouldAnnounce>
           {error}
@@ -441,9 +586,11 @@ function McpServerEditor({
           })}
         >
           {tools.map((tool) => {
+            const override = toolPolicies[tool.name]
             const description = [
               tool.description.split('\n')[0],
               t('settings.mcp.toolTokenCount', { tokens: formatDefinitionTokens(tool.definition_tokens) }),
+              t(`settings.mcp.policy.loading.${tool.resolved_policy.loading}`),
             ]
               .filter(Boolean)
               .join(' · ')
@@ -451,17 +598,42 @@ function McpServerEditor({
               <SettingsRow
                 key={tool.qualified_name}
                 label={
-                  <span
-                    data-slot="mcp-tool-name"
-                    onPointerEnter={titleIfTruncated}
-                    className="m-mcp-server-page__tool-name"
-                  >
-                    {tool.name}
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      data-slot="mcp-tool-name"
+                      onPointerEnter={titleIfTruncated}
+                      className="m-mcp-server-page__tool-name"
+                    >
+                      {tool.name}
+                    </span>
+                    {tool.resolved_policy.needs_always_reapproval && (
+                      <Badge size="sm" tone="warning">
+                        {t('settings.mcp.policy.driftBadge')}
+                      </Badge>
+                    )}
                   </span>
                 }
                 description={description}
               >
-                <Switch isSelected={tool.enabled} onChange={(next) => void handleToggleTool(tool.name, next)} />
+                <div className="inline-flex items-center gap-2">
+                  <SegmentedControl
+                    size="sm"
+                    aria-label={`${tool.name} ${t('settings.mcp.policy.approval')}`}
+                    selectedKey={override?.approval ?? 'inherit'}
+                    onSelectionChange={(key) =>
+                      void handleUpdateToolPolicy(tool.name, {
+                        approval: key === 'inherit' ? null : (key as ToolApprovalPolicy),
+                      })
+                    }
+                  >
+                    <Segment id="inherit">{t('settings.mcp.policy.inherit')}</Segment>
+                    <Segment id="always">{t('settings.mcp.policy.approval.always')}</Segment>
+                    <Segment id="auto_review">{t('settings.mcp.policy.approval.auto_review')}</Segment>
+                    <Segment id="request_approve">{t('settings.mcp.policy.approval.request_approve')}</Segment>
+                    <Segment id="never">{t('settings.mcp.policy.approval.never')}</Segment>
+                  </SegmentedControl>
+                  <Switch isSelected={tool.enabled} onChange={(next) => void handleToggleTool(tool.name, next)} />
+                </div>
               </SettingsRow>
             )
           })}

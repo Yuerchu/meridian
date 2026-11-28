@@ -27,7 +27,6 @@ import {
 import { useFilePreview, type FilePreviewContextValue } from './file-preview-context'
 import { ShikiCode } from './shiki-code'
 import { MermaidFence } from './mermaid-fence'
-import { InlineSticker, type EmojiMap } from './emoji-renderer'
 
 const MarkdownStreamingContext = React.createContext(false)
 
@@ -227,34 +226,6 @@ const TableBlock: Components['table'] = ({ children, ...props }) => (
     </table>
   </div>
 )
-
-/**
- * An `[emoji:name]` the assistant may send becomes an image whose source names
- * the sticker by id, not by URL: the URL is asked for by the sticker itself
- * once it comes near the viewport (`InlineSticker`). The source is a fragment
- * so `defaultUrlTransform` keeps it, and only the pair of this alt prefix and
- * this source is drawn as a sticker — anything else is an ordinary image.
- */
-const STICKER_ALT = 'sticker:'
-const STICKER_SRC = '#meridian-sticker/'
-
-function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
-  if (!emojiMap || Object.keys(emojiMap).length === 0) return content
-  return content.replace(/\[emoji:([^\]]+)\]/g, (full, name: string) => {
-    const entry = emojiMap[name]
-    if (entry) return `![${STICKER_ALT}${name}](${STICKER_SRC}${encodeURIComponent(entry.id)})`
-    return full
-  })
-}
-
-function stickerIdOf(alt: string | undefined, src: string | undefined): string | null {
-  if (!alt?.startsWith(STICKER_ALT) || !src?.startsWith(STICKER_SRC)) return null
-  try {
-    return decodeURIComponent(src.slice(STICKER_SRC.length)) || null
-  } catch {
-    return null
-  }
-}
 
 function preprocessMentions(content: string): string {
   return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
@@ -530,8 +501,7 @@ function isRemoteImageSource(source: string | undefined): boolean {
 export const MarkdownContent = React.memo(function MarkdownContent({
   content,
   isStreaming,
-  oneBot,
-  emojiMap,
+  isChannel,
   allowRemoteImages = true,
   className,
   blockId,
@@ -539,8 +509,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
 }: {
   content: string
   isStreaming?: boolean
-  oneBot?: boolean
-  emojiMap?: EmojiMap
+  isChannel?: boolean
   /** File previews opt out so opening a local README never makes an implicit network request. */
   allowRemoteImages?: boolean
   className?: string
@@ -551,11 +520,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
    *  and a time on a message still being written would be wrong anyway. */
   trailer?: React.ReactNode
 }) {
-  const processed = useMemo(() => {
-    let result = preprocessEmojis(content, emojiMap)
-    if (oneBot) result = preprocessMentions(result)
-    return result
-  }, [content, emojiMap, oneBot])
+  const processed = useMemo(() => (isChannel ? preprocessMentions(content) : content), [content, isChannel])
 
   const components = useMemo<Partial<Components>>(
     () => ({
@@ -574,17 +539,6 @@ export const MarkdownContent = React.memo(function MarkdownContent({
             <Hint data-slot="markdown-blocked-image" label={src} className="m-markdown-content__blocked-image">
               {alt}
             </Hint>
-          )
-        }
-        const stickerId = stickerIdOf(alt, src)
-        if (stickerId !== null) {
-          return (
-            <InlineSticker
-              stickerId={stickerId}
-              name={alt!.slice(STICKER_ALT.length)}
-              slot="markdown-sticker"
-              className="m-markdown-content__sticker"
-            />
           )
         }
         return <MarkdownImage {...props} alt={alt ?? ''} src={src} />

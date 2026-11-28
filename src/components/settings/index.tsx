@@ -5,18 +5,15 @@ import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
-import { OneBotSettings } from './onebot-settings'
 import { HooksSettings } from './hooks-settings'
 import { AcpSettings } from './acp-settings'
 import { RemoteAccessSettings } from './remote-access-settings'
 import { ImeSettings } from './ime-settings'
-import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
 import { AutoReviewSettings } from './auto-review-settings'
 import { SkillSettings } from './skill-settings'
 import { MemorySettings } from './memory-settings'
 import { VoiceSettings } from './voice-settings'
-import { VoiceCorpusSettings } from './voice-corpus-settings'
 import { DeveloperSettings } from './developer-settings'
 import { About } from './about'
 
@@ -46,9 +43,6 @@ export default function SettingsPage({
     case 'assistants':
       panel = <AssistantSettings />
       break
-    case 'emoji':
-      panel = <EmojiSettings />
-      break
     case 'tools':
       panel = <ToolMarketplace />
       break
@@ -66,12 +60,6 @@ export default function SettingsPage({
       break
     case 'voice':
       panel = <VoiceSettings />
-      break
-    case 'voiceCorpus':
-      panel = <VoiceCorpusSettings />
-      break
-    case 'onebot':
-      panel = <OneBotSettings />
       break
     case 'hooks':
       panel = <HooksSettings />

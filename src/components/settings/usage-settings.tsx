@@ -48,7 +48,7 @@ import { HOUR_COUNT, rankByTokens, weekdayHourGrid } from '@/lib/usage-charts'
 const RANGES = [7, 30, null] as const
 type Range = (typeof RANGES)[number]
 
-const ORIGINS = [null, 'desktop', 'onebot'] as const
+const ORIGINS = [null, 'desktop', 'channel', 'dream'] as const
 type Origin = (typeof ORIGINS)[number]
 
 // `kind` splits answering the user from reviewing whether a tool call was
