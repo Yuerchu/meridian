@@ -522,6 +522,13 @@ const RAW_TABLES: RawTable[] = [
         'NULL',
         '唤醒它的是什么：后台任务 id，或代理自己的任务 id。人发起的回合恒 NULL（迁移 65）',
       ],
+      [
+        'seq',
+        'BIGINT',
+        ['NN', 'IDX'],
+        "'0'",
+        '写入顺序：同一毫秒开始的回合靠它定序。由 begin_triggered 在写事务里取 MAX(seq)+1；替代 SQLite 的 rowid，PostgreSQL 没有可依赖的物理行序（迁移 m0019）',
+      ],
     ],
     rels: [
       '<code>messages.turn_id</code> 指向它，但<b>没有外键</b>：删会话时 turns 和 messages 在同一次级联里、顺序不保证。',
