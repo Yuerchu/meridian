@@ -42,6 +42,7 @@ impl SystemNotices {
     }
 
     /// Starts a notice and returns its id.
+    #[allow(dead_code)]
     pub fn start(&self, detail: SystemNoticeDetail) -> String {
         let started_at = now_ms();
         let notice = SystemNoticeInfoResponse {
@@ -72,6 +73,7 @@ impl SystemNotices {
     }
 
     /// Replaces what a notice says; `finished` stamps it done.
+    #[allow(dead_code)]
     pub fn update(&self, id: &str, detail: SystemNoticeDetail, finished: bool) {
         let Some(mut notice) = self.lock().iter().find(|n| n.id == id).cloned() else {
             return;

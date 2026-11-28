@@ -635,7 +635,7 @@
   "settings.memory.nav.scope": "SCOPE",
   "settings.memory.nav.all": "All",
   "settings.memory.nav.clientGlobal": "Client-wide",
-  "settings.memory.nav.global": "Bot-wide",
+  "settings.memory.nav.global": "Channel-wide",
   "settings.memory.nav.chats": "Chats",
   "settings.memory.nav.people": "People",
   "settings.memory.nav.showAll": "Show all {{count}}",

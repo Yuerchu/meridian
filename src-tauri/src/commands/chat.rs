@@ -1460,9 +1460,8 @@ async fn chat_inner(
     let review_policy_addenda = turn.review_policy_addenda;
     let request_approve_tools: std::collections::HashSet<String> = approval_policies
         .iter()
-        .filter_map(|(name, policy)| {
-            (*policy == meridian_core::agent::hooks::ToolApprovalPolicy::RequestApprove).then(|| name.clone())
-        })
+        .filter(|(_, policy)| **policy == meridian_core::agent::hooks::ToolApprovalPolicy::RequestApprove)
+        .map(|(name, _)| name.clone())
         .collect();
     let system_prompt = turn.system_prompt;
     let keep_recent = assistant

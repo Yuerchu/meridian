@@ -300,14 +300,12 @@ mod tests {
             "revision": 1,
         });
         assert!(serde_json::from_value::<ComposerDraftUpsertRequest>(complete.clone()).is_ok());
-        for key in ["conversation_id"] {
-            let mut missing = complete.clone();
-            missing.as_object_mut().unwrap().remove(key);
-            assert!(
-                serde_json::from_value::<ComposerDraftUpsertRequest>(missing).is_err(),
-                "a nullable key may not be omitted: {key}"
-            );
-        }
+        let mut missing = complete.clone();
+        missing.as_object_mut().unwrap().remove("conversation_id");
+        assert!(
+            serde_json::from_value::<ComposerDraftUpsertRequest>(missing).is_err(),
+            "a nullable key may not be omitted: conversation_id"
+        );
         let mut unknown = complete;
         unknown["future"] = serde_json::json!(true);
         assert!(serde_json::from_value::<ComposerDraftUpsertRequest>(unknown).is_err());

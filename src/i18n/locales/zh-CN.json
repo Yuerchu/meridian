@@ -619,7 +619,7 @@
   "settings.memory.nav.scope": "范围",
   "settings.memory.nav.all": "全部",
   "settings.memory.nav.clientGlobal": "客户端全局",
-  "settings.memory.nav.global": "OneBot 全局",
+  "settings.memory.nav.global": "渠道全局",
   "settings.memory.nav.chats": "会话",
   "settings.memory.nav.people": "人物",
   "settings.memory.nav.showAll": "显示全部 {{count}} 项",
