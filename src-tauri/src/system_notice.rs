@@ -42,6 +42,7 @@ impl SystemNotices {
     }
 
     /// Starts a notice and returns its id.
+    #[allow(dead_code)]
     pub fn start(&self, detail: SystemNoticeDetail) -> String {
         let started_at = now_ms();
         let notice = SystemNoticeInfoResponse {
@@ -57,6 +58,7 @@ impl SystemNotices {
 
     /// Starts a notice already stamped finished (for single-shot failures that
     /// did not go through a running state first).
+    #[allow(dead_code)]
     pub fn start_finished(&self, detail: SystemNoticeDetail) -> String {
         let now = now_ms();
         let notice = SystemNoticeInfoResponse {
@@ -71,6 +73,7 @@ impl SystemNotices {
     }
 
     /// Replaces what a notice says; `finished` stamps it done.
+    #[allow(dead_code)]
     pub fn update(&self, id: &str, detail: SystemNoticeDetail, finished: bool) {
         let Some(mut notice) = self.lock().iter().find(|n| n.id == id).cloned() else {
             return;
@@ -84,6 +87,7 @@ impl SystemNotices {
 
     /// Removes a notice unconditionally (used when a background run is
     /// cancelled or disabled before finishing).
+    #[allow(dead_code)]
     pub fn remove(&self, id: &str) {
         let removed = {
             let mut notices = self.lock();

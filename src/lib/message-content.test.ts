@@ -16,21 +16,16 @@ describe('buildMessageContent', () => {
   })
 
   it('is the text itself when nothing is attached, and uploads nothing', async () => {
-    expect(await buildMessageContent('c1', 'plain', undefined, undefined)).toBe('plain')
-    expect(await buildMessageContent('c1', 'plain', [], undefined)).toBe('plain')
+    expect(await buildMessageContent('c1', 'plain', undefined)).toBe('plain')
+    expect(await buildMessageContent('c1', 'plain', [])).toBe('plain')
     expect(upload.uploadAttachment).not.toHaveBeenCalled()
   })
 
   it('is the parts envelope in attachment order, with no empty text part', async () => {
-    const content = await buildMessageContent('c1', '  ', [{ name: 'a.pdf' }, { name: 'b.pdf' }], {
-      type: 'sticker',
-      sticker_id: 's1',
-      name: 'wave',
-    })
+    const content = await buildMessageContent('c1', '  ', [{ name: 'a.pdf' }, { name: 'b.pdf' }])
     expect(JSON.parse(content)).toEqual([
       { type: 'file', file: { url: 'file:///data/files/c1/a.pdf', mime_type: 'application/pdf', name: 'a.pdf' } },
       { type: 'file', file: { url: 'file:///data/files/c1/b.pdf', mime_type: 'application/pdf', name: 'b.pdf' } },
-      { type: 'sticker', sticker_id: 's1', name: 'wave' },
     ])
   })
 })

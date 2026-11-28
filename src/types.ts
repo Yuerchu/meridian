@@ -5,8 +5,6 @@ export type { DecimalString } from './lib/decimal'
 export type AssistantListResponse = AssistantInfoResponse[]
 export type ConversationListResponse = ConversationInfoResponse[]
 export type ConversationSearchHitListResponse = ConversationSearchHitInfoResponse[]
-export type EmojiPackListResponse = EmojiPackInfoResponse[]
-export type EmojiListResponse = EmojiInfoResponse[]
 export type JournalVersionListResponse = JournalVersionInfoResponse[]
 export type McpServerListResponse = McpServerInfoResponse[]
 export type MemoryListResponse = MemoryInfoResponse[]
@@ -120,56 +118,6 @@ export interface AssistantDeleteRequest {
   id: string
 }
 
-export interface EmojiPackListRequest {
-  assistant_id: string | null
-}
-
-export interface EmojiPackCreateRequest {
-  name: string
-  description: string | null
-}
-
-export interface EmojiPackDeleteRequest {
-  id: string
-}
-
-export type EmojiListFilter = { kind: 'pack'; pack_id: string } | { kind: 'search'; query: string }
-
-export interface EmojiListRequest {
-  filter: EmojiListFilter
-}
-
-export interface EmojiImportRequest {
-  pack_id: string
-  file_paths: string[]
-}
-
-export interface EmojiDeleteRequest {
-  id: string
-}
-
-export type EmojiUpdateAction =
-  { kind: 'rename'; name: string } | { kind: 'confirm_semantics'; name: string; tags: string | null }
-
-export interface EmojiUpdateRequest {
-  id: string
-  action: EmojiUpdateAction
-}
-
-export interface EmojiSemanticsSuggestRequest {
-  id: string
-}
-
-export interface EmojiPackAssignmentUpdateRequest {
-  assistant_id: string
-  pack_id: string
-  assigned: boolean
-}
-
-export interface EmojiFileUrlReadRequest {
-  emoji_id: string
-}
-
 export interface McpServerCreateRequest {
   name: string
   transport_type: McpTransport
@@ -204,10 +152,40 @@ export interface McpServerDisconnectRequest {
   id: string
 }
 
+export type ToolScope = 'local_only' | 'operator_only' | 'shared_room'
+export type ToolLoading = 'eager' | 'deferred'
+export type ToolApprovalPolicy = 'always' | 'auto_review' | 'request_approve' | 'never'
+
 export interface McpToolEnabledUpdateRequest {
   server_id: string
   tool_name: string
   enabled: boolean
+}
+
+export interface McpDefaultPolicyUpdateRequest {
+  scope: ToolScope
+  loading: ToolLoading
+  approval: ToolApprovalPolicy
+}
+
+export interface McpServerPolicyUpdateRequest {
+  server_id: string
+  scope: ToolScope | null
+  loading: ToolLoading | null
+  approval: ToolApprovalPolicy | null
+}
+
+export interface McpToolPolicyUpdateRequest {
+  server_id: string
+  tool_name: string
+  scope: ToolScope | null
+  loading: ToolLoading | null
+  approval: ToolApprovalPolicy | null
+}
+
+export interface McpServerApproveAlwaysToolsRequest {
+  server_id: string
+  tool_names: string[]
 }
 
 export interface McpToolListRequest {
@@ -255,6 +233,76 @@ export interface MemorySubjectUpdateRequest {
   subject_scope_id: string
   is_pinned: boolean | null
   opted_out: boolean | null
+}
+
+export type DreamRunStatus = 'running' | 'done' | 'failed' | 'skipped'
+export type DreamTrigger = 'auto' | 'manual'
+
+export interface DreamModelSelectionRequest {
+  provider_id: string
+  model_id: string
+}
+
+export interface DreamModelSelectionInfoResponse {
+  provider_id: string
+  model_id: string
+}
+
+export interface DreamConfigInfoResponse {
+  enabled: boolean
+  model: DreamModelSelectionInfoResponse | null
+  cooldown_hours: number
+  min_turns: number
+  daily_budget_usd: DecimalString
+}
+
+export interface DreamConfigUpdateRequest {
+  enabled: boolean
+  model: DreamModelSelectionRequest | null
+  cooldown_hours: number
+  min_turns: number
+  daily_budget_usd: DecimalString
+}
+
+export interface DreamRunListRequest {
+  scope: MemoryScope | null
+  scope_id: string | null
+  limit: number | null
+}
+
+export interface DreamRunStartRequest {
+  scope: MemoryScope
+  scope_id: string
+}
+
+export interface DreamRunRestoreRequest {
+  run_id: string
+}
+
+export interface DreamRunInfoResponse {
+  id: string
+  scope_type: MemoryScope
+  scope_id: string
+  status: DreamRunStatus
+  trigger: DreamTrigger
+  model_id: string | null
+  started_at: number
+  finished_at: number | null
+  turns_reviewed: number
+  memories_created: number
+  memories_updated: number
+  memories_pruned: number
+  proposals_created: number
+  pruned_memory_ids: string[]
+  summary: string | null
+  error: string | null
+}
+
+export type DreamRunListResponse = DreamRunInfoResponse[]
+
+export interface DreamRunRestoreInfoResponse {
+  run_id: string
+  restored_count: number
 }
 
 export interface ProjectCreateRequest {
@@ -497,13 +545,14 @@ export interface ProjectInfoResponse {
   path: string | null
   source_type: ProjectSource
   source_id: string | null
+  channel_kind: string | null
   assistant_id: string | null
   description: string | null
   created_at: number
   updated_at: number
 }
 
-export type ProjectSource = 'local' | 'onebot_private' | 'onebot_group'
+export type ProjectSource = 'local' | 'channel_direct' | 'channel_group'
 
 // The agent board. A card's column is a person's choice; starting a card
 // makes its worktree and its conversation.
@@ -584,15 +633,15 @@ export type PreferenceKey =
   | 'sub_agent.explore.model'
   | 'sub_agent.agent.model'
   | 'codex.client_version'
-  | 'emoji.embedder'
-  | 'emoji.suggest.model'
   | 'media.default_image_model_id'
   | 'media.default_video_model_id'
+  | 'tools.anthropic_search_strategy'
 
 export type ShellType = 'bash' | 'powershell' | 'cmd'
 export type SandboxMode = 'auto' | 'container' | 'off'
 export type SearchProvider = 'tavily' | 'zhipu'
 export type VoiceFilterLevel = 'off' | 'standard' | 'aggressive'
+export type AnthropicToolSearchStrategy = 'server_bm25' | 'server_regex' | 'client_tool_reference'
 
 export interface PreferenceModelSelectionRequest {
   provider_id: string
@@ -635,18 +684,9 @@ export interface PreferenceInfoValueByKey {
    * reason the override could not be used.
    */
   'codex.client_version': string | null
-  /**
-   * Absolute `.litertlm` path for on-device sticker ranking, or null to keep
-   * the lexical name/tag pick. A path on this machine.
-   */
-  'emoji.embedder': string | null
-  /**
-   * Model `suggest_sticker_semantics` uses to look at a sticker. Null follows
-   * the default assistant.
-   */
-  'emoji.suggest.model': PreferenceModelSelectionInfoResponse | null
   'media.default_image_model_id': string | null
   'media.default_video_model_id': string | null
+  'tools.anthropic_search_strategy': AnthropicToolSearchStrategy | null
 }
 
 export type PreferenceInfoResponse<K extends PreferenceKey = PreferenceKey> = {
@@ -671,10 +711,9 @@ export interface PreferenceUpdateValueByKey {
   'sub_agent.explore.model': PreferenceModelSelectionRequest | null
   'sub_agent.agent.model': PreferenceModelSelectionRequest | null
   'codex.client_version': string | null
-  'emoji.embedder': string | null
-  'emoji.suggest.model': PreferenceModelSelectionRequest | null
   'media.default_image_model_id': string | null
   'media.default_video_model_id': string | null
+  'tools.anthropic_search_strategy': AnthropicToolSearchStrategy
 }
 
 export type PreferenceUpdateRequest = {
@@ -974,11 +1013,11 @@ export interface JournalVersionInfoResponse {
   created_at: number
 }
 
-export type MemoryScope = 'project' | 'client_global' | 'onebot_global' | 'onebot_user'
+export type MemoryScope = 'project' | 'client_global' | 'channel_global' | 'external_subject'
 export type MemoryType = 'general' | 'preference' | 'fact' | 'instruction' | 'relationship'
 export type MemoryOrigin = 'private' | 'group' | 'admin' | 'desktop' | 'legacy'
 export type MemoryVisibility = 'normal' | 'owner_only'
-export type MemoryDeletedBy = 'self' | 'admin' | 'lru'
+export type MemoryDeletedBy = 'self' | 'admin' | 'lru' | 'dream'
 
 /** Persisted memory fields are closed enums. `memory_enums` supplies display
  *  choices; it is not a compatibility escape hatch for unknown values. */
@@ -1356,7 +1395,6 @@ export interface ComposerDraftUpsertRequest {
   body: string
   attachments: ComposerDraftAttachmentRequest[]
   conversation_refs: string[]
-  sticker_id: string | null
   /** Strictly increasing per composer; a lower or equal one changes nothing. */
   revision: number
 }
@@ -1385,7 +1423,6 @@ export interface ComposerDraftInfoResponse {
   body: string
   attachments: ComposerDraftAttachmentInfoResponse[]
   conversation_refs: ComposerDraftConversationRefInfoResponse[]
-  sticker: EmojiInfoResponse | null
   revision: number
   updated_at: number
 }
@@ -2045,62 +2082,6 @@ export interface VoiceTranscriptResponse {
   duration_ms: number
 }
 
-export type VoiceCorpusSessionKind = 'group' | 'private'
-
-export interface VoiceCorpusSessionInfoResponse {
-  handle: string
-  kind: VoiceCorpusSessionKind
-  clips: number
-  bytes: number
-  untranscribed: number
-  last_captured_at: number
-}
-
-export type VoiceCorpusSessionListResponse = VoiceCorpusSessionInfoResponse[]
-
-export type VoiceCorpusDeleteSelector =
-  { kind: 'session'; handle: string } | { kind: 'sender'; id: string } | { kind: 'all'; confirmation: string }
-
-export interface VoiceCorpusDeleteRequest {
-  selector: VoiceCorpusDeleteSelector
-}
-
-export interface VoiceCorpusOptoutUpdateRequest {
-  sender_id: string
-  enabled: boolean
-}
-
-export interface VoiceCorpusForgetRequest {
-  sender_id: string
-}
-
-export interface VoiceCorpusExportRequest {
-  output_dir: string
-  include_sender: boolean
-  include_untranscribed: boolean
-}
-
-export interface VoiceCorpusDeleteResponse {
-  clips: number
-  files: number
-  bytes: number
-  failures: string[]
-}
-
-export interface VoiceCorpusForgetResponse {
-  clips: number
-  files: number
-  bytes: number
-  failures: string[]
-}
-
-export interface VoiceCorpusExportResponse {
-  clips: number
-  skipped: number
-  bytes: number
-  path: string
-}
-
 export interface MessageInfoResponse {
   id: string
   conversation_id: string
@@ -2478,6 +2459,25 @@ export type ProviderModelListResponse = ProviderModelInfoResponse[]
 
 export type McpTransport = 'stdio' | 'streamablehttp'
 
+export interface McpToolPolicyOverrideResponse {
+  scope: ToolScope | null
+  loading: ToolLoading | null
+  approval: ToolApprovalPolicy | null
+}
+
+export interface McpDefaultPolicyInfoResponse {
+  scope: ToolScope
+  loading: ToolLoading
+  approval: ToolApprovalPolicy
+}
+
+export interface McpResolvedToolPolicyInfoResponse {
+  scope: ToolScope
+  loading: ToolLoading
+  approval: ToolApprovalPolicy
+  needs_always_reapproval: boolean
+}
+
 export interface McpServerInfoResponse {
   id: string
   name: string
@@ -2488,6 +2488,9 @@ export interface McpServerInfoResponse {
   url: string | null
   headers: Record<string, string> | null
   is_enabled: boolean
+  default_policy: McpToolPolicyOverrideResponse | null
+  tool_policies: Record<string, McpToolPolicyOverrideResponse> | null
+  approved_always_tools: string[] | null
   sort_order: number
   created_at: number
   updated_at: number
@@ -2504,6 +2507,7 @@ export interface McpServerToolInfoResponse {
   input_schema: JsonValue
   enabled: boolean
   definition_tokens: number
+  resolved_policy: McpResolvedToolPolicyInfoResponse
 }
 
 export type McpServerToolListResponse = McpServerToolInfoResponse[]
@@ -2522,7 +2526,7 @@ export type McpConnectionStatusListResponse = McpConnectionStatusInfoResponse[]
 export interface McpToolInfoResponse {
   name: string
   description: string
-  source: 'builtin' | 'mcp' | 'onebot'
+  source: 'builtin' | 'mcp'
   server_name: string | null
   admin_only: boolean | null
   needs_approval: boolean | null
@@ -2628,125 +2632,6 @@ export interface RemoteStatusResponse {
   /** Live websocket connections. The one number that says whether the phone on
    *  the sofa is actually attached, which `running` does not. */
   connections: number
-}
-
-export interface OneBotStatusInfoResponse {
-  enabled: boolean
-  running: boolean
-  connected_clients: number
-  host: string
-  port: number
-}
-
-export interface VoiceSendReadinessInfoResponse {
-  enabled: boolean
-  has_model: boolean
-  has_reference_id: boolean
-  has_api_key: boolean
-  ready: boolean
-}
-
-/** Configurable QQ session copy. Empty arrays pick the matching seed. */
-export interface ReplyBank {
-  empty_reply: string[]
-  busy: string[]
-  server_error: string[]
-  ack_approved: string[]
-  ack_denied: string[]
-}
-
-/** Built-in fallbacks for each reply slot, returned on get. */
-export interface ReplySeeds {
-  empty_reply: string
-  busy: string
-  server_error: string
-  ack_approved: string
-  ack_denied: string
-}
-
-/** Exact origin and fixed destination, configured only on the host. */
-export interface PrivateMediaOrigin {
-  origin: string
-  ip: string
-}
-
-/** OneBot configuration returned by the host. */
-export interface OneBotConfigInfoResponse {
-  enabled: boolean
-  host: string
-  port: number
-  access_token: string | null
-  assistant_id: string | null
-  admin_users: number[]
-  ack_emoji_id: string
-  private_media_origins: PrivateMediaOrigin[]
-  voice_capture_sessions: string[]
-  voice_send_enabled: boolean
-  voice_send_groups: string[]
-  voice_tts_model: string
-  voice_tts_reference_id: string
-  replies: ReplyBank
-  reply_seeds: ReplySeeds
-}
-
-/** Complete OneBot settings accepted by the host. Nullable keys remain required. */
-export interface OneBotConfigUpdateRequest {
-  enabled: boolean
-  host: string
-  port: number
-  access_token: string | null
-  assistant_id: string | null
-  admin_users: number[]
-  ack_emoji_id: string
-  private_media_origins: PrivateMediaOrigin[]
-  voice_capture_sessions: string[]
-  voice_send_enabled: boolean
-  voice_send_groups: string[]
-  voice_tts_model: string
-  voice_tts_reference_id: string
-  replies: ReplyBank
-}
-
-export type EmojiPackKind = 'manual' | 'onebot'
-export type EmojiSource = 'local' | 'onebot_face' | 'onebot_mface' | 'onebot_image'
-export type EmojiSemanticStatus = 'pending' | 'suggested' | 'confirmed'
-
-export interface EmojiPackInfoResponse {
-  id: string
-  name: string
-  description: string | null
-  cover_image: string | null
-  is_builtin: boolean
-  sort_order: number
-  created_at: number
-  updated_at: number
-  kind: EmojiPackKind
-  source_account_id: string | null
-}
-
-export interface EmojiInfoResponse {
-  id: string
-  pack_id: string
-  name: string
-  tags: string | null
-  file_name: string
-  file_format: string
-  sort_order: number
-  created_at: number
-  source: EmojiSource
-  source_key: string | null
-  semantic_status: EmojiSemanticStatus
-  suggested_name: string | null
-  suggested_tags: string | null
-  file_size: number
-  seen_count: number
-  last_seen_at: number | null
-}
-
-export interface StickerContentPart {
-  type: 'sticker'
-  sticker_id: string
-  name?: string
 }
 
 export interface ToolCategoryInfoResponse {
@@ -3293,7 +3178,7 @@ export interface UsageCacheMissInfoResponse {
 }
 
 export type TurnOrigin =
-  'desktop' | 'onebot' | 'sub_agent' | 'plan_review' | 'impl_review' | 'claude_code' | 'user_shell'
+  'desktop' | 'channel' | 'sub_agent' | 'plan_review' | 'impl_review' | 'claude_code' | 'user_shell' | 'dream'
 
 export type ServiceKey = 'tavily' | 'zhipu_search' | 'fish_audio'
 
@@ -3687,35 +3572,14 @@ export interface SystemNoticeInfoResponse {
 
 export type SystemNoticeListResponse = SystemNoticeInfoResponse[]
 
-export type EmojiEmbedderState = 'disabled' | 'loading' | 'indexing' | 'ready' | 'error'
-
-export interface EmojiEmbedderStatusResponse {
-  state: EmojiEmbedderState
-  vision: boolean
-  indexed: number
-  total: number
-  error: string | null
+export type SystemNoticeDetail = {
+  kind: 'ime_dictionary_upgrade'
+  state: ImeDictionaryUpgradeState
+  /** The dictionaries being upgraded, in catalog order. */
+  dictionaries: string[]
+  upgraded: number
+  failures: ImeDictionaryUpgradeFailureInfoResponse[]
 }
-
-export type SystemNoticeDetail =
-  | {
-      kind: 'ime_dictionary_upgrade'
-      state: ImeDictionaryUpgradeState
-      /** The dictionaries being upgraded, in catalog order. */
-      dictionaries: string[]
-      upgraded: number
-      failures: ImeDictionaryUpgradeFailureInfoResponse[]
-    }
-  | {
-      kind: 'emoji_embedding_index'
-      state: EmojiEmbeddingIndexNoticeState
-      vision: boolean
-      indexed: number
-      total: number
-      error: string | null
-    }
-
-export type EmojiEmbeddingIndexNoticeState = 'indexing' | 'succeeded' | 'failed'
 
 export type ImeDictionaryUpgradeState = 'running' | 'succeeded' | 'failed'
 

@@ -6,7 +6,6 @@ import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Marker, MarkerContent } from '@/components/ui/marker'
 import { Bubble, BubbleContent } from '@/components/yuerchu-ui/components/chat-bubble/chat-bubble'
 import { TurnItem } from './turn-item'
-import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { turnEndedAt, type Turn } from '@/lib/turns'
 import type { MessageViewModel } from '@/types'
@@ -19,8 +18,7 @@ export interface CompactedRegionProps {
   compactedCount: number
   compactSummary?: MessageViewModel
   onDelete?: (id: string) => void
-  isOneBot?: boolean
-  emojiMap?: EmojiMap
+  isChannel?: boolean
   senderNames?: SenderNames
   assistantAvatar?: string | null
 }
@@ -39,8 +37,7 @@ export function CompactedRegion({
   compactedCount,
   compactSummary,
   onDelete,
-  isOneBot,
-  emojiMap,
+  isChannel,
   senderNames,
   assistantAvatar,
 }: CompactedRegionProps) {
@@ -66,8 +63,7 @@ export function CompactedRegion({
                 conversationId={conversationId}
                 previousTurnEndedAt={i > 0 ? turnEndedAt(turns[i - 1]) : null}
                 onDelete={onDelete}
-                isOneBot={isOneBot}
-                emojiMap={emojiMap}
+                isChannel={isChannel}
                 senderNames={senderNames}
                 assistantAvatar={assistantAvatar}
               />

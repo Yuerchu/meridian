@@ -461,6 +461,7 @@ mod tests {
                         path: Some("/r".into()),
                         source_type: meridian_core::db::entity::project::ProjectSource::Local,
                         source_id: None,
+                        channel_kind: None,
                         assistant_id: None,
                         description: None,
                         created_at: 1,

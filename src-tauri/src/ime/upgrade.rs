@@ -222,10 +222,7 @@ mod tests {
             dictionaries,
             upgraded,
             failures,
-        } = &list[0].detail
-        else {
-            panic!("expected ime_dictionary_upgrade notice");
-        };
+        } = &list[0].detail;
         assert_eq!(*state, ImeDictionaryUpgradeState::Failed);
         assert_eq!(dictionaries, &vec!["good".to_string(), "bad".to_string()]);
         assert_eq!(*upgraded, 1);

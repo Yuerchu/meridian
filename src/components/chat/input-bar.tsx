@@ -3,14 +3,13 @@ import { useState, useRef, useCallback, useEffect, useId, useLayoutEffect, useMe
 import { mergeRefs } from '@react-aria/utils'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowInDownDashedPanel, Copy, CursorText, Scissors, X } from '@keyline-icons/react/two-tone'
+import { ArrowInDownDashedPanel, Copy, CursorText, Scissors } from '@keyline-icons/react/two-tone'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Kbd } from '@/components/yuerchu-ui/components/kbd/kbd'
 import { Menu, MenuItem, MenuSeparator } from '@/components/yuerchu-ui/components/menu/menu'
 import { Popover } from '@/components/yuerchu-ui/components/popover/popover'
 import { Tooltip, TooltipTrigger } from '@/components/yuerchu-ui/components/tooltip/tooltip'
-import { Button } from '@/components/yuerchu-ui/components/button/button'
 
 import { can } from '@/lib/capabilities'
 import { readsAnyImage } from '@/lib/model-media'
@@ -36,7 +35,6 @@ import { VoiceOverlay } from './voice-overlay'
 import { AttachSheet } from './attach-sheet'
 import { ComposerMenu } from './composer-menu'
 import { HostedModelPanel, ModelPanel } from './model-panel'
-import { EmojiPicker } from './emoji-picker'
 import { ContextGauge, hasContextReading } from './context-gauge'
 import { ComposerStatusTab, ProjectBranchChip } from './composer-status-tab'
 import { TodoProgressChip } from './todo-progress-chip'
@@ -51,7 +49,6 @@ import type {
   AssistantInfoResponse,
   BackgroundTaskInfoResponse,
   ChatMode,
-  EmojiInfoResponse,
   ProviderInfoResponse,
   ProviderCapabilitiesInfoResponse,
   ThinkingLevel,
@@ -63,11 +60,6 @@ import type {
  * which and why.
  */
 export type AttachedFile = Attachment
-
-export interface PendingSticker {
-  emoji: EmojiInfoResponse
-  url: string
-}
 
 interface InputBarProps {
   /** Which conversation this composer belongs to. Needed because a hosted
@@ -123,9 +115,6 @@ interface InputBarProps {
   onRemoveFile?: (index: number) => void
   /** The files in their new order, after a tile was moved. Absent, they stay put. */
   onReorderFiles?: (next: AttachedFile[]) => void
-  pendingSticker?: PendingSticker | null
-  onSelectSticker?: (sticker: PendingSticker) => void
-  onRemoveSticker?: () => void
   assistants: AssistantInfoResponse[]
   providers: ProviderInfoResponse[]
   currentAssistantId: string | null
@@ -271,9 +260,6 @@ export function InputBar({
   onAttachFiles,
   onRemoveFile,
   onReorderFiles,
-  pendingSticker,
-  onSelectSticker,
-  onRemoveSticker,
 }: InputBarProps) {
   const { t } = useTranslation()
   const platform = usePlatform()
@@ -310,14 +296,6 @@ export function InputBar({
   // typing. This is the one connection state the composer has to care about.
   const offline = useIsOffline()
   const fileInputRef = useRef<FileInputHandle>(null)
-  // The sticker picker opens from the `+` menu (or the phone's sheet) and
-  // hangs from that button once the menu has gone.
-  const plusRef = useRef<HTMLButtonElement>(null)
-  const [stickersOpen, setStickersOpen] = useState(false)
-  // Not on a hosted session: core has no content block to turn a sticker into
-  // for an ACP agent and refuses one (`acp::attachments`), so the picker is not
-  // offered rather than offered and refused. Files are; see `canAttachFiles`.
-  const offersStickers = !isHosted && !!currentAssistantId && !!onSelectSticker
   // A hosted session's knobs, by where each is drawn: the model and the
   // effort in the model panel, the permission mode as the mode chip, anything
   // else in the `+` menu. A select with nothing in it is not offered: the
@@ -347,17 +325,6 @@ export function InputBar({
       onToggleAcceptEdits={onToggleAcceptEdits}
     />
   )
-  const insertEmojiRef = useRef<(emoji: string) => void>(() => {})
-  const stickerPicker = offersStickers ? (
-    <EmojiPicker
-      assistantId={currentAssistantId}
-      anchorRef={plusRef}
-      isOpen={stickersOpen}
-      onOpenChange={setStickersOpen}
-      onSelect={(sticker) => onSelectSticker?.(sticker)}
-      onSelectEmoji={(emoji) => insertEmojiRef.current(emoji)}
-    />
-  ) : null
   /**
    * Voice is not offered at all when it cannot work, rather than offered and
    * refused.
@@ -463,9 +430,9 @@ export function InputBar({
   // submit made during a run, which is precisely when a steer or a queued
   // message is submitted.
   const handleSubmit = useCallback(() => {
-    if ((disabled && !streaming) || (!value.trim() && !pendingSticker && attachedFiles.length === 0)) return
+    if ((disabled && !streaming) || (!value.trim() && attachedFiles.length === 0)) return
     onSubmit()
-  }, [disabled, streaming, value, pendingSticker, attachedFiles.length, onSubmit])
+  }, [disabled, streaming, value, attachedFiles.length, onSubmit])
 
   // `expected` is the value the caret position was computed against. The move
   // lands a frame later, and a key typed in that frame — a fast typist, key
@@ -482,15 +449,6 @@ export function InputBar({
       el.focus()
     })
   }, [])
-
-  // The Unicode tab inserts at the caret the field had when the panel opened.
-  // Reading the textarea here is wrong: the panel has already taken focus, so
-  // the tracked caret is the last position the field reported.
-  insertEmojiRef.current = (emoji) => {
-    const next = value.slice(0, caret) + emoji + value.slice(caret)
-    onChange(next)
-    moveCaret(caret + emoji.length, next)
-  }
 
   // Pressing Enter on a command without an argument changes `/model` to
   // `/model ` from above the field. React can keep the DOM selection at the old
@@ -924,52 +882,14 @@ export function InputBar({
               ) : null
             }
             attachments={
-              (attachedFiles.length > 0 || pendingSticker) && (
+              attachedFiles.length > 0 && (
                 <div data-slot="composer-attachments" className="m-input-bar__attachments">
-                  {attachedFiles.length > 0 && (
-                    <AttachmentTiles
-                      ref={attachmentRow}
-                      files={attachedFiles}
-                      onRemove={onRemoveFile}
-                      onReorder={onReorderFiles}
-                    />
-                  )}
-                  {pendingSticker && (
-                    <div className="m-input-bar__sticker" data-slot="pending-sticker">
-                      <img
-                        data-slot="pending-sticker-image"
-                        src={pendingSticker.url}
-                        alt={pendingSticker.emoji.name}
-                        // The tiles' 56px with this box's padding, so the row
-                        // is one height whatever it holds.
-                        className="m-input-bar__sticker-image"
-                      />
-                      {onRemoveSticker && (
-                        // The corner placement is on a wrapper, not the button.
-                        // On a coarse pointer `touch-hitbox` sets the button's
-                        // own `position: relative` (the box its `::after`
-                        // expands from); beside `absolute` on the same element
-                        // those are one class each in one layer, so emission
-                        // order alone decided whether the button stayed in the
-                        // corner or fell into flow under the sticker. Split, the
-                        // wrapper is positioned — and, later in the DOM than the
-                        // image, painted over it — and the button is the hitbox's
-                        // containing block with nothing to contest it.
-                        <span data-slot="pending-sticker-remove" className="m-input-bar__sticker-remove">
-                          <TooltipTrigger>
-                            <Button
-                              icon={<X />}
-                              size="sm"
-                              variant="secondary"
-                              aria-label={t('chat.removeSticker')}
-                              onPress={onRemoveSticker}
-                            />
-                            <Tooltip>{t('chat.removeSticker')}</Tooltip>
-                          </TooltipTrigger>
-                        </span>
-                      )}
-                    </div>
-                  )}
+                  <AttachmentTiles
+                    ref={attachmentRow}
+                    files={attachedFiles}
+                    onRemove={onRemoveFile}
+                    onReorder={onReorderFiles}
+                  />
                 </div>
               )
             }
@@ -1014,7 +934,7 @@ export function InputBar({
                 }
               />
             }
-            hasPayload={!!pendingSticker || attachedFiles.length > 0}
+            hasPayload={attachedFiles.length > 0}
             toolbarStart={
               // Steering a delegated run starts no turn, so nothing that
               // describes one — what to attach, which mode — applies.
@@ -1026,8 +946,6 @@ export function InputBar({
                     // gets the menu below instead, which carries those and the
                     // file picker; the sheet has no place for them.
                     <AttachSheet
-                      triggerRef={plusRef}
-                      onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
                       onTakePhoto={handleTakePhoto}
                       onPickGallery={handlePickGallery}
                       onPickFile={handlePickFile}
@@ -1035,8 +953,6 @@ export function InputBar({
                     />
                   ) : (
                     <ComposerMenu
-                      triggerRef={plusRef}
-                      onOpenStickers={offersStickers ? () => setStickersOpen(true) : undefined}
                       onPickFile={onAttachFiles ? handlePickFile : undefined}
                       knobs={otherKnobs}
                       onSetKnob={setKnob}
@@ -1044,7 +960,6 @@ export function InputBar({
                     />
                   )}
                   {modeChip}
-                  {stickerPicker}
                 </>
               )
             }

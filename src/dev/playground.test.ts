@@ -37,7 +37,12 @@ const NOT_PRODUCT = [join(SRC, 'dev'), join(SRC, 'test')]
  * out to be unwanted. When the caller lands, delete the entry — the check will
  * then keep the component honest on its own.
  */
-const ALLOWED_WITHOUT_CALLER = new Map<string, string>([])
+const ALLOWED_WITHOUT_CALLER = new Map<string, string>([
+  ['EmojiPicker', 'vendored yuerchu-ui Unicode picker retained for future plugin/composer UIs'],
+  ['FileDetails', 'vendored yuerchu-ui asset inspector retained for future plugin/asset management UIs'],
+  ['PathBar', 'vendored yuerchu-ui breadcrumb path bar retained for future plugin/asset management UIs'],
+  ['FileManager', 'vendored yuerchu-ui file manager template retained for future plugin/asset management UIs'],
+])
 
 /** `import { A, B as C }` / `import type { … }` / multi-line forms. */
 const IMPORT_RE = /import\s+(type\s+)?\{([\s\S]*?)\}\s*from\s*['"]([^'"]+)['"]/g

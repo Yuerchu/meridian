@@ -1,6 +1,5 @@
 import type { AttachedFile } from '@/components/chat/input-bar'
 import { uploadAttachment } from '@/lib/upload'
-import type { StickerContentPart } from '@/types'
 
 /** One element of the stored envelope, as loosely as the transcript reads it. */
 export interface UserContentPart {
@@ -22,27 +21,19 @@ export interface ParsedUserContent {
 }
 
 /**
- * What a user message is stored as: the text itself, or — with attachments or
- * a sticker — the parts envelope `messages.content` and `queued_prompts.content`
- * both carry, which the backend decodes strictly.
- *
- * Uploads each file on the way, which is also the moment its bytes are frozen:
- * a queued message carries the copy made when it was queued, the way an `@`
- * reference carries the snapshot taken then. Not `api.uploadFile` directly: an
- * attachment picked on a device that is not the one holding the file has bytes
- * rather than a path, and only `uploadAttachment` knows which of the two it is.
+ * What a user message is stored as: the text itself, or — with attachments —
+ * the parts envelope `messages.content` and `queued_prompts.content` both
+ * carry, which the backend decodes strictly.
  */
 export async function buildMessageContent(
   conversationId: string,
   text: string,
   files: AttachedFile[] | undefined,
-  sticker: StickerContentPart | undefined,
 ): Promise<string> {
-  if ((!files || files.length === 0) && !sticker) return text
+  if (!files || files.length === 0) return text
   const parts: unknown[] = []
   if (text.trim()) parts.push({ type: 'text', text })
-  if (files) parts.push(...(await Promise.all(files.map((f) => uploadAttachment(conversationId, f)))))
-  if (sticker) parts.push(sticker)
+  parts.push(...(await Promise.all(files.map((f) => uploadAttachment(conversationId, f)))))
   return JSON.stringify(parts)
 }
 

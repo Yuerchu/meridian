@@ -154,29 +154,51 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         // Read here rather than reused from the top of the turn: a server that
         // finished connecting since then belongs in the tool set the user just
         // agreed to.
-        let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
         let registry = self.registry.clone();
-        let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
-            assistant: self.assistant.clone(),
-            server_tools: self.server_tools.clone(),
-            conversation_id: self.conversation_id.clone(),
-            project_id: self.project_id.clone(),
-            // This type exists to answer the question, so the answer is yes.
-            mode: meridian_core::agent::modes::Modes::Switchable(mode),
-            // The turn's own, carried rather than resolved again.
-            sub_agents: Some(self.sub_agents.clone()),
-            mcp_defs,
-            exposure: meridian_core::agent::turn_config::ToolExposure::when(self.supports_tools),
-            persona: self.persona.clone(),
-            context_blocks: self.context_blocks.clone(),
-            session_tools: None,
-            command_shell: self.command_shell,
-            forbidden_effects: &[],
-        };
+        let services = self.services.clone();
+        let plugin_mixins = self.services.snapshot_plugin_mixins();
+        let persona = self.persona.clone();
+        let context_blocks = self.context_blocks.clone();
+        let supports_tools = self.supports_tools;
+        let server_tools = self.server_tools.clone();
+        let sub_agents = self.sub_agents.clone();
+        let command_shell = self.command_shell;
+        let assistant = self.assistant.clone();
+        let conversation_id = self.conversation_id.clone();
+        let project_id = self.project_id.clone();
         self.services
             .db
             .read(async |tx| {
-                Ok::<_, db::sea::DbErr>(meridian_core::agent::turn_config::resolve(tx, &registry, input).await)
+                let global_policy = match meridian_core::mcp::policy::read_global_default(tx).await {
+                    Ok(policy) => policy,
+                    Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
+                };
+                let mcp_servers = db::sea::ops::mcp_server::list(tx).await?;
+                let mcp_tools = services.mcp.declared_tools(
+                    &mcp_servers,
+                    global_policy,
+                    meridian_core::agent::hooks::ToolScope::LocalOnly,
+                );
+                let character = crate::character::DesktopCharacter::assemble(crate::character::DesktopCharacterSpec {
+                    persona,
+                    context_blocks,
+                    // This type exists to answer the question, so the answer is yes.
+                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                    supports_tools,
+                    server_tools,
+                    // The turn's own, carried rather than resolved again.
+                    sub_agents: Some(sub_agents),
+                    mcp_tools,
+                    command_shell,
+                    plugin_mixins,
+                });
+                let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
+                    assistant,
+                    conversation_id,
+                    project_id,
+                    character,
+                };
+                Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input).await)
             })
             .await
             .map_err(|e| e.to_string())
@@ -1107,6 +1129,15 @@ async fn chat_inner(
                 Some(pid) => db::sea::ops::project::get(tx, pid).await.ok().flatten(),
                 None => None,
             };
+            if project.as_ref().is_some_and(|p| {
+                matches!(
+                    p.source_type,
+                    db::entity::project::ProjectSource::ChannelDirect
+                        | db::entity::project::ProjectSource::ChannelGroup
+                )
+            }) {
+                return Ok(Err("archived channel conversations are read-only".to_string()));
+            }
             // Where the turn works: the resolver's answer, not the project's
             // path read here — a board card works in its worktree, and one
             // whose worktree was removed has nowhere to work and is refused.
@@ -1222,7 +1253,6 @@ async fn chat_inner(
     // Off the published snapshot. Reading it never waits on a server that is
     // mid-call — which is exactly what used to stop every other conversation
     // from starting a turn.
-    let mcp_defs = services.mcp.tool_definitions().as_ref().clone();
     let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()))?;
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope. Sent
@@ -1297,7 +1327,6 @@ async fn chat_inner(
         &resolved.api_format,
         &turn_params.caps,
     )?;
-    let supports_images = user_media.reads_any_image();
     // Copied for the same reason as the two above: `turn_params.params` is moved
     // later in the turn, and a mid-turn mode switch rebuilds the tool set — so
     // the list that suppresses the local `web_search` has to survive that.
@@ -1375,12 +1404,14 @@ async fn chat_inner(
     // description as a roster of models, and a mid-turn mode switch that
     // resolved a different one would quietly change what the model may delegate
     // to — halfway through a turn, with nothing on screen to say so.
-    let (turn, sub_agent_catalog) = {
+    let (turn, sub_agent_catalog, parent_character) = {
         let registry = tool_registry.clone();
         let assistant2 = assistant.clone();
         let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         let server_tools = turn_server_tools.clone();
+        let plugin_mixins = services.snapshot_plugin_mixins();
+        let mcp_registry = services.mcp.clone();
         services
             .db
             .read(async |tx| {
@@ -1388,30 +1419,50 @@ async fn chat_inner(
                     Ok(catalog) => catalog,
                     Err(error) => return Ok::<_, db::sea::DbErr>(Err(error)),
                 };
-                let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
-                    assistant: assistant2,
-                    server_tools,
-                    conversation_id: conv_id,
-                    project_id: pid,
-                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
-                    sub_agents: Some(catalog.clone()),
-                    mcp_defs,
-                    exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
+                let global_policy = match meridian_core::mcp::policy::read_global_default(tx).await {
+                    Ok(policy) => policy,
+                    Err(error) => return Ok(Err(error)),
+                };
+                let mcp_servers = db::sea::ops::mcp_server::list(tx).await?;
+                let mcp_tools = mcp_registry.declared_tools(
+                    &mcp_servers,
+                    global_policy,
+                    meridian_core::agent::hooks::ToolScope::LocalOnly,
+                );
+                let character = crate::character::DesktopCharacter::assemble(crate::character::DesktopCharacterSpec {
                     persona: persona2,
                     context_blocks: blocks,
-                    session_tools: None,
+                    mode: meridian_core::agent::modes::Modes::Switchable(mode),
+                    supports_tools,
+                    server_tools,
+                    sub_agents: Some(catalog.clone()),
+                    mcp_tools,
                     command_shell,
-                    forbidden_effects: &[],
+                    plugin_mixins,
+                });
+                let input = meridian_core::agent::turn_config::TurnConfigResolveRequest {
+                    assistant: assistant2,
+                    conversation_id: conv_id,
+                    project_id: pid,
+                    character: character.clone(),
                 };
                 Ok(meridian_core::agent::turn_config::resolve(tx, &registry, input)
                     .await
-                    .map(|turn| (turn, catalog)))
+                    .map(|turn| (turn, catalog, character)))
             })
             .await
             .map_err(|e| e.to_string())??
     };
     let tool_defs = turn.tool_defs;
     let offered = turn.offered;
+    let deferred_tools = turn.deferred_tools;
+    let approval_policies = turn.approval_policies;
+    let review_policy_addenda = turn.review_policy_addenda;
+    let request_approve_tools: std::collections::HashSet<String> = approval_policies
+        .iter()
+        .filter(|(_, policy)| **policy == meridian_core::agent::hooks::ToolApprovalPolicy::RequestApprove)
+        .map(|(name, _)| name.clone())
+        .collect();
     let system_prompt = turn.system_prompt;
     let keep_recent = assistant
         .as_ref()
@@ -1543,13 +1594,6 @@ async fn chat_inner(
     // marker is applied to the payload only. Absent only when regenerating,
     // which re-answers a question that is already on record.
     let sent_at = now_ms();
-    // What its stickers were known as, recorded before the live message and the
-    // row are both built from it: a label given later must not change how this
-    // message replays (CLAUDE.md, "What was sent is never dropped or rewritten").
-    let message = match message {
-        Some(m) => Some(meridian_core::agent::freeze_sticker_parts(&services.db, &m).await?),
-        None => None,
-    };
     let live_user = message
         .as_deref()
         .map(|m| persisted_user_message(m, (voice == Some(true)).then_some("voice"), None, sent_at));
@@ -1733,13 +1777,7 @@ async fn chat_inner(
         &Default::default(),
         &stored_context_items,
     )?;
-    resolve_sticker_parts_in_messages(
-        &mut chat_messages,
-        Some(&services.db),
-        Some(services.paths.data_dir.as_path()),
-        supports_images,
-    )
-    .await?;
+    resolve_sticker_parts_in_messages(&mut chat_messages)?;
     let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
     resolve_file_uris_in_messages(
         &mut chat_messages,
@@ -1827,7 +1865,6 @@ async fn chat_inner(
                     summary_row.compact_anchor_id = Some(user_msg_id.clone());
                     db::sea::ops::message::insert(tx, summary_row).await?;
                 }
-                db::sea::ops::emoji::link_emojis_in_content(tx, &user_msg_id, text).await?;
                 db::sea::ops::message_context_item::insert_prepared(tx, &user_msg_id, &prepared_context, now).await?;
                 if let Some(queued) = &queued {
                     db::sea::ops::queue::spend(tx, &conversation_id, queued, &turn_id, &user_msg_id, now).await?;
@@ -1921,14 +1958,19 @@ async fn chat_inner(
     };
 
     // Assembled here rather than per call: by the time a `run_agent` arrives,
-    // the assistant row, the project and the tool context are hundreds of lines
-    // behind, and a delegated run needs all three.
-    let sub_agents = super::sub_agent::DesktopSubAgents {
+    // the assistant row, the project, the parent capability profile and the tool
+    // context are hundreds of lines behind.
+    let sub_agents = meridian_core::agent::sub_agent_runner::CoreSubAgentRunner {
         services: services.clone(),
         secrets: secrets.clone(),
         registry: tool_registry.clone(),
         coordinator: services.turns.clone(),
         mcp: services.mcp.clone(),
+        approvals_factory: Arc::new(super::sub_agent::DesktopApprovalsFactory {
+            services: services.clone(),
+        }),
+        sandbox_factory: Arc::new(meridian_core::agent::sub_agent_runner::InheritToolContextSandboxFactory),
+        parent_character,
         parent_conversation_id: conversation_id.clone(),
         parent_cancel: cancel.clone(),
         assistant: assistant.clone(),
@@ -1967,11 +2009,13 @@ async fn chat_inner(
             // whitelist rather than the whole disk.
             file_access: tool_context.file_access.clone(),
             // One person, and they own the machine.
-            multi_party: false,
+            party: meridian_core::agent::auto_review::ReviewParty::Single,
             unattended: false,
             force_review: false,
             review_model_fallback: None,
-            fail_closed: &[],
+            fail_closed: std::collections::HashSet::new(),
+            request_approve: request_approve_tools,
+            policy_addenda: review_policy_addenda,
         },
     )
     .await?;
@@ -2004,6 +2048,8 @@ async fn chat_inner(
         .map_err(|error| error.to_string())?
         .flatten();
     let base_prices = pricing.as_ref().map(|p| p.base().clone());
+    let plugin_mixins = services.snapshot_plugin_mixins();
+    let turn_hooks = services.snapshot_turn_hooks();
     let outcome = Box::pin(engine::run_turn(
         &engine::TurnServices {
             db: &services.db,
@@ -2021,6 +2067,8 @@ async fn chat_inner(
             chat_messages,
             tool_defs,
             offered,
+            deferred_tools,
+            approval_policies,
             mode,
             tool_context,
             budget,
@@ -2054,13 +2102,8 @@ async fn chat_inner(
             withheld: engine::WithheldWording::Explained,
             files_root,
             user_media,
-            stickers: Some(engine::StickerRendering {
-                db: services.db.clone(),
-                data_dir: services.paths.data_dir.clone(),
-                supports_images,
-            }),
             interrupted,
-            compaction: engine::CompactionPolicy::Desktop {
+            compaction: engine::CompactionPolicy::Attended {
                 enabled: auto_compact,
                 breaker: circuit_breaker.clone(),
             },
@@ -2074,8 +2117,7 @@ async fn chat_inner(
             emit: Some(&emitter),
             approvals: &approvals,
             // The desktop streams every chunk to the window as it arrives and
-            // runs no tools outside the registry and MCP. Each `None` is the
-            // absence of the thing, not a feature turned off.
+            // runs no tools outside the registry, plugins, and MCP.
             interim: None,
             surface_tools: None,
             // Not an inbox: the desktop's is a table, so a message queued for
@@ -2084,6 +2126,9 @@ async fn chat_inner(
             steering: Some(&steering),
             transitions: Some(&transitions),
             sub_agents: Some(&sub_agents),
+            mixins: &plugin_mixins,
+            authorizer: None,
+            hooks: &turn_hooks,
         },
     ))
     .await;

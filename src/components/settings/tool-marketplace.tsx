@@ -382,35 +382,6 @@ export function ToolMarketplace() {
         </SettingsGroup>
       </SettingsDrilldown>
 
-      {builtinTools.some((tool) => tool.source === 'onebot') && (
-        <SettingsDrilldown
-          title={t('settings.tools.onebotSection')}
-          summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
-        >
-          <SettingsGroup description={t('settings.tools.onebotHint')}>
-            <div data-slot="onebot-tool-list" className="m-tools__list">
-              {builtinTools
-                .filter((tool) => tool.source === 'onebot')
-                .map((tool) => (
-                  <div key={tool.name} data-slot="onebot-tool-row" className="m-tools__line">
-                    <Wrench size={14} aria-hidden />
-                    <span data-slot="onebot-tool-name" className="m-tools__mono">
-                      {tool.name}
-                    </span>
-                    <span data-slot="onebot-tool-description" className="m-tools__desc">
-                      {t(`settings.tools.qq.${tool.name}`)}
-                    </span>
-                    {tool.scope === 'group' && <Badge>{t('settings.tools.qqGroupOnly')}</Badge>}
-                    {tool.scope === 'private' && <Badge>{t('settings.tools.qqPrivateOnly')}</Badge>}
-                    {tool.admin_only === true && <Badge>{t('settings.tools.qqAdminOnly')}</Badge>}
-                    {tool.needs_approval === true && <Badge>{t('settings.tools.qqApproval')}</Badge>}
-                  </div>
-                ))}
-            </div>
-          </SettingsGroup>
-        </SettingsDrilldown>
-      )}
-
       <div data-slot="custom-tools" className="m-tools__section">
         <div data-slot="custom-tools-header" className="m-tools__header">
           <h3 data-slot="custom-tools-title" className="m-tools__title">

@@ -11,7 +11,7 @@ import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tab
 import { findComposerCommand } from '@/lib/composer-commands'
 import { parseComposerIntent } from '@/lib/composer-intent'
 import type { InitialTurnDraft } from './conversation-draft'
-import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
+import { InputBar, type AttachedFile } from './input-bar'
 import { useComposerDraft, type ComposerConversationRef, type ComposerDraftState } from '@/hooks/use-composer-draft'
 
 /** The welcome composer takes no conversation references; stable so it never reads as a change. */
@@ -51,7 +51,6 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   const platform = usePlatform()
   const [value, setValue] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
-  const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const headingId = useId()
@@ -67,11 +66,10 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   const restoreDraft = useCallback((restored: ComposerDraftState) => {
     setValue(restored.text)
     setAttachedFiles(restored.attachedFiles)
-    setPendingSticker(restored.pendingSticker)
   }, [])
   const composerDraft = useComposerDraft(
     null,
-    { text: value, attachedFiles, pendingSticker, conversationRefs: NO_CONVERSATION_REFS },
+    { text: value, attachedFiles, conversationRefs: NO_CONVERSATION_REFS },
     restoreDraft,
   )
   const clearDraft = composerDraft.clear
@@ -79,8 +77,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
   const submitDraft = useCallback(
     (text: string, voice = false) => {
       const trimmed = text.trim()
-      const sticker = voice ? null : pendingSticker
-      if ((!trimmed && !sticker) || locked) return
+      if (!trimmed || locked) return
       if (!voice && attachedFiles.some((file) => file.missing)) {
         setSubmitError(t('chat.draft.missingBlocksSend'))
         return
@@ -91,7 +88,7 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
       // `onSubmit` would create an empty conversation merely to open settings
       // or show help. `/new` is the converse: creating once is already its full
       // meaning on a screen with no active conversation.
-      if (!voice && attachedFiles.length === 0 && !sticker) {
+      if (!voice && attachedFiles.length === 0) {
         const intent = parseComposerIntent(trimmed)
         if (intent.kind === 'slash') {
           const context = {
@@ -149,16 +146,14 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
           onSubmit({
             text: trimmed,
             // Match an existing conversation: voice is a direct turn and does
-            // not consume files or a sticker waiting in the typed composer.
+            // not consume files waiting in the typed composer.
             attachedFiles: voice ? [] : [...attachedFiles],
-            pendingSticker: sticker,
             voice,
             remainingComposer:
-              voice && (value || attachedFiles.length > 0 || pendingSticker)
+              voice && (value || attachedFiles.length > 0)
                 ? {
                     text: value,
                     attachedFiles: [...attachedFiles],
-                    pendingSticker,
                   }
                 : null,
             settings: {
@@ -191,7 +186,6 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
       onCreate,
       onOpenSettingsTab,
       onSubmit,
-      pendingSticker,
       platform,
       settings.acceptEdits,
       settings.capabilities,
@@ -250,9 +244,6 @@ export function EmptyState({ onSubmit, onCreate, onOpenSettingsTab, disabled, ac
             onAttachFiles={(files) => setAttachedFiles((current) => [...current, ...files])}
             onRemoveFile={(index) => setAttachedFiles((current) => current.filter((_, i) => i !== index))}
             onReorderFiles={setAttachedFiles}
-            pendingSticker={pendingSticker}
-            onSelectSticker={setPendingSticker}
-            onRemoveSticker={() => setPendingSticker(null)}
           />
           {submitError && (
             <ErrorAlert data-slot="empty-state-error" message={submitError} onDismiss={() => setSubmitError(null)} />

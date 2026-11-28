@@ -17,13 +17,9 @@ vi.mock('@/api', () => ({
   },
 }))
 
-vi.mock('@/lib/sticker-urls', () => ({
-  loadStickerUrl: vi.fn(() => Promise.resolve('asset://sticker')),
-}))
-
 const CONV = 'conv-1'
 
-const EMPTY: ComposerDraftState = { text: '', attachedFiles: [], pendingSticker: null, conversationRefs: [] }
+const EMPTY: ComposerDraftState = { text: '', attachedFiles: [], conversationRefs: [] }
 
 function state(text: string, over: Partial<ComposerDraftState> = {}): ComposerDraftState {
   return { ...EMPTY, text, ...over }
@@ -35,7 +31,6 @@ function stored(body: string, revision = 3, over: Partial<ComposerDraftInfoRespo
     body,
     attachments: [],
     conversation_refs: [],
-    sticker: null,
     revision,
     updated_at: 0,
     ...over,

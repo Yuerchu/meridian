@@ -43,25 +43,26 @@ impl From<UsageDimension> for CoreUsageDimension {
 #[serde(rename_all = "snake_case")]
 pub enum TurnOrigin {
     Desktop,
-    #[serde(rename = "onebot")]
-    OneBot,
+    Channel,
     SubAgent,
     PlanReview,
     ImplReview,
     ClaudeCode,
     UserShell,
+    Dream,
 }
 
 impl From<TurnOrigin> for CoreTurnOrigin {
     fn from(origin: TurnOrigin) -> Self {
         match origin {
             TurnOrigin::Desktop => Self::Desktop,
-            TurnOrigin::OneBot => Self::OneBot,
+            TurnOrigin::Channel => Self::Channel,
             TurnOrigin::SubAgent => Self::SubAgent,
             TurnOrigin::PlanReview => Self::PlanReview,
             TurnOrigin::ImplReview => Self::ImplReview,
             TurnOrigin::ClaudeCode => Self::ClaudeCode,
             TurnOrigin::UserShell => Self::UserShell,
+            TurnOrigin::Dream => Self::Dream,
         }
     }
 }

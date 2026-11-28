@@ -9,6 +9,10 @@ import { McpSettings } from './mcp-settings'
 
 vi.mock('@/api', () => ({
   api: {
+    preferences: {
+      get: vi.fn(),
+      set: vi.fn(),
+    },
     mcp: {
       listServers: vi.fn(),
       listServerTools: vi.fn(),
@@ -18,6 +22,11 @@ vi.mock('@/api', () => ({
       updateServer: vi.fn(),
       connectServer: vi.fn(),
       setToolEnabled: vi.fn(),
+      getDefaultPolicy: vi.fn(),
+      setDefaultPolicy: vi.fn(),
+      setServerPolicy: vi.fn(),
+      setToolPolicy: vi.fn(),
+      approveAlwaysTools: vi.fn(),
       disconnectServer: vi.fn(),
     },
   },
@@ -36,6 +45,9 @@ function makeServer(id: string, name: string, transportType: string): McpServerI
     url: transportType === 'streamablehttp' ? 'https://example.com/mcp' : null,
     headers: transportType === 'streamablehttp' ? { Authorization: 'Bearer secret-token' } : null,
     is_enabled: false,
+    default_policy: null,
+    tool_policies: null,
+    approved_always_tools: null,
     sort_order: 0,
     created_at: 0,
     updated_at: 0,
@@ -50,12 +62,23 @@ describe('McpSettings pages', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resizeViewportTo(1024)
+    mockApi.preferences.get.mockResolvedValue({
+      key: 'tools.anthropic_search_strategy',
+      value: 'server_bm25',
+    } as never)
+    mockApi.preferences.set.mockResolvedValue(undefined as never)
     mockApi.mcp.listServers.mockResolvedValue([
       makeServer('stdio-server', 'Local tools', 'stdio'),
       makeServer('http-server', 'Remote tools', 'streamablehttp'),
     ])
     mockApi.mcp.listServerTools.mockResolvedValue([])
     mockApi.mcp.listConnectionStatuses.mockResolvedValue([])
+    mockApi.mcp.getDefaultPolicy.mockResolvedValue({
+      scope: 'local_only',
+      loading: 'deferred',
+      approval: 'request_approve',
+    })
+    mockApi.mcp.setDefaultPolicy.mockImplementation(async (req) => req)
     mockApi.mcp.updateServer.mockResolvedValue(undefined as never)
     mockApi.mcp.deleteServer.mockResolvedValue(undefined as never)
     mockApi.mcp.setToolEnabled.mockResolvedValue(undefined as never)
@@ -205,5 +228,11 @@ function makeTool(
     input_schema: { type: 'object' },
     enabled,
     definition_tokens: tokens,
+    resolved_policy: {
+      scope: 'local_only',
+      loading: 'deferred',
+      approval: 'request_approve',
+      needs_always_reapproval: false,
+    },
   }
 }

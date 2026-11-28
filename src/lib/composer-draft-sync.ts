@@ -14,14 +14,12 @@ export interface PersistedComposerDraft {
   body: string
   attachments: ComposerDraftAttachmentRequest[]
   conversationRefs: string[]
-  stickerId: string | null
 }
 
 export const EMPTY_PERSISTED_DRAFT: PersistedComposerDraft = {
   body: '',
   attachments: [],
   conversationRefs: [],
-  stickerId: null,
 }
 
 /** A path this host can open again after a restart: absolute, not a URI. */
@@ -30,16 +28,11 @@ export function isPersistablePath(path: string): boolean {
 }
 
 export function isEmptyDraft(draft: PersistedComposerDraft): boolean {
-  return (
-    draft.body === '' &&
-    draft.attachments.length === 0 &&
-    draft.conversationRefs.length === 0 &&
-    draft.stickerId === null
-  )
+  return draft.body === '' && draft.attachments.length === 0 && draft.conversationRefs.length === 0
 }
 
 export function draftKey(draft: PersistedComposerDraft): string {
-  return JSON.stringify([draft.body, draft.attachments, draft.conversationRefs, draft.stickerId])
+  return JSON.stringify([draft.body, draft.attachments, draft.conversationRefs])
 }
 
 export function persistedFromResponse(row: ComposerDraftInfoResponse | null): PersistedComposerDraft {
@@ -48,7 +41,6 @@ export function persistedFromResponse(row: ComposerDraftInfoResponse | null): Pe
     body: row.body,
     attachments: row.attachments.map(({ path, name }) => ({ path, name })),
     conversationRefs: row.conversation_refs.map((ref) => ref.id),
-    stickerId: row.sticker?.id ?? null,
   }
 }
 
@@ -113,7 +105,6 @@ async function writeOnce(
     body: draft.body,
     attachments: draft.attachments,
     conversation_refs: draft.conversationRefs,
-    sticker_id: draft.stickerId,
     revision,
   })
 }

@@ -12,6 +12,7 @@ import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { SelectionBar } from '@/components/yuerchu-ui/components/selection-bar/selection-bar'
 import { EmptyState } from '@/components/yuerchu-ui/components/empty-state/empty-state'
 import { useConfirm } from '@/hooks/use-confirm'
+import { DreamPanel } from './memory/dream-panel'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
@@ -125,6 +126,11 @@ export function MemorySettings() {
         />
 
         <div data-slot="memory-list" className="m-memory-settings__list">
+          <DreamPanel
+            targetScope={targetScope}
+            targetScopeId={targetScope === 'project' ? (targetProjectId ?? '_') : '_'}
+            onMemoriesChanged={browser.refresh}
+          />
           <div data-slot="memory-toolbar" className="m-memory-settings__toolbar">
             <TextField
               aria-label={t('settings.memory.search')}

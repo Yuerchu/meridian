@@ -92,7 +92,6 @@ const REQUIRED_FILES = [
   'src-tauri/crates/core/src/events.rs',
   'src-tauri/crates/core/src/hooks/mod.rs',
   'src-tauri/crates/core/src/logging/reader.rs',
-  'src-tauri/crates/core/src/onebot/mod.rs',
   'src-tauri/crates/provider-sdk/src/balance.rs',
   'src-tauri/crates/providers/src/catalog.rs',
   'src-tauri/crates/provider-sdk/src/chat.rs',
@@ -105,7 +104,6 @@ const REQUIRED_FILES = [
   'src-tauri/src/commands/chat.rs',
   'src-tauri/src/commands/conversation.rs',
   'src-tauri/src/commands/dev.rs',
-  'src-tauri/src/commands/emoji.rs',
   'src-tauri/src/commands/entity_response.rs',
   'src-tauri/src/commands/hooks.rs',
   'src-tauri/src/commands/journal.rs',
@@ -114,7 +112,6 @@ const REQUIRED_FILES = [
   'src-tauri/src/commands/memory.rs',
   'src-tauri/src/commands/message.rs',
   'src-tauri/src/commands/model_config.rs',
-  'src-tauri/src/commands/onebot.rs',
   'src-tauri/src/commands/preference.rs',
   'src-tauri/src/commands/project.rs',
   'src-tauri/src/commands/provider.rs',
@@ -127,7 +124,6 @@ const REQUIRED_FILES = [
   'src-tauri/src/commands/usage.rs',
   'src-tauri/src/commands/user_command.rs',
   'src-tauri/src/commands/voice.rs',
-  'src-tauri/src/commands/voice_corpus.rs',
   'src-tauri/src/commands/workspace.rs',
   'src-tauri/src/platform.rs',
   'src-tauri/src/remote/dispatch.rs',
@@ -394,13 +390,6 @@ requireRustFields(entityResponseFile, 'ConversationInfoResponse', {
   thinking_level: /^Option<(?:[\w:]+::)*StoredThinkingLevel>$/,
   mode: /^Option<(?:[\w:]+::)*ChatMode>$/,
 })
-requireRustFields(entityResponseFile, 'EmojiPackInfoResponse', {
-  kind: /^EmojiPackKind$/,
-})
-requireRustFields(entityResponseFile, 'EmojiInfoResponse', {
-  source: /^EmojiSource$/,
-  semantic_status: /^EmojiSemanticStatus$/,
-})
 requireRustFields(entityResponseFile, 'JournalVersionInfoResponse', {
   op: /^JournalOperation$/,
   source: /^JournalSource$/,
@@ -441,9 +430,6 @@ requireRustFields('src-tauri/src/commands/assistant.rs', 'AssistantCreateRequest
   temperature: /^RequiredNullable<f32>$/,
   top_p: /^RequiredNullable<f32>$/,
   max_tokens: /^RequiredNullable<i32>$/,
-})
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiPackCreateRequest', {
-  description: /^RequiredNullable<String>$/,
 })
 requireRustFields('src-tauri/src/commands/memory.rs', 'MemoryCreateRequest', {
   project_id: /^RequiredNullable<String>$/,
@@ -601,7 +587,6 @@ const rustNamedCommandRequests = [
   ['src-tauri/src/commands/user_command.rs', 'get_active_user_command', 'UserCommandActiveReadRequest'],
   ['src-tauri/src/commands/model_config.rs', 'set_model_config', 'ModelConfigUpsertRequest'],
   ['src-tauri/src/commands/model_config.rs', 'get_model_config', 'ModelConfigReadRequest'],
-  ['src-tauri/src/commands/onebot.rs', 'set_onebot_config', 'OneBotConfigUpdateRequest'],
   ['src-tauri/src/commands/hooks.rs', 'set_hooks_config', 'HookConfigUpdateRequest'],
   ['src-tauri/src/commands/remote.rs', 'set_remote_config', 'RemoteConfigUpdateRequest'],
   ['src-tauri/src/commands/secret.rs', 'set_secret', 'SecretUpsertRequest'],
@@ -616,9 +601,6 @@ const rustNamedCommandRequests = [
   ['src-tauri/src/commands/acp.rs', 'get_acp_session_config', 'AcpSessionConfigReadRequest'],
   ['src-tauri/src/commands/acp.rs', 'set_acp_session_config', 'AcpSessionConfigUpdateRequest'],
   ['src-tauri/src/commands/acp.rs', 'set_acp_config', 'AcpConfigUpdateRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'import_emojis', 'EmojiImportRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'update_emoji', 'EmojiUpdateRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'set_emoji_pack_assignment', 'EmojiPackAssignmentUpdateRequest'],
   ['src-tauri/src/commands/tool_system.rs', 'set_service_key', 'ServiceKeyUpdateRequest'],
   ['src-tauri/src/commands/dev.rs', 'test_voice_echo', 'VoiceProbeEchoRequest'],
   ['src-tauri/src/commands/conversation.rs', 'list_conversations', 'ConversationListRequest'],
@@ -628,7 +610,6 @@ const rustNamedCommandRequests = [
   ['src-tauri/src/commands/conversation.rs', 'search_conversations', 'ConversationSearchRequest'],
   ['src-tauri/src/commands/assistant.rs', 'create_assistant', 'AssistantCreateRequest'],
   ['src-tauri/src/commands/assistant.rs', 'update_assistant', 'AssistantUpdateRequest'],
-  ['src-tauri/src/commands/emoji.rs', 'create_emoji_pack', 'EmojiPackCreateRequest'],
   ['src-tauri/src/commands/mcp.rs', 'create_mcp_server', 'McpServerCreateRequest'],
   ['src-tauri/src/commands/mcp.rs', 'update_mcp_server', 'McpServerUpdateRequest'],
   ['src-tauri/src/commands/memory.rs', 'create_memory', 'MemoryCreateRequest'],
@@ -659,10 +640,6 @@ const rustNamedCommandRequests = [
   ['src-tauri/src/commands/queue.rs', 'update_queued_prompt', 'QueuedPromptUpdateRequest'],
   ['src-tauri/src/commands/approval.rs', 'submit_approval_decision', 'ApprovalDecisionRequest'],
   ['src-tauri/src/commands/sub_agent.rs', 'send_conversation_steer', 'ConversationSteerRequest'],
-  ['src-tauri/src/commands/voice_corpus.rs', 'delete_voice_corpus', 'VoiceCorpusDeleteRequest'],
-  ['src-tauri/src/commands/voice_corpus.rs', 'set_voice_optout', 'VoiceCorpusOptoutUpdateRequest'],
-  ['src-tauri/src/commands/voice_corpus.rs', 'delete_voice_sender', 'VoiceCorpusForgetRequest'],
-  ['src-tauri/src/commands/voice_corpus.rs', 'export_voice_corpus', 'VoiceCorpusExportRequest'],
   ['src-tauri/src/commands/usage.rs', 'get_usage_report', 'UsageReportRequest'],
   ['src-tauri/src/commands/message.rs', 'read_message_context_item', 'MessageContextReadRequest'],
   ['src-tauri/src/commands/message.rs', 'get_conversation_snapshot', 'ConversationSnapshotRequest'],
@@ -686,19 +663,6 @@ for (const [file, command, requestType] of rustNamedCommandRequests) {
   }
 }
 
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiImportRequest', {
-  pack_id: /^String$/,
-  file_paths: /^Vec<String>$/,
-})
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiUpdateRequest', {
-  id: /^String$/,
-  action: /^EmojiUpdateAction$/,
-})
-requireRustFields('src-tauri/src/commands/emoji.rs', 'EmojiPackAssignmentUpdateRequest', {
-  assistant_id: /^String$/,
-  pack_id: /^String$/,
-  assigned: /^bool$/,
-})
 requireRustFields('src-tauri/src/commands/tool_system.rs', 'ServiceKeyUpdateRequest', {
   service: /^ServiceKey$/,
   key: /^String$/,
@@ -714,19 +678,6 @@ requireRustFields('src-tauri/src/commands/memory.rs', 'MemorySubjectUpdateReques
   subject_scope_id: /^String$/,
   is_pinned: /^RequiredNullable<bool>$/,
   opted_out: /^RequiredNullable<bool>$/,
-})
-requireTypescriptFields('src/types.ts', 'EmojiImportRequest', {
-  pack_id: /^string$/,
-  file_paths: /^string\[\]$/,
-})
-requireTypescriptFields('src/types.ts', 'EmojiUpdateRequest', {
-  id: /^string$/,
-  action: /^EmojiUpdateAction$/,
-})
-requireTypescriptFields('src/types.ts', 'EmojiPackAssignmentUpdateRequest', {
-  assistant_id: /^string$/,
-  pack_id: /^string$/,
-  assigned: /^boolean$/,
 })
 requireTypescriptFields('src/types.ts', 'ServiceKeyUpdateRequest', {
   service: /^ServiceKey$/,
@@ -745,9 +696,6 @@ requireTypescriptFields('src/types.ts', 'MemorySubjectUpdateRequest', {
   opted_out: /^boolean \| null$/,
 })
 for (const [name, fields] of [
-  ['EmojiImportRequest', ['pack_id', 'file_paths']],
-  ['EmojiUpdateRequest', ['id', 'action']],
-  ['EmojiPackAssignmentUpdateRequest', ['assistant_id', 'pack_id', 'assigned']],
   ['ServiceKeyUpdateRequest', ['service', 'key']],
   ['VoiceProbeEchoRequest', ['sample_rate', 'pcm']],
   ['MemorySubjectUpdateRequest', ['subject_scope_id', 'is_pinned', 'opted_out']],
@@ -852,30 +800,6 @@ if (
   add(hooksCommandFile, 'hooks core HookStatus 禁止直接作为 IPC response')
 }
 
-const onebotCommandFile = 'src-tauri/src/commands/onebot.rs'
-const onebotCommandSource = readAt(onebotCommandFile)
-requireRustFields(onebotCommandFile, 'OneBotStatusInfoResponse', {
-  enabled: /^bool$/,
-  running: /^bool$/,
-  connected_clients: /^u32$/,
-  host: /^String$/,
-  port: /^u16$/,
-})
-requireRustFields(onebotCommandFile, 'VoiceSendReadinessInfoResponse', {
-  enabled: /^bool$/,
-  has_model: /^bool$/,
-  has_reference_id: /^bool$/,
-  has_api_key: /^bool$/,
-  ready: /^bool$/,
-})
-if (
-  /pub async fn (?:get_onebot_status|get_onebot_voice_readiness)\([\s\S]{0,240}?->\s*Result<onebot::(?:OneBotStatus|VoiceSendReadiness),\s*String>/.test(
-    onebotCommandSource ?? '',
-  )
-) {
-  add(onebotCommandFile, 'onebot core status/readiness 禁止直接作为 IPC response')
-}
-
 if (!/updateServer:\s*\(request:\s*McpServerUpdateRequest\)\s*=>/.test(namedWriteApiSource ?? '')) {
   add('src/api.ts', 'mcp.updateServer 必须只接收 McpServerUpdateRequest')
 }
@@ -952,7 +876,6 @@ for (const [interfaceName, expected] of [
       'approvals.ttl_minutes': /^number \| null$/,
       'sub_agent.explore.model': /^PreferenceModelSelectionInfoResponse \| null$/,
       'sub_agent.agent.model': /^PreferenceModelSelectionInfoResponse \| null$/,
-      'emoji.embedder': /^string \| null$/,
     },
   ],
   [
@@ -973,7 +896,6 @@ for (const [interfaceName, expected] of [
       'approvals.ttl_minutes': /^number$/,
       'sub_agent.explore.model': /^PreferenceModelSelectionRequest \| null$/,
       'sub_agent.agent.model': /^PreferenceModelSelectionRequest \| null$/,
-      'emoji.embedder': /^string \| null$/,
     },
   ],
 ]) {
@@ -992,7 +914,6 @@ for (const [variant, payload] of [
   ['AutoReviewModel', 'PreferenceModelSelectionRequest'],
   ['SubAgentExploreModel', 'PreferenceModelSelectionRequest'],
   ['SubAgentAgentModel', 'PreferenceModelSelectionRequest'],
-  ['EmojiEmbedder', 'String'],
 ]) {
   if (
     !new RegExp(`${variant}\\s*\\{\\s*value:\\s*RequiredNullable<${payload}>\\s*,?\\s*\\}`).test(
@@ -1728,13 +1649,6 @@ if (/serde\([^\]]*\b(?:default|alias|untagged)\b/.test(workspaceCommandSource ??
   add(workspaceCommandFile, 'workspace DTO 禁止 default / alias / untagged 前向兼容分支')
 }
 
-const onebotCoreFile = 'src-tauri/crates/core/src/onebot/mod.rs'
-const onebotCore = readAt(onebotCoreFile)
-for (const obsolete of ['OneBotStatusResponse', 'VoiceSendReadinessResponse']) {
-  if (new RegExp(`pub struct ${obsolete}\\b`).test(onebotCore ?? '')) {
-    add(onebotCoreFile, `core 域类型 ${obsolete} 禁止使用协议层 Response 后缀`)
-  }
-}
 const hooksCoreFile = 'src-tauri/crates/core/src/hooks/mod.rs'
 const hooksCore = readAt(hooksCoreFile)
 if (/pub struct HookStatusResponse\b/.test(hooksCore ?? '')) {
@@ -2189,13 +2103,6 @@ requireTypescriptFields(typesFile, 'ConversationInfoResponse', {
   thinking_level: /^StoredThinkingLevel \| null$/,
   mode: /^ChatMode \| null$/,
 })
-requireTypescriptFields(typesFile, 'EmojiPackInfoResponse', {
-  kind: /^EmojiPackKind$/,
-})
-requireTypescriptFields(typesFile, 'EmojiInfoResponse', {
-  source: /^EmojiSource$/,
-  semantic_status: /^EmojiSemanticStatus$/,
-})
 requireTypescriptFields(typesFile, 'JournalVersionInfoResponse', {
   op: /^JournalOperation$/,
   source: /^JournalSource$/,
@@ -2281,31 +2188,6 @@ for (const [request, fields] of [
   ['ConversationSteerRequest', ['conversation_id', 'text']],
 ]) {
   requireTypescriptRequiredFields(typesFile, request, fields)
-}
-requireRustFields('src-tauri/src/commands/voice_corpus.rs', 'VoiceCorpusDeleteRequest', {
-  selector: /^VoiceCorpusDeleteSelector$/,
-})
-requireRustFields('src-tauri/src/commands/voice_corpus.rs', 'VoiceCorpusDeleteResponse', {
-  failures: /^Vec<String>$/,
-})
-requireRustFields('src-tauri/src/commands/voice_corpus.rs', 'VoiceCorpusExportRequest', {
-  output_dir: /^String$/,
-})
-requireTypescriptFields(typesFile, 'VoiceCorpusDeleteRequest', {
-  selector: /^VoiceCorpusDeleteSelector$/,
-})
-requireTypescriptFields(typesFile, 'VoiceCorpusSessionInfoResponse', {
-  kind: /^VoiceCorpusSessionKind$/,
-})
-requireTypescriptFields(typesFile, 'VoiceCorpusDeleteResponse', {
-  failures: /^string\[\]$/,
-})
-requireTypescriptFields(typesFile, 'VoiceCorpusExportRequest', {
-  output_dir: /^string$/,
-})
-const voiceCorpusCommandSource = readAt('src-tauri/src/commands/voice_corpus.rs')
-if (/Result<(?:DeleteReport|ExportReport),\s*String>/.test(voiceCorpusCommandSource ?? '')) {
-  add('src-tauri/src/commands/voice_corpus.rs', 'voice corpus core report 禁止直接作为 IPC response')
 }
 requireTypescriptFields(typesFile, 'UsageReportRequest', {
   dimension: /^UsageDimension$/,
@@ -2400,28 +2282,12 @@ requireTypescriptFields(typesFile, 'HookStatusInfoResponse', {
   port: /^number$/,
   handshake_path: /^string \| null$/,
 })
-requireTypescriptFields(typesFile, 'OneBotStatusInfoResponse', {
-  enabled: /^boolean$/,
-  running: /^boolean$/,
-  connected_clients: /^number$/,
-  host: /^string$/,
-  port: /^number$/,
-})
-requireTypescriptFields(typesFile, 'VoiceSendReadinessInfoResponse', {
-  enabled: /^boolean$/,
-  has_model: /^boolean$/,
-  has_reference_id: /^boolean$/,
-  has_api_key: /^boolean$/,
-  ready: /^boolean$/,
-})
 for (const obsolete of [
   'UsageFilter',
   'TurnUsageSummary',
   'VoiceModelStatus',
   'AutoReviewVerdict',
   'HookStatusResponse',
-  'OneBotStatusResponse',
-  'VoiceSendReadinessResponse',
 ]) {
   if (new RegExp(`export (?:interface|type) ${obsolete}\\b`).test(publicTypes ?? '')) {
     add(typesFile, `公开边界类型 ${obsolete} 必须使用统一的 Request / InfoResponse 命名`)
@@ -2451,10 +2317,6 @@ requireTypescriptFields(typesFile, 'AssistantCreateRequest', {
   max_tokens: /^number \| null$/,
 })
 requireTypescriptRequiredFields(typesFile, 'AssistantCreateRequest', ['model_id', 'temperature', 'top_p', 'max_tokens'])
-requireTypescriptFields(typesFile, 'EmojiPackCreateRequest', {
-  description: /^string \| null$/,
-})
-requireTypescriptRequiredFields(typesFile, 'EmojiPackCreateRequest', ['description'])
 requireTypescriptFields(typesFile, 'McpServerCreateRequest', {
   command: /^string \| null$/,
   args: /^string\[\] \| null$/,

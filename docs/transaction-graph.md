@@ -3,7 +3,7 @@
 由 `node scripts/check-transaction-graph.mjs --write` 生成，不要手改。
 规则与用途见脚本头注释；SeaORM 迁移按这里的连通分量和事务根分期。
 
-- 事务根（非测试）：309
+- 事务根（非测试）：255
 - Diesel ops 调用点（db/ops 之外）：0
 - Diesel API 引用：0
 
@@ -15,17 +15,14 @@
 
 ## ops 模块的事务连通分量
 
-- 30 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation emoji emoji_pack memory message message_context_item model_config model_price model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
+- 30 个：acp_context_delivery acp_session acp_session_notice assistant audit background_task board_task cached_model composer_draft conversation dream mcp_server memory message message_context_item model_config model_price model_profile plan plan_review preference project provider queue queued_prompt_context_item skill_binding todo tool_preset turn usage
 - 1 个：custom_tool
-- 1 个：emoji_embedding
 - 1 个：journal
-- 1 个：mcp_server
 - 1 个：media_generation
 - 1 个：notification
 - 1 个：redaction_rule
 - 1 个：skill
 - 1 个：tool_category
-- 1 个：voice_corpus
 
 ## 事务根
 
@@ -56,7 +53,7 @@
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-nested | message |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `record` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `scene_text` | sea-read | conversation, message |
-| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `wrap` | sea-read | preference |
+| `src-tauri/crates/core/src/agent/auto_review/mod.rs` › `wrap` | sea-read | — |
 | `src-tauri/crates/core/src/agent/auxiliary.rs` › `configured` | sea-read | preference |
 | `src-tauri/crates/core/src/agent/cache_warmer.rs` › `warm_once` | sea-write | audit, memory, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/codex_install.rs` › `installation_id` | sea-write | preference |
@@ -67,6 +64,9 @@
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-read | conversation, message, message_context_item |
 | `src-tauri/crates/core/src/agent/compact.rs` › `do_compact` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/conversation_excerpt.rs` › `freeze_conversation_refs` | sea-read | conversation, message |
+| `src-tauri/crates/core/src/agent/dream/mod.rs` › `run_four_phases` | sea-write | audit, memory, model_config, model_profile, provider |
+| `src-tauri/crates/core/src/agent/dream/mod.rs` › `run_four_phases` | sea-write | dream |
+| `src-tauri/crates/core/src/agent/dream/mod.rs` › `run_four_phases` | sea-write | dream, memory |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `append_tool_result` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `begin_assistant` | sea-write | audit, memory, message, model_config, model_profile, provider |
 | `src-tauri/crates/core/src/agent/engine/transcript.rs` › `complete_assistant` | sea-nested | audit, memory, model_config, model_profile, provider |
@@ -86,8 +86,9 @@
 | `src-tauri/crates/core/src/agent/queue/native.rs` › `take_one` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, queue |
 | `src-tauri/crates/core/src/agent/skills.rs` › `seed_builtin_bindings` | sea-write | preference, skill_binding |
 | `src-tauri/crates/core/src/agent/skills.rs` › `sync_index` | sea-write | skill |
+| `src-tauri/crates/core/src/agent/sub_agent_runner.rs` › `open_conversation` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, turn |
 | `src-tauri/crates/core/src/agent/todo_context.rs` › `plan_todo_injection` | sea-read | todo |
-| `src-tauri/crates/core/src/agent/turn_config.rs` › `resolve_on` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
+| `src-tauri/crates/core/src/agent/turn_config.rs` › `resolve_on` | sea-read | plan, plan_review, skill_binding, tool_preset |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `begin_triggered` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `finish` | sea-write | turn |
 | `src-tauri/crates/core/src/agent/turn_record.rs` › `note_phase` | sea-write | turn |
@@ -141,43 +142,6 @@
 | `src-tauri/crates/core/src/notify/mod.rs` › `raise_and_dispatch` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `record_attempt` | sea-write | notification |
 | `src-tauri/crates/core/src/notify/mod.rs` › `save_config` | sea-write | preference |
-| `src-tauri/crates/core/src/onebot/agent.rs` › `headless_chat_inner` | sea-read | assistant, conversation, message |
-| `src-tauri/crates/core/src/onebot/agent.rs` › `headless_chat_inner` | sea-write | audit, emoji, memory, message, model_config, model_profile, provider |
-| `src-tauri/crates/core/src/onebot/agent.rs` › `oneshot_completion` | sea-read | assistant, conversation |
-| `src-tauri/crates/core/src/onebot/agent.rs` › `oneshot_completion` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
-| `src-tauri/crates/core/src/onebot/capture.rs` › `commit` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/onebot/extract.rs` › `approve_proposal` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/extract.rs` › `reject_proposal` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/extract.rs` › `run_extraction` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `conversation_and_assistant` | sea-read | assistant, conversation |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-read | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `dispatch_memory` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `run_agent_turn` | sea-write | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `run_extraction_pass` | sea-read | memory |
-| `src-tauri/crates/core/src/onebot/handler.rs` › `status_of` | sea-read | assistant, conversation, message |
-| `src-tauri/crates/core/src/onebot/media.rs` › `resolve_supports_images` | sea-read | assistant, conversation |
-| `src-tauri/crates/core/src/onebot/mod.rs` › `save_config` | sea-write | preference |
-| `src-tauri/crates/core/src/onebot/mod.rs` › `save_settings` | sea-write | preference |
-| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `list_stickers` | sea-read | emoji, emoji_pack |
-| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `manage_replies` | sea-write | preference |
-| `src-tauri/crates/core/src/onebot/qq_tools.rs` › `send_sticker` | sea-read | emoji, emoji_pack |
-| `src-tauri/crates/core/src/onebot/session.rs` › `create_project` | sea-nested | conversation, preference |
-| `src-tauri/crates/core/src/onebot/session.rs` › `get_or_create` | sea-write | conversation, preference, project |
-| `src-tauri/crates/core/src/onebot/session.rs` › `reset_conversation` | sea-nested | conversation |
-| `src-tauri/crates/core/src/onebot/session.rs` › `reset_conversation` | sea-write | conversation, project |
-| `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
-| `src-tauri/crates/core/src/onebot/stickers.rs` › `capture_stickers` | sea-write | emoji |
-| `src-tauri/crates/core/src/onebot/stickers.rs` › `ensure_pack` | sea-write | emoji_pack |
-| `src-tauri/crates/core/src/onebot/stickers.rs` › `evict_candidates` | sea-write | emoji |
-| `src-tauri/crates/core/src/onebot/stickers.rs` › `record_new` | sea-write | emoji |
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_applied` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `mark_conflict` | sea-write | plan_review |
 | `src-tauri/crates/core/src/plan_files.rs` › `reconcile_document_inner` | sea-write | plan_review |
@@ -191,24 +155,8 @@
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/redaction.rs` › `execute` | sea-write | redaction_rule |
 | `src-tauri/crates/core/src/tools/skill.rs` › `execute` | sea-read | skill_binding |
-| `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
-| `src-tauri/crates/core/src/tools/sticker.rs` › `execute` | sea-read | emoji, emoji_pack |
-| `src-tauri/crates/core/src/tools/sticker_embed.rs` › `embed_and_store_one` | sea-write | emoji_embedding |
-| `src-tauri/crates/core/src/tools/sticker_embed.rs` › `run_generation` | sea-write | emoji_embedding |
 | `src-tauri/crates/core/src/tools/todo.rs` › `execute` | sea-write | plan, todo |
 | `src-tauri/crates/core/src/tools/usage.rs` › `execute` | sea-read | model_config, usage |
-| `src-tauri/crates/core/src/voice_corpus.rs` › `storage_key` | sea-write | preference |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `delete_rows_and_files` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `export` | sea-read | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `forget_sender` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `list_sessions` | sea-read | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `resolve_handle` | sea-read | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/manage.rs` › `set_optout` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
-| `src-tauri/crates/core/src/voice_corpus/recover.rs` › `run` | sea-write | voice_corpus |
 | `src-tauri/crates/core/src/workspace/mod.rs` › `configured_dir` | sea-read | acp_session, board_task, conversation, project |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
 | `src-tauri/crates/meridiand/src/apply.rs` › `apply` | sea-write | notification |
@@ -227,43 +175,39 @@
 | `src-tauri/src/commands/board.rs` › `update_board_task` | sea-write | board_task |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-nested | audit, memory, model_config, model_profile, provider |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | acp_session, assistant, board_task, conversation, message, project |
-| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | cached_model, mcp_server, model_config, plan, plan_review, preference, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-read | conversation, message |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, conversation, memory, model_config, model_profile, provider |
-| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, emoji, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
+| `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | audit, memory, message, message_context_item, model_config, model_profile, provider, queue, queued_prompt_context_item |
 | `src-tauri/src/commands/chat.rs` › `chat_inner` | sea-write | message, turn |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-read | plan_review |
 | `src-tauri/src/commands/chat.rs` › `read_plan` | sea-write | plan_review |
-| `src-tauri/src/commands/chat.rs` › `rebuild` | sea-read | emoji, emoji_pack, plan, plan_review, skill_binding, tool_preset |
+| `src-tauri/src/commands/chat.rs` › `rebuild` | sea-read | mcp_server, plan, plan_review, preference, skill_binding, tool_preset |
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `submit_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/chat.rs` › `update_plan` | sea-write | plan_review |
 | `src-tauri/src/commands/composer_draft.rs` › `delete_draft` | sea-write | composer_draft |
-| `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation, emoji |
+| `src-tauri/src/commands/composer_draft.rs` › `read_draft` | sea-read | composer_draft, conversation |
 | `src-tauri/src/commands/composer_draft.rs` › `write_draft` | sea-write | composer_draft |
 | `src-tauri/src/commands/conversation.rs` › `apply_conversation_update` | sea-write | conversation |
-| `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, emoji, emoji_pack, model_config, plan, plan_review, provider, skill_binding, tool_preset |
+| `src-tauri/src/commands/conversation.rs` › `assemble_system_prompt` | sea-read | cached_model, mcp_server, model_config, plan, plan_review, preference, provider, skill_binding, tool_preset |
 | `src-tauri/src/commands/conversation.rs` › `create_conversation` | sea-write | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-read | conversation |
 | `src-tauri/src/commands/conversation.rs` › `delete_conversation_tree` | sea-write | conversation |
 | `src-tauri/src/commands/conversation.rs` › `get_conversation_context` | sea-read | assistant, conversation, message, message_context_item, project |
 | `src-tauri/src/commands/conversation.rs` › `invoke_conversation_compaction` | sea-read | assistant, conversation |
 | `src-tauri/src/commands/conversation.rs` › `search_conversations` | sea-read | conversation |
-| `src-tauri/src/commands/emoji.rs` › `create_emoji_pack` | sea-write | emoji_pack |
-| `src-tauri/src/commands/emoji.rs` › `delete_emoji_pack` | sea-write | emoji_pack |
-| `src-tauri/src/commands/emoji.rs` › `delete_emoji` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `import_emojis` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `invoke_emoji_semantics_suggestion` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `set_emoji_pack_assignment` | sea-write | emoji_pack |
-| `src-tauri/src/commands/emoji.rs` › `set_emoji_pack_assignment` | sea-write | emoji_pack |
-| `src-tauri/src/commands/emoji.rs` › `update_emoji` | sea-write | emoji |
-| `src-tauri/src/commands/emoji.rs` › `update_emoji` | sea-write | emoji |
 | `src-tauri/src/commands/logs.rs` › `set_log_level` | sea-write | preference |
 | `src-tauri/src/commands/mcp.rs` › `create_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `delete_mcp_server` | sea-write | mcp_server |
+| `src-tauri/src/commands/mcp.rs` › `list_mcp_tools` | sea-read | mcp_server, preference |
+| `src-tauri/src/commands/mcp.rs` › `set_mcp_approved_always_tools` | sea-write | mcp_server |
+| `src-tauri/src/commands/mcp.rs` › `set_mcp_default_policy` | sea-write | preference |
+| `src-tauri/src/commands/mcp.rs` › `set_mcp_server_policy` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `set_mcp_tool_enabled` | sea-write | mcp_server |
+| `src-tauri/src/commands/mcp.rs` › `set_mcp_tool_policy` | sea-write | mcp_server |
 | `src-tauri/src/commands/mcp.rs` › `update_mcp_server` | sea-write | mcp_server |
 | `src-tauri/src/commands/memory.rs` › `create_memory` | sea-write | memory |
 | `src-tauri/src/commands/memory.rs` › `delete_memories` | sea-write | memory |
@@ -324,7 +268,6 @@
 | `src-tauri/src/commands/skill.rs` › `delete_skill` | sea-write | skill |
 | `src-tauri/src/commands/skill.rs` › `set_skill_binding` | sea-write | skill_binding |
 | `src-tauri/src/commands/skill.rs` › `update_skill` | sea-write | skill |
-| `src-tauri/src/commands/sub_agent.rs` › `open_conversation` | sea-write | audit, conversation, memory, message, model_config, model_profile, provider, turn |
 | `src-tauri/src/commands/todo.rs` › `get_todo_list` | sea-read | todo |
 | `src-tauri/src/commands/tool_system.rs` › `create_custom_tool` | sea-write | custom_tool |
 | `src-tauri/src/commands/tool_system.rs` › `create_tool_preset` | sea-write | tool_preset |

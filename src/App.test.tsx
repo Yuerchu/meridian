@@ -48,7 +48,6 @@ vi.mock('@/components/layout/app-shell', () => ({
 const draft: InitialTurnDraft = {
   text: 'Inspect this repository',
   attachedFiles: [],
-  pendingSticker: null,
   voice: false,
   remainingComposer: null,
   settings: {
@@ -68,6 +67,7 @@ const createdProject: ProjectInfoResponse = {
   path: 'C:\\code\\new-project',
   source_type: 'local',
   source_id: null,
+  channel_kind: null,
   assistant_id: null,
   description: null,
   created_at: 1,

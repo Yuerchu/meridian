@@ -64,13 +64,11 @@ import { SelectTextModal } from './select-text-modal'
 import { ToolCallBlock } from './tool-call-block'
 import { ThinkingRow } from './thinking-block'
 import { SubAgentGroup, delegationOf } from './sub-agent-group'
-import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import { lastRoundTiming, type Turn } from '@/lib/turns'
 import { bubbleCopyText } from '@/lib/message-groups'
 import type { AssistantGroup, BubbleModel, BubblePosition, FoldKind, FoldedCalls } from '@/lib/message-groups'
 import type { MessageRating, MessageViewModel as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
-import type { EmojiMap } from './emoji-renderer'
 import { TurnInfo } from './turn-info'
 import { ShellCommandBubble } from './shell-command-bubble'
 import { titleIfTruncated } from '@/lib/truncation'
@@ -115,16 +113,16 @@ export function AssistantAvatar({
   )
 }
 
-interface ParsedOneBotContent {
+interface ParsedChannelContent {
   senderPrefix: string | null
   quotedMessage: { sender: string; content: string } | null
   body: string
 }
 
-function parseOneBotContent(content: string): ParsedOneBotContent {
+function parseChannelContent(content: string): ParsedChannelContent {
   let remaining = content
 
-  let quotedMessage: ParsedOneBotContent['quotedMessage'] = null
+  let quotedMessage: ParsedChannelContent['quotedMessage'] = null
   const quoteMatch = remaining.match(/^<quoted_message sender="([^"]+)">([\s\S]*?)<\/quoted_message>\n?/)
   if (quoteMatch) {
     quotedMessage = { sender: quoteMatch[1], content: quoteMatch[2] }
@@ -191,8 +189,7 @@ export interface UserMessageProps {
   message: MessageData
   onDelete?: (id: string) => void
   onEdit?: (id: string, content: string) => void
-  isOneBot?: boolean
-  emojiMap?: EmojiMap
+  isChannel?: boolean
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
   /** Where this sits in a run of unanswered questions — the corners. */
@@ -244,8 +241,7 @@ export const UserMessage = React.memo(function UserMessage({
   message,
   onDelete,
   onEdit,
-  isOneBot,
-  emojiMap,
+  isChannel,
   senderNames,
   position = 'single',
 }: UserMessageProps) {
@@ -340,10 +336,10 @@ export const UserMessage = React.memo(function UserMessage({
 
   const { contentParts, copyText, textContent } = parsedUser
   const canEdit = !!onEdit && !contentParts
-  const { senderPrefix, quotedMessage, body } = isOneBot
-    ? parseOneBotContent(textContent)
+  const { senderPrefix, quotedMessage, body } = isChannel
+    ? parseChannelContent(textContent)
     : { senderPrefix: null, quotedMessage: null, body: textContent }
-  const speaker = isOneBot ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
+  const speaker = isChannel ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
 
   const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
   const hasRefs = message.context_items.some((item) => item.kind === 'conversation')
@@ -437,7 +433,7 @@ export const UserMessage = React.memo(function UserMessage({
                       {message.source === 'voice' && (
                         <Mic className="m-message-item__voice-icon" aria-label={t('chat.voice.badge')} />
                       )}
-                      {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                      {body}
                       <span data-slot="user-message-time" className="m-message-item__user-time">
                         <SentAt at={message.created_at} />
                       </span>
@@ -461,7 +457,9 @@ export const UserMessage = React.memo(function UserMessage({
                   className="m-message-item__sticker"
                   data-slot="user-sticker"
                 >
-                  <StickerImage stickerId={part.sticker_id!} name={part.name} />
+                  <Bubble align="end" variant="muted" position="single">
+                    <BubbleContent>{part.name ? `[${part.name}]` : t('chat.archivedSticker')}</BubbleContent>
+                  </Bubble>
                 </div>
               ))}
             <MessageGroupFooter className="m-message-item__footer-actions">
@@ -758,8 +756,7 @@ function AssistantBubble({
   bubble,
   header,
   workingLabel,
-  isOneBot,
-  emojiMap,
+  isChannel,
   renderError,
 }: {
   bubble: BubbleModel
@@ -767,10 +764,10 @@ function AssistantBubble({
   header: string | null
   /** Optional retry status shown beside the thinking indicator. */
   workingLabel: string | null
-  isOneBot?: boolean
-  emojiMap?: EmojiMap
+  isChannel?: boolean
   renderError: React.ReactNode
 }) {
+  const { t } = useTranslation()
   const folded = 'folded' in bubble ? bubble.folded : NO_FOLDS
   const { isOpen, toggle } = useFoldExpansion(folded)
   // Paced only for prose: reasoning and tool calls appear as they arrive, so a
@@ -789,7 +786,9 @@ function AssistantBubble({
         data-slot="assistant-sticker"
         data-bubble-key={bubble.key}
       >
-        <StickerImage stickerId={bubble.stickerId} name={bubble.name ?? undefined} />
+        <Bubble variant="muted" position="single">
+          <BubbleContent>{bubble.name ? `[${bubble.name}]` : t('chat.archivedSticker')}</BubbleContent>
+        </Bubble>
       </div>
     )
   }
@@ -899,8 +898,7 @@ function AssistantBubble({
         <MarkdownContent
           content={revealed.text}
           isStreaming={bubble.isStreaming || revealed.revealing}
-          oneBot={isOneBot}
-          emojiMap={emojiMap}
+          isChannel={isChannel}
           blockId={bubble.key}
           // With badges the time moves out of the last paragraph and on to
           // their row, where it is the right-hand end of the footer.
@@ -937,10 +935,9 @@ export interface AssistantGroupViewProps {
   onDelete?: () => void
   onRegenerate?: () => void
   onRate?: (id: string, rating: MessageRating | null) => void
-  isOneBot?: boolean
+  isChannel?: boolean
   /** A hosted Claude Code session: the assistant answering is not this app's. */
   isHosted?: boolean
-  emojiMap?: EmojiMap
   assistantAvatar?: string | null
 }
 
@@ -979,9 +976,8 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
   onDelete,
   onRegenerate,
   onRate,
-  isOneBot,
+  isChannel,
   isHosted,
-  emojiMap,
   assistantAvatar,
 }: AssistantGroupViewProps) {
   const { t } = useTranslation()
@@ -1055,8 +1051,7 @@ export const AssistantGroupView = React.memo(function AssistantGroupView({
                 bubble={bubble}
                 header={i === headerIndex ? header : null}
                 workingLabel={workingLabel}
-                isOneBot={isOneBot}
-                emojiMap={emojiMap}
+                isChannel={isChannel}
                 renderError={renderError}
               />
             </ErrorBoundary>

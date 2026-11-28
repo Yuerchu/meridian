@@ -1,3 +1,4 @@
+import { decimal } from '@/lib/decimal'
 import type {
   BackgroundTaskInfoResponse,
   BoardTaskInfoResponse,
@@ -5,19 +6,19 @@ import type {
   ComposerDraftInfoResponse,
   ConversationInfoResponse,
   CustomToolInfoResponse,
-  EmojiInfoResponse,
-  EmojiPackInfoResponse,
+  DreamConfigInfoResponse,
+  DreamRunInfoResponse,
   HookConfigInfoResponse,
   ImeConfigInfoResponse,
   ImeDictionaryInfoResponse,
   LogEntryInfoResponse,
   LogLevel,
+  McpDefaultPolicyInfoResponse,
   McpServerInfoResponse,
   MediaGenerationInfoResponse,
   MemoryInfoResponse,
   MemorySubjectInfoResponse,
   ModelConfigInfoResponse,
-  OneBotConfigInfoResponse,
   PlanReviewInfoResponse,
   PreferenceInfoValueByKey,
   ProjectInfoResponse,
@@ -26,7 +27,6 @@ import type {
   RemoteConfigInfoResponse,
   SkillInfoResponse,
   ToolPresetInfoResponse,
-  VoiceCorpusSessionInfoResponse,
 } from '@/types'
 import {
   CONV,
@@ -46,8 +46,6 @@ import {
   IME_DICTIONARIES,
   buildAssistants,
   buildCustomTools,
-  buildEmojiPacks,
-  buildEmojis,
   buildHooksConfig,
   buildRemoteConfig,
   buildLogs,
@@ -56,12 +54,10 @@ import {
   buildMemorySubjects,
   buildMemoryTrash,
   buildModelConfigs,
-  buildOneBotConfig,
   buildPreferences,
   buildProviders,
   buildSkills,
   buildToolPresets,
-  buildVoiceCorpus,
 } from './settings'
 
 /**
@@ -87,6 +83,7 @@ export interface DemoState {
   mediaGenerations: MediaGenerationInfoResponse[]
   assistants: AssistantInfoResponse[]
   mcpServers: McpServerInfoResponse[]
+  mcpDefaultPolicy: McpDefaultPolicyInfoResponse
   mcpConnected: Set<string>
   /** Server id → tool names the model is not offered. */
   mcpDisabledTools: Record<string, string[]>
@@ -97,18 +94,15 @@ export interface DemoState {
   memories: MemoryInfoResponse[]
   memoryTrash: MemoryInfoResponse[]
   memorySubjects: MemorySubjectInfoResponse[]
+  dreamConfig: DreamConfigInfoResponse
+  dreamRuns: DreamRunInfoResponse[]
   logs: LogEntryInfoResponse[]
   logLevel: LogLevel
-  onebot: OneBotConfigInfoResponse
-  onebotRunning: boolean
-  voiceCorpus: VoiceCorpusSessionInfoResponse[]
   hooks: HookConfigInfoResponse
   remote: RemoteConfigInfoResponse
   remoteRunning: boolean
   ime: ImeConfigInfoResponse
   imeDictionaries: ImeDictionaryInfoResponse[]
-  emojiPacks: EmojiPackInfoResponse[]
-  emojis: EmojiInfoResponse[]
   preferences: { [K in keyof PreferenceInfoValueByKey]: PreferenceInfoValueByKey[K] }
   serviceKeys: Set<string>
   planReview: PlanReviewInfoResponse
@@ -396,6 +390,7 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     ],
     assistants: buildAssistants(now),
     mcpServers: buildMcpServers(now),
+    mcpDefaultPolicy: { scope: 'local_only', loading: 'deferred', approval: 'request_approve' },
     mcpConnected: new Set(['demo-mcp-filesystem', 'demo-mcp-github']),
     mcpDisabledTools: { 'demo-mcp-github': ['create_pull_request'] },
     customTools: buildCustomTools(now),
@@ -405,18 +400,40 @@ export function createDemoState(options: DemoOptions = {}, now = Date.now()): De
     memories: buildMemories(now),
     memoryTrash: buildMemoryTrash(now),
     memorySubjects: buildMemorySubjects(now),
+    dreamConfig: {
+      enabled: false,
+      model: null,
+      cooldown_hours: 24,
+      min_turns: 5,
+      daily_budget_usd: decimal('0.5'),
+    },
+    dreamRuns: [
+      {
+        id: 'demo-dream-run-1',
+        scope_type: 'project',
+        scope_id: PROJECT_MERIDIAN,
+        status: 'done',
+        trigger: 'auto',
+        model_id: 'claude-haiku-5',
+        started_at: now - 3_600_000,
+        finished_at: now - 3_598_000,
+        turns_reviewed: 6,
+        memories_created: 1,
+        memories_updated: 1,
+        memories_pruned: 1,
+        proposals_created: 0,
+        pruned_memory_ids: ['demo-mem-trash-1'],
+        summary: 'Consolidated pnpm convention and pruned outdated Node 20 rule.',
+        error: null,
+      },
+    ],
     logs: buildLogs(now),
     logLevel: 'info',
-    onebot: buildOneBotConfig(),
-    onebotRunning: true,
-    voiceCorpus: buildVoiceCorpus(now),
     hooks: buildHooksConfig(),
     remote: buildRemoteConfig(),
     remoteRunning: false,
     ime: { ...IME_CONFIG },
     imeDictionaries: IME_DICTIONARIES.map((d) => ({ ...d })),
-    emojiPacks: buildEmojiPacks(now),
-    emojis: buildEmojis(now),
     preferences: buildPreferences(),
     serviceKeys: new Set(['tavily']),
     planReview: buildPlanReview(now),

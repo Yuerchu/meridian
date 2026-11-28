@@ -82,8 +82,8 @@ fn resolve_scope(
         MemoryScope::Project => project_id
             .ok_or("A project must be selected for project-scoped memories")?
             .to_string(),
-        MemoryScope::ClientGlobal | MemoryScope::OnebotGlobal => GLOBAL_SCOPE_ID.to_string(),
-        MemoryScope::OnebotUser => subject_scope_id
+        MemoryScope::ClientGlobal | MemoryScope::ChannelGlobal => GLOBAL_SCOPE_ID.to_string(),
+        MemoryScope::ExternalSubject => subject_scope_id
             .ok_or("A person must be selected for per-person memories")?
             .to_string(),
     };
@@ -137,19 +137,19 @@ fn scoped_memory(request: MemoryCreateRequest, now: i64) -> Result<memory::Model
         Visibility::Normal
     };
     let subject = match scope {
-        MemoryScope::OnebotUser => Some(scope_id.clone()),
+        MemoryScope::ExternalSubject => Some(scope_id.clone()),
         _ => request.subject_scope_id.0,
     };
     // `Desktop` is not in `Origin::group_visible()`, so a row written here
     // with that origin would be filtered out of every group turn — the
     // operator would see it saved and active while it never reached a
-    // conversation. Anything aimed at the OneBot layers is the operator
-    // teaching the bot, which is what `Admin` means.
+    // conversation. Anything aimed at external channel layers is the operator
+    // teaching the assistant, which is what `Admin` means.
     // The client layers are injected without an origin filter, so `Desktop`
     // reaches the conversations they belong to.
     let origin = match scope {
         MemoryScope::Project | MemoryScope::ClientGlobal => Origin::Desktop,
-        MemoryScope::OnebotGlobal | MemoryScope::OnebotUser => Origin::Admin,
+        MemoryScope::ChannelGlobal | MemoryScope::ExternalSubject => Origin::Admin,
     };
     Ok(memory::Model {
         id: uuid::Uuid::new_v4().to_string(),
@@ -322,7 +322,7 @@ mod request_dto_tests {
     fn memory_subject_flags_require_explicit_nullable_keys() {
         assert!(
             serde_json::from_value::<MemorySubjectUpdateRequest>(json!({
-                "subject_scope_id": "onebot:42",
+                "subject_scope_id": "channel:42",
                 "is_pinned": true,
                 "opted_out": null
             }))
@@ -330,14 +330,14 @@ mod request_dto_tests {
         );
         assert!(
             serde_json::from_value::<MemorySubjectUpdateRequest>(json!({
-                "subject_scope_id": "onebot:42",
+                "subject_scope_id": "channel:42",
                 "is_pinned": true
             }))
             .is_err()
         );
         assert!(
             serde_json::from_value::<MemorySubjectUpdateRequest>(json!({
-                "subject_scope_id": "onebot:42",
+                "subject_scope_id": "channel:42",
                 "is_pinned": true,
                 "opted_out": null,
                 "legacy": true

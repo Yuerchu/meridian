@@ -31,11 +31,9 @@ describe('settings tab groups', () => {
   it('drops a group whose every tab is hidden, and keeps a thinned one', () => {
     const groups = visibleSettingsTabGroups('android')
     const ids = groups.flatMap(({ tabs }) => tabs.map((tab) => tab.id))
-    expect(ids).not.toContain('onebot')
     expect(ids).not.toContain('hooks')
     expect(ids).not.toContain('acp')
     expect(ids).not.toContain('remote')
-    expect(ids).not.toContain('voiceCorpus')
     // Voice survives: recording happens in the WebView, and the model has to be
     // downloaded from that panel before anything can be transcribed.
     expect(ids).toContain('voice')

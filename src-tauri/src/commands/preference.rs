@@ -8,6 +8,7 @@
 use crate::ServicesExt;
 use crate::commands::model_config::RequiredNullable;
 use meridian_core::db;
+use meridian_core::provider::AnthropicToolSearchStrategy;
 #[cfg(not(target_os = "android"))]
 use meridian_core::sandbox::ExecutionMode;
 use meridian_core::tools::ShellType;
@@ -83,22 +84,16 @@ pub enum PreferenceKey {
     /// `thinking_enabled` is false (e.g. background summary/title passes).
     #[serde(rename = "google.include_thoughts_when_off")]
     GoogleIncludeThoughtsWhenOff,
-    /// Absolute `.litertlm` path for on-device sticker ranking. Empty is the
-    /// lexical name/tag pick. A path on this machine, so remote callers cannot
-    /// set it.
-    #[serde(rename = "emoji.embedder")]
-    EmojiEmbedder,
-    /// Model `suggest_sticker_semantics` uses to look at a sticker. Empty is
-    /// the default assistant. Images go to this provider, so it is set on
-    /// the host.
-    #[serde(rename = "emoji.suggest.model")]
-    EmojiSuggestModel,
     /// Default logical model ID for `image_gen` (Studio & `generate_image` tool).
     #[serde(rename = "media.default_image_model_id")]
     MediaDefaultImageModelId,
     /// Default logical model ID for `video_gen` (Studio & `generate_video` tool).
     #[serde(rename = "media.default_video_model_id")]
     MediaDefaultVideoModelId,
+    /// Deferred tool search strategy used on Anthropic Messages API
+    /// (`server_bm25`, `server_regex`, or `client_tool_reference`).
+    #[serde(rename = "tools.anthropic_search_strategy")]
+    ToolsAnthropicSearchStrategy,
 }
 
 impl PreferenceKey {
@@ -123,10 +118,9 @@ impl PreferenceKey {
             Self::CodexClientVersion => "codex.client_version",
             Self::GoogleCompatThinkingMode => "google.compat_thinking_mode",
             Self::GoogleIncludeThoughtsWhenOff => "google.include_thoughts_when_off",
-            Self::EmojiEmbedder => "emoji.embedder",
-            Self::EmojiSuggestModel => "emoji.suggest.model",
             Self::MediaDefaultImageModelId => "media.default_image_model_id",
             Self::MediaDefaultVideoModelId => "media.default_video_model_id",
+            Self::ToolsAnthropicSearchStrategy => "tools.anthropic_search_strategy",
         }
     }
 
@@ -146,11 +140,6 @@ impl PreferenceKey {
                 // Pointing it at another provider sends every later summary
                 // there — the whole transcript — so it is set on the machine.
                 | Self::AuxiliaryModel
-                // An absolute path on this host; a remote client cannot name
-                // a file the embedder would open.
-                | Self::EmojiEmbedder
-                // Sticker images go to this provider.
-                | Self::EmojiSuggestModel
         )
     }
 }
@@ -308,16 +297,12 @@ pub enum PreferenceUpdateRequest {
     GoogleCompatThinkingMode { value: GoogleCompatThinkingMode },
     #[serde(rename = "google.include_thoughts_when_off")]
     GoogleIncludeThoughtsWhenOff { value: bool },
-    #[serde(rename = "emoji.embedder")]
-    EmojiEmbedder { value: RequiredNullable<String> },
-    #[serde(rename = "emoji.suggest.model")]
-    EmojiSuggestModel {
-        value: RequiredNullable<PreferenceModelSelectionRequest>,
-    },
     #[serde(rename = "media.default_image_model_id")]
     MediaDefaultImageModelId { value: RequiredNullable<String> },
     #[serde(rename = "media.default_video_model_id")]
     MediaDefaultVideoModelId { value: RequiredNullable<String> },
+    #[serde(rename = "tools.anthropic_search_strategy")]
+    ToolsAnthropicSearchStrategy { value: AnthropicToolSearchStrategy },
 }
 
 /// Typed current value. `null` means the row is absent; it is not a second
@@ -363,14 +348,31 @@ pub enum PreferenceInfoResponse {
     GoogleCompatThinkingMode(Option<GoogleCompatThinkingMode>),
     #[serde(rename = "google.include_thoughts_when_off")]
     GoogleIncludeThoughtsWhenOff(Option<bool>),
-    #[serde(rename = "emoji.embedder")]
-    EmojiEmbedder(Option<String>),
-    #[serde(rename = "emoji.suggest.model")]
-    EmojiSuggestModel(Option<PreferenceModelSelectionInfoResponse>),
     #[serde(rename = "media.default_image_model_id")]
     MediaDefaultImageModelId(Option<String>),
     #[serde(rename = "media.default_video_model_id")]
     MediaDefaultVideoModelId(Option<String>),
+    #[serde(rename = "tools.anthropic_search_strategy")]
+    ToolsAnthropicSearchStrategy(Option<AnthropicToolSearchStrategy>),
+}
+
+fn parse_anthropic_search_strategy(value: &str) -> Result<AnthropicToolSearchStrategy, String> {
+    match value {
+        "server_bm25" => Ok(AnthropicToolSearchStrategy::ServerBm25),
+        "server_regex" => Ok(AnthropicToolSearchStrategy::ServerRegex),
+        "client_tool_reference" => Ok(AnthropicToolSearchStrategy::ClientToolReference),
+        _ => Err(format!(
+            "preference `tools.anthropic_search_strategy` has unknown value {value:?}"
+        )),
+    }
+}
+
+fn encode_anthropic_search_strategy(value: AnthropicToolSearchStrategy) -> &'static str {
+    match value {
+        AnthropicToolSearchStrategy::ServerBm25 => "server_bm25",
+        AnthropicToolSearchStrategy::ServerRegex => "server_regex",
+        AnthropicToolSearchStrategy::ClientToolReference => "client_tool_reference",
+    }
 }
 
 fn optional_bool(key: PreferenceKey, raw: Option<String>) -> Result<Option<bool>, String> {
@@ -451,21 +453,6 @@ fn validate_ttl(value: u64) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_embedder_path(value: String) -> Result<String, String> {
-    if value.trim() != value || value.is_empty() {
-        return Err("emoji.embedder must be an absolute .litertlm path without surrounding whitespace".into());
-    }
-    let path = std::path::Path::new(&value);
-    if !path.is_absolute() {
-        return Err("emoji.embedder must be an absolute path".into());
-    }
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-    if !ext.eq_ignore_ascii_case("litertlm") {
-        return Err("emoji.embedder must be a .litertlm file".into());
-    }
-    Ok(value)
-}
-
 fn validate_download_url(value: String) -> Result<String, String> {
     if value.trim() != value || value.is_empty() {
         return Err("voice.download_url must be a non-empty URL without surrounding whitespace".into());
@@ -518,12 +505,11 @@ fn decode_preference(key: PreferenceKey, raw: Option<String>) -> Result<Preferen
         PreferenceKey::GoogleIncludeThoughtsWhenOff => {
             PreferenceInfoResponse::GoogleIncludeThoughtsWhenOff(optional_bool(key, raw)?)
         }
-        PreferenceKey::EmojiEmbedder => {
-            PreferenceInfoResponse::EmojiEmbedder(raw.map(validate_embedder_path).transpose()?)
-        }
-        PreferenceKey::EmojiSuggestModel => PreferenceInfoResponse::EmojiSuggestModel(parse_model_selection(key, raw)?),
         PreferenceKey::MediaDefaultImageModelId => PreferenceInfoResponse::MediaDefaultImageModelId(raw),
         PreferenceKey::MediaDefaultVideoModelId => PreferenceInfoResponse::MediaDefaultVideoModelId(raw),
+        PreferenceKey::ToolsAnthropicSearchStrategy => PreferenceInfoResponse::ToolsAnthropicSearchStrategy(
+            raw.map(|value| parse_anthropic_search_strategy(&value)).transpose()?,
+        ),
     })
 }
 
@@ -593,14 +579,6 @@ impl PreferenceUpdateRequest {
             Self::GoogleIncludeThoughtsWhenOff { value } => {
                 (PreferenceKey::GoogleIncludeThoughtsWhenOff, Some(value.to_string()))
             }
-            Self::EmojiEmbedder { value } => (
-                PreferenceKey::EmojiEmbedder,
-                value.0.map(validate_embedder_path).transpose()?,
-            ),
-            Self::EmojiSuggestModel { value } => (
-                PreferenceKey::EmojiSuggestModel,
-                encode_model_selection(PreferenceKey::EmojiSuggestModel, value.0)?,
-            ),
             Self::MediaDefaultImageModelId { value } => (
                 PreferenceKey::MediaDefaultImageModelId,
                 value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
@@ -608,6 +586,10 @@ impl PreferenceUpdateRequest {
             Self::MediaDefaultVideoModelId { value } => (
                 PreferenceKey::MediaDefaultVideoModelId,
                 value.0.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+            ),
+            Self::ToolsAnthropicSearchStrategy { value } => (
+                PreferenceKey::ToolsAnthropicSearchStrategy,
+                Some(encode_anthropic_search_strategy(value).into()),
             ),
         })
     }
@@ -629,7 +611,6 @@ pub async fn get_preference(
 pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequest) -> Result<(), String> {
     let (key, value) = request.into_storage()?;
     let services = app.services();
-    let embedder_reload = (key == PreferenceKey::EmojiEmbedder).then(|| value.clone());
     services
         .db
         .write(async |tx| match value {
@@ -638,9 +619,6 @@ pub async fn set_preference(app: tauri::AppHandle, request: PreferenceUpdateRequ
         })
         .await
         .map_err(|e| e.to_string())?;
-    if let Some(next_path) = embedder_reload {
-        services.sticker_embed.reload(next_path);
-    }
     Ok(())
 }
 
@@ -693,8 +671,6 @@ mod tests {
             "auxiliary.model",
             "sub_agent.explore.model",
             "sub_agent.agent.model",
-            "emoji.embedder",
-            "emoji.suggest.model",
         ] {
             assert!(
                 serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({ "key": key })).is_err(),
@@ -769,48 +745,6 @@ mod tests {
         assert!(decode_preference(PreferenceKey::ApprovalsTtlMinutes, Some("030".into())).is_err());
         assert!(decode_preference(PreferenceKey::SubAgentExploreModel, Some(String::new())).is_err());
         assert!(decode_preference(PreferenceKey::VoiceDownloadUrl, Some("not a url".into())).is_err());
-        assert!(decode_preference(PreferenceKey::EmojiEmbedder, Some("embed.litertlm".into())).is_err());
-        assert!(
-            decode_preference(
-                PreferenceKey::EmojiEmbedder,
-                Some(sample_embedder_path().replace(".litertlm", ".onnx"))
-            )
-            .is_err()
-        );
-    }
-
-    fn sample_embedder_path() -> String {
-        if cfg!(windows) {
-            r"C:\models\embed.litertlm".into()
-        } else {
-            "/models/embed.litertlm".into()
-        }
-    }
-
-    #[test]
-    fn an_embedder_path_must_be_absolute_and_litertlm() {
-        let path = sample_embedder_path();
-        let request = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
-            "key": "emoji.embedder",
-            "value": path
-        }))
-        .unwrap();
-        assert_eq!(
-            request.into_storage().unwrap(),
-            (PreferenceKey::EmojiEmbedder, Some(path.clone()))
-        );
-        let response = decode_preference(PreferenceKey::EmojiEmbedder, Some(path.clone())).unwrap();
-        assert_eq!(
-            serde_json::to_value(response).unwrap(),
-            serde_json::json!({ "key": "emoji.embedder", "value": path })
-        );
-
-        let clear = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
-            "key": "emoji.embedder",
-            "value": null
-        }))
-        .unwrap();
-        assert_eq!(clear.into_storage().unwrap(), (PreferenceKey::EmojiEmbedder, None));
     }
 
     #[test]
@@ -860,5 +794,33 @@ mod tests {
             .unwrap(),
             serde_json::json!({ "key": "google.include_thoughts_when_off", "value": false })
         );
+
+        let search = serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+            "key": "tools.anthropic_search_strategy",
+            "value": "client_tool_reference"
+        }))
+        .unwrap();
+        assert_eq!(
+            search.into_storage().unwrap(),
+            (
+                PreferenceKey::ToolsAnthropicSearchStrategy,
+                Some("client_tool_reference".into())
+            )
+        );
+        assert!(
+            serde_json::from_value::<PreferenceUpdateRequest>(serde_json::json!({
+                "key": "tools.anthropic_search_strategy",
+                "value": "bogus"
+            }))
+            .is_err()
+        );
+        assert_eq!(
+            serde_json::to_value(
+                decode_preference(PreferenceKey::ToolsAnthropicSearchStrategy, Some("server_regex".into())).unwrap()
+            )
+            .unwrap(),
+            serde_json::json!({ "key": "tools.anthropic_search_strategy", "value": "server_regex" })
+        );
+        assert!(decode_preference(PreferenceKey::ToolsAnthropicSearchStrategy, Some("bad".into())).is_err());
     }
 }

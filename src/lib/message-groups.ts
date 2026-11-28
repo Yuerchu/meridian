@@ -51,7 +51,7 @@ export type BubbleModel =
       kind: 'text'
       key: string
       messageId: string
-      /** One Markdown segment. A OneBot reply splits on `\n---\n` into several
+      /** One Markdown segment. A channel reply splits on `\n---\n` into several
        *  bubbles, which is why this is a segment rather than the whole block. */
       text: string
       thinking: string[]
@@ -127,9 +127,9 @@ export interface AssistantGroup {
 }
 
 export interface BuildGroupsOptions {
-  /** Split text bubbles on `\n---\n`. Only a OneBot reply means that: in an
-   *  ordinary chat a Markdown rule is part of one message. */
-  oneBot?: boolean
+  /** Split text bubbles on `\n---\n`. Only an archived channel reply means
+   *  that: in an ordinary chat a Markdown rule is part of one message. */
+  channel?: boolean
 }
 
 /** Chat text is paragraphs; a run of text blocks reads as one bubble until a
@@ -242,9 +242,9 @@ export function buildAssistantGroups(turn: Turn, options: BuildGroupsOptions = {
       }
       if (block.type === 'text') {
         if (!block.text.trim()) continue
-        const segments = options.oneBot ? splitOneBot(block.text) : [block.text]
+        const segments = options.channel ? splitChannelBubbles(block.text) : [block.text]
         for (const text of segments) {
-          if (open && open.kind === 'text' && open.tools.length === 0 && !options.oneBot) {
+          if (open && open.kind === 'text' && open.tools.length === 0 && !options.channel) {
             // Two text blocks in a row are one paragraph run.
             open.text = `${open.text}\n\n${text}`
             continue
@@ -528,8 +528,8 @@ function hideThinkingForSearchOnly(blocks: ContentBlock[]): ContentBlock[] {
   return hasText ? blocks : blocks.filter((b) => b.type !== 'thinking')
 }
 
-/** The `\n---\n` bubble-splitting protocol, as a OneBot reply uses it. */
-function splitOneBot(text: string): string[] {
+/** The `\n---\n` bubble-splitting protocol used by archived channel replies. */
+function splitChannelBubbles(text: string): string[] {
   const segments = text
     .split(/\n---\n/)
     .map((s) => s.trim())

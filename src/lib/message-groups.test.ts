@@ -51,9 +51,9 @@ const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const thinking = (t: string): ContentBlock => ({ type: 'thinking', text: t })
 const sticker = (id: string): ContentBlock => ({ type: 'sticker', sticker_id: id, name: 'wave' })
 
-function groupsOf(rows: MessageViewModel[], opts?: { streaming?: boolean; oneBot?: boolean }) {
+function groupsOf(rows: MessageViewModel[], opts?: { streaming?: boolean; channel?: boolean }) {
   const turn = buildTurns([msg('user', { content: 'q' }), ...rows], { streaming: opts?.streaming })[0]
-  return { turn, groups: buildAssistantGroups(turn, { oneBot: opts?.oneBot }) }
+  return { turn, groups: buildAssistantGroups(turn, { channel: opts?.channel }) }
 }
 
 describe('buildAssistantGroups — cutting a turn into bubbles', () => {
@@ -186,12 +186,12 @@ describe('buildAssistantGroups — queued calls', () => {
   })
 })
 
-describe('buildAssistantGroups — OneBot', () => {
+describe('buildAssistantGroups — channel archive', () => {
   it('splits a reply on the bubble protocol, and only there', () => {
     const rows = [msg('assistant', { _blocks: [text('one\n---\ntwo'), tool('x')] })]
     const plain = groupsOf(rows).groups[0].bubbles
     expect(plain).toHaveLength(1)
-    const split = groupsOf(rows, { oneBot: true }).groups[0].bubbles
+    const split = groupsOf(rows, { channel: true }).groups[0].bubbles
     expect(split.map((b) => (b.kind === 'text' ? b.text : b.kind))).toEqual(['one', 'two'])
     // The calls follow the last segment.
     expect(split[1].kind === 'text' && split[1].tools).toHaveLength(1)

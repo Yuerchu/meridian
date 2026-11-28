@@ -504,32 +504,6 @@ export const TOOLS: Readonly<Record<string, ToolUi>> = {
   list_background_tasks: plain('native', { fold: 'context' }),
   conversation_usage: plain('native', { fold: 'context' }),
   read_conversation: plain('native', { fold: 'context' }),
-
-  // ---- stickers and voice: JSON answers ----
-  list_stickers: { side: 'native', args: 'fields', result: 'structured', fold: 'context' },
-  send_sticker: { side: 'native', args: 'fields', result: 'structured', ident: text('query', 'sticker_id') },
-  send_voice: { side: 'native', args: 'fields', result: 'structured' },
-
-  // ---- QQ: fixed Chinese sentences and line lists ----
-  qq_get_chat_history: plain('native'),
-  qq_get_group_info: plain('native'),
-  qq_get_group_member_list: plain('native'),
-  qq_get_group_member_info: plain('native'),
-  qq_get_user_info: plain('native'),
-  qq_get_friend_list: plain('native'),
-  qq_get_group_list: plain('native'),
-  qq_delete_msg: plain('native'),
-  qq_send_poke: plain('native'),
-  qq_send_like: plain('native'),
-  qq_set_essence_msg: plain('native'),
-  qq_set_group_ban: plain('native'),
-  qq_set_group_kick: plain('native'),
-  qq_set_group_card: plain('native'),
-  qq_set_group_name: plain('native'),
-  qq_send_group_notice: plain('native'),
-  qq_list_replies: plain('native'),
-  qq_manage_replies: plain('native'),
-  qq_stay_silent: plain('native'),
 }
 
 /**

@@ -14,7 +14,7 @@ pub mod chat;
 pub mod composer_draft;
 pub mod conversation;
 pub mod dev;
-pub mod emoji;
+pub mod dream;
 pub mod entity_response;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
@@ -31,8 +31,6 @@ pub mod memory;
 pub mod message;
 pub mod model_config;
 pub mod notify;
-#[cfg(not(target_os = "android"))]
-pub mod onebot;
 pub mod plan_review;
 pub mod preference;
 pub mod project;
@@ -50,5 +48,4 @@ pub mod usage;
 #[cfg_attr(target_os = "android", path = "user_command_android.rs")]
 pub mod user_command;
 pub mod voice;
-pub mod voice_corpus;
 pub mod workspace;

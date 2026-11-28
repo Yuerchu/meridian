@@ -5,9 +5,19 @@ import { ArrowInDownDashedPanel, Plug } from '@keyline-icons/react/two-tone'
 import { Alert } from '@/components/yuerchu-ui/components/alert/alert'
 import { Button } from '@/components/yuerchu-ui/components/button/button'
 import { api } from '@/api'
-import type { McpConnectionStatusInfoResponse, McpServerInfoResponse, McpServerToolInfoResponse } from '@/types'
+import type {
+  AnthropicToolSearchStrategy,
+  McpConnectionStatusInfoResponse,
+  McpDefaultPolicyInfoResponse,
+  McpServerInfoResponse,
+  McpServerToolInfoResponse,
+  ToolApprovalPolicy,
+  ToolLoading,
+  ToolScope,
+} from '@/types'
 import { SettingsAddRow, SettingsLinkRow, SettingsSkeleton } from '../primitives'
-import { SettingsGroup } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { SettingsGroup, SettingsRow } from '@/components/yuerchu-ui/components/settings-list/settings-list'
+import { Segment, SegmentedControl } from '@/components/yuerchu-ui/components/segmented-control/segmented-control'
 import { Badge } from '@/components/yuerchu-ui/components/badge/badge'
 import { SettingsPage } from '../settings-page'
 import { useSettingsResume } from '../settings-stack'
@@ -38,6 +48,8 @@ export function McpServerListPage({
   const [servers, setServers] = useState<McpServerInfoResponse[]>([])
   const [statuses, setStatuses] = useState<McpConnectionStatusInfoResponse[]>([])
   const [tools, setTools] = useState<McpServerToolInfoResponse[]>([])
+  const [defaultPolicy, setDefaultPolicy] = useState<McpDefaultPolicyInfoResponse | null>(null)
+  const [anthropicSearch, setAnthropicSearch] = useState<AnthropicToolSearchStrategy>('server_bm25')
   const [hotId, setHotId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -47,20 +59,57 @@ export function McpServerListPage({
   const refresh = useCallback(async () => {
     setLoadError(null)
     try {
-      const [list, status, listed] = await Promise.all([
+      const [list, status, listed, policy, searchPref] = await Promise.all([
         api.mcp.listServers(),
         api.mcp.listConnectionStatuses(),
         api.mcp.listServerTools({ server_id: null }),
+        api.mcp.getDefaultPolicy(),
+        api.preferences.get({ key: 'tools.anthropic_search_strategy' }),
       ])
       setServers(list)
       setStatuses(status)
       setTools(listed)
+      setDefaultPolicy(policy)
+      setAnthropicSearch(searchPref.value ?? 'server_bm25')
     } catch (reason) {
       setLoadError(String(reason))
     } finally {
       setLoading(false)
     }
   }, [])
+
+  const updateAnthropicSearch = useCallback(
+    async (value: AnthropicToolSearchStrategy) => {
+      const previous = anthropicSearch
+      setAnthropicSearch(value)
+      setLoadError(null)
+      try {
+        await api.preferences.set({ key: 'tools.anthropic_search_strategy', value })
+      } catch (reason) {
+        setAnthropicSearch(previous)
+        setLoadError(String(reason))
+      }
+    },
+    [anthropicSearch],
+  )
+
+  const updateDefaultPolicy = useCallback(
+    async (patch: Partial<McpDefaultPolicyInfoResponse>) => {
+      if (!defaultPolicy) return
+      const next: McpDefaultPolicyInfoResponse = { ...defaultPolicy, ...patch }
+      const previous = defaultPolicy
+      setDefaultPolicy(next)
+      setLoadError(null)
+      try {
+        const saved = await api.mcp.setDefaultPolicy(next)
+        setDefaultPolicy(saved)
+      } catch (reason) {
+        setDefaultPolicy(previous)
+        setLoadError(String(reason))
+      }
+    },
+    [defaultPolicy],
+  )
 
   useEffect(() => {
     if (initialized.current) return
@@ -121,6 +170,59 @@ export function McpServerListPage({
       {meter && (
         <SettingsGroup>
           <ContextMeter segments={meter.segments} toolCount={meter.toolCount} hotId={hotId} />
+        </SettingsGroup>
+      )}
+      {defaultPolicy && (
+        <SettingsGroup headingLevel={3} heading={t('settings.mcp.policy.defaultTitle')}>
+          <SettingsRow label={t('settings.mcp.policy.scope')} description={t('settings.mcp.policy.scopeHint')}>
+            <SegmentedControl
+              size="sm"
+              selectedKey={defaultPolicy.scope}
+              onSelectionChange={(key) => void updateDefaultPolicy({ scope: key as ToolScope })}
+            >
+              <Segment id="local_only">{t('settings.mcp.policy.scope.local_only')}</Segment>
+              <Segment id="operator_only">{t('settings.mcp.policy.scope.operator_only')}</Segment>
+              <Segment id="shared_room">{t('settings.mcp.policy.scope.shared_room')}</Segment>
+            </SegmentedControl>
+          </SettingsRow>
+          <SettingsRow label={t('settings.mcp.policy.loading')} description={t('settings.mcp.policy.loadingHint')}>
+            <SegmentedControl
+              size="sm"
+              selectedKey={defaultPolicy.loading}
+              onSelectionChange={(key) => void updateDefaultPolicy({ loading: key as ToolLoading })}
+            >
+              <Segment id="deferred">{t('settings.mcp.policy.loading.deferred')}</Segment>
+              <Segment id="eager">{t('settings.mcp.policy.loading.eager')}</Segment>
+            </SegmentedControl>
+          </SettingsRow>
+          <SettingsRow label={t('settings.mcp.policy.approval')} description={t('settings.mcp.policy.approvalHint')}>
+            <SegmentedControl
+              size="sm"
+              selectedKey={defaultPolicy.approval}
+              onSelectionChange={(key) => void updateDefaultPolicy({ approval: key as ToolApprovalPolicy })}
+            >
+              <Segment id="always">{t('settings.mcp.policy.approval.always')}</Segment>
+              <Segment id="auto_review">{t('settings.mcp.policy.approval.auto_review')}</Segment>
+              <Segment id="request_approve">{t('settings.mcp.policy.approval.request_approve')}</Segment>
+              <Segment id="never">{t('settings.mcp.policy.approval.never')}</Segment>
+            </SegmentedControl>
+          </SettingsRow>
+          <SettingsRow
+            label={t('settings.mcp.policy.anthropicSearch')}
+            description={t('settings.mcp.policy.anthropicSearchHint')}
+          >
+            <SegmentedControl
+              size="sm"
+              selectedKey={anthropicSearch}
+              onSelectionChange={(key) => void updateAnthropicSearch(key as AnthropicToolSearchStrategy)}
+            >
+              <Segment id="server_bm25">{t('settings.mcp.policy.anthropicSearch.server_bm25')}</Segment>
+              <Segment id="server_regex">{t('settings.mcp.policy.anthropicSearch.server_regex')}</Segment>
+              <Segment id="client_tool_reference">
+                {t('settings.mcp.policy.anthropicSearch.client_tool_reference')}
+              </Segment>
+            </SegmentedControl>
+          </SettingsRow>
         </SettingsGroup>
       )}
       <div data-slot="mcp-server-list">

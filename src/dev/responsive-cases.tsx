@@ -66,7 +66,7 @@ function ComposerCase() {
         placeholder="Send a message..."
         toolbarStart={
           <>
-            <ComposerMenu onPickFile={noop} onOpenStickers={noop} />
+            <ComposerMenu onPickFile={noop} />
             <ModeChip mode="work" acceptEdits={false} onSelectMode={noop} onToggleAcceptEdits={noop} />
           </>
         }

@@ -145,7 +145,7 @@ describe('api (API_REV 4 resource namespaces)', () => {
     })
   })
 
-  describe('consolidated domains (providers, approvals, memories, emojis, board, ime, remote, tools)', () => {
+  describe('consolidated domains (providers, approvals, memories, board, ime, remote, tools)', () => {
     it('routes consolidated commands with exact snake_case DTOs', async () => {
       mockInvoke.mockResolvedValue(undefined)
 
@@ -155,9 +155,6 @@ describe('api (API_REV 4 resource namespaces)', () => {
       const respondReq = { approval_id: 'a3', decision: { kind: 'respond' as const, response: 'yes' } }
       const memListReq = { filter: { kind: 'all' as const } }
       const memDeleteReq = { ids: ['m1'], permanent: false }
-      const emojiListReq = { filter: { kind: 'pack' as const, pack_id: 'pk1' } }
-      const emojiUpdateReq = { id: 'e1', action: { kind: 'rename' as const, name: 'smile' } }
-      const emojiAssignReq = { assistant_id: 'as1', pack_id: 'pk1', assigned: true }
       const boardUpdateReq = { id: 'b1', position: { stage: 'running' as const, index: 0 } }
       const imeDeleteReq = { word: null }
 
@@ -167,9 +164,6 @@ describe('api (API_REV 4 resource namespaces)', () => {
       await api.approvals.submitDecision(respondReq)
       await api.memories.list(memListReq)
       await api.memories.delete(memDeleteReq)
-      await api.emojis.list(emojiListReq)
-      await api.emojis.update(emojiUpdateReq)
-      await api.emojis.setPackAssignment(emojiAssignReq)
       await api.board.updateTask(boardUpdateReq)
       await api.ime.deleteLearning(imeDeleteReq)
       await api.remote.getStatus()
@@ -183,9 +177,6 @@ describe('api (API_REV 4 resource namespaces)', () => {
         ['submit_approval_decision', { request: respondReq }],
         ['list_memories', { request: memListReq }],
         ['delete_memories', { request: memDeleteReq }],
-        ['list_emojis', { request: emojiListReq }],
-        ['update_emoji', { request: emojiUpdateReq }],
-        ['set_emoji_pack_assignment', { request: emojiAssignReq }],
         ['update_board_task', { request: boardUpdateReq }],
         ['delete_ime_learning', { request: imeDeleteReq }],
         ['get_remote_status'],

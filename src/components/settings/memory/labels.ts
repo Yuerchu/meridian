@@ -30,10 +30,10 @@ export function memoryScopeLabel(t: TFunction, scope: MemoryScope): string {
       return t('settings.memory.scopes.project')
     case 'client_global':
       return t('settings.memory.scopes.clientGlobal')
-    case 'onebot_global':
-      return t('settings.memory.scopes.onebotGlobal')
-    case 'onebot_user':
-      return t('settings.memory.scopes.onebotUser')
+    case 'channel_global':
+      return t('settings.memory.scopes.channelGlobal')
+    case 'external_subject':
+      return t('settings.memory.scopes.externalSubject')
   }
 }
 
@@ -66,7 +66,7 @@ export function subjectLabel(
 ): { name: string; id?: undefined } | { name: string; id: string } {
   const displayName = subject.display_name?.trim()
   if (displayName) return { name: displayName }
-  const qq = /^onebot:(\d+)$/.exec(subject.scope_id)
-  if (qq) return { name: t('settings.memory.person.qq'), id: qq[1] }
+  const match = /^([a-z0-9_-]+):(\d+)$/i.exec(subject.scope_id)
+  if (match) return { name: t('settings.memory.person.externalUser'), id: match[2] }
   return { name: subject.scope_id }
 }

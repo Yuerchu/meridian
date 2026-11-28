@@ -25,7 +25,6 @@ import type {
   AssistantInfoResponse,
   AssistantUpdateRequest,
   CacheExpiryPolicy,
-  EmojiPackInfoResponse,
   ProviderInfoResponse,
   McpToolInfoResponse,
   PromptCacheTtl,
@@ -79,8 +78,6 @@ function AssistantEditor({
   const [saved, markSaved] = useTemporaryFlag()
   const [saveError, setSaveError] = useState<string | null>(null)
   const [allTools, setAllTools] = useState<McpToolInfoResponse[]>([])
-  const [allPacks, setAllPacks] = useState<EmojiPackInfoResponse[]>([])
-  const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
   const [allSkills, setAllSkills] = useState<SkillInfoResponse[]>([])
   const [boundSkillDirs, setBoundSkillDirs] = useState<Set<string>>(new Set())
   const [skillError, setSkillError] = useState<string | null>(null)
@@ -207,11 +204,7 @@ function AssistantEditor({
 
   useEffect(() => {
     api.mcp.listAllTools().then(setAllTools)
-    api.emojis.listPacks({ assistant_id: null }).then(setAllPacks)
     api.tools.listPresets().then(setToolPresets)
-    api.emojis
-      .listPacks({ assistant_id: assistant.id })
-      .then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
     api.skills.list().then(setAllSkills)
     api.skills
       .listBindings({ layer: 'assistant', anchor_id: assistant.id })
@@ -531,44 +524,6 @@ function AssistantEditor({
           </div>
         )}
       </SettingsDrilldown>
-
-      {allPacks.length > 0 && (
-        <SettingsDrilldown title={t('settings.assistant.emojiPacks')} summary={assignedPackIds.size || undefined}>
-          <div
-            data-slot="emoji-pack-grid"
-            role="group"
-            aria-label={t('settings.assistant.emojiPacks')}
-            className="m-assistant__checks m-assistant__checks--framed"
-          >
-            {allPacks.map((pack) => (
-              <Checkbox
-                key={pack.id}
-                isSelected={assignedPackIds.has(pack.id)}
-                onChange={async (selected) => {
-                  await api.emojis.setPackAssignment({
-                    assistant_id: assistant.id,
-                    pack_id: pack.id,
-                    assigned: selected,
-                  })
-                  if (selected) {
-                    setAssignedPackIds((prev) => new Set([...prev, pack.id]))
-                  } else {
-                    setAssignedPackIds((prev) => {
-                      const next = new Set(prev)
-                      next.delete(pack.id)
-                      return next
-                    })
-                  }
-                }}
-              >
-                <span data-slot="emoji-pack-name" onPointerEnter={titleIfTruncated} className="m-assistant__truncate">
-                  {pack.name}
-                </span>
-              </Checkbox>
-            ))}
-          </div>
-        </SettingsDrilldown>
-      )}
 
       {allSkills.length > 0 && (
         <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
